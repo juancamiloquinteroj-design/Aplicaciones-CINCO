@@ -285,9 +285,12 @@ tfoot td:first-child{text-align:left}
  * Prueba local:    http://localhost:8000
  * Producción:      https://api.tudominio.com   (la URL que te da Cloudflare Tunnel)
  */
-const API_BASE_URL = 'https://outputs-partners-negotiation-comment.trycloudflare.com';
+const API_BASE_URL = 'https://murkiness-dairy-anagram.ngrok-free.dev';
 const FETCH_TIMEOUT_MS = 2500;      // datos: si no responde rápido, mejor caer a modo demo
 const AUTH_TIMEOUT_MS = 15000;      // login/cambio de clave: pasan por Centro de Mando (Supabase), más lento
+// ngrok (plan gratis) muestra una página de aviso antes de dejar pasar el tráfico
+// salvo que venga este header -- sin esto, todas las llamadas a la API fallarían.
+const NGROK_HEADERS = {'ngrok-skip-browser-warning':'true'};
 
 let TOKEN = null, OPERADOR = null, DEMO = false;
 const ZONA_COLOR = {ZN:'#00b4d8',ZE:'#f4a261',ZC:'#06d6a0',ZS:'#ef476f',ZO:'#7b2fff',EH:'#4a5e7a','Sin zona':'#8a9ab5'};
@@ -305,7 +308,8 @@ function toggleTheme(){
 function fetchConTimeout(url, opts, timeoutMs){
   const ctrl = new AbortController();
   const id = setTimeout(()=>ctrl.abort(), timeoutMs || FETCH_TIMEOUT_MS);
-  return fetch(url, {...opts, signal: ctrl.signal}).finally(()=>clearTimeout(id));
+  const headers = {...NGROK_HEADERS, ...(opts && opts.headers)};
+  return fetch(url, {...opts, headers, signal: ctrl.signal}).finally(()=>clearTimeout(id));
 }
 
 async function manejarLogin(ev){
@@ -493,7 +497,7 @@ async function descargarCSV(){
 
   btn.disabled = true; const textoOriginal = btn.textContent; btn.textContent = 'Descargando…';
   try{
-    const res = await fetch(`${API_BASE_URL}/api/export?${qs.toString()}`, {headers: authHeaders()});
+    const res = await fetchConTimeout(`${API_BASE_URL}/api/export?${qs.toString()}`, {headers: authHeaders()}, AUTH_TIMEOUT_MS);
     if(!res.ok) throw new Error('No se pudo generar la descarga.');
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
