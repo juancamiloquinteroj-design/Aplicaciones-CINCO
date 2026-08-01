@@ -128,6 +128,9 @@ select{padding:6px 10px;border:1px solid var(--border);border-radius:7px;font-si
 
 .chart-wrap{position:relative;height:320px}
 .zona-wrap{display:flex;gap:18px;align-items:stretch;flex-wrap:wrap}
+.split-wrap{display:flex;gap:18px;align-items:stretch;flex-wrap:wrap}
+.split-wrap>div{flex:1;min-width:280px}
+@media(max-width:800px){.split-wrap>div{flex:1 1 100%}}
 .zona-wrap>div:first-child{flex:2;min-width:280px;height:300px}
 .zona-wrap>div:last-child{flex:1;min-width:220px;height:300px}
 
@@ -317,13 +320,13 @@ tfoot td:first-child{text-align:left}
   <div class="card">
     <div class="fbar" style="margin-bottom:0">
       <label>Zona</label>
-      <select id="fm-zona" onchange="aplicarFiltros()"><option value="">Todas</option></select>
+      <select id="fm-zona" onchange="cargarAlimentadores();aplicarFiltros()"><option value="">Todas</option></select>
       <label>Alimentador</label>
       <input id="fm-alimentador" list="dl-alimentadores" placeholder="Todos" autocomplete="off" oninput="aplicarFiltrosDebounced()"
         style="padding:6px 10px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg);width:190px">
       <datalist id="dl-alimentadores"></datalist>
       <label>Nivel de tensión</label>
-      <select id="fm-nivel" onchange="aplicarFiltros()"><option value="">Todos</option></select>
+      <select id="fm-nivel" onchange="cargarAlimentadores();aplicarFiltros()"><option value="">Todos</option></select>
       <button class="btn-theme" style="width:auto;padding:0 14px;margin-left:auto" onclick="descargarCSV()" id="btn-descargar" title="Descargar el detalle mensual en CSV">⬇ Descargar CSV</button>
     </div>
 
@@ -375,6 +378,19 @@ tfoot td:first-child{text-align:left}
     </div>
     <div class="chart-wrap" style="height:420px"><canvas id="ch-principal"></canvas></div>
     <div id="kpi-notes-row" style="margin-top:14px"></div>
+  </div>
+
+  <div class="card">
+    <div class="split-wrap">
+      <div>
+        <div class="card-title" style="text-align:center">Pérdida por Nivel</div>
+        <div class="chart-wrap" style="height:320px"><canvas id="ch-nivel-apilado"></canvas></div>
+      </div>
+      <div>
+        <div class="card-title" style="text-align:center">Pérdida por Zona</div>
+        <div class="chart-wrap" style="height:320px"><canvas id="ch-zona-apilado"></canvas></div>
+      </div>
+    </div>
   </div>
 
   <div class="sec-hdr">
@@ -442,7 +458,12 @@ function colorParaZona(z){
   if(!_colorZonaCache.has(key)) _colorZonaCache.set(key, PALETA_ZONAS[_colorZonaCache.size % PALETA_ZONAS.length]);
   return _colorZonaCache.get(key);
 }
-let chPrincipal=null, chZona=null, chDona=null;
+const PALETA_NIVELES = ['#8a9ab5','#06d6a0','#00b4d8','#f4a261','#7b2fff','#ef476f'];
+function colorParaNivel(n, niveles){
+  const i = niveles.indexOf(n);
+  return PALETA_NIVELES[(i<0?0:i) % PALETA_NIVELES.length];
+}
+let chPrincipal=null, chZona=null, chDona=null, chNivelApilado=null, chZonaApilado=null;
 let META = {zonas:[], niveles:[], meses:[]};
 let RESUMEN = null;
 let RANGO = {start:0, end:0};
@@ -753,8 +774,13 @@ async function cargarMeta(){
 
 async function cargarAlimentadores(){
   const dl = document.getElementById('dl-alimentadores');
+  const zona = document.getElementById('fm-zona').value;
+  const nivel = document.getElementById('fm-nivel').value;
+  const qs = new URLSearchParams();
+  if(zona) qs.set('zona', zona);
+  if(nivel) qs.set('nivel', nivel);
   try{
-    const circuitos = DEMO ? [] : await apiGet('/api/circuitos');
+    const circuitos = DEMO ? [] : await apiGet(`/api/circuitos?${qs.toString()}`);
     const nemonicos = [...new Set(circuitos.map(c=>c.nemonico))].sort();
     dl.innerHTML = nemonicos.map(n=>`<option value="${n.replace(/"/g,'&quot;')}"></option>`).join('');
   }catch(e){
@@ -855,6 +881,7 @@ async function aplicarFiltros(){
   renderPrincipal();
   renderKpiCards();
   await cargarZonas();
+  await cargarGraficasApiladas();
 }
 
 async function limpiarFiltros(){
@@ -862,6 +889,7 @@ async function limpiarFiltros(){
   document.getElementById('fm-alimentador').value = '';
   document.getElementById('fm-nivel').value = '';
   _applyRange(0, META.meses.length-1);
+  await cargarAlimentadores();
   await aplicarFiltros();
 }
 
@@ -1241,6 +1269,81 @@ function labelMesSiguiente(m){
   return t.charAt(0).toUpperCase()+t.slice(1)+' '+d.getFullYear();
 }
 
+/* ---- Pérdida por Nivel / Pérdida por Zona (barras apiladas) ---- */
+function fmtMill(v, decimales){
+  return (v/1e6).toLocaleString('es-CO', {minimumFractionDigits:decimales, maximumFractionDigits:decimales})+' mill.';
+}
+
+const ChartsApilados = {nivel:null, zona:null};
+
+async function cargarGraficasApiladas(){
+  const zona = document.getElementById('fm-zona').value;
+  const nivel = document.getElementById('fm-nivel').value;
+  const alimentador = document.getElementById('fm-alimentador').value.trim();
+  const base = () => {
+    const qs = new URLSearchParams();
+    if(alimentador) qs.set('alimentador', alimentador);
+    if(META.meses && META.meses.length){
+      qs.set('desde', `${META.meses[RANGO.start] || META.meses[0]}-01`);
+      qs.set('hasta', `${META.meses[RANGO.end] || META.meses[META.meses.length-1]}-01`);
+    }
+    return qs;
+  };
+  const qsNivel = base(); if(zona) qsNivel.set('zona', zona);
+  const qsZona = base(); if(nivel) qsZona.set('nivel', nivel);
+
+  try{
+    const [porNivel, porZona] = await Promise.all([
+      apiGet(`/api/perdidas-por-nivel?${qsNivel.toString()}`),
+      apiGet(`/api/perdidas-por-zona?${qsZona.toString()}`),
+    ]);
+    renderApilado('nivel', 'ch-nivel-apilado', porNivel, c=>`Nivel ${c}`, colorParaNivel);
+    renderApilado('zona', 'ch-zona-apilado', porZona, c=>c, (c)=>colorParaZona(c));
+  }catch(e){
+    // Estas dos gráficas son un complemento -- si fallan no debe tumbar el resto de la vista.
+  }
+}
+
+function renderApilado(key, canvasId, datos, formatEtiqueta, getColor){
+  const ctx = document.getElementById(canvasId);
+  const dark = document.documentElement.getAttribute('data-theme')==='dark';
+  const tickC = dark ? '#8899b5' : '#4b5e7a';
+  const gridC = dark ? 'rgba(255,255,255,.06)' : 'rgba(0,0,0,.06)';
+  const series = datos.series || [];
+  const claves = series.map(s=>s.clave);
+  const labels = (datos.meses || []).map(labelMes);
+
+  const datasets = series.map(s=>({
+    type:'bar', label: formatEtiqueta(s.clave), data: s.valores,
+    backgroundColor: getColor(s.clave, claves), stack:'total', borderRadius:2,
+    datalabels:{display:v=>v.dataset.data[v.dataIndex]>0, anchor:'center', align:'center',
+      formatter:v=>v>0 ? fmtMill(v,1) : '', font:{size:10,weight:'700'}, color:'#fff'},
+  }));
+
+  const totales = labels.map((_,i)=> series.reduce((s,serie)=>s+(serie.valores[i]||0),0));
+  datasets.push({
+    type:'line', label:'Total', data: totales, borderWidth:0, pointRadius:0, pointHoverRadius:0,
+    backgroundColor:'transparent', borderColor:'transparent', fill:false,
+    datalabels:{display:true, anchor:'end', align:'top', offset:4,
+      formatter:v=>fmtMill(v,2), font:{size:11,weight:'800'}, color:tickC},
+  });
+
+  if(ChartsApilados[key]) ChartsApilados[key].destroy();
+  ChartsApilados[key] = new Chart(ctx, {
+    data:{labels, datasets},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      layout:{padding:{top:24}},
+      plugins:{legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:10}, color:tickC,
+        filter:item=>item.text!=='Total'}}},
+      scales:{
+        x:{stacked:true, grid:{display:false}, ticks:{color:tickC, font:{size:11}}},
+        y:{stacked:true, beginAtZero:true, grid:{color:gridC}, ticks:{color:tickC, font:{size:11}, callback:v=>fmtMill(v,0)}},
+      },
+    },
+  });
+}
+
 function exportChartPNG(){
   if(!chPrincipal) return;
   chPrincipal.options.devicePixelRatio = 3;
@@ -1367,6 +1470,15 @@ function demoGet(path){
         reconocimiento_creg_kwh:reconocido, pt_reconocida_kwh:ptRec, pt_no_reconocida_kwh:ptNo};
     });
     return Promise.resolve(zonas);
+  }
+  if(path.startsWith('/api/perdidas-por-nivel')){
+    const niveles = [1,2,3,4];
+    const series = niveles.map(n=>({clave:n, valores: DEMO_MESES.map((m,i)=>Math.round(80000+seededRand(i+n*7)*60000))}));
+    return Promise.resolve({meses:DEMO_MESES, series});
+  }
+  if(path.startsWith('/api/perdidas-por-zona')){
+    const series = DEMO_ZONAS.map((z,i)=>({clave:z, valores: DEMO_MESES.map((m,j)=>Math.round(60000+seededRand(j+i*11)*70000))}));
+    return Promise.resolve({meses:DEMO_MESES, series});
   }
   return Promise.resolve({});
 }
