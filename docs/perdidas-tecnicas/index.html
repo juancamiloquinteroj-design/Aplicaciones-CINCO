@@ -349,7 +349,7 @@ tfoot td:first-child{text-align:left}
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;flex-wrap:wrap;gap:8px">
       <div style="flex:1;text-align:center">
         <div style="font-size:16px;font-weight:800;letter-spacing:1.5px;color:var(--text);text-transform:uppercase">Pérdidas Técnicas</div>
-        <div class="card-sub" style="text-align:center;margin-bottom:0">Barras = Entradas · Rojo = Pérdidas Técnicas kWh · Naranja = Pérdidas Técnicas %</div>
+        <div class="card-sub" style="text-align:center;margin-bottom:0">Barras = Entradas y Pérdidas Técnicas (kWh) · Línea naranja = Pérdidas Técnicas (%)</div>
       </div>
       <div style="display:flex;gap:8px;flex-shrink:0">
         <button id="proj-btn" onclick="toggleProjection()" title="Proyectar PT kWh basado en entradas futuras"
@@ -430,8 +430,16 @@ const RESYNC_TIMEOUT_MS = 45000;    // "Actualizar datos": puede esperar a que t
 const NGROK_HEADERS = {'ngrok-skip-browser-warning':'true'};
 
 let TOKEN = null, OPERADOR = null, PERSONA = null, DEMO = false;
-const ZONA_COLOR = {ZN:'#00b4d8',ZE:'#f4a261',ZC:'#06d6a0',ZS:'#ef476f',ZO:'#7b2fff',EH:'#4a5e7a','Sin zona':'#8a9ab5'};
-const ZONA_NOMBRE = {ZN:'Norte',ZE:'Este',ZC:'Centro',ZS:'Sur',ZO:'Oriente',EH:'Transmisión (EH)','Sin zona':'Sin zona'};
+// Las zonas se muestran TAL CUAL vienen en el CSV de cada operador -- no hay
+// una lista fija de nombres/códigos, cada operador puede traer los suyos.
+// Solo se les asigna un color consistente para distinguirlas visualmente.
+const PALETA_ZONAS = ['#00b4d8','#f4a261','#06d6a0','#ef476f','#7b2fff','#0096c7','#ffb703','#2a9d5c','#c0132a','#4a5e7a'];
+const _colorZonaCache = new Map();
+function colorParaZona(z){
+  const key = z || 'Sin zona';
+  if(!_colorZonaCache.has(key)) _colorZonaCache.set(key, PALETA_ZONAS[_colorZonaCache.size % PALETA_ZONAS.length]);
+  return _colorZonaCache.get(key);
+}
 let chPrincipal=null, chZona=null, chDona=null;
 let META = {zonas:[], niveles:[], meses:[]};
 let RESUMEN = null;
@@ -721,7 +729,7 @@ async function cargarMeta(){
   const selStart = document.getElementById('range-start-sel');
   const selEnd = document.getElementById('range-end-sel');
 
-  selZona.innerHTML = '<option value="">Todas</option>' + META.zonas.map(z=>`<option value="${z}">${ZONA_NOMBRE[z]||z}</option>`).join('');
+  selZona.innerHTML = '<option value="">Todas</option>' + META.zonas.map(z=>`<option value="${z}">${z}</option>`).join('');
   selNivel.innerHTML = '<option value="">Todos</option>' + META.niveles.map(n=>`<option value="${n}">Nivel ${n}</option>`).join('');
 
   selMes.innerHTML = META.meses.map(m=>`<option value="${m}">${labelMes(m)}</option>`).join('');
@@ -1144,22 +1152,21 @@ function renderPrincipal(){
       const nextEnt = Math.max(0, fitEnt.predict(nextX));
       labels = labels.concat([labelMesSiguiente(RESUMEN.meses[RESUMEN.meses.length-1])]);
       const lastValid = idx[idx.length-1];
-      const projKwh = labels.map((l,i)=> i===lastValid ? kwhV[lastValid] : (i===labels.length-1 ? Math.round(nextEnt*nextPct/100) : null));
+      const projKwh = labels.map((l,i)=> i===labels.length-1 ? Math.round(nextEnt*nextPct/100) : null);
       const projEnt = labels.map((l,i)=> i===labels.length-1 ? Math.round(nextEnt) : null);
       const projPct = labels.map((l,i)=> i===lastValid ? pctV[lastValid] : (i===labels.length-1 ? nextPct : null));
       entV = entV.concat([0]); kwhV = kwhV.concat([null]); pctV = pctV.concat([null]);
       projDatasets = [
-        {type:'line', label:'Proyección PT kWh ('+method+')', data:projKwh,
-          borderColor:'rgba(239,71,111,.65)', backgroundColor:'rgba(239,71,111,.04)', borderWidth:2.5, borderDash:[7,5],
-          pointRadius:4, pointBackgroundColor:'rgba(239,71,111,.65)', pointBorderColor:'#fff', pointBorderWidth:1.5,
-          tension:.25, fill:false, yAxisID:'yKwh', order:0, spanGaps:false},
+        {type:'bar', label:'Proyección PT kWh ('+method+')', data:projKwh,
+          backgroundColor:'rgba(239,71,111,.18)', borderColor:'rgba(239,71,111,.7)', borderWidth:2, borderRadius:5,
+          yAxisID:'yKwh', order:3, stack:'kwh', barPercentage:.7, categoryPercentage:.8},
         {type:'bar', label:'Proyección Entradas', data:projEnt,
           backgroundColor:'rgba(0,180,216,.18)', borderColor:'rgba(0,180,216,.7)', borderWidth:2, borderRadius:5,
-          yAxisID:'yEnt', order:3, stack:'ent', barPercentage:.62, categoryPercentage:.74},
+          yAxisID:'yEnt', order:3, stack:'ent', barPercentage:.7, categoryPercentage:.8},
         {type:'line', label:'Proyección PT%', data:projPct,
           borderColor:'rgba(244,162,97,.65)', backgroundColor:'rgba(244,162,97,.04)', borderWidth:2.5, borderDash:[7,5],
-          pointRadius:4, pointBackgroundColor:'rgba(244,162,97,.65)', pointBorderColor:'#fff', pointBorderWidth:1.5,
-          tension:.25, fill:false, yAxisID:'yPct', order:2, spanGaps:false},
+          pointRadius:5, pointBackgroundColor:'rgba(244,162,97,.65)', pointBorderColor:'#fff', pointBorderWidth:1.5,
+          tension:.25, fill:false, yAxisID:'yPct', order:1, spanGaps:false},
       ];
     }
   }
@@ -1170,22 +1177,20 @@ function renderPrincipal(){
       labels,
       datasets:[
         {type:'bar', label:'Entradas', data:entV, backgroundColor:'rgba(0,180,216,.88)', borderRadius:5,
-          yAxisID:'yEnt', order:3, stack:'ent', barPercentage:.62, categoryPercentage:.74,
+          yAxisID:'yEnt', order:3, stack:'ent', barPercentage:.7, categoryPercentage:.8,
           datalabels:{display:ctx2=>ctx2.dataset.data[ctx2.dataIndex]>0 && labels.length<=24, anchor:'center', align:'center',
             formatter:v=>(v||0).toLocaleString('es-CO',{maximumFractionDigits:0}), font:{size:10,weight:'bold'}, color:'#fff', rotation:-90}},
-        {type:'line', label:'Pérdidas Técnicas kWh', data:kwhV, borderColor:'#ef476f', backgroundColor:'rgba(239,71,111,.10)',
-          borderWidth:3, pointRadius:6, pointBackgroundColor:'#ef476f', pointBorderColor:'#fff', pointBorderWidth:2,
-          tension:.35, fill:false, yAxisID:'yKwh', order:1, spanGaps:false,
-          datalabels:{display:labels.length<=24, anchor:'center', align:'bottom', offset:8,
-            formatter:v=>(v||0).toLocaleString('es-CO',{maximumFractionDigits:0}), font:{size:9,weight:'700'}, color:'#c0132a',
-            backgroundColor:'rgba(255,255,255,.85)', borderRadius:3, padding:{left:3,right:3,top:1,bottom:1}}},
+        {type:'bar', label:'Pérdidas Técnicas kWh', data:kwhV, backgroundColor:'rgba(239,71,111,.85)', borderRadius:5,
+          yAxisID:'yKwh', order:3, stack:'kwh', barPercentage:.7, categoryPercentage:.8,
+          datalabels:{display:ctx2=>ctx2.dataset.data[ctx2.dataIndex]>0 && labels.length<=24, anchor:'center', align:'center',
+            formatter:v=>(v||0).toLocaleString('es-CO',{maximumFractionDigits:0}), font:{size:10,weight:'bold'}, color:'#fff', rotation:-90}},
         {type:'line', label:'Pérdidas Técnicas %', data:pctV, borderColor:'#f4a261', backgroundColor:'rgba(244,162,97,.08)',
           borderWidth:3, pointRadius:6, pointBackgroundColor:'#f4a261', pointBorderColor:'#fff', pointBorderWidth:2,
-          tension:.35, fill:false, yAxisID:'yPct', order:2, spanGaps:false,
-          datalabels:{display:labels.length<=24, anchor:'center', align:'top', offset:8,
-            formatter:v=>(v||0).toFixed(2)+'%', font:{size:9,weight:'700'}, color:'#c47a2a',
-            backgroundColor:'rgba(255,255,255,.85)', borderRadius:3, padding:{left:3,right:3,top:1,bottom:1}}},
-        {type:'line', label:'Senda Regulatoria CREG 008/2021', data:labels.map(()=>cregVal),
+          tension:.35, fill:false, yAxisID:'yPct', order:1, spanGaps:false,
+          datalabels:{display:labels.length<=24, anchor:'end', align:'top', offset:10,
+            formatter:v=>(v||0).toFixed(2)+'%', font:{size:13,weight:'800'}, color:'#c47a2a',
+            backgroundColor:'rgba(255,255,255,.92)', borderRadius:4, padding:{left:5,right:5,top:2,bottom:2}}},
+        {type:'line', label:'Senda Regulatoria', data:labels.map(()=>cregVal),
           borderColor:'rgba(120,120,120,.7)', backgroundColor:'transparent', borderWidth:2, borderDash:[7,5],
           pointRadius:0, pointHoverRadius:3, tension:0, fill:false, yAxisID:'yPct', order:4},
         ...projDatasets,
@@ -1282,8 +1287,8 @@ function exportChartPNG(){
 function renderZona(zonas){
   const ctxB = document.getElementById('ch-zona');
   const ctxD = document.getElementById('ch-dona');
-  const labels = zonas.map(z=>ZONA_NOMBRE[z.zona] || z.zona);
-  const colores = zonas.map(z=>ZONA_COLOR[z.zona] || '#8a9ab5');
+  const labels = zonas.map(z=>z.zona);
+  const colores = zonas.map(z=>colorParaZona(z.zona));
 
   if(chZona) chZona.destroy();
   chZona = new Chart(ctxB, {
@@ -1308,7 +1313,7 @@ function renderTablaZonas(zonas){
   const tb = document.getElementById('tb-zonas');
   tb.innerHTML = zonas.map(z=>`
     <tr>
-      <td><span class="zb" style="background:${ZONA_COLOR[z.zona]||'#8a9ab5'}22;color:${ZONA_COLOR[z.zona]||'#8a9ab5'}">${ZONA_NOMBRE[z.zona]||z.zona}</span></td>
+      <td><span class="zb" style="background:${colorParaZona(z.zona)}22;color:${colorParaZona(z.zona)}">${z.zona}</span></td>
       <td>${fmt(z.entradas_kwh)}</td>
       <td>${fmt(z.perdidas_kwh)}</td>
       <td>${z.perdidas_pct.toFixed(2)}%</td>
@@ -1332,10 +1337,11 @@ function renderTablaZonas(zonas){
  * Sirven para previsualizar la app sin tener Postgres/API levantados.
  * ============================================================ */
 const DEMO_MESES = ['2026-01','2026-02','2026-03','2026-04','2026-05','2026-06','2026-07','2026-08','2026-09','2026-10','2026-11','2026-12'];
+const DEMO_ZONAS = ['Zona 1','Zona 2','Zona 3','Zona 4','Zona 5'];
 function seededRand(seed){ let x=Math.sin(seed)*10000; return x-Math.floor(x); }
 function demoGet(path){
   if(path.startsWith('/api/meta')){
-    return Promise.resolve({zonas:Object.keys(ZONA_COLOR), niveles:[1,2,3,4], meses: DEMO_MESES});
+    return Promise.resolve({zonas:DEMO_ZONAS, niveles:[1,2,3], meses: DEMO_MESES});
   }
   if(path.startsWith('/api/resumen')){
     const entradas=[], perdidas=[], pct=[];
@@ -1347,7 +1353,7 @@ function demoGet(path){
     return Promise.resolve({meses:DEMO_MESES, entradas_kwh:entradas, perdidas_kwh:perdidas, perdidas_pct:pct, senda_creg_pct:1.53});
   }
   if(path.startsWith('/api/zonas')){
-    const zonas = Object.keys(ZONA_COLOR).map((z,i)=>{
+    const zonas = DEMO_ZONAS.map((z,i)=>{
       const entradas = 300000 + seededRand(i+10)*150000;
       const perdidas = entradas * (0.05 + seededRand(i+20)*0.1);
       const reconocido = entradas * (0.07 + seededRand(i+30)*0.02);
