@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>CINCO Vision · Visualizador de Datos</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
 <style>
 :root{
   --accent:#00b4d8;--accent2:#0096c7;--amber:#f4a261;--green:#06d6a0;--red:#ef476f;--purple:#7b2fff;
@@ -145,6 +146,38 @@ tfoot td:first-child{text-align:left}
 .footer{margin-top:30px;text-align:center;border-top:1px solid var(--border);padding-top:20px;font-size:10px;color:var(--text3);letter-spacing:.5px;text-transform:uppercase}
 .hidden{display:none !important}
 @media(max-width:800px){.zona-wrap>div{flex:1 1 100%}}
+
+/* KPI CARDS */
+.kpi-row{display:flex;gap:12px;margin-bottom:14px;flex-wrap:wrap}
+.kpi-card{flex:1;min-width:150px;border:1px solid var(--border);border-radius:10px;padding:10px 14px;display:flex;flex-direction:column;gap:3px}
+.kpi-card .kpi-lbl{display:flex;align-items:center;gap:5px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--text3)}
+.kpi-card .kpi-main{font-size:19px;font-weight:900;letter-spacing:-.3px;line-height:1.2}
+.kpi-card .kpi-sub{font-size:10px;color:var(--text3)}
+
+/* RECONOCIMIENTO CREG POR NIVEL */
+.creg-tbl{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)}
+.creg-tbl .creg-item{display:flex;align-items:center;gap:6px;padding:5px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg)}
+.creg-tbl .creg-item label{font-size:11px;font-weight:700;color:var(--text2);white-space:nowrap}
+.creg-tbl .creg-item input{width:60px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-weight:700;text-align:right;color:var(--text);background:var(--bg2)}
+.creg-tbl .creg-st{font-size:10px;color:var(--text3);min-width:14px}
+
+/* RANGE SLIDER */
+.range-wrap{margin-top:14px}
+.range-track-row{position:relative;height:26px;display:flex;align-items:center}
+#rs,#re{position:absolute;width:100%;appearance:none;-webkit-appearance:none;background:transparent;height:4px;margin:0;pointer-events:none}
+#rs::-webkit-slider-thumb,#re::-webkit-slider-thumb{pointer-events:all;-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:var(--accent);cursor:pointer;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.25)}
+#rs::-moz-range-thumb,#re::-moz-range-thumb{pointer-events:all;width:14px;height:14px;border-radius:50%;background:var(--accent);cursor:pointer;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.25)}
+#range-track{position:absolute;width:100%;height:4px;background:var(--bg3);border-radius:2px}
+#range-fill{position:absolute;height:4px;background:var(--accent);border-radius:2px}
+
+/* PROYECCIÓN — panel de ecuaciones */
+.math-block{font-family:Georgia,'Times New Roman',serif;line-height:1.9;font-size:13px;letter-spacing:.3px}
+.math-block .eq-row{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap;margin:3px 0}
+.math-block .eq-lhs{font-style:italic;color:var(--text2);min-width:60px}
+.math-block .eq-rhs{color:var(--text);font-weight:500}
+.math-block .coef{font-weight:700}
+.math-block .greek{font-style:italic}
+.math-block sub,.math-block sup{font-size:.72em;font-family:inherit}
 </style>
 </head>
 <body>
@@ -273,29 +306,81 @@ tfoot td:first-child{text-align:left}
 <!-- ---------------- PÉRDIDAS TÉCNICAS ---------------- -->
 <div id="vista-perdidas" class="vista-modulo hidden">
 
-  <div class="fbar">
-    <label>Zona</label>
-    <select id="fm-zona" onchange="aplicarFiltros()"><option value="">Todas</option></select>
-    <label>Nivel de tensión</label>
-    <select id="fm-nivel" onchange="aplicarFiltros()"><option value="">Todos</option></select>
-    <label>Mes (desglose por zona)</label>
-    <select id="fm-mes" onchange="cargarZonas()"></select>
-    <button class="btn-theme" style="width:auto;padding:0 14px;margin-left:auto" onclick="descargarCSV()" id="btn-descargar" title="Descargar el detalle mensual en CSV">⬇ Descargar CSV</button>
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">
+    <span style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">Período de referencia:</span>
+    <select id="kpi-period-sel" onchange="renderKpiCards()">
+      <option value="last">Último mes con datos</option>
+    </select>
+  </div>
+  <div class="kpi-row" id="top-kpi-row"></div>
+
+  <div class="card">
+    <div class="fbar" style="margin-bottom:0">
+      <label>Zona</label>
+      <select id="fm-zona" onchange="aplicarFiltros()"><option value="">Todas</option></select>
+      <label>Alimentador</label>
+      <input id="fm-alimentador" list="dl-alimentadores" placeholder="Todos" autocomplete="off" oninput="aplicarFiltrosDebounced()"
+        style="padding:6px 10px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg);width:190px">
+      <datalist id="dl-alimentadores"></datalist>
+      <label>Nivel de tensión</label>
+      <select id="fm-nivel" onchange="aplicarFiltros()"><option value="">Todos</option></select>
+      <button class="btn-theme" style="width:auto;padding:0 14px;margin-left:auto" onclick="descargarCSV()" id="btn-descargar" title="Descargar el detalle mensual en CSV">⬇ Descargar CSV</button>
+    </div>
+
+    <div class="creg-tbl" id="creg-tbl"></div>
+
+    <div class="range-wrap">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text3)">Rango</span>
+        <select id="range-start-sel" onchange="syncRangeFromSel()"></select>
+        <span style="font-size:11px;color:var(--text3)">→</span>
+        <select id="range-end-sel" onchange="syncRangeFromSel()"></select>
+      </div>
+      <div class="range-track-row">
+        <div id="range-track"></div>
+        <div id="range-fill"></div>
+        <input type="range" id="rs" min="0" value="0" oninput="updateRange()">
+        <input type="range" id="re" min="0" value="0" oninput="updateRange()">
+      </div>
+    </div>
   </div>
 
-  <div class="sec-hdr">
-    <div class="sec-title">Entradas vs. Pérdidas Técnicas</div>
-    <div class="sec-sub" id="resumen-sub">—</div>
-  </div>
   <div class="card">
-    <div class="card-title">Serie mensual</div>
-    <div class="card-sub">Barras = Entradas (kWh) · Rojo = Pérdidas Técnicas (kWh) · Naranja = Pérdidas Técnicas (%)</div>
-    <div class="chart-wrap"><canvas id="ch-principal"></canvas></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;flex-wrap:wrap;gap:8px">
+      <div style="flex:1;text-align:center">
+        <div style="font-size:16px;font-weight:800;letter-spacing:1.5px;color:var(--text);text-transform:uppercase">Pérdidas Técnicas</div>
+        <div class="card-sub" style="text-align:center;margin-bottom:0">Barras = Entradas · Rojo = Pérdidas Técnicas kWh · Naranja = Pérdidas Técnicas %</div>
+      </div>
+      <div style="display:flex;gap:8px;flex-shrink:0">
+        <button id="proj-btn" onclick="toggleProjection()" title="Proyectar PT kWh basado en entradas futuras"
+          style="display:flex;align-items:center;gap:6px;padding:6px 14px;background:transparent;color:var(--accent);border:1px solid var(--accent);border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">
+          📈 Proyección
+        </button>
+        <select id="proj-method" onchange="renderPrincipal()"
+          style="display:none;padding:5px 10px;border:1px solid var(--accent);border-radius:8px;font-size:11px;font-weight:600;color:var(--accent);background:var(--bg);cursor:pointer">
+          <option value="lineal">📏 Lineal</option>
+          <option value="polinomica">📐 Polinómica</option>
+          <option value="logaritmica">📉 Logarítmica</option>
+          <option value="media_movil">〰️ Media Móvil</option>
+          <option value="arima">🔁 ARIMA AR(1)</option>
+          <option value="sarima">🌊 SARIMA</option>
+        </select>
+        <button onclick="exportChartPNG()" title="Exportar gráfica como PNG"
+          style="display:flex;align-items:center;gap:6px;padding:6px 14px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">
+          ⬇ Exportar PNG
+        </button>
+      </div>
+    </div>
+    <div class="chart-wrap" style="height:420px"><canvas id="ch-principal"></canvas></div>
+    <div id="kpi-notes-row" style="margin-top:14px"></div>
   </div>
 
   <div class="sec-hdr">
     <div class="sec-title">Pérdidas Técnicas por Zona</div>
-    <div class="sec-sub" id="zona-sub">—</div>
+    <div style="display:flex;align-items:center;gap:6px;margin-left:auto">
+      <label style="font-size:11px;color:var(--text3)">Mes:</label>
+      <select id="fm-mes" onchange="cargarZonas()"></select>
+    </div>
   </div>
   <div class="card">
     <div class="zona-wrap">
@@ -348,6 +433,17 @@ let TOKEN = null, OPERADOR = null, PERSONA = null, DEMO = false;
 const ZONA_COLOR = {ZN:'#00b4d8',ZE:'#f4a261',ZC:'#06d6a0',ZS:'#ef476f',ZO:'#7b2fff',EH:'#4a5e7a','Sin zona':'#8a9ab5'};
 const ZONA_NOMBRE = {ZN:'Norte',ZE:'Este',ZC:'Centro',ZS:'Sur',ZO:'Oriente',EH:'Transmisión (EH)','Sin zona':'Sin zona'};
 let chPrincipal=null, chZona=null, chDona=null;
+let META = {zonas:[], niveles:[], meses:[]};
+let RESUMEN = null;
+let RANGO = {start:0, end:0};
+let showProjection = false;
+
+// Las etiquetas flotantes sobre barras/puntos son opt-in por dataset -- si no,
+// el plugin las dibuja por defecto en TODOS los charts (incluidos zona/dona).
+if(window.ChartDataLabels){
+  Chart.register(ChartDataLabels);
+  Chart.defaults.set('plugins.datalabels', {display:false});
+}
 
 function toggleTheme(){
   const html=document.documentElement;
@@ -596,30 +692,154 @@ async function apiGet(path){
   return res.json();
 }
 
+async function apiPost(path, body){
+  const res = await fetchConTimeout(`${API_BASE_URL}${path}`, {
+    method:'POST', headers:{...authHeaders(), 'Content-Type':'application/json'}, body: JSON.stringify(body),
+  }, AUTH_TIMEOUT_MS);
+  const data = await res.json().catch(()=>null);
+  if(!res.ok) throw new Error((data && data.detail) || 'Error consultando la API');
+  return data;
+}
+
+function labelMes(m){
+  const [y,mo] = m.split('-').map(Number);
+  const d = new Date(y, mo-1, 1);
+  const t = d.toLocaleDateString('es-CO', {month:'short'}).replace(/\./g,'').trim();
+  return t.charAt(0).toUpperCase()+t.slice(1)+' '+y;
+}
+
 async function cargarMeta(){
-  const meta = await apiGet('/api/meta');
+  META = await apiGet('/api/meta');
+  if(!META.meses || !META.meses.length) META.meses = DEMO_MESES;
+  if(!META.niveles) META.niveles = [];
+  if(!META.zonas) META.zonas = [];
+
   const selZona = document.getElementById('fm-zona');
   const selNivel = document.getElementById('fm-nivel');
   const selMes = document.getElementById('fm-mes');
-  selZona.innerHTML = '<option value="">Todas</option>' + meta.zonas.map(z=>`<option value="${z}">${ZONA_NOMBRE[z]||z}</option>`).join('');
-  selNivel.innerHTML = '<option value="">Todos</option>' + meta.niveles.map(n=>`<option value="${n}">Nivel ${n}</option>`).join('');
-  const meses = meta.meses || DEMO_MESES;
-  selMes.innerHTML = meses.map(m=>`<option value="${m}">${m}</option>`).join('');
-  selMes.value = meses[meses.length-1];
+  const selPeriodo = document.getElementById('kpi-period-sel');
+  const selStart = document.getElementById('range-start-sel');
+  const selEnd = document.getElementById('range-end-sel');
+
+  selZona.innerHTML = '<option value="">Todas</option>' + META.zonas.map(z=>`<option value="${z}">${ZONA_NOMBRE[z]||z}</option>`).join('');
+  selNivel.innerHTML = '<option value="">Todos</option>' + META.niveles.map(n=>`<option value="${n}">Nivel ${n}</option>`).join('');
+
+  selMes.innerHTML = META.meses.map(m=>`<option value="${m}">${labelMes(m)}</option>`).join('');
+  selMes.value = META.meses[META.meses.length-1];
+
+  selPeriodo.innerHTML = '<option value="last">Último mes con datos</option>' +
+    META.meses.map(m=>`<option value="${m}">${labelMes(m)}</option>`).join('');
+  selPeriodo.value = 'last';
+
+  const opcionesRango = META.meses.map((m,i)=>`<option value="${i}">${labelMes(m)}</option>`).join('');
+  selStart.innerHTML = opcionesRango; selEnd.innerHTML = opcionesRango;
+  document.getElementById('rs').max = META.meses.length-1;
+  document.getElementById('re').max = META.meses.length-1;
+  _applyRange(0, META.meses.length-1);
+
+  await cargarAlimentadores();
+  await cargarReconocimiento();
+}
+
+async function cargarAlimentadores(){
+  const dl = document.getElementById('dl-alimentadores');
+  try{
+    const circuitos = DEMO ? [] : await apiGet('/api/circuitos');
+    const nemonicos = [...new Set(circuitos.map(c=>c.nemonico))].sort();
+    dl.innerHTML = nemonicos.map(n=>`<option value="${n.replace(/"/g,'&quot;')}"></option>`).join('');
+  }catch(e){
+    dl.innerHTML = '';
+  }
+}
+
+/* ---- Reconocimiento CREG 008/2021 por nivel de tensión ---- */
+async function cargarReconocimiento(){
+  const cont = document.getElementById('creg-tbl');
+  let datos;
+  try{
+    datos = DEMO ? META.niveles.map(n=>({nivel:n, pct:1.53})) : await apiGet('/api/reconocimiento');
+  }catch(e){
+    cont.innerHTML = ''; return;
+  }
+  if(!datos.length){ cont.innerHTML = ''; return; }
+  cont.innerHTML = `<span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text3);align-self:center">Reconocimiento CREG 008/2021 por nivel</span>` +
+    datos.map(d=>`
+      <div class="creg-item">
+        <label>Nivel ${d.nivel}</label>
+        <input type="number" step="0.01" min="0" max="100" value="${d.pct.toFixed(2)}"
+          id="creg-nivel-${d.nivel}" onchange="guardarReconocimiento(${d.nivel}, this)">
+        <span>%</span>
+        <span class="creg-st" id="creg-st-${d.nivel}"></span>
+      </div>`).join('');
+}
+
+async function guardarReconocimiento(nivel, input){
+  const st = document.getElementById(`creg-st-${nivel}`);
+  if(DEMO){ st.textContent = '⚠'; st.title = 'No disponible en modo demo'; return; }
+  const pct = parseFloat(input.value);
+  if(isNaN(pct) || pct<0 || pct>100){ st.textContent = '⚠'; return; }
+  st.textContent = '…';
+  try{
+    await apiPost('/api/reconocimiento', {nivel, pct});
+    st.textContent = '✓';
+    setTimeout(()=>{ if(st.textContent==='✓') st.textContent=''; }, 2000);
+    await aplicarFiltros();
+  }catch(e){
+    st.textContent = '⚠'; st.title = e.message || 'Error al guardar';
+  }
+}
+
+/* ---- Rango de meses (slider de doble thumb) ---- */
+function _applyRange(s, e){
+  RANGO.start = s; RANGO.end = e;
+  document.getElementById('rs').value = s;
+  document.getElementById('re').value = e;
+  document.getElementById('range-start-sel').value = s;
+  document.getElementById('range-end-sel').value = e;
+  const total = META.meses.length>1 ? META.meses.length-1 : 1;
+  document.getElementById('range-fill').style.left = (s/total*100)+'%';
+  document.getElementById('range-fill').style.right = ((1-e/total)*100)+'%';
+}
+
+async function updateRange(){
+  let s = parseInt(document.getElementById('rs').value);
+  let e = parseInt(document.getElementById('re').value);
+  if(s>e){ const tmp=s; s=e; e=tmp; }
+  _applyRange(s, e);
+  await aplicarFiltros();
+}
+
+async function syncRangeFromSel(){
+  let s = parseInt(document.getElementById('range-start-sel').value||0);
+  let e = parseInt(document.getElementById('range-end-sel').value||0);
+  if(isNaN(s)) s=0; if(isNaN(e)) e=META.meses.length-1;
+  if(s>e){ const tmp=s; s=e; e=tmp; }
+  _applyRange(s, e);
+  await aplicarFiltros();
+}
+
+let _debounceAlim = null;
+function aplicarFiltrosDebounced(){
+  clearTimeout(_debounceAlim);
+  _debounceAlim = setTimeout(aplicarFiltros, 450);
 }
 
 async function aplicarFiltros(){
   const zona = document.getElementById('fm-zona').value;
   const nivel = document.getElementById('fm-nivel').value;
+  const alimentador = document.getElementById('fm-alimentador').value.trim();
   const qs = new URLSearchParams();
   if(zona) qs.set('zona', zona);
   if(nivel) qs.set('nivel', nivel);
+  if(alimentador) qs.set('alimentador', alimentador);
+  if(META.meses && META.meses.length){
+    qs.set('desde', `${META.meses[RANGO.start] || META.meses[0]}-01`);
+    qs.set('hasta', `${META.meses[RANGO.end] || META.meses[META.meses.length-1]}-01`);
+  }
 
-  const resumen = await apiGet(`/api/resumen?${qs.toString()}`);
-  document.getElementById('resumen-sub').textContent = resumen.meses.length
-    ? `${resumen.meses[0]} a ${resumen.meses[resumen.meses.length-1]}`
-    : 'Sin datos cargados todavía';
-  renderPrincipal(resumen);
+  RESUMEN = await apiGet(`/api/resumen?${qs.toString()}`);
+  renderPrincipal();
+  renderKpiCards();
   await cargarZonas();
 }
 
@@ -627,8 +847,7 @@ async function cargarZonas(){
   const mes = document.getElementById('fm-mes').value;
   if(!mes) return;
   const zonas = await apiGet(`/api/zonas?mes=${mes}`);
-  document.getElementById('zona-sub').textContent = `Mes: ${mes}`;
-  document.getElementById('tbl-sub').textContent = `Mes: ${mes}`;
+  document.getElementById('tbl-sub').textContent = `Mes: ${labelMes(mes)}`;
   renderZona(zonas);
   renderTablaZonas(zonas);
 }
@@ -638,9 +857,11 @@ async function descargarCSV(){
   const btn = document.getElementById('btn-descargar');
   const zona = document.getElementById('fm-zona').value;
   const nivel = document.getElementById('fm-nivel').value;
+  const alimentador = document.getElementById('fm-alimentador').value.trim();
   const qs = new URLSearchParams();
   if(zona) qs.set('zona', zona);
   if(nivel) qs.set('nivel', nivel);
+  if(alimentador) qs.set('alimentador', alimentador);
 
   btn.disabled = true; const textoOriginal = btn.textContent; btn.textContent = 'Descargando…';
   try{
@@ -659,27 +880,403 @@ async function descargarCSV(){
   }
 }
 
-function renderPrincipal(r){
+/* ---- Tarjetas KPI (arriba de la gráfica principal) ---- */
+function fmtKwhMes(v){ return v.toLocaleString('es-CO',{maximumFractionDigits:0})+' kWh/mes'; }
+
+function renderKpiCards(){
+  const row = document.getElementById('top-kpi-row');
+  if(!RESUMEN || !RESUMEN.meses.length){ row.innerHTML=''; return; }
+  const cregVal = RESUMEN.senda_creg_pct || 0;
+  const selVal = document.getElementById('kpi-period-sel').value || 'last';
+
+  let idx = -1;
+  if(selVal==='last'){
+    for(let i=RESUMEN.meses.length-1;i>=0;i--){
+      if(RESUMEN.entradas_kwh[i]>0 && RESUMEN.perdidas_kwh[i]>0){ idx=i; break; }
+    }
+  } else {
+    idx = RESUMEN.meses.indexOf(selVal);
+  }
+  if(idx<0){ row.innerHTML=''; return; }
+
+  const refLbl = labelMes(RESUMEN.meses[idx]);
+  const refEnt = RESUMEN.entradas_kwh[idx];
+  const refKwh = RESUMEN.perdidas_kwh[idx];
+  const ptPct = refEnt ? refKwh/refEnt*100 : 0;
+  const delta = ptPct - cregVal;
+  const deltaColor = delta>0 ? 'var(--red)' : 'var(--green)';
+  const noRecon = delta>0 ? (delta/100*refEnt) : 0;
+  const noReconColor = noRecon>0 ? 'var(--red)' : 'var(--green)';
+
+  const cards = [
+    {icon:'📅', label:'Período', main:refLbl, sub:'Referencia de cálculo', color:'var(--accent2)'},
+    {icon:'⚡', label:'Entradas', main:fmtKwhMes(refEnt), sub:'Energía suministrada', color:'var(--accent2)'},
+    {icon:'📉', label:'PT kWh', main:fmtKwhMes(refKwh), sub:'Pérdidas técnicas absolutas', color:'var(--red)'},
+    {icon:'📊', label:'PT% Real', main:ptPct.toFixed(2)+'%', sub:'Senda CREG: '+cregVal.toFixed(2)+'%', color:'var(--red)'},
+    {icon:'⚖️', label:'Δ vs Senda CREG', main:(delta>0?'+':'')+delta.toFixed(2)+'%', sub:delta>0?'Por encima del reconocimiento':'Dentro del reconocimiento', color:deltaColor},
+    {icon:'🔴', label:'Energía no reconocida', main:noRecon>0 ? noRecon.toLocaleString('es-CO',{maximumFractionDigits:0})+' kWh' : 'Dentro del límite', sub:noRecon>0?'Sobre la senda CREG':'Sin energía no reconocida', color:noReconColor},
+  ];
+  row.innerHTML = cards.map(c=>`
+    <div class="kpi-card" style="border-top:3px solid ${c.color}">
+      <div class="kpi-lbl"><span>${c.icon}</span><span>${c.label}</span></div>
+      <div class="kpi-main" style="color:${c.color}">${c.main}</div>
+      <div class="kpi-sub">${c.sub}</div>
+    </div>`).join('');
+}
+
+/* ---- Regresiones para la Proyección ---- */
+function fmtC(v){
+  if(v===undefined||v===null||isNaN(v)) return '?';
+  const abs=Math.abs(v), neg=v<0?'−':'';
+  if(abs>=1e9) return neg+(abs/1e9).toFixed(3)+' G';
+  if(abs>=1e6) return neg+(abs/1e6).toFixed(3)+' M';
+  if(abs>=1e3) return neg+(abs/1e3).toFixed(2)+' k';
+  if(abs>=0.001) return neg+abs.toFixed(4);
+  return v.toExponential(2);
+}
+function fmtCs(v){ return (v>=0?'+ ':'− ')+fmtC(Math.abs(v)); }
+
+function linReg(xs, ys){
+  const n=xs.length;
+  if(n<2) return {a:0, b:ys[0]||0};
+  const sx=xs.reduce((s,x)=>s+x,0), sy=ys.reduce((s,y)=>s+y,0);
+  const sxy=xs.reduce((s,x,i)=>s+x*ys[i],0), sx2=xs.reduce((s,x)=>s+x*x,0);
+  const denom=n*sx2-sx*sx;
+  if(Math.abs(denom)<1e-10) return {a:0, b:sy/n};
+  const a=(n*sxy-sx*sy)/denom;
+  return {a, b:(sy-a*sx)/n};
+}
+
+function quadReg(xs, ys){
+  const n=xs.length;
+  if(n<3){ const r=linReg(xs,ys); return {A:0,B:r.a,C:r.b}; }
+  let s0=n,s1=0,s2=0,s3=0,s4=0,sy=0,sxy=0,sx2y=0;
+  xs.forEach((x,i)=>{s1+=x;s2+=x*x;s3+=x*x*x;s4+=x*x*x*x;sy+=ys[i];sxy+=x*ys[i];sx2y+=x*x*ys[i];});
+  let M=[[s4,s3,s2,sx2y],[s3,s2,s1,sxy],[s2,s1,s0,sy]];
+  for(let p=0;p<3;p++){
+    let mx=p; for(let r=p+1;r<3;r++) if(Math.abs(M[r][p])>Math.abs(M[mx][p])) mx=r;
+    [M[p],M[mx]]=[M[mx],M[p]];
+    if(Math.abs(M[p][p])<1e-10){ const r=linReg(xs,ys); return {A:0,B:r.a,C:r.b}; }
+    for(let r=p+1;r<3;r++){ const f=M[r][p]/M[p][p]; for(let c=p;c<4;c++) M[r][c]-=f*M[p][c]; }
+  }
+  const C=M[2][3]/M[2][2], B=(M[1][3]-M[1][2]*C)/M[1][1], A=(M[0][3]-M[0][2]*C-M[0][1]*B)/M[0][0];
+  return {A,B,C};
+}
+
+function fitModel(xs, ys, method){
+  switch(method){
+    case 'polinomica':{
+      if(xs.length<3) return fitModel(xs,ys,'lineal');
+      const {A,B,C}=quadReg(xs,ys);
+      return {
+        predict:t=>A*t*t+B*t+C,
+        eqHTML:()=>`<span class="coef">${fmtC(A)}</span>·t<sup>2</sup> <span class="coef">${fmtCs(B)}</span>·t <span class="coef">${fmtCs(C)}</span>`,
+        noteDetail:`A = ${fmtC(A)},&ensp;B = ${fmtC(B)},&ensp;C = ${fmtC(C)}`,
+      };
+    }
+    case 'logaritmica':{
+      const xl=xs.map(x=>Math.log(x+1));
+      const {a,b}=linReg(xl,ys);
+      return {
+        predict:t=>a*Math.log(t+1)+b,
+        eqHTML:()=>`<span class="coef">${fmtC(a)}</span>·ln(t+1) <span class="coef">${fmtCs(b)}</span>`,
+        noteDetail:`a = ${fmtC(a)},&ensp;b = ${fmtC(b)}`,
+      };
+    }
+    case 'media_movil':{
+      const w=Math.min(3, ys.length);
+      const avg=ys.slice(-w).reduce((s,v)=>s+v,0)/w;
+      return {
+        predict:()=>avg,
+        eqHTML:()=>`<sup>1</sup>/<sub>${w}</sub> · ∑<sub>k=1</sub><sup>${w}</sup> <span class="greek">y</span><sub>t−k</sub> = <span class="coef">${fmtC(avg)}</span>`,
+        noteDetail:`W = ${w} meses · proyección constante`,
+      };
+    }
+    case 'arima':{
+      if(ys.length<2) return fitModel(xs,ys,'media_movil');
+      const {a:phi,b:cAR}=linReg(ys.slice(0,-1),ys.slice(1));
+      const lastX=xs[xs.length-1];
+      const chain=[ys[ys.length-1]];
+      for(let s=1;s<=6;s++) chain.push(cAR+phi*chain[s-1]);
+      return {
+        predict:t=>{ const s=Math.max(0,Math.round(t-lastX)); return s<chain.length?chain[s]:chain[chain.length-1]; },
+        eqHTML:()=>`<span class="coef">${fmtC(cAR)}</span> + <span class="coef">${fmtC(Math.abs(phi))}</span>·<span class="greek">y</span><sub>t−1</sub> + <span class="greek">ε</span><sub>t</sub>`,
+        noteDetail:`φ = ${phi.toFixed(4)} · persistencia ${(Math.abs(phi)*100).toFixed(1)}% · c = ${fmtC(cAR)}`,
+      };
+    }
+    case 'sarima':{
+      if(ys.length<3) return fitModel(xs,ys,'arima');
+      const S=12;
+      const sMap={};
+      xs.forEach((x,i)=>{ const m=((x%S)+S)%S; if(!sMap[m]) sMap[m]=[]; sMap[m].push(ys[i]); });
+      const sMean={};
+      Object.keys(sMap).forEach(m=>{ sMean[m]=sMap[m].reduce((a,v)=>a+v,0)/sMap[m].length; });
+      const globalMean=ys.reduce((a,v)=>a+v,0)/ys.length;
+      const getMuseasonX=x=>{ const m=((x%S)+S)%S; return sMean[m]!==undefined?sMean[m]:globalMean; };
+      const res=xs.map((x,i)=>ys[i]-getMuseasonX(x));
+      const {a:phiS,b:cS}=res.length>1?linReg(res.slice(0,-1),res.slice(1)):{a:0,b:0};
+      const lastX=xs[xs.length-1];
+      const chainR=[res[res.length-1]];
+      for(let s2=1;s2<=8;s2++) chainR.push(cS+phiS*chainR[s2-1]);
+      return {
+        predict:t=>{
+          const mu=getMuseasonX(t);
+          const steps=Math.max(0,Math.round(t-lastX));
+          const rPred=steps<chainR.length?chainR[steps]:chainR[chainR.length-1];
+          return mu+rPred;
+        },
+        eqHTML:()=>`<span class="greek">μ</span><sub>s(t)</sub> + <span class="coef">${fmtC(phiS)}</span>·(<span class="greek">y</span><sub>t−1</sub>−<span class="greek">μ</span><sub>s(t−1)</sub>) + <span class="greek">ε</span><sub>t</sub>`,
+        noteDetail:`φ = ${phiS.toFixed(4)} · c = ${fmtC(cS)} · estaciones disponibles: ${Object.keys(sMean).length}/12`,
+      };
+    }
+    default:{
+      const {a,b}=linReg(xs,ys);
+      return {
+        predict:t=>a*t+b,
+        eqHTML:()=>`<span class="coef">${fmtC(a)}</span>·t <span class="coef">${fmtCs(b)}</span>`,
+        noteDetail:`a = ${fmtC(a)},&ensp;b = ${fmtC(b)}`,
+      };
+    }
+  }
+}
+
+const PROJ_NAMES = {lineal:'Regresión Lineal', polinomica:'Regresión Polinómica (Cuadrática)', logaritmica:'Regresión Logarítmica', media_movil:'Media Móvil', arima:'ARIMA — Proceso Autorregresivo AR(1)', sarima:'SARIMA — AR Estacional (s=12)'};
+const PROJ_DESC = {
+  lineal:'Ajusta una recta a los datos históricos por mínimos cuadrados. Adecuada cuando la tendencia es aproximadamente lineal.',
+  polinomica:'Ajusta una parábola (mínimos cuadrados orden 2). Requiere ≥ 3 puntos; con menos, regresa a lineal.',
+  logaritmica:'Modela crecimiento o decaimiento con velocidad decreciente (efecto de saturación).',
+  media_movil:'Proyecta el promedio de las últimas W observaciones (W = mín(3, n)). Sin tendencia — proyección plana.',
+  arima:'Proceso autorregresivo de orden 1: φ mide la persistencia de la serie. Equivale a un suavizado exponencial.',
+  sarima:'Descompone la serie en componente estacional (media por mes) y residuos, con AR(1) sobre los residuos.',
+};
+
+function toggleProjection(){
+  showProjection = !showProjection;
+  const btn = document.getElementById('proj-btn');
+  const sel = document.getElementById('proj-method');
+  btn.style.background = showProjection ? 'var(--accent)' : 'transparent';
+  btn.style.color = showProjection ? '#fff' : 'var(--accent)';
+  btn.textContent = showProjection ? '✕ Quitar Proyección' : '📈 Proyección';
+  sel.style.display = showProjection ? 'block' : 'none';
+  renderPrincipal();
+}
+
+function updateKpiNotes(){
+  const row = document.getElementById('kpi-notes-row');
+  if(!showProjection || !RESUMEN){ row.innerHTML=''; return; }
+  const idx=[], ent=[], kwh=[];
+  RESUMEN.meses.forEach((m,i)=>{
+    if(RESUMEN.perdidas_kwh[i]>0 && RESUMEN.entradas_kwh[i]>0){ idx.push(i); ent.push(RESUMEN.entradas_kwh[i]); kwh.push(RESUMEN.perdidas_kwh[i]); }
+  });
+  if(!idx.length){ row.innerHTML=''; return; }
+  const pct = idx.map((v,i)=>kwh[i]/ent[i]*100);
+  const method = document.getElementById('proj-method').value || 'lineal';
+  const fitPct = fitModel(idx, pct, method);
+  const fitEnt = fitModel(idx, ent, method);
+  const nextX = idx[idx.length-1]+1;
+  const nextPct = Math.max(0, fitPct.predict(nextX)).toFixed(4);
+  const nextEnt = Math.max(0, Math.round(fitEnt.predict(nextX))).toLocaleString('es-CO');
+  const t0lbl = labelMes(RESUMEN.meses[idx[0]]);
+
+  row.innerHTML = `
+  <div style="background:rgba(0,180,216,.05);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:9px;padding:10px 16px">
+    <div style="display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap">
+      <span style="font-size:18px">📐</span>
+      <div style="flex:1;min-width:240px">
+        <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--accent2);margin-bottom:5px">${PROJ_NAMES[method]}</div>
+        <div style="font-size:10px;color:var(--text3);line-height:1.55;margin-bottom:8px">${PROJ_DESC[method]}</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:6px">
+          <div style="background:rgba(239,71,111,.05);border:1px solid rgba(239,71,111,.2);border-radius:7px;padding:7px 11px">
+            <div style="font-size:8px;font-weight:700;color:var(--red);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px">Pérdidas Técnicas (%)</div>
+            <div class="math-block eq-row" style="font-size:12.5px"><span class="eq-lhs">PT%<sub>t</sub> =</span><span class="eq-rhs">${fitPct.eqHTML()}</span></div>
+            <div style="font-size:8px;color:var(--text3);margin-top:3px">${fitPct.noteDetail}</div>
+          </div>
+          <div style="background:rgba(0,180,216,.05);border:1px solid rgba(0,180,216,.2);border-radius:7px;padding:7px 11px">
+            <div style="font-size:8px;font-weight:700;color:var(--accent2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px">Entradas (kWh)</div>
+            <div class="math-block eq-row" style="font-size:12.5px"><span class="eq-lhs">Ent<sub>t</sub> =</span><span class="eq-rhs">${fitEnt.eqHTML()}</span></div>
+            <div style="font-size:8px;color:var(--text3);margin-top:3px">${fitEnt.noteDetail}</div>
+          </div>
+        </div>
+        <div style="font-size:8.5px;color:var(--text3);margin-top:6px;padding-top:5px;border-top:1px solid var(--border)">
+          t<sub>0</sub> = ${t0lbl} &nbsp;·&nbsp; n = ${idx.length} meses con datos &nbsp;·&nbsp;
+          <b>Próximo período proyectado:</b>
+          <span style="color:var(--red);font-weight:600"> PT% ≈ ${nextPct}%</span> &nbsp;|&nbsp;
+          <span style="color:var(--accent2);font-weight:600">Ent ≈ ${nextEnt} kWh</span>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function fmtGwh(v){
+  const g=(v||0)/1e6;
+  return g.toFixed(Math.abs(g)>=1?2:3)+' GWh';
+}
+
+function renderPrincipal(){
+  if(!RESUMEN) return;
   const ctx = document.getElementById('ch-principal');
+  const dark = document.documentElement.getAttribute('data-theme')==='dark';
+  const tickC = dark ? '#8899b5' : '#4b5e7a';
+  const gridC = dark ? 'rgba(255,255,255,.06)' : 'rgba(0,0,0,.06)';
+
+  let labels = RESUMEN.meses.map(labelMes);
+  let entV = RESUMEN.entradas_kwh.slice();
+  let kwhV = RESUMEN.perdidas_kwh.map((v,i)=> v>0 ? v : null);
+  let pctV = RESUMEN.perdidas_pct.map((v,i)=> RESUMEN.entradas_kwh[i]>0 && RESUMEN.perdidas_kwh[i]>0 ? v : null);
+  const cregVal = RESUMEN.senda_creg_pct || 0;
+
+  updateKpiNotes();
+
+  let projDatasets = [];
+  if(showProjection){
+    const idx=[], ent=[], kwh=[];
+    RESUMEN.meses.forEach((m,i)=>{
+      if(RESUMEN.perdidas_kwh[i]>0 && RESUMEN.entradas_kwh[i]>0){ idx.push(i); ent.push(RESUMEN.entradas_kwh[i]); kwh.push(RESUMEN.perdidas_kwh[i]); }
+    });
+    if(idx.length){
+      const method = document.getElementById('proj-method').value || 'lineal';
+      const pct = idx.map((v,i)=>kwh[i]/ent[i]*100);
+      const fitPct = fitModel(idx, pct, method);
+      const fitEnt = fitModel(idx, ent, method);
+      const nextX = idx[idx.length-1]+1;
+      const nextPct = Math.max(0, fitPct.predict(nextX));
+      const nextEnt = Math.max(0, fitEnt.predict(nextX));
+      labels = labels.concat([labelMesSiguiente(RESUMEN.meses[RESUMEN.meses.length-1])]);
+      const lastValid = idx[idx.length-1];
+      const projKwh = labels.map((l,i)=> i===lastValid ? kwhV[lastValid] : (i===labels.length-1 ? Math.round(nextEnt*nextPct/100) : null));
+      const projEnt = labels.map((l,i)=> i===labels.length-1 ? Math.round(nextEnt) : null);
+      const projPct = labels.map((l,i)=> i===lastValid ? pctV[lastValid] : (i===labels.length-1 ? nextPct : null));
+      entV = entV.concat([0]); kwhV = kwhV.concat([null]); pctV = pctV.concat([null]);
+      projDatasets = [
+        {type:'line', label:'Proyección PT kWh ('+method+')', data:projKwh,
+          borderColor:'rgba(239,71,111,.65)', backgroundColor:'rgba(239,71,111,.04)', borderWidth:2.5, borderDash:[7,5],
+          pointRadius:4, pointBackgroundColor:'rgba(239,71,111,.65)', pointBorderColor:'#fff', pointBorderWidth:1.5,
+          tension:.25, fill:false, yAxisID:'yKwh', order:0, spanGaps:false},
+        {type:'bar', label:'Proyección Entradas', data:projEnt,
+          backgroundColor:'rgba(0,180,216,.18)', borderColor:'rgba(0,180,216,.7)', borderWidth:2, borderRadius:5,
+          yAxisID:'yEnt', order:3, stack:'ent', barPercentage:.62, categoryPercentage:.74},
+        {type:'line', label:'Proyección PT%', data:projPct,
+          borderColor:'rgba(244,162,97,.65)', backgroundColor:'rgba(244,162,97,.04)', borderWidth:2.5, borderDash:[7,5],
+          pointRadius:4, pointBackgroundColor:'rgba(244,162,97,.65)', pointBorderColor:'#fff', pointBorderWidth:1.5,
+          tension:.25, fill:false, yAxisID:'yPct', order:2, spanGaps:false},
+      ];
+    }
+  }
+
   if(chPrincipal) chPrincipal.destroy();
   chPrincipal = new Chart(ctx, {
     data:{
-      labels: r.meses,
+      labels,
       datasets:[
-        {type:'bar', label:'Entradas (kWh)', data:r.entradas_kwh, backgroundColor:'rgba(0,180,216,.35)', order:2, yAxisID:'y'},
-        {type:'bar', label:'Pérdidas Técnicas (kWh)', data:r.perdidas_kwh, backgroundColor:'rgba(239,71,111,.65)', order:1, yAxisID:'y'},
-        {type:'line', label:'Pérdidas Técnicas (%)', data:r.perdidas_pct, borderColor:'#f4a261', backgroundColor:'#f4a261', tension:.3, yAxisID:'y1', pointRadius:3},
-      ]
+        {type:'bar', label:'Entradas', data:entV, backgroundColor:'rgba(0,180,216,.88)', borderRadius:5,
+          yAxisID:'yEnt', order:3, stack:'ent', barPercentage:.62, categoryPercentage:.74,
+          datalabels:{display:ctx2=>ctx2.dataset.data[ctx2.dataIndex]>0 && labels.length<=24, anchor:'center', align:'center',
+            formatter:v=>(v||0).toLocaleString('es-CO',{maximumFractionDigits:0}), font:{size:10,weight:'bold'}, color:'#fff', rotation:-90}},
+        {type:'line', label:'Pérdidas Técnicas kWh', data:kwhV, borderColor:'#ef476f', backgroundColor:'rgba(239,71,111,.10)',
+          borderWidth:3, pointRadius:6, pointBackgroundColor:'#ef476f', pointBorderColor:'#fff', pointBorderWidth:2,
+          tension:.35, fill:false, yAxisID:'yKwh', order:1, spanGaps:false,
+          datalabels:{display:labels.length<=24, anchor:'center', align:'bottom', offset:8,
+            formatter:v=>(v||0).toLocaleString('es-CO',{maximumFractionDigits:0}), font:{size:9,weight:'700'}, color:'#c0132a',
+            backgroundColor:'rgba(255,255,255,.85)', borderRadius:3, padding:{left:3,right:3,top:1,bottom:1}}},
+        {type:'line', label:'Pérdidas Técnicas %', data:pctV, borderColor:'#f4a261', backgroundColor:'rgba(244,162,97,.08)',
+          borderWidth:3, pointRadius:6, pointBackgroundColor:'#f4a261', pointBorderColor:'#fff', pointBorderWidth:2,
+          tension:.35, fill:false, yAxisID:'yPct', order:2, spanGaps:false,
+          datalabels:{display:labels.length<=24, anchor:'center', align:'top', offset:8,
+            formatter:v=>(v||0).toFixed(2)+'%', font:{size:9,weight:'700'}, color:'#c47a2a',
+            backgroundColor:'rgba(255,255,255,.85)', borderRadius:3, padding:{left:3,right:3,top:1,bottom:1}}},
+        {type:'line', label:'Senda Regulatoria CREG 008/2021', data:labels.map(()=>cregVal),
+          borderColor:'rgba(120,120,120,.7)', backgroundColor:'transparent', borderWidth:2, borderDash:[7,5],
+          pointRadius:0, pointHoverRadius:3, tension:0, fill:false, yAxisID:'yPct', order:4},
+        ...projDatasets,
+      ],
     },
     options:{
       responsive:true, maintainAspectRatio:false,
-      scales:{
-        y:{beginAtZero:true, ticks:{callback:v=>v.toLocaleString('es-CO')}},
-        y1:{beginAtZero:true, position:'right', grid:{drawOnChartArea:false}, ticks:{callback:v=>v+'%'}},
+      layout:{padding:{bottom:20,top:20,right:16}},
+      interaction:{mode:'index', intersect:false},
+      plugins:{
+        legend:{display:true, position:'bottom', labels:{boxWidth:14, font:{size:11}, color:tickC, padding:14}},
+        tooltip:{callbacks:{label:c=>{
+          const v=c.raw;
+          if(c.dataset.label==='Entradas') return 'Entradas: '+fmtGwh(v);
+          if((c.dataset.label||'').indexOf('kWh')>=0) return 'PT: '+fmtGwh(v||0);
+          if((c.dataset.label||'').indexOf('%')>=0) return 'PT %: '+parseFloat(v||0).toFixed(4)+'%';
+          return c.dataset.label+': '+v;
+        }}},
       },
-      plugins:{legend:{position:'bottom', labels:{boxWidth:12}}}
-    }
+      scales:{
+        x:{grid:{display:false}, ticks:{color:tickC, font:{size:10}, autoSkip:false, maxRotation:0, minRotation:0}},
+        yEnt:{type:'linear', position:'left', beginAtZero:true, grid:{color:gridC},
+          ticks:{color:'#0096c7', font:{size:10}, callback:v=>fmtGwh(v)},
+          title:{display:true, text:'Entradas (GWh)', color:'#0096c7', font:{size:10}}},
+        yKwh:{type:'linear', position:'right', beginAtZero:true, grid:{drawOnChartArea:false},
+          ticks:{color:'#ef476f', font:{size:10}, callback:v=>fmtGwh(v)},
+          afterFit:ax=>{ax.width=Math.max(ax.width,88)},
+          title:{display:true, text:'PT (GWh)', color:'#ef476f', font:{size:10}}},
+        yPct:{type:'linear', position:'right', beginAtZero:true, grid:{drawOnChartArea:false},
+          ticks:{color:'#f4a261', font:{size:10}, callback:v=>v.toFixed(1)+'%'},
+          afterFit:ax=>{ax.width=Math.max(ax.width,80)},
+          title:{display:true, text:'Pérd. Técnicas %', color:'#f4a261', font:{size:10}},
+          offset:true},
+      },
+    },
   });
+}
+
+function labelMesSiguiente(m){
+  const [y,mo] = m.split('-').map(Number);
+  const d = new Date(y, mo, 1); // mo (sin -1) ya avanza un mes
+  const t = d.toLocaleDateString('es-CO', {month:'short'}).replace(/\./g,'').trim();
+  return t.charAt(0).toUpperCase()+t.slice(1)+' '+d.getFullYear();
+}
+
+function exportChartPNG(){
+  if(!chPrincipal) return;
+  chPrincipal.options.devicePixelRatio = 3;
+  chPrincipal.update('none');
+  const srcCanvas = chPrincipal.canvas;
+  const cW = srcCanvas.width, cH = srcCanvas.height;
+
+  const pad=48, headerH=90, footerH=44;
+  const tmp = document.createElement('canvas');
+  tmp.width = cW+pad*2; tmp.height = cH+headerH+footerH+pad;
+  const g = tmp.getContext('2d');
+
+  g.fillStyle = '#ffffff';
+  g.fillRect(0,0,tmp.width,tmp.height);
+
+  const grad = g.createLinearGradient(0,0,tmp.width,0);
+  grad.addColorStop(0,'#00b4d8'); grad.addColorStop(1,'#ef476f');
+  g.fillStyle = grad; g.fillRect(0,0,tmp.width,8);
+
+  g.fillStyle = '#1a2a4a';
+  g.font = 'bold 28px "Segoe UI",Arial,sans-serif';
+  g.fillText((OPERADOR && OPERADOR.nombre) || 'CINCO S.A.S.', pad, pad+32);
+
+  g.fillStyle = '#4b5e7a';
+  g.font = '16px "Segoe UI",Arial,sans-serif';
+  const rango = RESUMEN && RESUMEN.meses.length ? `${labelMes(RESUMEN.meses[0])} → ${labelMes(RESUMEN.meses[RESUMEN.meses.length-1])}` : '';
+  g.fillText('Pérdidas Técnicas'+(rango?' · '+rango:''), pad, pad+58);
+
+  g.drawImage(srcCanvas, pad, headerH+pad-10);
+
+  g.fillStyle = grad; g.fillRect(0, tmp.height-footerH-4, tmp.width, 3);
+
+  g.fillStyle = '#8899b5';
+  g.font = '13px "Segoe UI",Arial,sans-serif';
+  const now = new Date().toLocaleDateString('es-CO', {year:'numeric', month:'long', day:'numeric'});
+  g.fillText('Generado: '+now, pad, tmp.height-16);
+  g.textAlign = 'right';
+  g.fillText('CINCO S.A.S. · Análisis de Pérdidas Técnicas', tmp.width-pad, tmp.height-16);
+
+  chPrincipal.options.devicePixelRatio = window.devicePixelRatio || 1;
+  chPrincipal.update('none');
+
+  const a = document.createElement('a');
+  a.download = `${(OPERADOR&&OPERADOR.slug)||'perdidas'}_perdidas_tecnicas.png`;
+  a.href = tmp.toDataURL('image/png', 1.0);
+  a.click();
 }
 
 function renderZona(zonas){
@@ -747,7 +1344,7 @@ function demoGet(path){
       const p = e * (0.06 + seededRand(i+50)*0.08);
       entradas.push(Math.round(e)); perdidas.push(Math.round(p)); pct.push(+(p/e*100).toFixed(2));
     });
-    return Promise.resolve({meses:DEMO_MESES, entradas_kwh:entradas, perdidas_kwh:perdidas, perdidas_pct:pct});
+    return Promise.resolve({meses:DEMO_MESES, entradas_kwh:entradas, perdidas_kwh:perdidas, perdidas_pct:pct, senda_creg_pct:1.53});
   }
   if(path.startsWith('/api/zonas')){
     const zonas = Object.keys(ZONA_COLOR).map((z,i)=>{
