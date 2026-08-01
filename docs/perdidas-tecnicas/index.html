@@ -339,6 +339,7 @@ tfoot td:first-child{text-align:left}
 const API_BASE_URL = 'https://murkiness-dairy-anagram.ngrok-free.dev';
 const FETCH_TIMEOUT_MS = 2500;      // datos: si no responde rápido, mejor caer a modo demo
 const AUTH_TIMEOUT_MS = 15000;      // login/cambio de clave: pasan por Centro de Mando (Supabase), más lento
+const RESYNC_TIMEOUT_MS = 45000;    // "Actualizar datos": puede esperar a que termine una recarga automática en curso
 // ngrok (plan gratis) muestra una página de aviso antes de dejar pasar el tráfico
 // salvo que venga este header -- sin esto, todas las llamadas a la API fallarían.
 const NGROK_HEADERS = {'ngrok-skip-browser-warning':'true'};
@@ -518,7 +519,7 @@ async function actualizarDatos(){
 
   btn.disabled = true; btn.textContent = 'Actualizando…';
   try{
-    const res = await fetchConTimeout(`${API_BASE_URL}/api/resincronizar`, {method:'POST', headers: authHeaders()}, AUTH_TIMEOUT_MS);
+    const res = await fetchConTimeout(`${API_BASE_URL}/api/resincronizar`, {method:'POST', headers: authHeaders()}, RESYNC_TIMEOUT_MS);
     const data = await res.json().catch(()=>null);
     if(!res.ok) throw new Error((data && data.detail) || 'No se pudo actualizar.');
 
@@ -531,7 +532,9 @@ async function actualizarDatos(){
     }
   }catch(e){
     msg.className = 'actualizar-datos-msg err';
-    msg.textContent = e.message || 'No se pudo actualizar los datos.';
+    msg.textContent = (e.name === 'AbortError')
+      ? 'Tardó demasiado en responder. Probá de nuevo en un momento.'
+      : (e.message || 'No se pudo actualizar los datos.');
   }finally{
     btn.disabled = false; btn.textContent = '🔄 Actualizar datos';
   }
