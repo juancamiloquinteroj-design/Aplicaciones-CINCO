@@ -23,8 +23,9 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(
 .btn-menu:hover{border-color:var(--accent)}
 .nav-brand{display:flex;align-items:center;gap:10px}
 .nav-logo{height:34px;width:auto;border-radius:4px}
-.nav-name{font-size:14px;font-weight:800;color:var(--text);white-space:nowrap}
+.nav-name{font-size:14px;font-weight:800;color:var(--text);white-space:nowrap;line-height:1.2}
 .nav-name span{color:var(--accent);font-weight:600}
+.nav-tagline{font-size:9.5px;color:var(--text3);white-space:nowrap;letter-spacing:.2px}
 .nav-right{margin-left:auto;display:flex;align-items:center;gap:10px}
 .badge-demo{font-size:10px;font-weight:800;letter-spacing:.5px;padding:3px 10px;border-radius:20px;background:rgba(244,162,97,.15);color:#c47a2a;border:1px solid rgba(244,162,97,.3)}
 .badge-op{font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:rgba(0,180,216,.12);color:var(--accent);border:1px solid rgba(0,180,216,.25)}
@@ -59,10 +60,14 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(
 
 /* LOGIN extras */
 .login-logo{height:38px;display:block;margin:0 auto 14px}
+.login-tagline{text-align:center;font-size:10.5px;color:var(--text3);letter-spacing:.3px;margin-bottom:14px}
 .login-links{text-align:center;margin-top:12px;font-size:12px}
 .login-links a{color:var(--accent);text-decoration:none}
 .login-links a:hover{text-decoration:underline}
-.recuperar-box{margin-top:10px;padding:10px 14px;background:var(--bg3);border-radius:8px;font-size:11.5px;color:var(--text2);line-height:1.6}
+.recuperar-box{margin-top:10px;padding:14px;background:var(--bg3);border-radius:8px}
+.recuperar-box .field{margin-bottom:10px}
+.recuperar-box .btn-login{padding:9px}
+.recuperar-msg{font-size:11.5px;color:var(--text2);line-height:1.5;margin-top:8px;text-align:center}
 .recuperar-box a{color:var(--accent)}
 
 .page{max-width:1200px;margin:0 auto;padding:24px 24px 60px}
@@ -122,7 +127,10 @@ tfoot td:first-child{text-align:left}
   <button class="btn-menu hidden" id="btn-menu" onclick="toggleSidebar()" title="Módulos">☰</button>
   <div class="nav-brand">
     <img src="assets/logo_cinco.png" alt="CINCO S.A.S." class="nav-logo">
-    <div class="nav-name">CINCO Vision <span>· Visualizador de Datos</span></div>
+    <div>
+      <div class="nav-name">CINCO S.A.S.</div>
+      <div class="nav-tagline">Construcción, Ingeniería y Consultoría</div>
+    </div>
   </div>
   <div class="nav-right">
     <span id="badge-demo" class="badge-demo hidden">MODO DEMO · sin conexión al servidor</span>
@@ -144,8 +152,9 @@ tfoot td:first-child{text-align:left}
 <div id="login-screen" class="login-wrap">
   <div class="login-card">
     <img src="assets/logo_cinco.png" alt="CINCO S.A.S." class="login-logo">
-    <div class="login-eye">CINCO VISION · ACCESO OPERADOR</div>
-    <div class="login-title">Visualizador de Datos</div>
+    <div class="login-title">CINCO S.A.S.</div>
+    <div class="login-tagline">Construcción, Ingeniería y Consultoría</div>
+    <div class="login-eye">VISUALIZADOR DE DATOS · ACCESO OPERADOR</div>
     <div class="login-sub">Ingresá con el correo y clave que te asignó CINCO S.A.S. para ver únicamente los datos de tu operador de red.</div>
     <form id="login-form" onsubmit="return manejarLogin(event)">
       <div class="field">
@@ -163,7 +172,12 @@ tfoot td:first-child{text-align:left}
       <a href="#" onclick="toggleRecuperar(event)">¿Olvidaste tu contraseña?</a>
     </div>
     <div id="recuperar-box" class="recuperar-box hidden">
-      Escribile a tu administrador en <a href="mailto:juancamiloquinteroj@gmail.com?subject=Restablecer%20contrase%C3%B1a%20-%20Visualizador%20de%20Datos">juancamiloquinteroj@gmail.com</a> pidiendo un restablecimiento de clave para tu correo. Te va a llegar una contraseña temporal nueva por correo.
+      <div class="field">
+        <label>Correo electrónico</label>
+        <input id="in-recuperar-correo" type="email" placeholder="tu@correo.com">
+      </div>
+      <button class="btn-login" type="button" id="btn-recuperar" onclick="manejarRecuperar()">Enviar clave temporal</button>
+      <div id="recuperar-msg" class="recuperar-msg"></div>
     </div>
     <div class="login-hint">Este mismo enlace se comparte con todos los operadores. Cada correo y clave solo puede ver los datos de su propio operador.</div>
   </div>
@@ -393,6 +407,27 @@ async function manejarCambioClave(ev){
 function toggleRecuperar(ev){
   ev.preventDefault();
   document.getElementById('recuperar-box').classList.toggle('hidden');
+  document.getElementById('recuperar-msg').textContent = '';
+}
+
+async function manejarRecuperar(){
+  const correo = document.getElementById('in-recuperar-correo').value.trim();
+  const msg = document.getElementById('recuperar-msg');
+  const btn = document.getElementById('btn-recuperar');
+  if(!correo){ msg.textContent = 'Escribí tu correo primero.'; return; }
+
+  btn.disabled = true; btn.textContent = 'Enviando…';
+  try{
+    await fetchConTimeout(`${API_BASE_URL}/api/recuperar-clave`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({correo}),
+    }, AUTH_TIMEOUT_MS);
+  }catch(e){
+    // Igual mostramos el mensaje genérico: no hace falta que el usuario sepa
+    // si fue un problema de red o si el correo no existe.
+  }
+  msg.textContent = 'Si el correo está registrado y tiene acceso, va a recibir un mensaje con una clave temporal en unos minutos.';
+  btn.disabled = false; btn.textContent = 'Enviar clave temporal';
 }
 
 function toggleSidebar(){
@@ -471,7 +506,9 @@ async function aplicarFiltros(){
   if(nivel) qs.set('nivel', nivel);
 
   const resumen = await apiGet(`/api/resumen?${qs.toString()}`);
-  document.getElementById('resumen-sub').textContent = `${resumen.meses[0]} a ${resumen.meses[resumen.meses.length-1]}`;
+  document.getElementById('resumen-sub').textContent = resumen.meses.length
+    ? `${resumen.meses[0]} a ${resumen.meses[resumen.meses.length-1]}`
+    : 'Sin datos cargados todavía';
   renderPrincipal(resumen);
   await cargarZonas();
 }
