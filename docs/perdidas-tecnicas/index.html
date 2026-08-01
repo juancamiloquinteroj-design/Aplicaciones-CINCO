@@ -41,6 +41,19 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(
 .sidebar-link:hover{background:var(--bg3);color:var(--text)}
 .sidebar-link.active{background:rgba(0,180,216,.12);color:var(--accent)}
 .sidebar-proximamente{margin-top:auto;font-size:10.5px;color:var(--text3);padding:10px 12px;border-top:1px solid var(--border)}
+.app-shell{display:block}
+
+/* En pantallas de escritorio, el menú queda fijo a la izquierda (ocupando el
+   espacio que antes quedaba vacío) en vez de un cajón que aparece encima.
+   Se activa solo estando logueado (clase 'sidebar-fija' en <body>, la pone
+   entrarDashboard()) -- así nunca tapa la pantalla de login. */
+@media (min-width:900px){
+  body.sidebar-fija .app-shell{display:flex; align-items:flex-start}
+  body.sidebar-fija #sidebar{position:sticky; top:58px; height:calc(100vh - 58px); box-shadow:none; display:flex !important; flex-shrink:0}
+  body.sidebar-fija #sidebar-overlay{display:none !important}
+  body.sidebar-fija .btn-menu{display:none}
+  body.sidebar-fija .page{max-width:none; margin:0; flex:1; min-width:0}
+}
 
 /* MÓDULOS / INICIO */
 .vista-modulo{width:100%}
@@ -145,14 +158,6 @@ tfoot td:first-child{text-align:left}
   </div>
 </nav>
 
-<div id="sidebar-overlay" class="sidebar-overlay hidden" onclick="toggleSidebar()"></div>
-<aside id="sidebar" class="sidebar hidden">
-  <div class="sidebar-title">Módulos</div>
-  <button class="sidebar-link active" data-vista="inicio" onclick="mostrarVista('inicio')">🏠 Inicio</button>
-  <button class="sidebar-link" data-vista="perdidas" onclick="mostrarVista('perdidas')">📉 Pérdidas Técnicas</button>
-  <div class="sidebar-proximamente">Más módulos próximamente</div>
-</aside>
-
 <!-- ==================== LOGIN ==================== -->
 <div id="login-screen" class="login-wrap">
   <div class="login-card">
@@ -217,6 +222,14 @@ tfoot td:first-child{text-align:left}
 </div>
 
 <!-- ==================== DASHBOARD ==================== -->
+<div class="app-shell">
+<div id="sidebar-overlay" class="sidebar-overlay hidden" onclick="toggleSidebar()"></div>
+<aside id="sidebar" class="sidebar hidden">
+  <div class="sidebar-title">Módulos</div>
+  <button class="sidebar-link active" data-vista="inicio" onclick="mostrarVista('inicio')">🏠 Inicio</button>
+  <button class="sidebar-link" data-vista="perdidas" onclick="mostrarVista('perdidas')">📉 Pérdidas Técnicas</button>
+  <div class="sidebar-proximamente">Más módulos próximamente</div>
+</aside>
 <div id="app-screen" class="page hidden">
 
 <!-- ---------------- INICIO ---------------- -->
@@ -302,6 +315,8 @@ tfoot td:first-child{text-align:left}
 
   <div class="footer">CINCO Vision · Visualizador de Datos · CINCO S.A.S. · Construcción, Ingeniería y Consultoría</div>
 </div>
+</div>
+<!-- fin app-shell -->
 
 <script>
 /* ============================================================
@@ -465,8 +480,10 @@ async function mostrarVista(nombre){
   document.querySelectorAll('.vista-modulo').forEach(v=>v.classList.add('hidden'));
   document.getElementById(`vista-${nombre}`).classList.remove('hidden');
   document.querySelectorAll('.sidebar-link').forEach(a=>a.classList.toggle('active', a.dataset.vista===nombre));
-  document.getElementById('sidebar').classList.add('hidden');
-  document.getElementById('sidebar-overlay').classList.add('hidden');
+  if(!document.body.classList.contains('sidebar-fija')){
+    document.getElementById('sidebar').classList.add('hidden');
+    document.getElementById('sidebar-overlay').classList.add('hidden');
+  }
 
   if(nombre==='perdidas' && !vistaCargada.perdidas){
     vistaCargada.perdidas = true;
@@ -485,6 +502,8 @@ function cerrarSesion(){
   document.getElementById('btn-logout').classList.add('hidden');
   document.getElementById('btn-menu').classList.add('hidden');
   document.getElementById('login-form').reset();
+  document.body.classList.remove('sidebar-fija');
+  document.getElementById('sidebar').classList.add('hidden');
 }
 
 async function entrarDashboard(){
@@ -500,6 +519,11 @@ async function entrarDashboard(){
   document.getElementById('inicio-saludo').textContent = nombrePersona ? `Bienvenido/a, ${nombrePersona} 👋` : 'Bienvenido/a 👋';
   document.getElementById('inicio-sub').textContent =
     `Acá vas a encontrar todos los indicadores correspondientes al Sistema de Gestión de la Medida de ${OPERADOR.nombre}.`;
+
+  if(window.innerWidth >= 900){
+    document.body.classList.add('sidebar-fija');
+    document.getElementById('sidebar').classList.remove('hidden');
+  }
 
   await mostrarVista('inicio');
 }
