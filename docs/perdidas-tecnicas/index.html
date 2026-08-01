@@ -452,10 +452,10 @@ tfoot td:first-child{text-align:left}
       </div>
     </div>
     <div class="tbl-wrap">
-      <table style="min-width:980px">
+      <table style="min-width:1020px">
         <thead>
           <tr>
-            <th>Zona</th><th>Reconocimiento CREG 008/2021 (%)</th><th>Entradas (kWh/mes)</th>
+            <th>Zona</th><th>Nivel</th><th>Reconocimiento CREG 008/2021 (%)</th><th>Entradas (kWh/mes)</th>
             <th>Pérd. Técnicas Calculadas (kWh/mes)</th><th>Pérd. Técnicas Calculadas (%)</th>
             <th>Pérd. Reconocida (kWh/mes)</th><th>Pérd. No Reconocida (kWh/mes)</th>
             <th>Costo Reconocido ($/mes)</th><th>Costo No Reconocido ($/mes)</th>
@@ -1552,11 +1552,23 @@ function renderValuacionZonas(){
 
   const filas = zonasExpandidas ? VALUACION_ZONAS_CRUDA : _agregarValuacionPorZona(VALUACION_ZONAS_CRUDA);
 
+  // Cuenta cuántas filas seguidas comparten zona, para fusionar esa celda
+  // (celda combinada = <td rowspan>) en vez de repetir el nombre de la zona.
+  const conteoZona = {};
+  filas.forEach(f=>{ conteoZona[f.zona] = (conteoZona[f.zona]||0)+1; });
+  const zonaYaPintada = new Set();
+
   tb.innerHTML = filas.map(f=>{
     const nrColor = f.pt_no_reconocida_kwh>0 ? 'var(--red)' : 'var(--green)';
-    const etiqueta = f.nivel ? `${f.zona} · Nivel ${f.nivel}` : f.zona;
+    let celdaZona = '';
+    if(!zonaYaPintada.has(f.zona)){
+      zonaYaPintada.add(f.zona);
+      celdaZona = `<td rowspan="${conteoZona[f.zona]}" style="vertical-align:middle;border-right:1px solid var(--border)">
+        <span class="zb" style="background:${colorParaZona(f.zona)}22;color:${colorParaZona(f.zona)}">${f.zona}</span></td>`;
+    }
     return `<tr>
-      <td><span class="zb" style="background:${colorParaZona(f.zona)}22;color:${colorParaZona(f.zona)}">${etiqueta}</span></td>
+      ${celdaZona}
+      <td>${f.nivel ? 'Nivel '+f.nivel : 'Todos'}</td>
       <td>${f.reconocimiento_pct.toFixed(2)}%</td>
       <td>${fK(f.entradas_kwh)}</td>
       <td style="color:var(--red);font-weight:700">${fK(f.perdidas_kwh)}</td>
@@ -1578,6 +1590,7 @@ function renderValuacionZonas(){
   const totNrColor = tot.ptn>0 ? 'var(--red)' : 'var(--green)';
   tf.innerHTML = `<tr>
     <td style="font-weight:800">TOTAL</td>
+    <td style="font-weight:800">—</td>
     <td style="font-weight:800">${totCreg.toFixed(2)}%</td>
     <td style="font-weight:800">${fK(tot.ent)}</td>
     <td style="color:var(--red);font-weight:800">${fK(tot.per)}</td>
