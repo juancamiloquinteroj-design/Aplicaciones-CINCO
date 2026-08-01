@@ -6,6 +6,8 @@
 <title>CINCO Vision · Visualizador de Datos</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
 :root{
   --accent:#00b4d8;--accent2:#0096c7;--amber:#f4a261;--green:#06d6a0;--red:#ef476f;--purple:#7b2fff;
@@ -156,6 +158,12 @@ tfoot td:first-child{text-align:left}
   .valuacion-hdr{flex-direction:column;align-items:flex-start}
   .valuacion-hdr-controles{width:100%}
 }
+
+/* MAPA POR ZONA -- el contenedor confina el z-index interno de Leaflet
+   (paneles/tooltips llegan hasta ~700) para que nunca tape la navbar sticky. */
+#mapa-zonas-leaflet{position:relative;z-index:0}
+.muni-tip{background:rgba(15,20,30,.85)!important;border:none!important;border-radius:5px!important;padding:4px 10px!important;color:#fff!important;font-size:11px!important;font-weight:700!important;font-family:inherit!important;box-shadow:0 2px 8px rgba(0,0,0,.3)!important;white-space:nowrap!important}
+.muni-tip::before{display:none!important}
 
 /* KPI CARDS */
 .kpi-row{display:flex;gap:12px;margin-bottom:14px;flex-wrap:wrap}
@@ -464,6 +472,23 @@ tfoot td:first-child{text-align:left}
         <tbody id="tb-valuacion"></tbody>
         <tfoot id="tf-valuacion"></tfoot>
       </table>
+    </div>
+  </div>
+
+  <div class="sec-hdr">
+    <div class="sec-title">Mapa de Pérdidas Técnicas por Zona</div>
+    <div class="sec-sub" id="mapa-sub">—</div>
+  </div>
+  <div class="card">
+    <div id="mapa-zonas-leaflet" style="height:600px;width:100%;border-radius:10px;overflow:hidden"></div>
+    <div style="display:flex;align-items:center;flex-wrap:wrap;gap:14px;padding:12px 4px 0">
+      <span style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:var(--text3)">PT%</span>
+      <div style="display:flex;align-items:center;gap:6px">
+        <span id="mapa-leg-min" style="font-size:11px;font-weight:700;color:var(--text2);min-width:28px;text-align:right">—</span>
+        <div style="width:180px;height:14px;border-radius:6px;background:linear-gradient(to right,#1a9850,#91cf60,#fee04c,#fc8d59,#d73027);border:1px solid var(--border)"></div>
+        <span id="mapa-leg-max" style="font-size:11px;font-weight:700;color:var(--text2)">—</span>
+      </div>
+      <div id="mapa-leg-zonas" style="display:flex;gap:8px;flex-wrap:wrap"></div>
     </div>
   </div>
 
@@ -994,6 +1019,7 @@ async function cargarZonas(){
   renderZona(zonas);
   VALUACION_ZONAS_CRUDA = valuacion;
   renderValuacionZonas();
+  renderMapaZonas(zonas, labelMes(mes));
 }
 
 async function descargarCSV(){
@@ -1600,6 +1626,132 @@ function renderValuacionZonas(){
     <td style="color:var(--green);font-weight:800">${f$(tot.ptr*costo)}</td>
     <td style="color:${totNrColor};font-weight:800">${f$(tot.ptn*costo)}</td>
   </tr>`;
+}
+
+/* ============================================================
+ * MAPA POR ZONA — límites municipales reales del Huila (DANE MGN 2018,
+ * simplificados). Es geografía específica de este operador (electrohuila);
+ * si algún día hay un operador de otro departamento, este mapa no le
+ * aplicaría. El mapeo de códigos de zona reales (ZC/ZE/ZN/ZO/ZS) a las
+ * zonas geográficas del Huila lo confirmó el usuario directamente.
+ * ============================================================ */
+const CODIGO_A_CLAVE_HUILA = {ZC:'zona centro', ZE:'zona neiva', ZN:'zona norte', ZO:'zona occidente', ZS:'zona sur'};
+const CLAVE_A_CODIGO_HUILA = Object.fromEntries(Object.entries(CODIGO_A_CLAVE_HUILA).map(([k,v])=>[v,k]));
+
+const MUNI_GEO=[{"n":"NEIVA","r":[[[-75.2672,3.1292],[-75.2378,3.0524],[-75.1815,2.9953],[-75.1154,2.9966],[-75.0652,2.9520],[-74.9697,2.9309],[-74.9440,2.8962],[-75.0701,2.7450],[-75.1448,2.7239],[-75.2158,2.8615],[-75.2905,2.8689],[-75.3394,3.0412],[-75.4386,3.0486],[-75.4631,3.0214],[-75.6002,3.0486],[-75.5843,3.1503],[-75.5304,3.2321],[-75.4851,3.2308],[-75.3370,3.2717],[-75.4129,3.1366],[-75.2831,3.0734],[-75.2672,3.1292]]]},{"n":"GIGANTE","r":[[[-75.4288,2.4525],[-75.4447,2.3868],[-75.3859,2.3149],[-75.3945,2.3025],[-75.5157,2.2529],[-75.6161,2.3174],[-75.6467,2.3112],[-75.6663,2.3558],[-75.5683,2.4624],[-75.5683,2.4884],[-75.5279,2.5343],[-75.4986,2.4872],[-75.4288,2.4525]]]},{"n":"GUADALUPE","r":[[[-75.5879,2.0137],[-75.6589,1.8922],[-75.6883,1.8811],[-75.7887,1.9914],[-75.7079,2.0893],[-75.5879,2.0137]]]},{"n":"HOBO","r":[[[-75.4361,2.6780],[-75.4374,2.6247],[-75.3786,2.5095],[-75.4288,2.4525],[-75.4986,2.4872],[-75.5279,2.5343],[-75.4361,2.6780]]]},{"n":"ÍQUIRA","r":[[[-75.5879,2.6842],[-75.5843,2.5491],[-75.6406,2.5442],[-75.6455,2.6347],[-75.7312,2.6656],[-75.7605,2.6805],[-75.7483,2.7189],[-75.8107,2.7871],[-75.6393,2.7896],[-75.5879,2.6842]]]},{"n":"ISNOS","r":[[[-76.1327,1.9963],[-76.1204,1.9492],[-76.1951,1.8625],[-76.2820,1.9319],[-76.2747,2.0112],[-76.3738,2.0769],[-76.4191,2.1922],[-76.3604,2.2703],[-76.3836,2.2145],[-76.3457,2.0856],[-76.1327,1.9963]]]},{"n":"LA ARGENTINA","r":[[[-76.2086,2.1984],[-76.1241,2.1798],[-75.9931,2.2021],[-75.8891,2.2603],[-75.9136,2.2058],[-76.0066,2.1141],[-76.0580,2.0905],[-76.1498,2.1178],[-76.2000,2.1352],[-76.3420,2.2380],[-76.3604,2.2703],[-76.2747,2.2703],[-76.2086,2.1984]]]},{"n":"LA PLATA","r":[[[-75.9625,2.4983],[-75.9099,2.4463],[-75.8413,2.4587],[-75.8279,2.3533],[-75.8866,2.3099],[-75.8891,2.2603],[-75.9931,2.2021],[-76.1241,2.1798],[-76.2086,2.1984],[-76.1217,2.2244],[-76.1461,2.2938],[-76.1266,2.3806],[-75.9625,2.4983]]]},{"n":"NÁTAGA","r":[[[-75.7312,2.6656],[-75.7593,2.6173],[-75.7667,2.5194],[-75.7948,2.4760],[-75.8144,2.4834],[-75.8401,2.5578],[-75.7605,2.6805],[-75.7312,2.6656]]]},{"n":"OPORAPA","r":[[[-76.0066,2.1141],[-75.9625,2.0410],[-76.0054,2.0013],[-76.1143,2.0509],[-76.1498,2.1178],[-76.0580,2.0905],[-76.0066,2.1141]]]},{"n":"PAICOL","r":[[[-75.7948,2.4760],[-75.6748,2.4599],[-75.6087,2.4339],[-75.5683,2.4624],[-75.6663,2.3558],[-75.7862,2.3620],[-75.7826,2.3260],[-75.8279,2.3533],[-75.8413,2.4587],[-75.8144,2.4834],[-75.7948,2.4760]]]},{"n":"PALERMO","r":[[[-75.2905,2.8689],[-75.3345,2.7809],[-75.4227,2.7338],[-75.4986,2.7673],[-75.5463,2.8305],[-75.6185,2.8503],[-75.5365,2.8900],[-75.4986,2.9693],[-75.5781,2.9792],[-75.6136,3.0239],[-75.6002,3.0486],[-75.4631,3.0214],[-75.4386,3.0486],[-75.3394,3.0412],[-75.2905,2.8689]]]},{"n":"PALESTINA","r":[[[-76.0580,1.7385],[-76.1694,1.5885],[-76.1988,1.5749],[-76.2269,1.6642],[-76.1192,1.7745],[-76.0580,1.7385]]]},{"n":"PITAL","r":[[[-75.7826,2.3260],[-75.7789,2.2356],[-75.7299,2.1637],[-75.7336,2.1612],[-75.7875,2.2008],[-75.9136,2.2058],[-75.8891,2.2603],[-75.8866,2.3099],[-75.8279,2.3533],[-75.7826,2.3260]]]},{"n":"PITALITO","r":[[[-76.0250,1.9765],[-75.9870,1.9542],[-75.9625,1.8538],[-76.0580,1.7385],[-76.1192,1.7745],[-76.2269,1.6642],[-76.3163,1.6840],[-76.2392,1.7683],[-76.1951,1.8625],[-76.1204,1.9492],[-76.1327,1.9963],[-76.0250,1.9765]]]},{"n":"RIVERA","r":[[[-75.1448,2.7239],[-75.1521,2.7090],[-75.1717,2.7028],[-75.1938,2.6929],[-75.3345,2.7809],[-75.2905,2.8689],[-75.2158,2.8615],[-75.1448,2.7239]]]},{"n":"SALADOBLANCO","r":[[[-76.1498,2.1178],[-76.1143,2.0509],[-76.0054,2.0013],[-76.0250,1.9765],[-76.1327,1.9963],[-76.3457,2.0856],[-76.3836,2.2145],[-76.3604,2.2703],[-76.3420,2.2380],[-76.2000,2.1352],[-76.1498,2.1178]]]},{"n":"SAN AGUSTÍN","r":[[[-76.1951,1.8625],[-76.2392,1.7683],[-76.3163,1.6840],[-76.4338,1.7906],[-76.5905,1.8687],[-76.6236,1.9753],[-76.5807,2.0286],[-76.5893,2.1079],[-76.5538,2.1389],[-76.4253,2.1290],[-76.4191,2.1922],[-76.3738,2.0769],[-76.2747,2.0112],[-76.2820,1.9319],[-76.1951,1.8625]]]},{"n":"SANTA MARÍA","r":[[[-75.6185,2.8503],[-75.6859,2.8317],[-75.7679,2.9148],[-75.6920,2.9929],[-75.6136,3.0239],[-75.5781,2.9792],[-75.4986,2.9693],[-75.5365,2.8900],[-75.6185,2.8503]]]},{"n":"SUAZA","r":[[[-75.8205,1.9976],[-75.7887,1.9914],[-75.6883,1.8811],[-75.7348,1.7869],[-75.8377,1.7398],[-75.8830,1.8513],[-75.9503,1.8563],[-75.8205,1.9976]]]},{"n":"TARQUI","r":[[[-75.7336,2.1612],[-75.8401,2.0868],[-75.8585,2.0459],[-75.8621,2.0434],[-75.9625,2.0410],[-76.0066,2.1141],[-75.9136,2.2058],[-75.7875,2.2008],[-75.7336,2.1612]]]},{"n":"TESALIA","r":[[[-75.5843,2.5491],[-75.5683,2.4884],[-75.5683,2.4624],[-75.6087,2.4339],[-75.6748,2.4599],[-75.7948,2.4760],[-75.7667,2.5194],[-75.7593,2.6173],[-75.7312,2.6656],[-75.6455,2.6347],[-75.6406,2.5442],[-75.5843,2.5491]]]},{"n":"TELLO","r":[[[-75.1632,3.1354],[-75.1105,3.0759],[-74.9893,3.0697],[-74.9342,3.0387],[-74.9049,2.9582],[-74.9440,2.8962],[-74.9697,2.9309],[-75.0652,2.9520],[-75.1154,2.9966],[-75.1815,2.9953],[-75.2378,3.0524],[-75.2672,3.1292],[-75.2660,3.1391],[-75.2305,3.1676],[-75.1632,3.1354]]]},{"n":"TERUEL","r":[[[-75.7679,2.9148],[-75.6859,2.8317],[-75.6185,2.8503],[-75.5463,2.8305],[-75.4986,2.7673],[-75.5879,2.6842],[-75.6393,2.7896],[-75.8107,2.7871],[-75.8230,2.8355],[-75.8964,2.8553],[-76.0286,2.9408],[-75.8597,2.8726],[-75.7679,2.9148]]]},{"n":"TIMANÁ","r":[[[-75.8205,1.9976],[-75.9503,1.8563],[-75.9625,1.8538],[-75.9870,1.9542],[-75.8585,2.0459],[-75.8205,1.9976]]]},{"n":"VILLAVIEJA","r":[[[-75.0346,3.4279],[-75.0664,3.2941],[-75.0077,3.2804],[-75.0885,3.1887],[-75.1632,3.1354],[-75.2305,3.1676],[-75.2660,3.1391],[-75.2293,3.2011],[-75.2378,3.3127],[-75.1729,3.3783],[-75.1497,3.4354],[-75.0346,3.4279]]]},{"n":"YAGUARÁ","r":[[[-75.4227,2.7338],[-75.4361,2.6780],[-75.5279,2.5343],[-75.5683,2.4884],[-75.5843,2.5491],[-75.5879,2.6842],[-75.4986,2.7673],[-75.4227,2.7338]]]},{"n":"GARZÓN","r":[[[-75.3945,2.3025],[-75.4263,2.1947],[-75.4447,2.1438],[-75.5353,2.1178],[-75.5879,2.0137],[-75.7079,2.0893],[-75.6859,2.1674],[-75.6479,2.2256],[-75.6467,2.3112],[-75.6161,2.3174],[-75.5157,2.2529],[-75.3945,2.3025]]]},{"n":"ELÍAS","r":[[[-75.8621,2.0434],[-75.9870,1.9542],[-76.0250,1.9765],[-76.0054,2.0013],[-75.9625,2.0410],[-75.8621,2.0434]]]},{"n":"COLOMBIA","r":[[[-74.4397,3.7304],[-74.4164,3.7403],[-74.5021,3.6473],[-74.5633,3.5258],[-74.6160,3.4601],[-74.6392,3.3684],[-74.6160,3.3213],[-74.6661,3.2296],[-74.7665,3.0970],[-74.8485,3.1428],[-74.8669,3.2259],[-74.9098,3.2903],[-74.8485,3.3424],[-74.8106,3.4106],[-74.7653,3.4403],[-74.7751,3.5246],[-74.6759,3.6659],[-74.5572,3.7675],[-74.5352,3.8431],[-74.4458,3.8010],[-74.4397,3.7304]]]},{"n":"CAMPOALEGRE","r":[[[-75.1717,2.7028],[-75.3786,2.5095],[-75.4374,2.6247],[-75.4361,2.6780],[-75.4227,2.7338],[-75.3345,2.7809],[-75.1938,2.6929],[-75.1717,2.7028]]]},{"n":"BARAYA","r":[[[-74.9098,3.2903],[-74.8669,3.2259],[-74.8485,3.1428],[-74.7665,3.0970],[-74.8694,2.9730],[-74.8987,2.9644],[-74.9049,2.9582],[-74.9342,3.0387],[-74.9893,3.0697],[-75.1105,3.0759],[-75.1632,3.1354],[-75.0885,3.1887],[-75.0077,3.2804],[-74.9098,3.2903]]]},{"n":"ALTAMIRA","r":[[[-75.6859,2.1674],[-75.7079,2.0893],[-75.7887,1.9914],[-75.8205,1.9976],[-75.8585,2.0459],[-75.8401,2.0868],[-75.7299,2.1637],[-75.6859,2.1674]]]},{"n":"ALGECIRAS","r":[[[-75.1338,2.5987],[-75.1950,2.5120],[-75.3492,2.3236],[-75.3859,2.3149],[-75.4447,2.3868],[-75.4288,2.4525],[-75.3786,2.5095],[-75.1717,2.7028],[-75.1521,2.7090],[-75.1338,2.5987]]]},{"n":"AIPE","r":[[[-75.2684,3.3821],[-75.2268,3.4155],[-75.1729,3.3783],[-75.2378,3.3127],[-75.2293,3.2011],[-75.2660,3.1391],[-75.2672,3.1292],[-75.2831,3.0734],[-75.4129,3.1366],[-75.3370,3.2717],[-75.4851,3.2308],[-75.5304,3.2321],[-75.5843,3.1503],[-75.5769,3.2209],[-75.4790,3.3610],[-75.4263,3.3523],[-75.3664,3.4069],[-75.2684,3.3821]]]},{"n":"AGRADO","r":[[[-75.6663,2.3558],[-75.6467,2.3112],[-75.6479,2.2256],[-75.6859,2.1674],[-75.7299,2.1637],[-75.7789,2.2356],[-75.7826,2.3260],[-75.7862,2.3620],[-75.6663,2.3558]]]},{"n":"ACEVEDO","r":[[[-75.8377,1.7398],[-75.9038,1.7162],[-75.9833,1.6220],[-76.0996,1.5638],[-76.1694,1.5885],[-76.0580,1.7385],[-75.9625,1.8538],[-75.9503,1.8563],[-75.8830,1.8513],[-75.8377,1.7398]]]}];
+
+const MUNI_ZONE={
+  'neiva':'zona norte',
+  'aipe':'zona norte','algeciras':'zona norte','baraya':'zona norte','campoalegre':'zona norte',
+  'colombia':'zona norte','hobo':'zona norte','iquira':'zona norte','palermo':'zona norte',
+  'rivera':'zona norte','santa maria':'zona norte','tello':'zona norte','teruel':'zona norte',
+  'villavieja':'zona norte','yaguara':'zona norte',
+  'agrado':'zona centro','altamira':'zona centro','pital':'zona centro','garzon':'zona centro',
+  'gigante':'zona centro','guadalupe':'zona centro','suaza':'zona centro','tarqui':'zona centro',
+  'la argentina':'zona occidente','la plata':'zona occidente','nataga':'zona occidente',
+  'paicol':'zona occidente','tesalia':'zona occidente',
+  'acevedo':'zona sur','elias':'zona sur','isnos':'zona sur','oporapa':'zona sur',
+  'palestina':'zona sur','pitalito':'zona sur','saladoblanco':'zona sur',
+  'san agustin':'zona sur','timana':'zona sur'
+};
+const ZONE_GEO=[{"z":"zona norte","r":[[[-74.944,2.8962],[-75.0701,2.745],[-75.1448,2.7239],[-75.1521,2.709],[-75.1338,2.5987],[-75.195,2.512],[-75.3492,2.3236],[-75.3859,2.3149],[-75.4447,2.3868],[-75.4288,2.4525],[-75.4986,2.4872],[-75.5279,2.5343],[-75.5683,2.4884],[-75.5843,2.5491],[-75.6406,2.5442],[-75.6455,2.6347],[-75.7605,2.6805],[-75.7483,2.7189],[-75.8107,2.7871],[-75.823,2.8355],[-75.8964,2.8553],[-76.0286,2.9408],[-75.8597,2.8726],[-75.7679,2.9148],[-75.692,2.9929],[-75.6136,3.0239],[-75.6002,3.0486],[-75.5769,3.2209],[-75.479,3.361],[-75.4263,3.3523],[-75.3664,3.4069],[-75.2684,3.3821],[-75.2268,3.4155],[-75.1729,3.3783],[-75.1497,3.4354],[-75.0346,3.4279],[-75.0664,3.2941],[-75.0077,3.2804],[-74.9098,3.2903],[-74.8485,3.3424],[-74.8106,3.4106],[-74.7653,3.4403],[-74.7751,3.5246],[-74.6759,3.6659],[-74.5572,3.7675],[-74.5352,3.8431],[-74.4458,3.801],[-74.4397,3.7304],[-74.4164,3.7403],[-74.5021,3.6473],[-74.5633,3.5258],[-74.616,3.4601],[-74.6392,3.3684],[-74.616,3.3213],[-74.6661,3.2296],[-74.7665,3.097],[-74.8694,2.973],[-74.8987,2.9644],[-74.9049,2.9582],[-74.944,2.8962]]]},{"z":"zona occidente","r":[[[-75.8891,2.2603],[-75.9136,2.2058],[-76.0066,2.1141],[-76.058,2.0905],[-76.2,2.1352],[-76.342,2.238],[-76.3604,2.2703],[-76.2747,2.2703],[-76.2086,2.1984],[-76.1217,2.2244],[-76.1461,2.2938],[-76.1266,2.3806],[-75.9625,2.4983],[-75.9099,2.4463],[-75.8413,2.4587],[-75.8144,2.4834],[-75.8401,2.5578],[-75.7605,2.6805],[-75.6455,2.6347],[-75.6406,2.5442],[-75.5843,2.5491],[-75.5683,2.4884],[-75.5683,2.4624],[-75.6663,2.3558],[-75.7862,2.362],[-75.7826,2.326],[-75.8279,2.3533],[-75.8866,2.3099],[-75.8891,2.2603]]]},{"z":"zona centro","r":[[[-75.4288,2.4525],[-75.4447,2.3868],[-75.3859,2.3149],[-75.3945,2.3025],[-75.4447,2.1438],[-75.5353,2.1178],[-75.5879,2.0137],[-75.6589,1.8922],[-75.6883,1.8811],[-75.7348,1.7869],[-75.8377,1.7398],[-75.883,1.8513],[-75.9503,1.8563],[-75.8205,1.9976],[-75.8585,2.0459],[-75.9625,2.041],[-76.0066,2.1141],[-75.9136,2.2058],[-75.8891,2.2603],[-75.8866,2.3099],[-75.8279,2.3533],[-75.7826,2.326],[-75.7862,2.362],[-75.6663,2.3558],[-75.5683,2.4624],[-75.5683,2.4884],[-75.5279,2.5343],[-75.4986,2.4872],[-75.4288,2.4525]]]},{"z":"zona sur","r":[[[-76.4191,2.1922],[-76.3604,2.2703],[-76.342,2.238],[-76.2,2.1352],[-76.058,2.0905],[-76.0066,2.1141],[-75.9625,2.041],[-75.8585,2.0459],[-75.8205,1.9976],[-75.9503,1.8563],[-75.883,1.8513],[-75.8377,1.7398],[-75.9038,1.7162],[-75.9833,1.622],[-76.0996,1.5638],[-76.1694,1.5885],[-76.1988,1.5749],[-76.2269,1.6642],[-76.3163,1.684],[-76.4338,1.7906],[-76.5905,1.8687],[-76.6236,1.9753],[-76.5807,2.0286],[-76.5893,2.1079],[-76.5538,2.1389],[-76.4253,2.129],[-76.4191,2.1922]]]}];
+const NEIVA_URBAN={lat:2.9273,lng:-75.2819,r:0.050};
+
+function _circlePts(lat,lng,r,n){
+  n=n||28; const a=[]; const k=1/Math.cos(lat*Math.PI/180);
+  for(let i=0;i<=n;i++){ const t=i/n*2*Math.PI; a.push([lat+r*Math.sin(t), lng+r*k*Math.cos(t)]); }
+  return a;
+}
+function _muniNorm(s){ return (s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim(); }
+
+function _heatGrad(t){
+  t=Math.max(0,Math.min(1,t));
+  const S=[[0,[26,152,80]],[0.25,[145,207,96]],[0.5,[254,224,76]],[0.72,[252,141,89]],[1,[215,48,39]]];
+  let i=0; while(i<S.length-2 && t>S[i+1][0]) i++;
+  const span=S[i+1][0]-S[i][0], f=span>0?(t-S[i][0])/span:0;
+  return '#'+S[i][1].map((v,j)=>Math.round(v+(S[i+1][1][j]-v)*f).toString(16).padStart(2,'0')).join('');
+}
+
+function _mcTiles(){
+  const dark = document.documentElement.getAttribute('data-theme')==='dark';
+  return dark
+    ? L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {attribution:'© OpenStreetMap © CARTO', maxZoom:19})
+    : L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {attribution:'© OpenStreetMap', maxZoom:19});
+}
+
+let _mcMap=null, _muniPolys=null;
+
+function _loadMuniPolys(){
+  if(_muniPolys && _muniPolys.length) return;
+  _muniPolys = [];
+  MUNI_GEO.forEach(m=>{
+    const latlngs = m.r.map(ring=>ring.map(c=>[c[1],c[0]]));
+    const poly = L.polygon(latlngs, {color:'#ffffff', weight:1, opacity:0.7, fillColor:'#cccccc', fillOpacity:0.55, interactive:true});
+    poly.addTo(_mcMap);
+    _muniPolys.push({n:m.n, zk:MUNI_ZONE[_muniNorm(m.n)]||'', poly});
+  });
+  const uCircle = _circlePts(NEIVA_URBAN.lat, NEIVA_URBAN.lng, NEIVA_URBAN.r);
+  const uPoly = L.polygon(uCircle, {color:'#ffffff', weight:1, opacity:0.7, fillColor:'#cccccc', fillOpacity:0.6, interactive:true});
+  uPoly.addTo(_mcMap);
+  _muniPolys.push({n:'Neiva (urbano)', zk:'zona neiva', poly:uPoly});
+
+  const drawContour = ll => L.polyline(ll, {color:'#10171f', weight:2.2, opacity:0.9, interactive:false, lineJoin:'round'}).addTo(_mcMap);
+  ZONE_GEO.forEach(z=>z.r.forEach(ring=>drawContour(ring.map(c=>[c[1],c[0]]))));
+  drawContour(uCircle);
+}
+
+function renderMapaZonas(zonas, mesLbl){
+  if(typeof L==='undefined') return;
+  const cont = document.getElementById('mapa-zonas-leaflet');
+  if(!cont) return;
+  const sub = document.getElementById('mapa-sub');
+  if(sub) sub.textContent = mesLbl || '—';
+
+  const porCodigo = {};
+  (zonas||[]).forEach(z=>{ porCodigo[z.zona] = z; });
+  const pctVals = (zonas||[]).map(z=>z.perdidas_pct).filter(p=>p!=null);
+  const minPT = pctVals.length ? Math.min(...pctVals) : 0;
+  const maxPT = pctVals.length ? Math.max(...pctVals) : 10;
+  const rangePT = maxPT-minPT;
+  const heatCol = pct => (pct===null||pct===undefined) ? '#bdc3c7' : _heatGrad(rangePT>0.001 ? (pct-minPT)/rangePT : 0.5);
+
+  if(!_mcMap){
+    _mcMap = L.map('mapa-zonas-leaflet', {center:[2.55,-75.85], zoom:8, zoomControl:true});
+    _mcTiles().addTo(_mcMap);
+    new MutationObserver(()=>{
+      _mcMap.eachLayer(l=>{ if(l instanceof L.TileLayer) _mcMap.removeLayer(l); });
+      _mcTiles().addTo(_mcMap);
+    }).observe(document.documentElement, {attributes:true, attributeFilter:['data-theme']});
+    _loadMuniPolys();
+    _mcMap.fitBounds([[1.28,-77.25],[3.82,-74.30]], {padding:[6,6]});
+  }
+  _mcMap.invalidateSize();
+
+  _muniPolys.forEach(mp=>{
+    const codigo = CLAVE_A_CODIGO_HUILA[mp.zk] || null;
+    const d = codigo ? porCodigo[codigo] : null;
+    const col = d ? heatCol(d.perdidas_pct) : '#d5d8dc';
+    mp.poly.setStyle({fillColor:col, fillOpacity: d?0.78:0.30, color:'#ffffff', weight:1, opacity:0.9});
+    const nm = mp.n.charAt(0)+mp.n.slice(1).toLowerCase();
+    mp.poly.unbindTooltip();
+    mp.poly.bindTooltip(
+      `<b>${nm}</b><br>${codigo ? 'Zona '+codigo : 'Sin zona'}${d?' · '+d.perdidas_pct.toFixed(2)+'%':''}`,
+      {sticky:true, direction:'top', className:'muni-tip'}
+    );
+  });
+
+  const legMin = document.getElementById('mapa-leg-min');
+  const legMax = document.getElementById('mapa-leg-max');
+  const legZonas = document.getElementById('mapa-leg-zonas');
+  if(legMin) legMin.textContent = minPT.toFixed(1)+'%';
+  if(legMax) legMax.textContent = maxPT.toFixed(1)+'%';
+  if(legZonas){
+    legZonas.innerHTML = (zonas||[]).map(z=>{
+      const col = heatCol(z.perdidas_pct);
+      return `<span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--text2);background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:2px 8px">
+        <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${col}"></span>${z.zona} <b style="margin-left:2px">${z.perdidas_pct.toFixed(1)}%</b></span>`;
+    }).join('');
+  }
 }
 
 /* ============================================================
