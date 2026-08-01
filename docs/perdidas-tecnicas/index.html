@@ -167,11 +167,11 @@ tfoot td:first-child{text-align:left}
 /* RANGE SLIDER */
 .range-wrap{margin-top:14px}
 .range-track-row{position:relative;height:26px;display:flex;align-items:center}
-#rs,#re{position:absolute;width:100%;appearance:none;-webkit-appearance:none;background:transparent;height:4px;margin:0;pointer-events:none}
-#rs::-webkit-slider-thumb,#re::-webkit-slider-thumb{pointer-events:all;-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:var(--accent);cursor:pointer;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.25)}
-#rs::-moz-range-thumb,#re::-moz-range-thumb{pointer-events:all;width:14px;height:14px;border-radius:50%;background:var(--accent);cursor:pointer;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.25)}
-#range-track{position:absolute;width:100%;height:4px;background:var(--bg3);border-radius:2px}
-#range-fill{position:absolute;height:4px;background:var(--accent);border-radius:2px}
+#rs,#re,#rs2,#re2{position:absolute;width:100%;appearance:none;-webkit-appearance:none;background:transparent;height:4px;margin:0;pointer-events:none}
+#rs::-webkit-slider-thumb,#re::-webkit-slider-thumb,#rs2::-webkit-slider-thumb,#re2::-webkit-slider-thumb{pointer-events:all;-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:var(--accent);cursor:pointer;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.25)}
+#rs::-moz-range-thumb,#re::-moz-range-thumb,#rs2::-moz-range-thumb,#re2::-moz-range-thumb{pointer-events:all;width:14px;height:14px;border-radius:50%;background:var(--accent);cursor:pointer;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.25)}
+#range-track,#range-track2{position:absolute;width:100%;height:4px;background:var(--bg3);border-radius:2px}
+#range-fill,#range-fill2{position:absolute;height:4px;background:var(--accent);border-radius:2px}
 
 /* PROYECCIÓN — panel de ecuaciones */
 .math-block{font-family:Georgia,'Times New Roman',serif;line-height:1.9;font-size:13px;letter-spacing:.3px}
@@ -381,6 +381,20 @@ tfoot td:first-child{text-align:left}
   </div>
 
   <div class="card">
+    <div class="range-wrap" style="margin-top:0;margin-bottom:14px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text3)">Rango (independiente de los filtros de arriba)</span>
+        <select id="range-start-sel2" onchange="syncRangeFromSel2()"></select>
+        <span style="font-size:11px;color:var(--text3)">→</span>
+        <select id="range-end-sel2" onchange="syncRangeFromSel2()"></select>
+      </div>
+      <div class="range-track-row">
+        <div id="range-track2"></div>
+        <div id="range-fill2"></div>
+        <input type="range" id="rs2" min="0" value="0" oninput="updateRange2()">
+        <input type="range" id="re2" min="0" value="0" oninput="updateRange2()">
+      </div>
+    </div>
     <div class="split-wrap">
       <div>
         <div class="card-title" style="text-align:center">Pérdida por Nivel</div>
@@ -467,6 +481,7 @@ let chPrincipal=null, chZona=null, chDona=null, chNivelApilado=null, chZonaApila
 let META = {zonas:[], niveles:[], meses:[]};
 let RESUMEN = null;
 let RANGO = {start:0, end:0};
+let RANGO2 = {start:0, end:0};
 let showProjection = false;
 
 // Las etiquetas flotantes sobre barras/puntos son opt-in por dataset -- si no,
@@ -751,6 +766,8 @@ async function cargarMeta(){
   const selPeriodo = document.getElementById('kpi-period-sel');
   const selStart = document.getElementById('range-start-sel');
   const selEnd = document.getElementById('range-end-sel');
+  const selStart2 = document.getElementById('range-start-sel2');
+  const selEnd2 = document.getElementById('range-end-sel2');
 
   selZona.innerHTML = '<option value="">Todas</option>' + META.zonas.map(z=>`<option value="${z}">${z}</option>`).join('');
   selNivel.innerHTML = '<option value="">Todos</option>' + META.niveles.map(n=>`<option value="${n}">Nivel ${n}</option>`).join('');
@@ -768,8 +785,14 @@ async function cargarMeta(){
   document.getElementById('re').max = META.meses.length-1;
   _applyRange(0, META.meses.length-1);
 
+  selStart2.innerHTML = opcionesRango; selEnd2.innerHTML = opcionesRango;
+  document.getElementById('rs2').max = META.meses.length-1;
+  document.getElementById('re2').max = META.meses.length-1;
+  _applyRange2(0, META.meses.length-1);
+
   await cargarAlimentadores();
   await cargarReconocimiento();
+  await cargarGraficasApiladas();
 }
 
 async function cargarAlimentadores(){
@@ -854,6 +877,35 @@ async function syncRangeFromSel(){
   await aplicarFiltros();
 }
 
+/* ---- Rango independiente para "Pérdida por Nivel / Zona" ---- */
+function _applyRange2(s, e){
+  RANGO2.start = s; RANGO2.end = e;
+  document.getElementById('rs2').value = s;
+  document.getElementById('re2').value = e;
+  document.getElementById('range-start-sel2').value = s;
+  document.getElementById('range-end-sel2').value = e;
+  const total = META.meses.length>1 ? META.meses.length-1 : 1;
+  document.getElementById('range-fill2').style.left = (s/total*100)+'%';
+  document.getElementById('range-fill2').style.right = ((1-e/total)*100)+'%';
+}
+
+async function updateRange2(){
+  let s = parseInt(document.getElementById('rs2').value);
+  let e = parseInt(document.getElementById('re2').value);
+  if(s>e){ const tmp=s; s=e; e=tmp; }
+  _applyRange2(s, e);
+  await cargarGraficasApiladas();
+}
+
+async function syncRangeFromSel2(){
+  let s = parseInt(document.getElementById('range-start-sel2').value||0);
+  let e = parseInt(document.getElementById('range-end-sel2').value||0);
+  if(isNaN(s)) s=0; if(isNaN(e)) e=META.meses.length-1;
+  if(s>e){ const tmp=s; s=e; e=tmp; }
+  _applyRange2(s, e);
+  await cargarGraficasApiladas();
+}
+
 let _debounceAlim = null;
 function aplicarFiltrosDebounced(){
   clearTimeout(_debounceAlim);
@@ -881,7 +933,6 @@ async function aplicarFiltros(){
   renderPrincipal();
   renderKpiCards();
   await cargarZonas();
-  await cargarGraficasApiladas();
 }
 
 async function limpiarFiltros(){
@@ -1269,33 +1320,26 @@ function labelMesSiguiente(m){
   return t.charAt(0).toUpperCase()+t.slice(1)+' '+d.getFullYear();
 }
 
-/* ---- Pérdida por Nivel / Pérdida por Zona (barras apiladas) ---- */
-function fmtMill(v, decimales){
-  return (v/1e6).toLocaleString('es-CO', {minimumFractionDigits:decimales, maximumFractionDigits:decimales})+' mill.';
+/* ---- Pérdida por Nivel / Pérdida por Zona (barras apiladas) ----
+ * Totalmente independientes de los filtros de Zona/Alimentador/Nivel y del
+ * Rango de arriba -- tienen su propio slider de rango (RANGO2). */
+function fmtEntero(v){
+  return Math.round(v).toLocaleString('es-CO');
 }
 
 const ChartsApilados = {nivel:null, zona:null};
 
 async function cargarGraficasApiladas(){
-  const zona = document.getElementById('fm-zona').value;
-  const nivel = document.getElementById('fm-nivel').value;
-  const alimentador = document.getElementById('fm-alimentador').value.trim();
-  const base = () => {
-    const qs = new URLSearchParams();
-    if(alimentador) qs.set('alimentador', alimentador);
-    if(META.meses && META.meses.length){
-      qs.set('desde', `${META.meses[RANGO.start] || META.meses[0]}-01`);
-      qs.set('hasta', `${META.meses[RANGO.end] || META.meses[META.meses.length-1]}-01`);
-    }
-    return qs;
-  };
-  const qsNivel = base(); if(zona) qsNivel.set('zona', zona);
-  const qsZona = base(); if(nivel) qsZona.set('nivel', nivel);
+  const qs = new URLSearchParams();
+  if(META.meses && META.meses.length){
+    qs.set('desde', `${META.meses[RANGO2.start] || META.meses[0]}-01`);
+    qs.set('hasta', `${META.meses[RANGO2.end] || META.meses[META.meses.length-1]}-01`);
+  }
 
   try{
     const [porNivel, porZona] = await Promise.all([
-      apiGet(`/api/perdidas-por-nivel?${qsNivel.toString()}`),
-      apiGet(`/api/perdidas-por-zona?${qsZona.toString()}`),
+      apiGet(`/api/perdidas-por-nivel?${qs.toString()}`),
+      apiGet(`/api/perdidas-por-zona?${qs.toString()}`),
     ]);
     renderApilado('nivel', 'ch-nivel-apilado', porNivel, c=>`Nivel ${c}`, colorParaNivel);
     renderApilado('zona', 'ch-zona-apilado', porZona, c=>c, (c)=>colorParaZona(c));
@@ -1316,8 +1360,8 @@ function renderApilado(key, canvasId, datos, formatEtiqueta, getColor){
   const datasets = series.map(s=>({
     type:'bar', label: formatEtiqueta(s.clave), data: s.valores,
     backgroundColor: getColor(s.clave, claves), stack:'total', borderRadius:2,
-    datalabels:{display:v=>v.dataset.data[v.dataIndex]>0, anchor:'center', align:'center',
-      formatter:v=>v>0 ? fmtMill(v,1) : '', font:{size:10,weight:'700'}, color:'#fff'},
+    datalabels:{display:v=>v.dataset.data[v.dataIndex]>0, anchor:'center', align:'center', rotation:-90,
+      formatter:v=>v>0 ? fmtEntero(v) : '', font:{size:10,weight:'700'}, color:'#fff'},
   }));
 
   const totales = labels.map((_,i)=> series.reduce((s,serie)=>s+(serie.valores[i]||0),0));
@@ -1325,7 +1369,7 @@ function renderApilado(key, canvasId, datos, formatEtiqueta, getColor){
     type:'line', label:'Total', data: totales, borderWidth:0, pointRadius:0, pointHoverRadius:0,
     backgroundColor:'transparent', borderColor:'transparent', fill:false,
     datalabels:{display:true, anchor:'end', align:'top', offset:4,
-      formatter:v=>fmtMill(v,2), font:{size:11,weight:'800'}, color:tickC},
+      formatter:v=>fmtEntero(v), font:{size:12,weight:'800'}, color:tickC},
   });
 
   if(ChartsApilados[key]) ChartsApilados[key].destroy();
@@ -1338,7 +1382,7 @@ function renderApilado(key, canvasId, datos, formatEtiqueta, getColor){
         filter:item=>item.text!=='Total'}}},
       scales:{
         x:{stacked:true, grid:{display:false}, ticks:{color:tickC, font:{size:11}}},
-        y:{stacked:true, beginAtZero:true, grid:{color:gridC}, ticks:{color:tickC, font:{size:11}, callback:v=>fmtMill(v,0)}},
+        y:{stacked:true, beginAtZero:true, grid:{color:gridC}, ticks:{color:tickC, font:{size:11}, callback:v=>fmtEntero(v)}},
       },
     },
   });
