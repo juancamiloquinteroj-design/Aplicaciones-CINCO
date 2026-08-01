@@ -43,6 +43,12 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(
 .sidebar-proximamente{font-size:10.5px;color:var(--text3);padding:10px 12px;border-top:1px solid var(--border)}
 .sidebar-acceso{margin-top:auto;font-size:10.5px;color:var(--text3);padding:10px 12px;border-top:1px solid var(--border);line-height:1.6}
 .sidebar-acceso b{color:var(--text2)}
+.btn-actualizar-datos{width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:none;color:var(--text2);font-size:12px;font-weight:700;cursor:pointer;margin-top:2px}
+.btn-actualizar-datos:hover{background:var(--bg3);color:var(--text)}
+.btn-actualizar-datos:disabled{opacity:.6;cursor:default}
+.actualizar-datos-msg{font-size:10.5px;padding:6px 12px 0;line-height:1.5}
+.actualizar-datos-msg.ok{color:#2a9d5c}
+.actualizar-datos-msg.err{color:#e05252}
 .app-shell{display:block}
 
 /* En pantallas de escritorio, el menú queda fijo a la izquierda (ocupando el
@@ -231,6 +237,8 @@ tfoot td:first-child{text-align:left}
   <button class="sidebar-link active" data-vista="inicio" onclick="mostrarVista('inicio')">🏠 Inicio</button>
   <button class="sidebar-link" data-vista="perdidas" onclick="mostrarVista('perdidas')">📉 Pérdidas Técnicas</button>
   <div class="sidebar-proximamente">Más módulos próximamente</div>
+  <button class="btn-actualizar-datos" id="btn-actualizar-datos" onclick="actualizarDatos()">🔄 Actualizar datos</button>
+  <div class="actualizar-datos-msg" id="actualizar-datos-msg"></div>
   <div class="sidebar-acceso" id="sidebar-acceso"></div>
 </aside>
 <div id="app-screen" class="page hidden">
@@ -492,6 +500,40 @@ async function mostrarVista(nombre){
     vistaCargada.perdidas = true;
     await cargarMeta();
     await aplicarFiltros();
+  }
+}
+
+async function actualizarDatos(){
+  const btn = document.getElementById('btn-actualizar-datos');
+  const msg = document.getElementById('actualizar-datos-msg');
+  msg.className = 'actualizar-datos-msg';
+  msg.textContent = '';
+
+  if(DEMO){
+    msg.className = 'actualizar-datos-msg err';
+    msg.textContent = 'No disponible en modo demo.';
+    return;
+  }
+  if(!confirm('Esto borra los datos actuales de tu operador y los reemplaza por lo que haya ahora mismo en los CSV. ¿Continuar?')) return;
+
+  btn.disabled = true; btn.textContent = 'Actualizando…';
+  try{
+    const res = await fetchConTimeout(`${API_BASE_URL}/api/resincronizar`, {method:'POST', headers: authHeaders()}, AUTH_TIMEOUT_MS);
+    const data = await res.json().catch(()=>null);
+    if(!res.ok) throw new Error((data && data.detail) || 'No se pudo actualizar.');
+
+    msg.className = 'actualizar-datos-msg ok';
+    msg.textContent = `Listo: ${data.filas_cargadas} filas cargadas${data.filas_con_error ? `, ${data.filas_con_error} con error` : ''}.`;
+
+    vistaCargada.perdidas = false;
+    if(!document.getElementById('vista-perdidas').classList.contains('hidden')){
+      await mostrarVista('perdidas');
+    }
+  }catch(e){
+    msg.className = 'actualizar-datos-msg err';
+    msg.textContent = e.message || 'No se pudo actualizar los datos.';
+  }finally{
+    btn.disabled = false; btn.textContent = '🔄 Actualizar datos';
   }
 }
 
