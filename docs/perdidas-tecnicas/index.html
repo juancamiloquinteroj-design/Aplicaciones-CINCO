@@ -328,6 +328,9 @@ tfoot td:first-child{text-align:left}
     </div>
 
     <div class="creg-tbl" id="creg-tbl"></div>
+    <div style="display:flex;justify-content:flex-end;margin-top:8px">
+      <button class="btn-theme" style="width:auto;padding:0 14px" onclick="limpiarFiltros()" title="Quitar todos los filtros y volver al rango completo">✕ Borrar filtros</button>
+    </div>
 
     <div class="range-wrap">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
@@ -348,8 +351,7 @@ tfoot td:first-child{text-align:left}
   <div class="card">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;flex-wrap:wrap;gap:8px">
       <div style="flex:1;text-align:center">
-        <div style="font-size:16px;font-weight:800;letter-spacing:1.5px;color:var(--text);text-transform:uppercase">Pérdidas Técnicas</div>
-        <div class="card-sub" style="text-align:center;margin-bottom:0">Barras = Entradas y Pérdidas Técnicas (kWh) · Línea naranja = Pérdidas Técnicas (%)</div>
+        <div id="chart-titulo" style="font-size:16px;font-weight:800;letter-spacing:1.5px;color:var(--text);text-transform:uppercase">Pérdidas Técnicas Total</div>
       </div>
       <div style="display:flex;gap:8px;flex-shrink:0">
         <button id="proj-btn" onclick="toggleProjection()" title="Proyectar PT kWh basado en entradas futuras"
@@ -845,10 +847,20 @@ async function aplicarFiltros(){
     qs.set('hasta', `${META.meses[RANGO.end] || META.meses[META.meses.length-1]}-01`);
   }
 
+  document.getElementById('chart-titulo').textContent = nivel ? `Pérdidas Técnicas Nivel ${nivel}` : 'Pérdidas Técnicas Total';
+
   RESUMEN = await apiGet(`/api/resumen?${qs.toString()}`);
   renderPrincipal();
   renderKpiCards();
   await cargarZonas();
+}
+
+async function limpiarFiltros(){
+  document.getElementById('fm-zona').value = '';
+  document.getElementById('fm-alimentador').value = '';
+  document.getElementById('fm-nivel').value = '';
+  _applyRange(0, META.meses.length-1);
+  await aplicarFiltros();
 }
 
 async function cargarZonas(){
@@ -1211,18 +1223,18 @@ function renderPrincipal(){
         }}},
       },
       scales:{
-        x:{grid:{display:false}, ticks:{color:tickC, font:{size:10}, autoSkip:false, maxRotation:0, minRotation:0}},
+        x:{grid:{display:false}, ticks:{color:tickC, font:{size:12}, autoSkip:false, maxRotation:0, minRotation:0}},
         yEnt:{type:'linear', position:'left', beginAtZero:true, grid:{color:gridC},
-          ticks:{color:'#0096c7', font:{size:10}, callback:v=>fmtGwh(v)},
-          title:{display:true, text:'Entradas (GWh)', color:'#0096c7', font:{size:10}}},
+          ticks:{color:'#0096c7', font:{size:13}, callback:v=>fmtGwh(v)},
+          title:{display:true, text:'Entradas (GWh)', color:'#0096c7', font:{size:12}}},
         yKwh:{type:'linear', position:'right', beginAtZero:true, grid:{drawOnChartArea:false},
-          ticks:{color:'#ef476f', font:{size:10}, callback:v=>fmtGwh(v)},
-          afterFit:ax=>{ax.width=Math.max(ax.width,88)},
-          title:{display:true, text:'PT (GWh)', color:'#ef476f', font:{size:10}}},
+          ticks:{color:'#ef476f', font:{size:13}, callback:v=>fmtGwh(v)},
+          afterFit:ax=>{ax.width=Math.max(ax.width,96)},
+          title:{display:true, text:'PT (GWh)', color:'#ef476f', font:{size:12}}},
         yPct:{type:'linear', position:'right', beginAtZero:true, grid:{drawOnChartArea:false},
-          ticks:{color:'#f4a261', font:{size:10}, callback:v=>v.toFixed(1)+'%'},
-          afterFit:ax=>{ax.width=Math.max(ax.width,80)},
-          title:{display:true, text:'Pérd. Técnicas %', color:'#f4a261', font:{size:10}},
+          ticks:{color:'#f4a261', font:{size:13}, callback:v=>v.toFixed(1)+'%'},
+          afterFit:ax=>{ax.width=Math.max(ax.width,86)},
+          title:{display:true, text:'Pérd. Técnicas %', color:'#f4a261', font:{size:12}},
           offset:true},
       },
     },
