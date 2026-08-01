@@ -426,18 +426,36 @@ tfoot td:first-child{text-align:left}
   </div>
 
   <div class="card">
-    <div class="card-title">💰 Desglose y reconocimiento CREG · por zona</div>
-    <div class="card-sub" id="tbl-sub">—</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+      <div>
+        <div class="card-title" style="margin-bottom:2px">💰 Valuación Económica de Pérdidas Técnicas · por Zona</div>
+        <div class="card-sub" id="tbl-sub" style="margin-bottom:0">—</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <button id="btn-contraer-zonas" onclick="toggleZonasContraidas()"
+          style="padding:5px 11px;border:1px solid var(--accent);border-radius:7px;font-size:11px;font-weight:600;background:transparent;color:var(--accent);cursor:pointer;white-space:nowrap">
+          ▾ Expandir por nivel
+        </button>
+        <label style="font-size:12px;color:var(--text3);white-space:nowrap">Costo kWh/mes (G+T+R):</label>
+        <div style="display:flex;align-items:center;gap:4px">
+          <span style="font-size:12px;color:var(--text3)">$</span>
+          <input type="number" id="costo-kwh" value="0" step="1" min="0" oninput="renderValuacionZonas()"
+            style="padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12px;font-weight:700;color:var(--accent);background:var(--bg);width:110px;text-align:right">
+        </div>
+      </div>
+    </div>
     <div class="tbl-wrap">
       <table>
         <thead>
           <tr>
-            <th>Zona</th><th>Entradas (kWh)</th><th>Pérdidas Técnicas (kWh)</th><th>PT (%)</th>
-            <th>Reconocimiento CREG (kWh)</th><th>PT Reconocida (kWh)</th><th>PT No Reconocida (kWh)</th>
+            <th>Zona</th><th>Reconocimiento CREG 008/2021 (%)</th><th>Entradas (kWh/mes)</th>
+            <th>Pérd. Técnicas Calculadas (kWh/mes)</th><th>Pérd. Técnicas Calculadas (%)</th>
+            <th>Pérd. Reconocida (kWh/mes)</th><th>Pérd. No Reconocida (kWh/mes)</th>
+            <th>Costo Reconocido ($/mes)</th><th>Costo No Reconocido ($/mes)</th>
           </tr>
         </thead>
-        <tbody id="tb-zonas"></tbody>
-        <tfoot id="tf-zonas"></tfoot>
+        <tbody id="tb-valuacion"></tbody>
+        <tfoot id="tf-valuacion"></tfoot>
       </table>
     </div>
   </div>
@@ -960,10 +978,15 @@ async function limpiarFiltros(){
 async function cargarZonas(){
   const mes = document.getElementById('fm-mes').value;
   if(!mes) return;
-  const zonas = await apiGet(`/api/zonas?mes=${mes}`);
-  document.getElementById('tbl-sub').textContent = `Mes: ${labelMes(mes)}`;
+  const [zonas, valuacion] = await Promise.all([
+    apiGet(`/api/zonas?mes=${mes}`),
+    apiGet(`/api/valuacion-zonas?mes=${mes}`),
+  ]);
+  const costo = parseFloat(document.getElementById('costo-kwh').value||'0') || 0;
+  document.getElementById('tbl-sub').textContent = `Costo de la pérdida reconocida y no reconocida · ${labelMes(mes)} · ${costo.toLocaleString('es-CO')} $/kWh (G+T+R)`;
   renderZona(zonas);
-  renderTablaZonas(zonas);
+  VALUACION_ZONAS_CRUDA = valuacion;
+  renderValuacionZonas();
 }
 
 async function descargarCSV(){
@@ -1478,28 +1501,85 @@ function renderZona(zonas){
   });
 }
 
-function renderTablaZonas(zonas){
-  const fmt = n => Math.round(n).toLocaleString('es-CO');
-  const tb = document.getElementById('tb-zonas');
-  tb.innerHTML = zonas.map(z=>`
-    <tr>
-      <td><span class="zb" style="background:${colorParaZona(z.zona)}22;color:${colorParaZona(z.zona)}">${z.zona}</span></td>
-      <td>${fmt(z.entradas_kwh)}</td>
-      <td>${fmt(z.perdidas_kwh)}</td>
-      <td>${z.perdidas_pct.toFixed(2)}%</td>
-      <td>${fmt(z.reconocimiento_creg_kwh)}</td>
-      <td>${fmt(z.pt_reconocida_kwh)}</td>
-      <td>${fmt(z.pt_no_reconocida_kwh)}</td>
-    </tr>`).join('');
+/* ---- Valuación económica de Pérdidas Técnicas por Zona ----
+ * Una zona puede tener circuitos en varios niveles de tensión, y cada nivel
+ * tiene su propio % de reconocimiento CREG -- por eso el backend entrega el
+ * detalle por (zona,nivel) y acá se agrega por zona (contraído) o se
+ * muestra tal cual, una fila por nivel (expandido). */
+let VALUACION_ZONAS_CRUDA = [];
+let zonasExpandidas = false;
 
-  const tot = zonas.reduce((a,z)=>({
-    ent:a.ent+z.entradas_kwh, per:a.per+z.perdidas_kwh, rec:a.rec+z.reconocimiento_creg_kwh,
-    ptr:a.ptr+z.pt_reconocida_kwh, ptn:a.ptn+z.pt_no_reconocida_kwh,
-  }), {ent:0,per:0,rec:0,ptr:0,ptn:0});
-  document.getElementById('tf-zonas').innerHTML = `
-    <tr><td>Total</td><td>${fmt(tot.ent)}</td><td>${fmt(tot.per)}</td>
-    <td>${tot.ent? (tot.per/tot.ent*100).toFixed(2):'0.00'}%</td>
-    <td>${fmt(tot.rec)}</td><td>${fmt(tot.ptr)}</td><td>${fmt(tot.ptn)}</td></tr>`;
+function toggleZonasContraidas(){
+  zonasExpandidas = !zonasExpandidas;
+  document.getElementById('btn-contraer-zonas').textContent = zonasExpandidas ? '▴ Contraer por zona' : '▾ Expandir por nivel';
+  renderValuacionZonas();
+}
+
+function _agregarValuacionPorZona(filas){
+  const porZona = new Map();
+  filas.forEach(f=>{
+    if(!porZona.has(f.zona)){
+      porZona.set(f.zona, {zona:f.zona, nivel:null, entradas_kwh:0, perdidas_kwh:0, pt_reconocida_kwh:0, pt_no_reconocida_kwh:0, _peso:0});
+    }
+    const z = porZona.get(f.zona);
+    z.entradas_kwh += f.entradas_kwh;
+    z.perdidas_kwh += f.perdidas_kwh;
+    z.pt_reconocida_kwh += f.pt_reconocida_kwh;
+    z.pt_no_reconocida_kwh += f.pt_no_reconocida_kwh;
+    z._peso += f.entradas_kwh * f.reconocimiento_pct;
+  });
+  return [...porZona.values()].map(z=>({
+    ...z,
+    reconocimiento_pct: z.entradas_kwh ? z._peso/z.entradas_kwh : 0,
+    perdidas_pct: z.entradas_kwh ? z.perdidas_kwh/z.entradas_kwh*100 : 0,
+  }));
+}
+
+function renderValuacionZonas(){
+  const tb = document.getElementById('tb-valuacion');
+  const tf = document.getElementById('tf-valuacion');
+  if(!tb || !tf) return;
+  const costo = parseFloat(document.getElementById('costo-kwh').value||'0') || 0;
+  const fK = n => Math.round(n).toLocaleString('es-CO');
+  const f$ = n => '$ '+Math.round(n).toLocaleString('es-CO');
+
+  const filas = zonasExpandidas ? VALUACION_ZONAS_CRUDA : _agregarValuacionPorZona(VALUACION_ZONAS_CRUDA);
+
+  tb.innerHTML = filas.map(f=>{
+    const nrColor = f.pt_no_reconocida_kwh>0 ? 'var(--red)' : 'var(--green)';
+    const etiqueta = f.nivel ? `${f.zona} · Nivel ${f.nivel}` : f.zona;
+    return `<tr>
+      <td><span class="zb" style="background:${colorParaZona(f.zona)}22;color:${colorParaZona(f.zona)}">${etiqueta}</span></td>
+      <td>${f.reconocimiento_pct.toFixed(2)}%</td>
+      <td>${fK(f.entradas_kwh)}</td>
+      <td style="color:var(--red);font-weight:700">${fK(f.perdidas_kwh)}</td>
+      <td>${f.perdidas_pct.toFixed(2)}%</td>
+      <td style="color:var(--green);font-weight:600">${fK(f.pt_reconocida_kwh)}</td>
+      <td style="color:${nrColor};font-weight:${f.pt_no_reconocida_kwh>0?'700':'400'}">${fK(f.pt_no_reconocida_kwh)}</td>
+      <td style="color:var(--green);font-weight:600">${f$(f.pt_reconocida_kwh*costo)}</td>
+      <td style="color:${nrColor};font-weight:${f.pt_no_reconocida_kwh>0?'700':'400'}">${f$(f.pt_no_reconocida_kwh*costo)}</td>
+    </tr>`;
+  }).join('');
+
+  const tot = VALUACION_ZONAS_CRUDA.reduce((a,f)=>({
+    ent:a.ent+f.entradas_kwh, per:a.per+f.perdidas_kwh,
+    ptr:a.ptr+f.pt_reconocida_kwh, ptn:a.ptn+f.pt_no_reconocida_kwh,
+    peso:a.peso+f.entradas_kwh*f.reconocimiento_pct,
+  }), {ent:0,per:0,ptr:0,ptn:0,peso:0});
+  const totPct = tot.ent ? tot.per/tot.ent*100 : 0;
+  const totCreg = tot.ent ? tot.peso/tot.ent : 0;
+  const totNrColor = tot.ptn>0 ? 'var(--red)' : 'var(--green)';
+  tf.innerHTML = `<tr>
+    <td style="font-weight:800">TOTAL</td>
+    <td style="font-weight:800">${totCreg.toFixed(2)}%</td>
+    <td style="font-weight:800">${fK(tot.ent)}</td>
+    <td style="color:var(--red);font-weight:800">${fK(tot.per)}</td>
+    <td style="font-weight:800">${totPct.toFixed(2)}%</td>
+    <td style="color:var(--green);font-weight:800">${fK(tot.ptr)}</td>
+    <td style="color:${totNrColor};font-weight:800">${fK(tot.ptn)}</td>
+    <td style="color:var(--green);font-weight:800">${f$(tot.ptr*costo)}</td>
+    <td style="color:${totNrColor};font-weight:800">${f$(tot.ptn*costo)}</td>
+  </tr>`;
 }
 
 /* ============================================================
@@ -1532,6 +1612,20 @@ function demoGet(path){
         reconocimiento_creg_kwh:reconocido, pt_reconocida_kwh:ptRec, pt_no_reconocida_kwh:ptNo};
     });
     return Promise.resolve(zonas);
+  }
+  if(path.startsWith('/api/valuacion-zonas')){
+    const filas = [];
+    DEMO_ZONAS.forEach((z,i)=>{
+      [1,2,3].forEach(nivel=>{
+        const entradas = 100000 + seededRand(i*3+nivel)*80000;
+        const perdidas = entradas * (0.01 + seededRand(i*5+nivel)*0.04);
+        const pct = 1.53;
+        const reconocido = entradas * pct/100;
+        filas.push({zona:z, nivel, reconocimiento_pct:pct, entradas_kwh:entradas, perdidas_kwh:perdidas,
+          perdidas_pct:+(perdidas/entradas*100).toFixed(2), pt_reconocida_kwh:reconocido, pt_no_reconocida_kwh:perdidas-reconocido});
+      });
+    });
+    return Promise.resolve(filas);
   }
   if(path.startsWith('/api/perdidas-por-nivel')){
     const niveles = [1,2,3,4];
