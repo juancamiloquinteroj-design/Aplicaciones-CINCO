@@ -222,9 +222,8 @@ tfoot td:first-child{text-align:left}
 <!-- ---------------- INICIO ---------------- -->
 <div id="vista-inicio" class="vista-modulo">
   <div class="inicio-hero">
-    <div class="inicio-eye">CINCO VISION</div>
-    <div class="inicio-titulo" id="inicio-saludo">Hola 👋</div>
-    <div class="inicio-sub">Este es tu panel de datos. Elegí un módulo del menú (☰) para empezar.</div>
+    <div class="inicio-titulo" id="inicio-saludo">Bienvenido/a 👋</div>
+    <div class="inicio-sub" id="inicio-sub">Acá vas a encontrar los datos de pérdidas técnicas e indicadores de tu operador.</div>
   </div>
 
   <div class="mod-grid">
@@ -318,7 +317,7 @@ const AUTH_TIMEOUT_MS = 15000;      // login/cambio de clave: pasan por Centro d
 // salvo que venga este header -- sin esto, todas las llamadas a la API fallarían.
 const NGROK_HEADERS = {'ngrok-skip-browser-warning':'true'};
 
-let TOKEN = null, OPERADOR = null, DEMO = false;
+let TOKEN = null, OPERADOR = null, PERSONA = null, DEMO = false;
 const ZONA_COLOR = {ZN:'#00b4d8',ZE:'#f4a261',ZC:'#06d6a0',ZS:'#ef476f',ZO:'#7b2fff',EH:'#4a5e7a','Sin zona':'#8a9ab5'};
 const ZONA_NOMBRE = {ZN:'Norte',ZE:'Este',ZC:'Centro',ZS:'Sur',ZO:'Oriente',EH:'Transmisión (EH)','Sin zona':'Sin zona'};
 let chPrincipal=null, chZona=null, chDona=null;
@@ -374,12 +373,12 @@ async function manejarLogin(ev){
       document.getElementById('cambio-screen').classList.remove('hidden');
       return;
     }
-    TOKEN = data.access_token; OPERADOR = data.operador; DEMO = false;
+    TOKEN = data.access_token; OPERADOR = data.operador; PERSONA = data.persona; DEMO = false;
     entrarDashboard();
   }catch(e){
     if(e.name==='AbortError' || e instanceof TypeError){
       // No hay backend disponible todavía -> vista de demostración con datos de ejemplo.
-      TOKEN = null; OPERADOR = {nombre:'Operador de ejemplo', slug:'demo'}; DEMO = true;
+      TOKEN = null; OPERADOR = {nombre:'Operador de ejemplo', slug:'demo'}; PERSONA = {nombre:'', correo:user}; DEMO = true;
       entrarDashboard();
     }else{
       err.textContent = e.message; err.style.display='block';
@@ -477,7 +476,7 @@ async function mostrarVista(nombre){
 }
 
 function cerrarSesion(){
-  TOKEN=null; OPERADOR=null; DEMO=false;
+  TOKEN=null; OPERADOR=null; PERSONA=null; DEMO=false;
   vistaCargada = {perdidas:false};
   document.getElementById('app-screen').classList.add('hidden');
   document.getElementById('login-screen').classList.remove('hidden');
@@ -497,7 +496,10 @@ async function entrarDashboard(){
   document.getElementById('badge-op').textContent = OPERADOR.nombre;
   document.getElementById('badge-op').classList.remove('hidden');
   document.getElementById('badge-demo').classList.toggle('hidden', !DEMO);
-  document.getElementById('inicio-saludo').textContent = `Hola 👋 · ${OPERADOR.nombre}`;
+  const nombrePersona = (PERSONA && PERSONA.nombre) ? PERSONA.nombre.split(' ')[0] : (PERSONA && PERSONA.correo) || '';
+  document.getElementById('inicio-saludo').textContent = nombrePersona ? `Bienvenido/a, ${nombrePersona} 👋` : 'Bienvenido/a 👋';
+  document.getElementById('inicio-sub').textContent =
+    `Acá vas a encontrar los datos de pérdidas técnicas e indicadores de ${OPERADOR.nombre}.`;
 
   await mostrarVista('inicio');
 }
