@@ -158,6 +158,9 @@ tfoot td:first-child{text-align:left}
   .valuacion-hdr{flex-direction:column;align-items:flex-start}
   .valuacion-hdr-controles{width:100%}
 }
+/* Línea más gruesa entre el bloque de filas de una zona y el de la siguiente. */
+#tb-valuacion tr.zona-sep td{border-top:2px solid var(--text3)}
+#tf-valuacion tr.nivel-total td{border-top:2px solid var(--text3);background:var(--bg3)}
 
 /* MAPA POR ZONA -- el contenedor confina el z-index interno de Leaflet
    (paneles/tooltips llegan hasta ~700) para que nunca tape la navbar sticky. */
@@ -471,10 +474,10 @@ tfoot td:first-child{text-align:left}
       <table style="min-width:1020px">
         <thead>
           <tr>
-            <th>Zona</th><th>Nivel</th><th>Reconocimiento CREG 008/2021 (%)</th><th>Entradas (kWh/mes)</th>
-            <th>Pérd. Técnicas Calculadas (kWh/mes)</th><th>Pérd. Técnicas Calculadas (%)</th>
-            <th>Pérd. Reconocida (kWh/mes)</th><th>Pérd. No Reconocida (kWh/mes)</th>
-            <th>Costo Reconocido ($/mes)</th><th>Costo No Reconocido ($/mes)</th>
+            <th>Zona</th><th>Nivel</th><th>Reconocimiento<br>CREG (%)</th><th>Entradas<br>(kWh/mes)</th>
+            <th>Pérd. Técnicas<br>Calculadas (kWh/mes)</th><th>Pérd. Técnicas<br>Calculadas (%)</th>
+            <th>Pérd.<br>Reconocida (kWh/mes)</th><th>Pérd. No<br>Reconocida (kWh/mes)</th>
+            <th>Costo<br>Reconocido ($/mes)</th><th>Costo No<br>Reconocido ($/mes)</th>
           </tr>
         </thead>
         <tbody id="tb-valuacion"></tbody>
@@ -1604,12 +1607,16 @@ function renderValuacionZonas(){
   tb.innerHTML = filas.map(f=>{
     const nrColor = f.pt_no_reconocida_kwh>0 ? 'var(--red)' : 'var(--green)';
     let celdaZona = '';
+    let claseSep = '';
     if(!zonaYaPintada.has(f.zona)){
+      // Línea gruesa separando el bloque de esta zona del de la anterior
+      // (la primera zona de la tabla no lleva separador arriba).
+      if(zonaYaPintada.size>0) claseSep = ' class="zona-sep"';
       zonaYaPintada.add(f.zona);
       celdaZona = `<td rowspan="${conteoZona[f.zona]}" style="vertical-align:middle;border-right:1px solid var(--border)">
         <span class="zb" style="background:${colorParaZona(f.zona)}22;color:${colorParaZona(f.zona)}">${f.zona}</span></td>`;
     }
-    return `<tr>
+    return `<tr${claseSep}>
       ${celdaZona}
       <td>${f.nivel ? 'Nivel '+f.nivel : 'Todos'}</td>
       <td>${f.reconocimiento_pct.toFixed(2)}%</td>
@@ -1623,6 +1630,34 @@ function renderValuacionZonas(){
     </tr>`;
   }).join('');
 
+  // Totales por NIVEL DE TENSIÓN (sumando todas las zonas de ese nivel) --
+  // más útil que un solo total general, ya que el reconocimiento CREG se
+  // fija por nivel, no por zona.
+  const porNivel = new Map();
+  VALUACION_ZONAS_CRUDA.forEach(f=>{
+    if(!porNivel.has(f.nivel)) porNivel.set(f.nivel, {nivel:f.nivel, ent:0, per:0, ptr:0, ptn:0, peso:0});
+    const n = porNivel.get(f.nivel);
+    n.ent += f.entradas_kwh; n.per += f.perdidas_kwh;
+    n.ptr += f.pt_reconocida_kwh; n.ptn += f.pt_no_reconocida_kwh;
+    n.peso += f.entradas_kwh * f.reconocimiento_pct;
+  });
+  const filasNivelHtml = [...porNivel.values()].sort((a,b)=>a.nivel-b.nivel).map(n=>{
+    const pct = n.ent ? n.per/n.ent*100 : 0;
+    const creg = n.ent ? n.peso/n.ent : 0;
+    const nrColor = n.ptn>0 ? 'var(--red)' : 'var(--green)';
+    return `<tr class="nivel-total">
+      <td style="font-weight:800" colspan="2">Nivel ${n.nivel}</td>
+      <td style="font-weight:800">${creg.toFixed(2)}%</td>
+      <td style="font-weight:800">${fK(n.ent)}</td>
+      <td style="color:var(--red);font-weight:800">${fK(n.per)}</td>
+      <td style="font-weight:800">${pct.toFixed(2)}%</td>
+      <td style="color:var(--green);font-weight:800">${fK(n.ptr)}</td>
+      <td style="color:${nrColor};font-weight:800">${fK(n.ptn)}</td>
+      <td style="color:var(--green);font-weight:800">${f$(n.ptr*costo)}</td>
+      <td style="color:${nrColor};font-weight:800">${f$(n.ptn*costo)}</td>
+    </tr>`;
+  }).join('');
+
   const tot = VALUACION_ZONAS_CRUDA.reduce((a,f)=>({
     ent:a.ent+f.entradas_kwh, per:a.per+f.perdidas_kwh,
     ptr:a.ptr+f.pt_reconocida_kwh, ptn:a.ptn+f.pt_no_reconocida_kwh,
@@ -1631,9 +1666,8 @@ function renderValuacionZonas(){
   const totPct = tot.ent ? tot.per/tot.ent*100 : 0;
   const totCreg = tot.ent ? tot.peso/tot.ent : 0;
   const totNrColor = tot.ptn>0 ? 'var(--red)' : 'var(--green)';
-  tf.innerHTML = `<tr>
-    <td style="font-weight:800">TOTAL</td>
-    <td style="font-weight:800">—</td>
+  const filaTotalGeneral = `<tr style="border-top:2px solid var(--border)">
+    <td style="font-weight:800" colspan="2">TOTAL</td>
     <td style="font-weight:800">${totCreg.toFixed(2)}%</td>
     <td style="font-weight:800">${fK(tot.ent)}</td>
     <td style="color:var(--red);font-weight:800">${fK(tot.per)}</td>
@@ -1643,6 +1677,8 @@ function renderValuacionZonas(){
     <td style="color:var(--green);font-weight:800">${f$(tot.ptr*costo)}</td>
     <td style="color:${totNrColor};font-weight:800">${f$(tot.ptn*costo)}</td>
   </tr>`;
+
+  tf.innerHTML = filasNivelHtml + filaTotalGeneral;
 }
 
 /* ============================================================
