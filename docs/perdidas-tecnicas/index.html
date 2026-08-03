@@ -128,6 +128,20 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(
 .fbar label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text3)}
 select{padding:6px 10px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg);cursor:pointer;outline:none}
 
+.msel{position:relative;display:inline-block}
+.msel-btn{display:flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid var(--border);border-radius:7px;
+  font-size:12px;color:var(--text);background:var(--bg);cursor:pointer;outline:none;white-space:nowrap;max-width:220px}
+.msel-btn b{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:150px}
+.msel-btn .car{font-size:9px;color:var(--text3);margin-left:2px}
+.msel-panel{position:absolute;top:calc(100% + 4px);left:0;z-index:40;background:var(--bg2);border:1px solid var(--border);
+  border-radius:8px;box-shadow:0 10px 28px rgba(0,0,0,.18);padding:6px;min-width:200px;max-height:280px;overflow-y:auto}
+.msel-panel.hidden{display:none}
+.msel-opt{display:flex;align-items:center;gap:7px;padding:5px 8px;border-radius:5px;font-size:12px;color:var(--text);cursor:pointer;white-space:nowrap}
+.msel-opt:hover{background:var(--bg)}
+.msel-opt input{cursor:pointer}
+.msel-sep{height:1px;background:var(--border);margin:4px 2px}
+.msel-empty{padding:6px 8px;font-size:11px;color:var(--text3)}
+
 .chart-wrap{position:relative;height:320px}
 .split-wrap{display:flex;gap:18px;align-items:stretch;flex-wrap:wrap}
 .split-wrap>div{flex:1;min-width:280px}
@@ -336,13 +350,11 @@ tfoot td:first-child{text-align:left}
   <div class="card">
     <div class="fbar" style="margin-bottom:0">
       <label>Zona</label>
-      <select id="fm-zona" onchange="cargarAlimentadores();aplicarFiltros()"><option value="">Todas</option></select>
+      <div class="msel" id="msel-zona"></div>
       <label>Alimentador</label>
-      <input id="fm-alimentador" list="dl-alimentadores" placeholder="Todos" autocomplete="off" oninput="aplicarFiltrosDebounced()"
-        style="padding:6px 10px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg);width:190px">
-      <datalist id="dl-alimentadores"></datalist>
+      <div class="msel" id="msel-alimentador"></div>
       <label>Nivel de tensión</label>
-      <select id="fm-nivel" onchange="cargarAlimentadores();aplicarFiltros()"><option value="">Todos</option></select>
+      <div class="msel" id="msel-nivel"></div>
       <button class="btn-theme" style="width:auto;padding:0 14px;margin-left:auto" onclick="descargarCSV()" id="btn-descargar" title="Descargar el detalle mensual en CSV">⬇ Descargar CSV</button>
     </div>
 
@@ -889,14 +901,109 @@ function labelMes(m){
   return t.charAt(0).toUpperCase()+t.slice(1)+' '+y;
 }
 
+/* ---- Multiselect genérico (Zona / Alimentador / Nivel) ----
+   Reemplaza los <select> de una sola opción: ahora se puede acotar por
+   varias zonas/alimentadores/niveles a la vez (ej. comparar 2 zonas juntas). */
+const MSEL = {};
+
+function _mselEsc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function mselInit(id, label, vacio, opciones, onChange){
+  MSEL[id] = {opciones, seleccion:new Set(), onChange, label, vacio, abierto:false};
+  mselRender(id);
+}
+
+function mselSetOpciones(id, opciones){
+  const st = MSEL[id]; if(!st) return;
+  st.opciones = opciones;
+  const validos = new Set(opciones.map(o=>o.value));
+  const antes = st.seleccion.size;
+  st.seleccion = new Set([...st.seleccion].filter(v=>validos.has(v)));
+  mselRender(id);
+  // Si el contexto (zona/nivel) cambió y alguna selección de Alimentador ya
+  // no existe en la nueva lista, se descarta sola -- evita un filtro
+  // "fantasma" que ya no tiene sentido y volvería a aplicarse.
+  if(st.seleccion.size !== antes && st.onChange) st.onChange();
+}
+
+function mselValores(id){ return MSEL[id] ? [...MSEL[id].seleccion] : []; }
+
+function mselClear(id){
+  const st = MSEL[id]; if(!st) return;
+  st.seleccion = new Set();
+  mselRender(id);
+  st.onChange && st.onChange();
+}
+
+function mselClearSilent(id){
+  const st = MSEL[id]; if(!st) return;
+  st.seleccion = new Set();
+  mselRender(id);
+}
+
+function mselToggleValor(id, valor, marcado){
+  const st = MSEL[id]; if(!st) return;
+  if(marcado) st.seleccion.add(valor); else st.seleccion.delete(valor);
+  mselRender(id);
+  st.onChange && st.onChange();
+}
+
+function mselTogglePanel(id){
+  const abrirEste = MSEL[id] && !MSEL[id].abierto;
+  Object.keys(MSEL).forEach(k=>{ MSEL[k].abierto = false; });
+  if(MSEL[id]) MSEL[id].abierto = abrirEste;
+  Object.keys(MSEL).forEach(k=> mselRender(k));
+}
+
+function mselRender(id){
+  const st = MSEL[id]; if(!st) return;
+  const cont = document.getElementById(id);
+  if(!cont) return;
+  const n = st.seleccion.size;
+  let resumen;
+  if(n===0) resumen = st.vacio;
+  else if(n===1){
+    const v = [...st.seleccion][0];
+    const opt = st.opciones.find(o=>o.value===v);
+    resumen = opt ? opt.label : v;
+  } else resumen = `${n} seleccionadas`;
+
+  const filas = st.opciones.map(o=>
+    `<label class="msel-opt"><input type="checkbox" data-msel="${id}" data-value="${_mselEsc(o.value)}" ${st.seleccion.has(o.value)?'checked':''}> ${_mselEsc(o.label)}</label>`
+  ).join('');
+
+  cont.innerHTML = `
+    <button type="button" class="msel-btn" data-msel-toggle="${id}">${st.label}: <b>${_mselEsc(resumen)}</b><span class="car">▾</span></button>
+    <div class="msel-panel ${st.abierto?'':'hidden'}" id="${id}-panel">
+      <label class="msel-opt"><input type="checkbox" data-msel="${id}" data-clear="1" ${n===0?'checked':''}> ${_mselEsc(st.vacio)}</label>
+      ${st.opciones.length ? '<div class="msel-sep"></div>'+filas : '<div class="msel-empty">Sin opciones</div>'}
+    </div>`;
+}
+
+document.addEventListener('change', (ev)=>{
+  const el = ev.target;
+  if(el.matches && el.matches('input[type=checkbox][data-msel]')){
+    const id = el.dataset.msel;
+    if(el.dataset.clear) mselClear(id);
+    else mselToggleValor(id, el.dataset.value, el.checked);
+  }
+});
+document.addEventListener('click', (ev)=>{
+  const btn = ev.target.closest && ev.target.closest('[data-msel-toggle]');
+  if(btn){ mselTogglePanel(btn.dataset.mselToggle); return; }
+  if(!ev.target.closest || !ev.target.closest('.msel')){
+    let cambiado = false;
+    Object.keys(MSEL).forEach(k=>{ if(MSEL[k].abierto){ MSEL[k].abierto=false; cambiado=true; } });
+    if(cambiado) Object.keys(MSEL).forEach(k=> mselRender(k));
+  }
+});
+
 async function cargarMeta(){
   META = await apiGet('/api/meta');
   if(!META.meses || !META.meses.length) META.meses = DEMO_MESES;
   if(!META.niveles) META.niveles = [];
   if(!META.zonas) META.zonas = [];
 
-  const selZona = document.getElementById('fm-zona');
-  const selNivel = document.getElementById('fm-nivel');
   const selZona2 = document.getElementById('fm-zona2');
   const selNivel2 = document.getElementById('fm-nivel2');
   const selMes = document.getElementById('fm-mes');
@@ -905,10 +1012,18 @@ async function cargarMeta(){
   const selStart2 = document.getElementById('range-start-sel2');
   const selEnd2 = document.getElementById('range-end-sel2');
 
+  // Zona/Alimentador/Nivel (filtros "primarios") ahora son multiselect --
+  // Zona2/Nivel2 (los propios de las 2 gráficas apiladas independientes)
+  // se quedan como <select> de una sola opción, sin cambios.
+  mselInit('msel-zona', 'Zona', 'Todas', META.zonas.map(z=>({value:z, label:z})),
+    ()=>{ cargarAlimentadores(); aplicarFiltros(); });
+  mselInit('msel-nivel', 'Nivel', 'Todos', META.niveles.map(n=>({value:String(n), label:'Nivel '+n})),
+    ()=>{ cargarAlimentadores(); aplicarFiltros(); });
+  mselInit('msel-alimentador', 'Alimentador', 'Todos', [],
+    ()=>{ aplicarFiltrosDebounced(); });
+
   const opcionesZona = '<option value="">Todas</option>' + META.zonas.map(z=>`<option value="${z}">${z}</option>`).join('');
   const opcionesNivel = '<option value="">Todos</option>' + META.niveles.map(n=>`<option value="${n}">Nivel ${n}</option>`).join('');
-  selZona.innerHTML = opcionesZona;
-  selNivel.innerHTML = opcionesNivel;
   selZona2.innerHTML = opcionesZona;
   selNivel2.innerHTML = opcionesNivel;
 
@@ -932,18 +1047,17 @@ async function cargarMeta(){
 }
 
 async function cargarAlimentadores(){
-  const dl = document.getElementById('dl-alimentadores');
-  const zona = document.getElementById('fm-zona').value;
-  const nivel = document.getElementById('fm-nivel').value;
+  const zona = mselValores('msel-zona');
+  const nivel = mselValores('msel-nivel');
   const qs = new URLSearchParams();
-  if(zona) qs.set('zona', zona);
-  if(nivel) qs.set('nivel', nivel);
+  zona.forEach(z=>qs.append('zona', z));
+  nivel.forEach(n=>qs.append('nivel', n));
   try{
     const circuitos = DEMO ? [] : await apiGet(`/api/circuitos?${qs.toString()}`);
     const nemonicos = [...new Set(circuitos.map(c=>c.nemonico))].sort();
-    dl.innerHTML = nemonicos.map(n=>`<option value="${n.replace(/"/g,'&quot;')}"></option>`).join('');
+    mselSetOpciones('msel-alimentador', nemonicos.map(n=>({value:n, label:n})));
   }catch(e){
-    dl.innerHTML = '';
+    mselSetOpciones('msel-alimentador', []);
   }
 }
 
@@ -1052,33 +1166,48 @@ function aplicarFiltrosDebounced(){
 }
 
 async function aplicarFiltros(){
-  const zona = document.getElementById('fm-zona').value;
-  const nivel = document.getElementById('fm-nivel').value;
-  const alimentador = document.getElementById('fm-alimentador').value.trim();
+  const zona = mselValores('msel-zona');
+  const nivel = mselValores('msel-nivel');
+  const alimentador = mselValores('msel-alimentador');
+  const nivelUnico = nivel.length===1 ? nivel[0] : null;
+
   const qs = new URLSearchParams();
-  if(zona) qs.set('zona', zona);
-  if(nivel) qs.set('nivel', nivel);
-  if(alimentador) qs.set('alimentador', alimentador);
+  zona.forEach(z=>qs.append('zona', z));
+  if(nivelUnico) qs.append('nivel', nivelUnico);
+  alimentador.forEach(a=>qs.append('alimentador', a));
   if(META.meses && META.meses.length){
     qs.set('desde', `${META.meses[RANGO.start] || META.meses[0]}-01`);
     qs.set('hasta', `${META.meses[RANGO.end] || META.meses[META.meses.length-1]}-01`);
   }
 
-  document.getElementById('chart-titulo').textContent = alimentador
-    ? `Pérdidas Técnicas — ${alimentador}`
-    : (nivel ? `Pérdidas Técnicas Nivel ${nivel}` : 'Pérdidas Técnicas Total');
+  let titulo;
+  if(alimentador.length){
+    titulo = `Pérdidas Técnicas — ${alimentador.join(', ')}`;
+  } else {
+    const partes = [];
+    if(zona.length) partes.push((zona.length>1?'Zonas ':'Zona ') + zona.join(', '));
+    if(nivel.length) partes.push((nivel.length>1?'Niveles ':'Nivel ') + nivel.join(', '));
+    titulo = partes.length ? `Pérdidas Técnicas — ${partes.join(' · ')}` : 'Pérdidas Técnicas Total';
+  }
+  document.getElementById('chart-titulo').textContent = titulo;
 
   RESUMEN = await apiGet(`/api/resumen?${qs.toString()}`);
 
-  // Sin filtro de Nivel: la gráfica principal desglosa por nivel de tensión
-  // (así se calculan realmente las pérdidas técnicas), para lo cual hace
-  // falta esta serie aparte. Con un Nivel puntual filtrado, RESUMEN solo
-  // (ya filtrado por ese nivel) alcanza -- así se confirma que el filtro
-  // realmente aplica.
+  // Con exactamente 1 Nivel filtrado, RESUMEN solo (ya acotado a ese nivel)
+  // alcanza -- así se confirma que el filtro realmente aplica. Con 0 o 2+
+  // niveles, la gráfica principal desglosa por nivel de tensión (así se
+  // calculan realmente las pérdidas técnicas); si se eligieron 2+, el
+  // desglose se acota solo a esos (no muestra los que no se seleccionaron).
   RESUMEN_POR_NIVEL = null;
-  if(!nivel){
-    const qsNivel = new URLSearchParams(qs);
-    qsNivel.delete('nivel');
+  if(!nivelUnico){
+    const qsNivel = new URLSearchParams();
+    zona.forEach(z=>qsNivel.append('zona', z));
+    alimentador.forEach(a=>qsNivel.append('alimentador', a));
+    nivel.forEach(n=>qsNivel.append('nivel', n));
+    if(META.meses && META.meses.length){
+      qsNivel.set('desde', `${META.meses[RANGO.start] || META.meses[0]}-01`);
+      qsNivel.set('hasta', `${META.meses[RANGO.end] || META.meses[META.meses.length-1]}-01`);
+    }
     RESUMEN_POR_NIVEL = await apiGet(`/api/perdidas-por-nivel?${qsNivel.toString()}`);
   }
 
@@ -1087,9 +1216,9 @@ async function aplicarFiltros(){
 }
 
 async function limpiarFiltros(){
-  document.getElementById('fm-zona').value = '';
-  document.getElementById('fm-alimentador').value = '';
-  document.getElementById('fm-nivel').value = '';
+  mselClearSilent('msel-zona');
+  mselClearSilent('msel-alimentador');
+  mselClearSilent('msel-nivel');
   _applyRange(0, META.meses.length-1);
   await cargarAlimentadores();
   await aplicarFiltros();
@@ -1119,13 +1248,13 @@ async function cargarZonas(){
 async function descargarCSV(){
   if(DEMO){ alert('La descarga no está disponible en modo demo (sin conexión al servidor).'); return; }
   const btn = document.getElementById('btn-descargar');
-  const zona = document.getElementById('fm-zona').value;
-  const nivel = document.getElementById('fm-nivel').value;
-  const alimentador = document.getElementById('fm-alimentador').value.trim();
+  const zona = mselValores('msel-zona');
+  const nivel = mselValores('msel-nivel');
+  const alimentador = mselValores('msel-alimentador');
   const qs = new URLSearchParams();
-  if(zona) qs.set('zona', zona);
-  if(nivel) qs.set('nivel', nivel);
-  if(alimentador) qs.set('alimentador', alimentador);
+  zona.forEach(z=>qs.append('zona', z));
+  nivel.forEach(n=>qs.append('nivel', n));
+  alimentador.forEach(a=>qs.append('alimentador', a));
 
   btn.disabled = true; const textoOriginal = btn.textContent; btn.textContent = 'Descargando…';
   try{
@@ -1335,11 +1464,11 @@ function fmtGwh(v){
 
 function renderPrincipal(){
   if(!RESUMEN) return;
-  const nivel = document.getElementById('fm-nivel').value;
+  const nivel = mselValores('msel-nivel');
   const projBtn = document.getElementById('proj-btn');
   const projSel = document.getElementById('proj-method');
 
-  if(nivel || !RESUMEN_POR_NIVEL){
+  if(nivel.length===1 || !RESUMEN_POR_NIVEL){
     // Un nivel puntual filtrado (o sin datos de desglose): la vista clásica
     // de una sola serie -- esto es lo que confirma que el filtro de Nivel
     // realmente funciona (Entradas/PT/PT% quedan acotados a ese nivel).
@@ -1368,10 +1497,12 @@ function renderPrincipalUnNivel(){
   const tickC = dark ? '#8899b5' : '#4b5e7a';
   const gridC = dark ? 'rgba(255,255,255,.06)' : 'rgba(0,0,0,.06)';
 
-  // Si hay una zona puntual filtrada, la gráfica adopta SU color (el mismo
+  // Si hay UNA sola zona filtrada, la gráfica adopta SU color (el mismo
   // que se le asignó en Parametrización) -- así se confirma de un vistazo
-  // que se está viendo esa zona, consistente con el resto de la app.
-  const zonaFiltro = document.getElementById('fm-zona').value;
+  // que se está viendo esa zona, consistente con el resto de la app. Con
+  // 2+ zonas ya no aplica un único color, así que vuelve a los de siempre.
+  const zonasFiltro = mselValores('msel-zona');
+  const zonaFiltro = zonasFiltro.length===1 ? zonasFiltro[0] : null;
   const colorZona = zonaFiltro ? colorParaZona(zonaFiltro) : null;
   const colorKwh = colorZona ? hexA(colorZona, .85) : 'rgba(239,71,111,.85)';
   const colorPct = colorZona || '#f4a261';
@@ -1489,8 +1620,8 @@ function renderPrincipalMultiNivel(){
   // Las Entradas por nivel solo se ven al filtrar un Alimentador puntual
   // (ahí sí interesa su contexto); con todo el operador junto, 4 barras de
   // PT + 4 de Entradas sería demasiado ruido.
-  const alimentador = document.getElementById('fm-alimentador').value.trim();
-  const mostrarEntrada = !!alimentador;
+  const alimentador = mselValores('msel-alimentador');
+  const mostrarEntrada = alimentador.length>0;
 
   // Con muchas series (4 niveles, a veces 8 barras con Entradas) suele haber
   // barras muy chicas -- ej. al filtrar un solo alimentador que casi no pesa
