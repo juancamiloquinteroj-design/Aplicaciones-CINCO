@@ -43,6 +43,15 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(
 .sidebar-link{display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:8px;border:none;background:none;color:var(--text2);font-size:13px;font-weight:600;text-align:left;cursor:pointer}
 .sidebar-link:hover{background:var(--bg3);color:var(--text)}
 .sidebar-link.active{background:rgba(0,180,216,.12);color:var(--accent)}
+.sidebar-link-padre{justify-content:space-between}
+.sidebar-link-padre.abierto,.sidebar-link-padre.activa{background:var(--bg3);color:var(--text)}
+.sidebar-caret{font-size:10px;transition:transform .15s ease;flex-shrink:0}
+.sidebar-caret.abierto{transform:rotate(180deg)}
+.sidebar-submenu{display:flex;flex-direction:column;gap:2px;padding-left:10px;margin:2px 0 4px}
+.sidebar-submenu.hidden{display:none}
+.sidebar-sublink{display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:8px;border:none;border-left:2px solid var(--border);background:none;color:var(--text3);font-size:12px;font-weight:600;text-align:left;cursor:pointer}
+.sidebar-sublink:hover{background:var(--bg3);color:var(--text)}
+.sidebar-sublink.active{border-left-color:var(--accent);background:rgba(0,180,216,.12);color:var(--accent)}
 .sidebar-proximamente{font-size:10.5px;color:var(--text3);padding:10px 12px;border-top:1px solid var(--border)}
 .sidebar-acceso{margin-top:auto;font-size:10.5px;color:var(--text3);padding:10px 12px;border-top:1px solid var(--border);line-height:1.6}
 .sidebar-acceso b{color:var(--text2)}
@@ -255,11 +264,6 @@ tfoot td:first-child{text-align:left}
 .tm-alarma-vacio{padding:24px;text-align:center;color:var(--text3);font-size:12.5px}
 
 /* BALANCES POR ESTRUCTURA */
-.be-acordeon{background:var(--bg2);border:1px solid var(--border);border-radius:10px;margin-bottom:14px;overflow:hidden}
-.be-acordeon summary{padding:14px 18px;font-size:13.5px;font-weight:800;color:var(--text);cursor:pointer;list-style:none;user-select:none}
-.be-acordeon summary::-webkit-details-marker{display:none}
-.be-acordeon summary:hover{background:var(--bg3)}
-.be-acordeon-body{padding:4px 18px 20px}
 .be-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
 @media (max-width:640px){ .be-form-grid{grid-template-columns:1fr} }
 .be-field{display:flex;flex-direction:column;gap:5px}
@@ -412,7 +416,14 @@ tfoot td:first-child{text-align:left}
     <span>📊 Indicador de Pérdidas</span>
     <span style="font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;background:var(--bg3);color:var(--text3);padding:2px 6px;border-radius:10px;white-space:nowrap">Próximamente</span>
   </button>
-  <button class="sidebar-link" data-vista="balances-estructura" onclick="mostrarVista('balances-estructura')">🧮 Balances por Estructura</button>
+  <button class="sidebar-link sidebar-link-padre" id="sidebar-be-padre" onclick="toggleSubmenuBE()">
+    <span>🧮 Balances por Estructura</span>
+    <span class="sidebar-caret" id="sidebar-be-caret">▾</span>
+  </button>
+  <div class="sidebar-submenu hidden" id="sidebar-submenu-be">
+    <button class="sidebar-sublink" data-vista="be-crear" onclick="mostrarVista('be-crear')">➕ Crear Estructura</button>
+    <button class="sidebar-sublink" data-vista="be-ver" onclick="mostrarVista('be-ver')">📊 Ver Balance</button>
+  </div>
   <div class="sidebar-proximamente">Más módulos próximamente</div>
   <button class="btn-actualizar-datos" id="btn-actualizar-datos" onclick="actualizarDatos()">🔄 Actualizar datos</button>
   <div class="actualizar-datos-msg" id="actualizar-datos-msg"></div>
@@ -449,7 +460,7 @@ tfoot td:first-child{text-align:left}
       <div class="mc-title">Indicador de Pérdidas</div>
       <div class="mc-desc">Nuevo módulo, en construcción.</div>
     </div>
-    <div class="mod-card" onclick="mostrarVista('balances-estructura')">
+    <div class="mod-card" onclick="mostrarVista('be-ver')">
       <span class="mc-icon">🧮</span>
       <div class="mc-title">Balances por Estructura</div>
       <div class="mc-desc">Balances de líneas, transformadores, barras, etc.</div>
@@ -701,110 +712,114 @@ tfoot td:first-child{text-align:left}
 </div>
 <!-- fin vista-telemedidos -->
 
-<!-- ---------------- BALANCES POR ESTRUCTURA ---------------- -->
-<div id="vista-balances-estructura" class="vista-modulo hidden">
+<!-- ---------------- BALANCES POR ESTRUCTURA · CREAR ---------------- -->
+<div id="vista-be-crear" class="vista-modulo hidden">
 
   <div class="sec-hdr">
-    <div class="sec-title">Balances por Estructura</div>
+    <div class="sec-title">Crear Estructura</div>
     <div class="sec-sub">Líneas, transformadores, barras -- entrada y salida desde Usuarios Telemedidos</div>
   </div>
 
-  <details class="be-acordeon" open>
-    <summary>➕ Crear Estructura</summary>
-    <div class="be-acordeon-body">
-      <div class="be-form-grid">
-        <div class="be-field">
-          <label>Nombre de la estructura</label>
-          <input type="text" id="be-nombre" placeholder="Ej. PT 230/115 kV Trafo 1 Sub Betania">
-        </div>
-        <div class="be-field">
-          <label>Nivel de tensión</label>
-          <select id="be-nivel">
-            <option value="1">Nivel 1</option>
-            <option value="2">Nivel 2</option>
-            <option value="3">Nivel 3</option>
-            <option value="4">Nivel 4</option>
-          </select>
-        </div>
+  <div class="card">
+    <div class="be-form-grid">
+      <div class="be-field">
+        <label>Nombre de la estructura</label>
+        <input type="text" id="be-nombre" placeholder="Ej. PT 230/115 kV Trafo 1 Sub Betania">
       </div>
-
-      <div class="be-medidores-bloque">
-        <div class="be-medidores-hdr">
-          <span>Entrada(s) -- se suman entre sí</span>
-          <button type="button" class="be-btn-agregar" onclick="beAgregarFila('entrada')">+ Agregar entrada</button>
-        </div>
-        <div id="be-filas-entrada"></div>
-      </div>
-
-      <div class="be-medidores-bloque">
-        <div class="be-medidores-hdr">
-          <span>Salida(s) -- se suman entre sí</span>
-          <button type="button" class="be-btn-agregar" onclick="beAgregarFila('salida')">+ Agregar salida</button>
-        </div>
-        <div id="be-filas-salida"></div>
-      </div>
-
-      <datalist id="dl-be-usuarios"></datalist>
-
-      <div id="be-crear-msg" class="tm-modal-msg"></div>
-      <button class="btn-theme" style="width:auto;padding:9px 20px;background:var(--accent);color:#fff;border-color:var(--accent)" onclick="crearEstructuraBalance()">Crear estructura</button>
-
-      <div class="be-tabla-creadas-wrap">
-        <div class="be-tabla-creadas-titulo">Estructuras ya creadas</div>
-        <div class="be-tabla-scroll">
-          <table class="be-tabla-creadas">
-            <thead><tr><th>Nombre</th><th>Nivel</th><th>Entrada(s)</th><th>Salida(s)</th><th></th></tr></thead>
-            <tbody id="be-tabla-creadas-body"></tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  </details>
-
-  <details class="be-acordeon" open>
-    <summary>📊 Ver Balance</summary>
-    <div class="be-acordeon-body">
-      <div class="fbar" style="margin-bottom:12px">
+      <div class="be-field">
         <label>Nivel de tensión</label>
-        <select id="be-filtro-nivel" onchange="cargarListaEstructuras()">
-          <option value="">Todos</option>
+        <select id="be-nivel">
           <option value="1">Nivel 1</option>
           <option value="2">Nivel 2</option>
           <option value="3">Nivel 3</option>
           <option value="4">Nivel 4</option>
         </select>
       </div>
+    </div>
 
-      <div id="be-lista-estructuras" class="be-lista-estructuras"></div>
+    <div class="be-medidores-bloque">
+      <div class="be-medidores-hdr">
+        <span>Entrada(s) -- se suman entre sí</span>
+        <button type="button" class="be-btn-agregar" onclick="beAgregarFila('entrada')">+ Agregar entrada</button>
+      </div>
+      <div id="be-filas-entrada"></div>
+    </div>
 
-      <div id="be-chart-card" class="card hidden" style="margin-top:14px">
-        <div id="be-chart-titulo" style="text-align:center;font-size:15px;font-weight:800;color:var(--text);text-transform:uppercase;margin-bottom:10px"></div>
+    <div class="be-medidores-bloque">
+      <div class="be-medidores-hdr">
+        <span>Salida(s) -- se suman entre sí</span>
+        <button type="button" class="be-btn-agregar" onclick="beAgregarFila('salida')">+ Agregar salida</button>
+      </div>
+      <div id="be-filas-salida"></div>
+    </div>
 
-        <div class="fbar" style="justify-content:center;margin-bottom:12px">
-          <label>Desde</label>
-          <input type="date" id="be-desde" onchange="verBalanceEstructura(BE_ACTIVA_ID)">
-          <label>Hasta</label>
-          <input type="date" id="be-hasta" onchange="verBalanceEstructura(BE_ACTIVA_ID)">
-          <span style="font-size:10.5px;color:var(--text3)">Por defecto: últimos 365 días con datos</span>
-        </div>
+    <datalist id="dl-be-usuarios"></datalist>
 
-        <div class="chart-wrap" style="height:400px"><canvas id="ch-balance-estructura"></canvas></div>
+    <div id="be-crear-msg" class="tm-modal-msg"></div>
+    <button class="btn-theme" style="width:auto;padding:9px 20px;background:var(--accent);color:#fff;border-color:var(--accent)" onclick="crearEstructuraBalance()">Crear estructura</button>
 
-        <div class="be-tabla-creadas-wrap">
-          <div class="be-tabla-creadas-titulo">Balance mensual</div>
-          <div class="be-tabla-scroll">
-            <table class="be-tabla-creadas">
-              <thead><tr><th>Período</th><th>Entrada (kWh)</th><th>Salida (kWh)</th><th>Pérdida (kWh)</th><th>Pérdida (%)</th></tr></thead>
-              <tbody id="be-tabla-mensual-body"></tbody>
-            </table>
-          </div>
-        </div>
+    <div class="be-tabla-creadas-wrap">
+      <div class="be-tabla-creadas-titulo">Estructuras ya creadas</div>
+      <div class="be-tabla-scroll">
+        <table class="be-tabla-creadas">
+          <thead><tr><th>Nombre</th><th>Nivel</th><th>Entrada(s)</th><th>Salida(s)</th><th></th></tr></thead>
+          <tbody id="be-tabla-creadas-body"></tbody>
+        </table>
       </div>
     </div>
-  </details>
+  </div>
 
 </div>
-<!-- fin vista-balances-estructura -->
+<!-- fin vista-be-crear -->
+
+<!-- ---------------- BALANCES POR ESTRUCTURA · VER BALANCE ---------------- -->
+<div id="vista-be-ver" class="vista-modulo hidden">
+
+  <div class="sec-hdr">
+    <div class="sec-title">Ver Balance</div>
+    <div class="sec-sub">Entrada, salida y pérdida por estructura</div>
+  </div>
+
+  <div class="card">
+    <div class="fbar" style="margin-bottom:0">
+      <label>Nivel de tensión</label>
+      <select id="be-filtro-nivel" onchange="cargarListaEstructuras()">
+        <option value="">Todos</option>
+        <option value="1">Nivel 1</option>
+        <option value="2">Nivel 2</option>
+        <option value="3">Nivel 3</option>
+        <option value="4">Nivel 4</option>
+      </select>
+    </div>
+    <div id="be-lista-estructuras" class="be-lista-estructuras" style="margin-top:14px"></div>
+  </div>
+
+  <div id="be-chart-card" class="card hidden">
+    <div id="be-chart-titulo" style="text-align:center;font-size:15px;font-weight:800;color:var(--text);text-transform:uppercase;margin-bottom:10px"></div>
+
+    <div class="fbar" style="justify-content:center;margin-bottom:12px">
+      <label>Desde</label>
+      <input type="date" id="be-desde" onchange="verBalanceEstructura(BE_ACTIVA_ID)">
+      <label>Hasta</label>
+      <input type="date" id="be-hasta" onchange="verBalanceEstructura(BE_ACTIVA_ID)">
+      <span style="font-size:10.5px;color:var(--text3)">Por defecto: últimos 365 días con datos</span>
+    </div>
+
+    <div class="chart-wrap" style="height:400px"><canvas id="ch-balance-estructura"></canvas></div>
+
+    <div class="be-tabla-creadas-wrap">
+      <div class="be-tabla-creadas-titulo">Balance mensual</div>
+      <div class="be-tabla-scroll">
+        <table class="be-tabla-creadas">
+          <thead><tr><th>Período</th><th>Entrada (kWh)</th><th>Salida (kWh)</th><th>Pérdida (kWh)</th><th>Pérdida (%)</th></tr></thead>
+          <tbody id="be-tabla-mensual-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div>
+<!-- fin vista-be-ver -->
 
 <div id="modal-tm-descarga" class="tm-modal-overlay hidden" onclick="if(event.target===this) cerrarModalDescargaTm()">
   <div class="tm-modal">
@@ -1037,12 +1052,39 @@ function toggleSidebar(){
   document.getElementById('sidebar-overlay').classList.toggle('hidden');
 }
 
+// "Balances por Estructura" es un acordeón dentro del sidebar: clic en el
+// padre despliega sus 2 sub-vistas (Crear Estructura / Ver Balance) y, si
+// todavía no había ninguna abierta, entra a "Ver Balance" por defecto.
+function abrirSubmenuBE(){
+  document.getElementById('sidebar-submenu-be').classList.remove('hidden');
+  document.getElementById('sidebar-be-caret').classList.add('abierto');
+}
+
+function toggleSubmenuBE(){
+  const abierto = !document.getElementById('sidebar-submenu-be').classList.contains('hidden');
+  if(abierto){
+    document.getElementById('sidebar-submenu-be').classList.add('hidden');
+    document.getElementById('sidebar-be-caret').classList.remove('abierto');
+  } else {
+    mostrarVista('be-ver');
+  }
+}
+
 let vistaCargada = {perdidas:false, parametrizacion:false, telemedidos:false, balancesEstructura:false};
 
 async function mostrarVista(nombre){
   document.querySelectorAll('.vista-modulo').forEach(v=>v.classList.add('hidden'));
   document.getElementById(`vista-${nombre}`).classList.remove('hidden');
-  document.querySelectorAll('.sidebar-link').forEach(a=>a.classList.toggle('active', a.dataset.vista===nombre));
+  document.querySelectorAll('.sidebar-link, .sidebar-sublink').forEach(a=>a.classList.toggle('active', a.dataset.vista===nombre));
+
+  // "Balances por Estructura" es un padre con 2 sub-vistas -- si vamos a
+  // cualquiera de las dos, se resalta el padre y se despliega el submenú
+  // (si no, entrar por la tarjeta de Inicio dejaría el submenú cerrado
+  // aunque ya estés adentro de una de sus vistas).
+  const esBalancesEstructura = nombre==='be-crear' || nombre==='be-ver';
+  document.getElementById('sidebar-be-padre').classList.toggle('activa', esBalancesEstructura);
+  if(esBalancesEstructura) abrirSubmenuBE();
+
   if(!document.body.classList.contains('sidebar-fija')){
     document.getElementById('sidebar').classList.add('hidden');
     document.getElementById('sidebar-overlay').classList.add('hidden');
@@ -1061,7 +1103,7 @@ async function mostrarVista(nombre){
     vistaCargada.telemedidos = true;
     await cargarTelemedidos();
   }
-  if(nombre==='balances-estructura' && !vistaCargada.balancesEstructura){
+  if(esBalancesEstructura && !vistaCargada.balancesEstructura){
     vistaCargada.balancesEstructura = true;
     await cargarBalancesEstructura();
   }
