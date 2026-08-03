@@ -141,6 +141,8 @@ select{padding:6px 10px;border:1px solid var(--border);border-radius:7px;font-si
 .msel-opt input{cursor:pointer}
 .msel-sep{height:1px;background:var(--border);margin:4px 2px}
 .msel-empty{padding:6px 8px;font-size:11px;color:var(--text3)}
+.msel-search{width:100%;box-sizing:border-box;padding:5px 8px;margin-bottom:5px;border:1px solid var(--border);
+  border-radius:6px;font-size:11.5px;color:var(--text);background:var(--bg);outline:none}
 
 .chart-wrap{position:relative;height:320px}
 .split-wrap{display:flex;gap:18px;align-items:stretch;flex-wrap:wrap}
@@ -200,11 +202,11 @@ tfoot td:first-child{text-align:left}
 /* RANGE SLIDER */
 .range-wrap{margin-top:14px}
 .range-track-row{position:relative;height:26px;display:flex;align-items:center}
-#rs,#re,#rs2,#re2{position:absolute;width:100%;appearance:none;-webkit-appearance:none;background:transparent;height:4px;margin:0;pointer-events:none}
-#rs::-webkit-slider-thumb,#re::-webkit-slider-thumb,#rs2::-webkit-slider-thumb,#re2::-webkit-slider-thumb{pointer-events:all;-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:var(--accent);cursor:pointer;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.25)}
-#rs::-moz-range-thumb,#re::-moz-range-thumb,#rs2::-moz-range-thumb,#re2::-moz-range-thumb{pointer-events:all;width:14px;height:14px;border-radius:50%;background:var(--accent);cursor:pointer;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.25)}
-#range-track,#range-track2{position:absolute;width:100%;height:4px;background:var(--bg3);border-radius:2px}
-#range-fill,#range-fill2{position:absolute;height:4px;background:var(--accent);border-radius:2px}
+#rs,#re,#rs2,#re2,#tm-rs,#tm-re{position:absolute;width:100%;appearance:none;-webkit-appearance:none;background:transparent;height:4px;margin:0;pointer-events:none}
+#rs::-webkit-slider-thumb,#re::-webkit-slider-thumb,#rs2::-webkit-slider-thumb,#re2::-webkit-slider-thumb,#tm-rs::-webkit-slider-thumb,#tm-re::-webkit-slider-thumb{pointer-events:all;-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:var(--accent);cursor:pointer;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.25)}
+#rs::-moz-range-thumb,#re::-moz-range-thumb,#rs2::-moz-range-thumb,#re2::-moz-range-thumb,#tm-rs::-moz-range-thumb,#tm-re::-moz-range-thumb{pointer-events:all;width:14px;height:14px;border-radius:50%;background:var(--accent);cursor:pointer;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.25)}
+#range-track,#range-track2,#tm-range-track{position:absolute;width:100%;height:4px;background:var(--bg3);border-radius:2px}
+#range-fill,#range-fill2,#tm-range-fill{position:absolute;height:4px;background:var(--accent);border-radius:2px}
 
 /* PROYECCIÓN — panel de ecuaciones */
 .math-block{font-family:Georgia,'Times New Roman',serif;line-height:1.9;font-size:13px;letter-spacing:.3px}
@@ -521,24 +523,40 @@ tfoot td:first-child{text-align:left}
 
   <div class="sec-hdr">
     <div class="sec-title">Usuarios Telemedidos</div>
-    <div class="sec-sub">Consumo diario por medidor (canal 1 -- energía activa importada)</div>
+    <div class="sec-sub">Consumo diario por medidor -- 4 canales</div>
   </div>
 
   <div class="card">
     <div class="fbar" style="margin-bottom:0">
-      <label>Usuario / medidor</label>
-      <input id="tm-buscar" list="dl-tm-usuarios" placeholder="Buscar por nombre o ID..." autocomplete="off" oninput="tmSeleccionarPorTexto()"
-        style="padding:6px 10px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg);width:300px">
-      <datalist id="dl-tm-usuarios"></datalist>
-      <span id="tm-total-usuarios" style="font-size:11px;color:var(--text3)"></span>
+      <label>Usuarios</label>
+      <div class="msel" id="msel-tm-usuarios"></div>
+      <button type="button" class="btn-theme" style="width:auto;padding:6px 10px" onclick="tmPaso(-1)" title="Usuario anterior (validación rápida)">▲</button>
+      <button type="button" class="btn-theme" style="width:auto;padding:6px 10px" onclick="tmPaso(1)" title="Usuario siguiente (validación rápida)">▼</button>
+      <label>Canales</label>
+      <div class="msel" id="msel-tm-canales"></div>
+    </div>
+
+    <div class="range-wrap">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text3)">Rango</span>
+        <select id="tm-range-start-sel" onchange="tmSyncRangeFromSel()"></select>
+        <span style="font-size:11px;color:var(--text3)">→</span>
+        <select id="tm-range-end-sel" onchange="tmSyncRangeFromSel()"></select>
+      </div>
+      <div class="range-track-row">
+        <div id="tm-range-track"></div>
+        <div id="tm-range-fill"></div>
+        <input type="range" id="tm-rs" min="0" value="0" oninput="tmUpdateRange()">
+        <input type="range" id="tm-re" min="0" value="0" oninput="tmUpdateRange()">
+      </div>
     </div>
   </div>
 
   <div class="card">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;flex-wrap:wrap;gap:8px">
-      <div id="tm-chart-titulo" style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Seleccioná un usuario</div>
+      <div id="tm-chart-titulo" style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Seleccioná uno o más usuarios</div>
     </div>
-    <div class="chart-wrap" style="height:360px"><canvas id="ch-telemedida"></canvas></div>
+    <div class="chart-wrap" style="height:400px"><canvas id="ch-telemedida"></canvas></div>
   </div>
 
 </div>
@@ -588,6 +606,8 @@ function colorParaNivel(n, niveles){
 let chPrincipal=null;
 let chTelemedida=null;
 let TM_USUARIOS = [];
+let TM_META = {meses:[]};
+let TM_RANGO = {start:0, end:0};
 let META = {zonas:[], niveles:[], meses:[]};
 let RESUMEN = null;
 let RESUMEN_POR_NIVEL = null;
@@ -917,70 +937,208 @@ async function guardarZonaColor(zona, color){
   }
 }
 
-/* ---- Usuarios Telemedidos: consumo diario por medidor (canal 1, kWh) ---- */
+/* ---- Usuarios Telemedidos: consumo diario por medidor, 4 canales ---- */
 function _tmEtiqueta(u){ return `${u.nombre} (${u.usuario_id})`; }
 
+const TM_NOMBRES_CANAL = {
+  canal1:'Canal 1 (kWhD -- activa importada)', canal2:'Canal 2 (kVarhD -- reactiva importada)',
+  canal3:'Canal 3 (kWhR -- activa exportada)', canal4:'Canal 4 (kVarhR -- reactiva exportada)',
+};
+
+function tmUltimoDiaMes(mes){
+  const [y,m] = mes.split('-').map(Number);
+  return `${mes}-${String(new Date(y, m, 0).getDate()).padStart(2,'0')}`;
+}
+
 async function cargarTelemedidos(){
-  const dl = document.getElementById('dl-tm-usuarios');
-  const totalEl = document.getElementById('tm-total-usuarios');
-  try{
-    TM_USUARIOS = DEMO ? [] : await apiGet('/api/telemedida/usuarios');
-  }catch(e){
-    TM_USUARIOS = [];
-  }
-  dl.innerHTML = TM_USUARIOS.map(u=>`<option value="${_tmEtiqueta(u).replace(/"/g,'&quot;')}"></option>`).join('');
-  totalEl.textContent = TM_USUARIOS.length ? `${TM_USUARIOS.length} usuarios` : '';
+  try{ TM_USUARIOS = DEMO ? [] : await apiGet('/api/telemedida/usuarios'); }catch(e){ TM_USUARIOS = []; }
+  try{ TM_META = DEMO ? {meses:[]} : await apiGet('/api/telemedida/meta'); }catch(e){ TM_META = {meses:[]}; }
+  if(!TM_META.meses) TM_META.meses = [];
+
+  mselInit('msel-tm-usuarios', 'Usuarios', 'Ninguno', TM_USUARIOS.map(u=>({value:u.usuario_id, label:_tmEtiqueta(u)})), tmAplicarFiltros);
+  mselInit('msel-tm-canales', 'Canales', 'Ninguno', [
+    {value:'canal1', label:'Canal 1 (kWhD)'}, {value:'canal2', label:'Canal 2 (kVarhD)'},
+    {value:'canal3', label:'Canal 3 (kWhR)'}, {value:'canal4', label:'Canal 4 (kVarhR)'},
+  ], tmAplicarFiltros, ['canal1']);
+
+  const opciones = TM_META.meses.map((m,i)=>`<option value="${i}">${labelMes(m)}</option>`).join('');
+  document.getElementById('tm-range-start-sel').innerHTML = opciones;
+  document.getElementById('tm-range-end-sel').innerHTML = opciones;
+  document.getElementById('tm-rs').max = Math.max(0, TM_META.meses.length-1);
+  document.getElementById('tm-re').max = Math.max(0, TM_META.meses.length-1);
+  tmApplyRange(0, Math.max(0, TM_META.meses.length-1));
+
   document.getElementById('tm-chart-titulo').textContent = DEMO
     ? 'No disponible en modo demo (sin conexión al servidor)'
-    : (TM_USUARIOS.length ? 'Seleccioná un usuario' : 'Todavía no hay usuarios telemedidos cargados para este operador');
+    : (TM_USUARIOS.length ? 'Seleccioná uno o más usuarios' : 'Todavía no hay usuarios telemedidos cargados para este operador');
 }
 
-function tmSeleccionarPorTexto(){
-  const texto = document.getElementById('tm-buscar').value;
-  const usuario = TM_USUARIOS.find(u => _tmEtiqueta(u) === texto);
-  if(usuario) cargarConsumoUsuario(usuario);
+function tmApplyRange(s, e){
+  TM_RANGO.start = s; TM_RANGO.end = e;
+  document.getElementById('tm-rs').value = s;
+  document.getElementById('tm-re').value = e;
+  document.getElementById('tm-range-start-sel').value = s;
+  document.getElementById('tm-range-end-sel').value = e;
+  const total = TM_META.meses.length>1 ? TM_META.meses.length-1 : 1;
+  document.getElementById('tm-range-fill').style.left = (s/total*100)+'%';
+  document.getElementById('tm-range-fill').style.right = ((1-e/total)*100)+'%';
 }
 
-async function cargarConsumoUsuario(usuario){
-  document.getElementById('tm-chart-titulo').textContent = _tmEtiqueta(usuario);
-  let datos = {fechas:[], consumo_kwh:[]};
+async function tmUpdateRange(){
+  let s = parseInt(document.getElementById('tm-rs').value);
+  let e = parseInt(document.getElementById('tm-re').value);
+  if(s>e){ const t=s; s=e; e=t; }
+  tmApplyRange(s, e);
+  await tmAplicarFiltros();
+}
+
+async function tmSyncRangeFromSel(){
+  let s = parseInt(document.getElementById('tm-range-start-sel').value||0);
+  let e = parseInt(document.getElementById('tm-range-end-sel').value||0);
+  if(isNaN(s)) s=0; if(isNaN(e)) e = TM_META.meses.length-1;
+  if(s>e){ const t=s; s=e; e=t; }
+  tmApplyRange(s, e);
+  await tmAplicarFiltros();
+}
+
+// Botones ▲▼: recorren TM_USUARIOS (orden alfabético, el mismo del buscador)
+// uno por uno para validación rápida -- reemplazan la selección actual por
+// un único usuario, en vez de sumarse a lo ya elegido.
+function tmPaso(delta){
+  if(!TM_USUARIOS.length) return;
+  const actuales = mselValores('msel-tm-usuarios');
+  let idx = actuales.length===1 ? TM_USUARIOS.findIndex(u=>u.usuario_id===actuales[0]) : -1;
+  idx = idx<0 ? 0 : (idx + delta + TM_USUARIOS.length) % TM_USUARIOS.length;
+  mselSetSeleccion('msel-tm-usuarios', [TM_USUARIOS[idx].usuario_id]);
+}
+
+async function tmAplicarFiltros(){
+  const usuarios = mselValores('msel-tm-usuarios');
+  const canales = mselValores('msel-tm-canales');
+  const titulo = document.getElementById('tm-chart-titulo');
+
+  if(!usuarios.length){
+    if(chTelemedida){ chTelemedida.destroy(); chTelemedida = null; }
+    titulo.textContent = TM_USUARIOS.length ? 'Seleccioná uno o más usuarios' : 'Todavía no hay usuarios telemedidos cargados para este operador';
+    return;
+  }
+
+  const qs = new URLSearchParams();
+  usuarios.forEach(u=>qs.append('usuario_id', u));
+  if(TM_META.meses.length){
+    qs.set('desde', `${TM_META.meses[TM_RANGO.start] || TM_META.meses[0]}-01`);
+    qs.set('hasta', tmUltimoDiaMes(TM_META.meses[TM_RANGO.end] || TM_META.meses[TM_META.meses.length-1]));
+  }
+
+  titulo.textContent = usuarios.length===1
+    ? _tmEtiqueta(TM_USUARIOS.find(u=>u.usuario_id===usuarios[0]) || {usuario_id:usuarios[0], nombre:usuarios[0]})
+    : `${usuarios.length} usuarios seleccionados`;
+
+  let datos = {fechas:[], series:[]};
   try{
-    if(!DEMO) datos = await apiGet(`/api/telemedida/consumo?usuario_id=${encodeURIComponent(usuario.usuario_id)}`);
+    if(!DEMO) datos = await apiGet(`/api/telemedida/consumo?${qs.toString()}`);
   }catch(e){
     // Se deja el gráfico vacío -- no es crítico para el resto de la app.
   }
-  renderTelemedida(datos);
+  renderTelemedida(datos, canales.length ? canales : ['canal1']);
 }
 
-function renderTelemedida(datos){
+// Promedio móvil de 30 días -- la "tendencia" pedida, más útil que una
+// regresión lineal para un consumo diario con ruido/estacionalidad.
+function tmPromedioMovil(arr, ventana){
+  const out = new Array(arr.length).fill(null);
+  for(let i=0;i<arr.length;i++){
+    const desde = Math.max(0, i-ventana+1);
+    const tramo = arr.slice(desde, i+1).filter(v=>v!=null);
+    if(tramo.length >= Math.min(ventana, i+1)) out[i] = tramo.reduce((a,b)=>a+b, 0)/tramo.length;
+  }
+  return out;
+}
+
+// Plugin de Chart.js (solo para esta gráfica): marca el 1er día de cada mes
+// con una línea punteada tenue, y el 1ro de enero con una línea sólida +
+// el año -- así una serie de varios años se lee sin perder la ubicación.
+const tmPluginSeparadores = {
+  id: 'tmSeparadores',
+  afterDraw(chart){
+    const {ctx, chartArea, scales} = chart;
+    if(!chartArea) return;
+    const xScale = scales.x;
+    const labels = chart.data.labels || [];
+    ctx.save();
+    labels.forEach((iso, i)=>{
+      const d = new Date(iso+'T00:00:00');
+      if(d.getDate()!==1) return;
+      const x = xScale.getPixelForValue(i);
+      const esAnioNuevo = d.getMonth()===0;
+      ctx.beginPath();
+      ctx.setLineDash(esAnioNuevo ? [] : [3,3]);
+      ctx.moveTo(x, chartArea.top);
+      ctx.lineTo(x, chartArea.bottom);
+      ctx.strokeStyle = esAnioNuevo ? 'rgba(120,120,120,.55)' : 'rgba(120,120,120,.16)';
+      ctx.lineWidth = esAnioNuevo ? 1.3 : 1;
+      ctx.stroke();
+      if(esAnioNuevo){
+        ctx.setLineDash([]);
+        ctx.fillStyle = 'rgba(120,120,120,.9)';
+        ctx.font = '700 11px -apple-system,Segoe UI,Arial,sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText(String(d.getFullYear()), x+4, chartArea.top+13);
+      }
+    });
+    ctx.restore();
+  },
+};
+
+function renderTelemedida(datos, canales){
   const ctx = document.getElementById('ch-telemedida');
   const dark = document.documentElement.getAttribute('data-theme')==='dark';
   const tickC = dark ? '#8899b5' : '#4b5e7a';
   const gridC = dark ? 'rgba(255,255,255,.06)' : 'rgba(0,0,0,.06)';
+  const fechas = datos.fechas || [];
+  const series = datos.series || [];
+  const multiUsuario = series.length > 1;
+
+  const datasets = [];
+  series.forEach((s, si)=>{
+    const colorBase = PALETA_ZONAS[si % PALETA_ZONAS.length];
+    canales.forEach((canal, ci)=>{
+      const data = s[canal] || [];
+      const color = ci===0 ? colorBase : hexA(colorBase, .6);
+      const etiqueta = multiUsuario ? `${s.nombre} · ${TM_NOMBRES_CANAL[canal]}` : TM_NOMBRES_CANAL[canal];
+      datasets.push({
+        type:'line', label: etiqueta, data,
+        borderColor: color, backgroundColor:'transparent',
+        borderWidth:2, borderDash: ci>0 ? [ci*2+2, 2] : [],
+        pointRadius:0, pointHoverRadius:3, tension:.1, spanGaps:true,
+      });
+      if(data.length >= 14){
+        datasets.push({
+          type:'line', label:`Tendencia · ${etiqueta}`, data: tmPromedioMovil(data, 30),
+          borderColor: color, backgroundColor:'transparent',
+          borderWidth:2, borderDash:[7,4], pointRadius:0, tension:.25, spanGaps:true,
+        });
+      }
+    });
+  });
 
   if(chTelemedida) chTelemedida.destroy();
   chTelemedida = new Chart(ctx, {
-    type:'line',
-    data:{
-      labels: datos.fechas,
-      datasets:[{
-        label:'Consumo diario', data: datos.consumo_kwh,
-        borderColor:'#00b4d8', backgroundColor:'rgba(0,180,216,.12)',
-        borderWidth:2, pointRadius:0, pointHoverRadius:4, tension:.15, fill:true,
-      }],
-    },
+    data:{ labels: fechas, datasets },
+    plugins:[tmPluginSeparadores],
     options:{
       responsive:true, maintainAspectRatio:false,
       interaction:{mode:'index', intersect:false},
       plugins:{
-        legend:{display:false},
+        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:10}, color:tickC,
+          filter:item=>!item.text.startsWith('Tendencia')}},
         tooltip:{callbacks:{
-          title: items => items[0] ? items[0].label : '',
-          label: c => 'Consumo: ' + (c.raw||0).toLocaleString('es-CO',{maximumFractionDigits:2}) + ' kWh',
+          label:c=>`${c.dataset.label}: ${(c.raw==null?0:c.raw).toLocaleString('es-CO',{maximumFractionDigits:2})} kWh`,
         }},
       },
       scales:{
-        x:{grid:{display:false}, ticks:{color:tickC, font:{size:10}, maxRotation:0, autoSkip:true, maxTicksLimit:16}},
+        x:{grid:{display:false}, ticks:{color:tickC, font:{size:10}, maxRotation:0, autoSkip:true, maxTicksLimit:18,
+          callback:function(val,i){ const d=new Date(fechas[i]+'T00:00:00'); return d.getDate()===1 ? d.toLocaleDateString('es-CO',{month:'short'}) : ''; }}},
         y:{beginAtZero:true, grid:{color:gridC}, ticks:{color:tickC, font:{size:11}, callback:v=>v.toLocaleString('es-CO')+' kWh'}},
       },
     },
@@ -1019,8 +1177,8 @@ const MSEL = {};
 
 function _mselEsc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
-function mselInit(id, label, vacio, opciones, onChange){
-  MSEL[id] = {opciones, seleccion:new Set(), onChange, label, vacio, abierto:false};
+function mselInit(id, label, vacio, opciones, onChange, seleccionInicial){
+  MSEL[id] = {opciones, seleccion:new Set(seleccionInicial||[]), onChange, label, vacio, abierto:false, filtro:''};
   mselRender(id);
 }
 
@@ -1038,6 +1196,16 @@ function mselSetOpciones(id, opciones){
 }
 
 function mselValores(id){ return MSEL[id] ? [...MSEL[id].seleccion] : []; }
+
+// Reemplaza toda la selección de una (a diferencia de mselToggleValor, que
+// suma/quita un valor puntual) -- lo usan los botones ▲▼ de Usuarios
+// Telemedidos para saltar de un usuario a otro sin ir a buscarlo a mano.
+function mselSetSeleccion(id, valores){
+  const st = MSEL[id]; if(!st) return;
+  st.seleccion = new Set(valores);
+  mselRender(id);
+  st.onChange && st.onChange();
+}
 
 function mselClear(id){
   const st = MSEL[id]; if(!st) return;
@@ -1079,16 +1247,39 @@ function mselRender(id){
     resumen = opt ? opt.label : v;
   } else resumen = `${n} seleccionadas`;
 
-  const filas = st.opciones.map(o=>
-    `<label class="msel-opt"><input type="checkbox" data-msel="${id}" data-value="${_mselEsc(o.value)}" ${st.seleccion.has(o.value)?'checked':''}> ${_mselEsc(o.label)}</label>`
-  ).join('');
+  const conBuscador = st.opciones.length > 8;
 
   cont.innerHTML = `
     <button type="button" class="msel-btn" data-msel-toggle="${id}">${st.label}: <b>${_mselEsc(resumen)}</b><span class="car">▾</span></button>
     <div class="msel-panel ${st.abierto?'':'hidden'}" id="${id}-panel">
+      ${conBuscador ? `<input type="text" class="msel-search" placeholder="Buscar..." value="${_mselEsc(st.filtro||'')}" oninput="mselFiltrar('${id}', this.value)">` : ''}
       <label class="msel-opt"><input type="checkbox" data-msel="${id}" data-clear="1" ${n===0?'checked':''}> ${_mselEsc(st.vacio)}</label>
-      ${st.opciones.length ? '<div class="msel-sep"></div>'+filas : '<div class="msel-empty">Sin opciones</div>'}
+      <div class="msel-sep"></div>
+      <div class="msel-opciones" id="${id}-opciones"></div>
     </div>`;
+  mselRenderOpciones(id);
+}
+
+// Filtra la lista de opciones sin recrear el <input> de búsqueda -- si se
+// regenerara junto con todo el panel (como hace mselRender), perdería el
+// foco/cursor en cada letra que se escribe.
+function mselFiltrar(id, texto){
+  const st = MSEL[id]; if(!st) return;
+  st.filtro = texto;
+  mselRenderOpciones(id);
+}
+
+function mselRenderOpciones(id){
+  const st = MSEL[id];
+  const cont = document.getElementById(`${id}-opciones`);
+  if(!st || !cont) return;
+  const filtro = (st.filtro||'').trim().toLowerCase();
+  const visibles = filtro ? st.opciones.filter(o=>o.label.toLowerCase().includes(filtro)) : st.opciones;
+  cont.innerHTML = visibles.length
+    ? visibles.map(o=>
+        `<label class="msel-opt"><input type="checkbox" data-msel="${id}" data-value="${_mselEsc(o.value)}" ${st.seleccion.has(o.value)?'checked':''}> ${_mselEsc(o.label)}</label>`
+      ).join('')
+    : (st.opciones.length ? '<div class="msel-empty">Sin resultados</div>' : '<div class="msel-empty">Sin opciones</div>');
 }
 
 document.addEventListener('change', (ev)=>{
