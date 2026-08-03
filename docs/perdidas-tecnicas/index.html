@@ -306,10 +306,7 @@ tfoot td:first-child{text-align:left}
   <button class="sidebar-link active" data-vista="inicio" onclick="mostrarVista('inicio')">🏠 Inicio</button>
   <button class="sidebar-link" data-vista="perdidas" onclick="mostrarVista('perdidas')">📉 Pérdidas Técnicas</button>
   <button class="sidebar-link" data-vista="parametrizacion" onclick="mostrarVista('parametrizacion')">⚙️ Parametrización</button>
-  <button class="sidebar-link" disabled title="Próximamente" style="opacity:.5;cursor:default;justify-content:space-between">
-    <span>👥 Usuarios Telemedidos</span>
-    <span style="font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;background:var(--bg3);color:var(--text3);padding:2px 6px;border-radius:10px;white-space:nowrap">Próximamente</span>
-  </button>
+  <button class="sidebar-link" data-vista="telemedidos" onclick="mostrarVista('telemedidos')">👥 Usuarios Telemedidos</button>
   <div class="sidebar-proximamente">Más módulos próximamente</div>
   <button class="btn-actualizar-datos" id="btn-actualizar-datos" onclick="actualizarDatos()">🔄 Actualizar datos</button>
   <div class="actualizar-datos-msg" id="actualizar-datos-msg"></div>
@@ -334,6 +331,11 @@ tfoot td:first-child{text-align:left}
       <span class="mc-icon">📉</span>
       <div class="mc-title">Pérdidas Técnicas</div>
       <div class="mc-desc">Entradas, pérdidas y desglose por zona de tu operador.</div>
+    </div>
+    <div class="mod-card" onclick="mostrarVista('telemedidos')">
+      <span class="mc-icon">👥</span>
+      <div class="mc-title">Usuarios Telemedidos</div>
+      <div class="mc-desc">Consumo diario por medidor.</div>
     </div>
     <div class="mod-card disabled">
       <span class="mc-badge b-soon">PRÓXIMAMENTE</span>
@@ -514,6 +516,34 @@ tfoot td:first-child{text-align:left}
 </div>
 <!-- fin vista-parametrizacion -->
 
+<!-- ---------------- USUARIOS TELEMEDIDOS ---------------- -->
+<div id="vista-telemedidos" class="vista-modulo hidden">
+
+  <div class="sec-hdr">
+    <div class="sec-title">Usuarios Telemedidos</div>
+    <div class="sec-sub">Consumo diario por medidor (canal 1 -- energía activa importada)</div>
+  </div>
+
+  <div class="card">
+    <div class="fbar" style="margin-bottom:0">
+      <label>Usuario / medidor</label>
+      <input id="tm-buscar" list="dl-tm-usuarios" placeholder="Buscar por nombre o ID..." autocomplete="off" oninput="tmSeleccionarPorTexto()"
+        style="padding:6px 10px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg);width:300px">
+      <datalist id="dl-tm-usuarios"></datalist>
+      <span id="tm-total-usuarios" style="font-size:11px;color:var(--text3)"></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;flex-wrap:wrap;gap:8px">
+      <div id="tm-chart-titulo" style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Seleccioná un usuario</div>
+    </div>
+    <div class="chart-wrap" style="height:360px"><canvas id="ch-telemedida"></canvas></div>
+  </div>
+
+</div>
+<!-- fin vista-telemedidos -->
+
   <div class="footer">CINCO Vision · Visualizador de Datos · CINCO S.A.S. · Construcción, Ingeniería y Consultoría</div>
 </div>
 </div>
@@ -556,6 +586,8 @@ function colorParaNivel(n, niveles){
   return PALETA_NIVELES[(i<0?0:i) % PALETA_NIVELES.length];
 }
 let chPrincipal=null;
+let chTelemedida=null;
+let TM_USUARIOS = [];
 let META = {zonas:[], niveles:[], meses:[]};
 let RESUMEN = null;
 let RESUMEN_POR_NIVEL = null;
@@ -707,7 +739,7 @@ function toggleSidebar(){
   document.getElementById('sidebar-overlay').classList.toggle('hidden');
 }
 
-let vistaCargada = {perdidas:false, parametrizacion:false};
+let vistaCargada = {perdidas:false, parametrizacion:false, telemedidos:false};
 
 async function mostrarVista(nombre){
   document.querySelectorAll('.vista-modulo').forEach(v=>v.classList.add('hidden'));
@@ -726,6 +758,10 @@ async function mostrarVista(nombre){
   if(nombre==='parametrizacion' && !vistaCargada.parametrizacion){
     vistaCargada.parametrizacion = true;
     await cargarParametrizacion();
+  }
+  if(nombre==='telemedidos' && !vistaCargada.telemedidos){
+    vistaCargada.telemedidos = true;
+    await cargarTelemedidos();
   }
 }
 
@@ -749,11 +785,16 @@ async function actualizarDatos(){
     if(!res.ok) throw new Error((data && data.detail) || 'No se pudo actualizar.');
 
     msg.className = 'actualizar-datos-msg ok';
-    msg.textContent = `Listo: ${data.filas_cargadas} filas cargadas${data.filas_con_error ? `, ${data.filas_con_error} con error` : ''}.`;
+    msg.textContent = `Listo: ${data.filas_cargadas} filas cargadas${data.filas_con_error ? `, ${data.filas_con_error} con error` : ''}` +
+      (data.filas_telemedida ? ` · ${data.filas_telemedida} filas de telemedida` : '') + '.';
 
     vistaCargada.perdidas = false;
+    vistaCargada.telemedidos = false;
     if(!document.getElementById('vista-perdidas').classList.contains('hidden')){
       await mostrarVista('perdidas');
+    }
+    if(!document.getElementById('vista-telemedidos').classList.contains('hidden')){
+      await mostrarVista('telemedidos');
     }
   }catch(e){
     msg.className = 'actualizar-datos-msg err';
@@ -767,7 +808,7 @@ async function actualizarDatos(){
 
 function cerrarSesion(){
   TOKEN=null; OPERADOR=null; PERSONA=null; DEMO=false;
-  vistaCargada = {perdidas:false};
+  vistaCargada = {perdidas:false, parametrizacion:false, telemedidos:false};
   document.getElementById('app-screen').classList.add('hidden');
   document.getElementById('login-screen').classList.remove('hidden');
   document.getElementById('badge-op').classList.add('hidden');
@@ -874,6 +915,76 @@ async function guardarZonaColor(zona, color){
   }catch(e){
     st.textContent = '⚠'; st.title = e.message || 'Error al guardar';
   }
+}
+
+/* ---- Usuarios Telemedidos: consumo diario por medidor (canal 1, kWh) ---- */
+function _tmEtiqueta(u){ return `${u.nombre} (${u.usuario_id})`; }
+
+async function cargarTelemedidos(){
+  const dl = document.getElementById('dl-tm-usuarios');
+  const totalEl = document.getElementById('tm-total-usuarios');
+  try{
+    TM_USUARIOS = DEMO ? [] : await apiGet('/api/telemedida/usuarios');
+  }catch(e){
+    TM_USUARIOS = [];
+  }
+  dl.innerHTML = TM_USUARIOS.map(u=>`<option value="${_tmEtiqueta(u).replace(/"/g,'&quot;')}"></option>`).join('');
+  totalEl.textContent = TM_USUARIOS.length ? `${TM_USUARIOS.length} usuarios` : '';
+  document.getElementById('tm-chart-titulo').textContent = DEMO
+    ? 'No disponible en modo demo (sin conexión al servidor)'
+    : (TM_USUARIOS.length ? 'Seleccioná un usuario' : 'Todavía no hay usuarios telemedidos cargados para este operador');
+}
+
+function tmSeleccionarPorTexto(){
+  const texto = document.getElementById('tm-buscar').value;
+  const usuario = TM_USUARIOS.find(u => _tmEtiqueta(u) === texto);
+  if(usuario) cargarConsumoUsuario(usuario);
+}
+
+async function cargarConsumoUsuario(usuario){
+  document.getElementById('tm-chart-titulo').textContent = _tmEtiqueta(usuario);
+  let datos = {fechas:[], consumo_kwh:[]};
+  try{
+    if(!DEMO) datos = await apiGet(`/api/telemedida/consumo?usuario_id=${encodeURIComponent(usuario.usuario_id)}`);
+  }catch(e){
+    // Se deja el gráfico vacío -- no es crítico para el resto de la app.
+  }
+  renderTelemedida(datos);
+}
+
+function renderTelemedida(datos){
+  const ctx = document.getElementById('ch-telemedida');
+  const dark = document.documentElement.getAttribute('data-theme')==='dark';
+  const tickC = dark ? '#8899b5' : '#4b5e7a';
+  const gridC = dark ? 'rgba(255,255,255,.06)' : 'rgba(0,0,0,.06)';
+
+  if(chTelemedida) chTelemedida.destroy();
+  chTelemedida = new Chart(ctx, {
+    type:'line',
+    data:{
+      labels: datos.fechas,
+      datasets:[{
+        label:'Consumo diario', data: datos.consumo_kwh,
+        borderColor:'#00b4d8', backgroundColor:'rgba(0,180,216,.12)',
+        borderWidth:2, pointRadius:0, pointHoverRadius:4, tension:.15, fill:true,
+      }],
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      interaction:{mode:'index', intersect:false},
+      plugins:{
+        legend:{display:false},
+        tooltip:{callbacks:{
+          title: items => items[0] ? items[0].label : '',
+          label: c => 'Consumo: ' + (c.raw||0).toLocaleString('es-CO',{maximumFractionDigits:2}) + ' kWh',
+        }},
+      },
+      scales:{
+        x:{grid:{display:false}, ticks:{color:tickC, font:{size:10}, maxRotation:0, autoSkip:true, maxTicksLimit:16}},
+        y:{beginAtZero:true, grid:{color:gridC}, ticks:{color:tickC, font:{size:11}, callback:v=>v.toLocaleString('es-CO')+' kWh'}},
+      },
+    },
+  });
 }
 
 function authHeaders(){ return TOKEN ? {'Authorization':`Bearer ${TOKEN}`} : {}; }
