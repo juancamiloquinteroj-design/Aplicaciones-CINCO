@@ -178,6 +178,11 @@ tfoot td:first-child{text-align:left}
 .creg-tbl .creg-item input{width:60px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-weight:700;text-align:right;color:var(--text);background:var(--bg2)}
 .creg-tbl .creg-st{font-size:10px;color:var(--text3);min-width:14px}
 
+/* PARAMETRIZACIÓN -- color por zona */
+.param-zonas-grid{display:flex;flex-wrap:wrap;gap:12px;margin-top:14px}
+.param-zona-item{display:flex;align-items:center;gap:8px;padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg)}
+.param-zona-item input[type=color]{width:36px;height:28px;border:1px solid var(--border);border-radius:6px;padding:2px;cursor:pointer;background:var(--bg2)}
+
 /* RANGE SLIDER */
 .range-wrap{margin-top:14px}
 .range-track-row{position:relative;height:26px;display:flex;align-items:center}
@@ -286,6 +291,7 @@ tfoot td:first-child{text-align:left}
   <div class="sidebar-title">Módulos</div>
   <button class="sidebar-link active" data-vista="inicio" onclick="mostrarVista('inicio')">🏠 Inicio</button>
   <button class="sidebar-link" data-vista="perdidas" onclick="mostrarVista('perdidas')">📉 Pérdidas Técnicas</button>
+  <button class="sidebar-link" data-vista="parametrizacion" onclick="mostrarVista('parametrizacion')">⚙️ Parametrización</button>
   <button class="sidebar-link" disabled title="Próximamente" style="opacity:.5;cursor:default;justify-content:space-between">
     <span>👥 Usuarios Telemedidos</span>
     <span style="font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;background:var(--bg3);color:var(--text3);padding:2px 6px;border-radius:10px;white-space:nowrap">Próximamente</span>
@@ -480,6 +486,22 @@ tfoot td:first-child{text-align:left}
 </div>
 <!-- fin vista-perdidas -->
 
+<!-- ---------------- PARAMETRIZACIÓN ---------------- -->
+<div id="vista-parametrizacion" class="vista-modulo hidden">
+
+  <div class="sec-hdr">
+    <div class="sec-title">Parametrización</div>
+    <div class="sec-sub">Colores de zona para todas las gráficas</div>
+  </div>
+  <div class="card">
+    <div class="card-title">Color por zona</div>
+    <div class="card-sub">Cada operador trae sus propios códigos de zona -- asigná un color a cada uno y se usa en todas las gráficas y tablas de Pérdidas Técnicas.</div>
+    <div id="parametrizacion-zonas" class="param-zonas-grid"></div>
+  </div>
+
+</div>
+<!-- fin vista-parametrizacion -->
+
   <div class="footer">CINCO Vision · Visualizador de Datos · CINCO S.A.S. · Construcción, Ingeniería y Consultoría</div>
 </div>
 </div>
@@ -506,8 +528,13 @@ let TOKEN = null, OPERADOR = null, PERSONA = null, DEMO = false;
 // Solo se les asigna un color consistente para distinguirlas visualmente.
 const PALETA_ZONAS = ['#00b4d8','#f4a261','#06d6a0','#ef476f','#7b2fff','#0096c7','#ffb703','#2a9d5c','#c0132a','#4a5e7a'];
 const _colorZonaCache = new Map();
+// Colores personalizados desde el módulo de Parametrización (uno por zona,
+// por operador) -- se cargan una vez al iniciar sesión. Si una zona no tiene
+// color asignado todavía, se usa el automático de siempre.
+let ZONA_COLORES_PERSONALIZADOS = {};
 function colorParaZona(z){
   const key = z || 'Sin zona';
+  if(ZONA_COLORES_PERSONALIZADOS[key]) return ZONA_COLORES_PERSONALIZADOS[key];
   if(!_colorZonaCache.has(key)) _colorZonaCache.set(key, PALETA_ZONAS[_colorZonaCache.size % PALETA_ZONAS.length]);
   return _colorZonaCache.get(key);
 }
@@ -668,7 +695,7 @@ function toggleSidebar(){
   document.getElementById('sidebar-overlay').classList.toggle('hidden');
 }
 
-let vistaCargada = {perdidas:false};
+let vistaCargada = {perdidas:false, parametrizacion:false};
 
 async function mostrarVista(nombre){
   document.querySelectorAll('.vista-modulo').forEach(v=>v.classList.add('hidden'));
@@ -683,6 +710,10 @@ async function mostrarVista(nombre){
     vistaCargada.perdidas = true;
     await cargarMeta();
     await aplicarFiltros();
+  }
+  if(nombre==='parametrizacion' && !vistaCargada.parametrizacion){
+    vistaCargada.parametrizacion = true;
+    await cargarParametrizacion();
   }
 }
 
@@ -766,7 +797,71 @@ async function entrarDashboard(){
     document.getElementById('sidebar').classList.remove('hidden');
   }
 
+  // Se carga temprano (antes de abrir ninguna vista) para que, si ya hay
+  // colores de zona parametrizados de una sesión anterior, las gráficas de
+  // Pérdidas Técnicas los usen desde el primer render, no solo después de
+  // visitar Parametrización.
+  await cargarZonaColoresPersonalizados();
+
   await mostrarVista('inicio');
+}
+
+async function cargarZonaColoresPersonalizados(){
+  try{
+    const datos = DEMO ? [] : await apiGet('/api/zona-colores');
+    ZONA_COLORES_PERSONALIZADOS = {};
+    datos.forEach(d=>{ if(d.color) ZONA_COLORES_PERSONALIZADOS[d.zona] = d.color; });
+  }catch(e){
+    // Si falla, se sigue con los colores automáticos -- no es bloqueante.
+  }
+}
+
+/* ---- Parametrización: color por zona ---- */
+async function cargarParametrizacion(){
+  const cont = document.getElementById('parametrizacion-zonas');
+  let datos = [];
+  try{
+    datos = DEMO ? [] : await apiGet('/api/zona-colores');
+  }catch(e){
+    cont.innerHTML = '<div style="padding:20px;color:var(--text3);font-size:12px">No se pudo cargar la lista de zonas.</div>';
+    return;
+  }
+  renderParametrizacionZonas(datos);
+}
+
+function renderParametrizacionZonas(datos){
+  const cont = document.getElementById('parametrizacion-zonas');
+  if(DEMO){
+    cont.innerHTML = '<div style="padding:20px;color:var(--text3);font-size:12px">No disponible en modo demo (sin conexión al servidor).</div>';
+    return;
+  }
+  if(!datos.length){
+    cont.innerHTML = '<div style="padding:20px;color:var(--text3);font-size:12px">Todavía no hay zonas cargadas para este operador.</div>';
+    return;
+  }
+  cont.innerHTML = datos.map(d=>{
+    const color = d.color || colorParaZona(d.zona);
+    return `<div class="param-zona-item">
+      <span class="zb" id="param-badge-${d.zona}" style="background:${color}22;color:${color};min-width:56px;justify-content:center">${d.zona}</span>
+      <input type="color" value="${color}" onchange="guardarZonaColor('${d.zona}', this.value)">
+      <span class="creg-st" id="param-st-${d.zona}"></span>
+    </div>`;
+  }).join('');
+}
+
+async function guardarZonaColor(zona, color){
+  const st = document.getElementById(`param-st-${zona}`);
+  st.textContent = '…';
+  try{
+    await apiPost('/api/zona-colores', {zona, color});
+    ZONA_COLORES_PERSONALIZADOS[zona] = color;
+    const badge = document.getElementById(`param-badge-${zona}`);
+    if(badge){ badge.style.background = color+'22'; badge.style.color = color; }
+    st.textContent = '✓';
+    setTimeout(()=>{ if(st.textContent==='✓') st.textContent=''; }, 2000);
+  }catch(e){
+    st.textContent = '⚠'; st.title = e.message || 'Error al guardar';
+  }
 }
 
 function authHeaders(){ return TOKEN ? {'Authorization':`Bearer ${TOKEN}`} : {}; }
