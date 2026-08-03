@@ -275,6 +275,29 @@ tfoot td:first-child{text-align:left}
 .be-estructura-item .borrar{color:#ef476f;font-size:16px;line-height:1;padding:2px 6px;flex-shrink:0}
 .be-estructura-item .borrar:hover{opacity:.7}
 
+.be-medidores-bloque{margin-bottom:16px}
+.be-medidores-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.be-medidores-hdr span{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text3)}
+.be-btn-agregar{padding:5px 10px;border:1px solid var(--accent);border-radius:7px;background:transparent;color:var(--accent);font-size:11px;font-weight:700;cursor:pointer}
+.be-btn-agregar:hover{background:rgba(0,180,216,.1)}
+.be-fila-medidor{display:grid;grid-template-columns:1fr 200px 30px;gap:8px;margin-bottom:8px;align-items:center}
+@media (max-width:640px){ .be-fila-medidor{grid-template-columns:1fr} }
+.be-fila-medidor input,.be-fila-medidor select{padding:8px 10px;border:1px solid var(--border);border-radius:7px;font-size:12.5px;color:var(--text);background:var(--bg)}
+.be-fila-quitar{border:1px solid var(--border);border-radius:7px;background:var(--bg);color:#ef476f;font-size:14px;cursor:pointer;padding:7px 0}
+.be-fila-quitar:hover{background:var(--bg3)}
+
+.be-tabla-creadas-wrap{margin-top:20px;padding-top:16px;border-top:1px solid var(--border)}
+.be-tabla-creadas-titulo{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text3);margin-bottom:10px}
+.be-tabla-scroll{overflow-x:auto}
+.be-tabla-creadas{width:100%;border-collapse:collapse;font-size:12px}
+.be-tabla-creadas th{text-align:left;padding:7px 10px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:var(--text3);border-bottom:1px solid var(--border);white-space:nowrap}
+.be-tabla-creadas td{padding:7px 10px;border-bottom:1px solid var(--border);color:var(--text2);white-space:nowrap}
+.be-tabla-creadas td.num{text-align:right;font-family:ui-monospace,"Cascadia Code","SF Mono",Consolas,monospace}
+.be-tabla-creadas tr:last-child td{border-bottom:none}
+.be-tabla-creadas .borrar{color:#ef476f;cursor:pointer}
+.be-tabla-creadas .borrar:hover{opacity:.7}
+.be-tabla-vacio{padding:14px;text-align:center;color:var(--text3);font-size:12px}
+
 /* RANGE SLIDER */
 .range-wrap{margin-top:14px}
 .range-track-row{position:relative;height:26px;display:flex;align-items:center}
@@ -692,7 +715,7 @@ tfoot td:first-child{text-align:left}
       <div class="be-form-grid">
         <div class="be-field">
           <label>Nombre de la estructura</label>
-          <input type="text" id="be-nombre" placeholder="Ej. Transformador Neiva 1">
+          <input type="text" id="be-nombre" placeholder="Ej. PT 230/115 kV Trafo 1 Sub Betania">
         </div>
         <div class="be-field">
           <label>Nivel de tensión</label>
@@ -705,61 +728,77 @@ tfoot td:first-child{text-align:left}
         </div>
       </div>
 
-      <div class="be-form-grid">
-        <div class="be-field">
-          <label>Entrada -- usuario/medidor</label>
-          <input type="text" id="be-entrada-usuario" list="dl-be-usuarios" placeholder="Buscar por nombre o código..." autocomplete="off">
+      <div class="be-medidores-bloque">
+        <div class="be-medidores-hdr">
+          <span>Entrada(s) -- se suman entre sí</span>
+          <button type="button" class="be-btn-agregar" onclick="beAgregarFila('entrada')">+ Agregar entrada</button>
         </div>
-        <div class="be-field">
-          <label>Entrada -- canal</label>
-          <select id="be-entrada-canal">
-            <optgroup label="Importación">
-              <option value="canal1">Canal 1 (kWhD)</option>
-              <option value="canal2">Canal 2 (kVarhD)</option>
-            </optgroup>
-            <optgroup label="Exportación">
-              <option value="canal3">Canal 3 (kWhR)</option>
-              <option value="canal4">Canal 4 (kVarhR)</option>
-            </optgroup>
-          </select>
-        </div>
+        <div id="be-filas-entrada"></div>
       </div>
 
-      <div class="be-form-grid">
-        <div class="be-field">
-          <label>Salida -- usuario/medidor</label>
-          <input type="text" id="be-salida-usuario" list="dl-be-usuarios" placeholder="Buscar por nombre o código..." autocomplete="off">
+      <div class="be-medidores-bloque">
+        <div class="be-medidores-hdr">
+          <span>Salida(s) -- se suman entre sí</span>
+          <button type="button" class="be-btn-agregar" onclick="beAgregarFila('salida')">+ Agregar salida</button>
         </div>
-        <div class="be-field">
-          <label>Salida -- canal</label>
-          <select id="be-salida-canal">
-            <optgroup label="Importación">
-              <option value="canal1">Canal 1 (kWhD)</option>
-              <option value="canal2">Canal 2 (kVarhD)</option>
-            </optgroup>
-            <optgroup label="Exportación">
-              <option value="canal3" selected>Canal 3 (kWhR)</option>
-              <option value="canal4">Canal 4 (kVarhR)</option>
-            </optgroup>
-          </select>
-        </div>
+        <div id="be-filas-salida"></div>
       </div>
 
       <datalist id="dl-be-usuarios"></datalist>
 
       <div id="be-crear-msg" class="tm-modal-msg"></div>
       <button class="btn-theme" style="width:auto;padding:9px 20px;background:var(--accent);color:#fff;border-color:var(--accent)" onclick="crearEstructuraBalance()">Crear estructura</button>
+
+      <div class="be-tabla-creadas-wrap">
+        <div class="be-tabla-creadas-titulo">Estructuras ya creadas</div>
+        <div class="be-tabla-scroll">
+          <table class="be-tabla-creadas">
+            <thead><tr><th>Nombre</th><th>Nivel</th><th>Entrada(s)</th><th>Salida(s)</th><th></th></tr></thead>
+            <tbody id="be-tabla-creadas-body"></tbody>
+          </table>
+        </div>
+      </div>
     </div>
   </details>
 
   <details class="be-acordeon" open>
     <summary>📊 Ver Balance</summary>
     <div class="be-acordeon-body">
+      <div class="fbar" style="margin-bottom:12px">
+        <label>Nivel de tensión</label>
+        <select id="be-filtro-nivel" onchange="cargarListaEstructuras()">
+          <option value="">Todos</option>
+          <option value="1">Nivel 1</option>
+          <option value="2">Nivel 2</option>
+          <option value="3">Nivel 3</option>
+          <option value="4">Nivel 4</option>
+        </select>
+      </div>
+
       <div id="be-lista-estructuras" class="be-lista-estructuras"></div>
 
       <div id="be-chart-card" class="card hidden" style="margin-top:14px">
         <div id="be-chart-titulo" style="text-align:center;font-size:15px;font-weight:800;color:var(--text);text-transform:uppercase;margin-bottom:10px"></div>
-        <div class="chart-wrap" style="height:380px"><canvas id="ch-balance-estructura"></canvas></div>
+
+        <div class="fbar" style="justify-content:center;margin-bottom:12px">
+          <label>Desde</label>
+          <input type="date" id="be-desde" onchange="verBalanceEstructura(BE_ACTIVA_ID)">
+          <label>Hasta</label>
+          <input type="date" id="be-hasta" onchange="verBalanceEstructura(BE_ACTIVA_ID)">
+          <span style="font-size:10.5px;color:var(--text3)">Por defecto: últimos 365 días con datos</span>
+        </div>
+
+        <div class="chart-wrap" style="height:400px"><canvas id="ch-balance-estructura"></canvas></div>
+
+        <div class="be-tabla-creadas-wrap">
+          <div class="be-tabla-creadas-titulo">Balance mensual</div>
+          <div class="be-tabla-scroll">
+            <table class="be-tabla-creadas">
+              <thead><tr><th>Período</th><th>Entrada (kWh)</th><th>Salida (kWh)</th><th>Pérdida (kWh)</th><th>Pérdida (%)</th></tr></thead>
+              <tbody id="be-tabla-mensual-body"></tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </div>
   </details>
@@ -1415,11 +1454,6 @@ function irAUsuarioDesdeAlarma(usuarioId){
 }
 
 /* ---- Balances por Estructura ---- */
-const BE_NOMBRES_CANAL = {
-  canal1:'Canal 1 (kWhD, importación)', canal2:'Canal 2 (kVarhD, importación)',
-  canal3:'Canal 3 (kWhR, exportación)', canal4:'Canal 4 (kVarhR, exportación)',
-};
-
 async function cargarBalancesEstructura(){
   // El mismo padrón de usuarios/medidores de Usuarios Telemedidos -- ahí
   // están los datos de entrada/salida, no hace falta duplicarlos.
@@ -1427,12 +1461,58 @@ async function cargarBalancesEstructura(){
   document.getElementById('dl-be-usuarios').innerHTML =
     BE_USUARIOS.map(u=>`<option value="${_mselEsc(_tmEtiqueta(u))}"></option>`).join('');
 
+  // Arranca con 1 fila de entrada y 1 de salida -- "+ Agregar" suma más.
+  document.getElementById('be-filas-entrada').innerHTML = '';
+  document.getElementById('be-filas-salida').innerHTML = '';
+  beAgregarFila('entrada');
+  beAgregarFila('salida');
+
   await cargarListaEstructuras();
 }
 
+function _beFilaMedidorHtml(tipo){
+  return `<div class="be-fila-medidor">
+    <input type="text" class="be-fila-usuario" list="dl-be-usuarios" placeholder="Buscar por nombre o código..." autocomplete="off">
+    <select class="be-fila-canal">
+      <optgroup label="Importación">
+        <option value="canal1">Canal 1 (kWhD)</option>
+        <option value="canal2">Canal 2 (kVarhD)</option>
+      </optgroup>
+      <optgroup label="Exportación">
+        <option value="canal3" ${tipo==='salida'?'selected':''}>Canal 3 (kWhR)</option>
+        <option value="canal4">Canal 4 (kVarhR)</option>
+      </optgroup>
+    </select>
+    <button type="button" class="be-fila-quitar" onclick="this.closest('.be-fila-medidor').remove()" title="Quitar esta fila">✕</button>
+  </div>`;
+}
+
+function beAgregarFila(tipo){
+  document.getElementById(`be-filas-${tipo}`).insertAdjacentHTML('beforeend', _beFilaMedidorHtml(tipo));
+}
+
+// Lee todas las filas de un bloque (entrada/salida) y resuelve cada
+// "Nombre (ID)" escrito al usuario_id real -- null en la lista si alguna
+// fila no coincide con ningún usuario/medidor real.
+function _beRecolectarFilas(tipo){
+  return [...document.querySelectorAll(`#be-filas-${tipo} .be-fila-medidor`)].map(fila=>{
+    const texto = fila.querySelector('.be-fila-usuario').value.trim();
+    const canal = fila.querySelector('.be-fila-canal').value;
+    const match = BE_USUARIOS.find(u => _tmEtiqueta(u) === texto);
+    return match ? {usuario_id: match.usuario_id, canal} : null;
+  });
+}
+
 async function cargarListaEstructuras(){
-  try{ BE_ESTRUCTURAS = DEMO ? [] : await apiGet('/api/balances-estructura'); }catch(e){ BE_ESTRUCTURAS = []; }
+  const nivel = document.getElementById('be-filtro-nivel').value;
+  const qs = nivel ? `?nivel_tension=${nivel}` : '';
+  try{ BE_ESTRUCTURAS = DEMO ? [] : await apiGet(`/api/balances-estructura${qs}`); }catch(e){ BE_ESTRUCTURAS = []; }
   renderListaEstructuras();
+  renderTablaEstructurasCreadas();
+}
+
+function _beResumenLado(medidores){
+  return medidores.map(m => `${m.usuario_id}/${m.canal.replace('canal','C')}`).join(' + ');
 }
 
 function renderListaEstructuras(){
@@ -1442,24 +1522,31 @@ function renderListaEstructuras(){
     return;
   }
   if(!BE_ESTRUCTURAS.length){
-    cont.innerHTML = '<div class="tm-alarma-vacio">Todavía no creaste ninguna estructura -- usá "Crear Estructura" arriba.</div>';
+    cont.innerHTML = '<div class="tm-alarma-vacio">No hay estructuras para este filtro -- usá "Crear Estructura" arriba.</div>';
     return;
   }
   cont.innerHTML = BE_ESTRUCTURAS.map(e => `
     <div class="be-estructura-item ${e.id===BE_ACTIVA_ID?'activa':''}" onclick="verBalanceEstructura(${e.id})">
       <div class="nom">${_mselEsc(e.nombre)}</div>
       <div class="niv">Nivel ${e.nivel_tension}</div>
-      <div class="rutas">${_mselEsc(e.entrada_usuario_id)}/${e.entrada_canal.replace('canal','C')} → ${_mselEsc(e.salida_usuario_id)}/${e.salida_canal.replace('canal','C')}</div>
-      <span class="borrar" onclick="borrarEstructuraBalance(event, ${e.id}, '${e.nombre.replace(/'/g,"\\'")}')" title="Borrar esta estructura">✕</span>
+      <div class="rutas">${_mselEsc(_beResumenLado(e.entradas))} → ${_mselEsc(_beResumenLado(e.salidas))}</div>
     </div>`).join('');
 }
 
-// Devuelve el usuario_id a partir de lo que se escribió/eligió en el campo
-// "Nombre (ID)" -- si no coincide con ninguna opción real, null.
-function _beResolverUsuario(textoInput){
-  const texto = document.getElementById(textoInput).value.trim();
-  const match = BE_USUARIOS.find(u => _tmEtiqueta(u) === texto);
-  return match ? match.usuario_id : null;
+function renderTablaEstructurasCreadas(){
+  const body = document.getElementById('be-tabla-creadas-body');
+  if(!BE_ESTRUCTURAS.length){
+    body.innerHTML = `<tr><td colspan="5" class="be-tabla-vacio">Todavía no creaste ninguna estructura.</td></tr>`;
+    return;
+  }
+  body.innerHTML = BE_ESTRUCTURAS.map(e => `
+    <tr>
+      <td>${_mselEsc(e.nombre)}</td>
+      <td>Nivel ${e.nivel_tension}</td>
+      <td>${_mselEsc(_beResumenLado(e.entradas))}</td>
+      <td>${_mselEsc(_beResumenLado(e.salidas))}</td>
+      <td><span class="borrar" onclick="borrarEstructuraBalance(event, ${e.id}, '${e.nombre.replace(/'/g,"\\'")}')" title="Borrar">✕</span></td>
+    </tr>`).join('');
 }
 
 async function crearEstructuraBalance(){
@@ -1468,24 +1555,22 @@ async function crearEstructuraBalance(){
 
   const nombre = document.getElementById('be-nombre').value.trim();
   const nivel_tension = parseInt(document.getElementById('be-nivel').value);
-  const entrada_usuario_id = _beResolverUsuario('be-entrada-usuario');
-  const entrada_canal = document.getElementById('be-entrada-canal').value;
-  const salida_usuario_id = _beResolverUsuario('be-salida-usuario');
-  const salida_canal = document.getElementById('be-salida-canal').value;
+  const entradas = _beRecolectarFilas('entrada');
+  const salidas = _beRecolectarFilas('salida');
 
   if(!nombre){ msg.className='tm-modal-msg err'; msg.textContent='Ponele un nombre a la estructura.'; return; }
-  if(!entrada_usuario_id){ msg.className='tm-modal-msg err'; msg.textContent='El usuario/medidor de Entrada no coincide con ninguno de la lista -- elegilo del buscador.'; return; }
-  if(!salida_usuario_id){ msg.className='tm-modal-msg err'; msg.textContent='El usuario/medidor de Salida no coincide con ninguno de la lista -- elegilo del buscador.'; return; }
+  if(!entradas.length || entradas.some(m=>!m)){ msg.className='tm-modal-msg err'; msg.textContent='Alguna fila de Entrada no coincide con ningún usuario/medidor real -- elegilo del buscador.'; return; }
+  if(!salidas.length || salidas.some(m=>!m)){ msg.className='tm-modal-msg err'; msg.textContent='Alguna fila de Salida no coincide con ningún usuario/medidor real -- elegilo del buscador.'; return; }
 
   if(DEMO){ msg.className='tm-modal-msg err'; msg.textContent='No disponible en modo demo (sin conexión al servidor).'; return; }
 
   try{
-    await apiPost('/api/balances-estructura', {
-      nombre, nivel_tension, entrada_usuario_id, entrada_canal, salida_usuario_id, salida_canal,
-    });
+    await apiPost('/api/balances-estructura', {nombre, nivel_tension, entradas, salidas});
     document.getElementById('be-nombre').value = '';
-    document.getElementById('be-entrada-usuario').value = '';
-    document.getElementById('be-salida-usuario').value = '';
+    document.getElementById('be-filas-entrada').innerHTML = '';
+    document.getElementById('be-filas-salida').innerHTML = '';
+    beAgregarFila('entrada');
+    beAgregarFila('salida');
     msg.className = 'tm-modal-msg';
     msg.textContent = `Listo: "${nombre}" creada.`;
     await cargarListaEstructuras();
@@ -1516,15 +1601,28 @@ async function verBalanceEstructura(id){
   document.getElementById('be-chart-card').classList.remove('hidden');
   document.getElementById('be-chart-titulo').textContent = 'Cargando…';
 
+  const qs = new URLSearchParams();
+  const desde = document.getElementById('be-desde').value;
+  const hasta = document.getElementById('be-hasta').value;
+  if(desde) qs.set('desde', desde);
+  if(hasta) qs.set('hasta', hasta);
+
   let datos;
   try{
-    datos = await apiGet(`/api/balances-estructura/${id}/consumo`);
+    datos = await apiGet(`/api/balances-estructura/${id}/consumo?${qs.toString()}`);
   }catch(e){
     document.getElementById('be-chart-titulo').textContent = 'No se pudo cargar el balance.';
     return;
   }
   document.getElementById('be-chart-titulo').textContent = `${datos.nombre} -- Nivel ${datos.nivel_tension}`;
+  // Si no se habían fijado a mano, se completan con lo que trajo el
+  // backend (por defecto, los últimos 365 días con datos) -- así el
+  // usuario ve el rango real que está mirando, no los campos vacíos.
+  if(!desde && datos.fechas.length) document.getElementById('be-desde').value = datos.fechas[0];
+  if(!hasta && datos.fechas.length) document.getElementById('be-hasta').value = datos.fechas[datos.fechas.length-1];
+
   renderChartBalanceEstructura(datos);
+  renderTablaMensualBalance(datos);
 }
 
 function renderChartBalanceEstructura(datos){
@@ -1539,12 +1637,14 @@ function renderChartBalanceEstructura(datos){
     data:{
       labels: fechas,
       datasets:[
-        {type:'line', label:'Entrada', data:datos.entrada_kwh, borderColor:'#0096c7', backgroundColor:'transparent',
-          borderWidth:2, pointRadius:0, tension:.1, spanGaps:true},
-        {type:'line', label:'Salida', data:datos.salida_kwh, borderColor:'#06d6a0', backgroundColor:'transparent',
-          borderWidth:2, pointRadius:0, tension:.1, spanGaps:true},
-        {type:'line', label:'Pérdida (Entrada − Salida)', data:datos.perdida_kwh, borderColor:'#ef476f', backgroundColor:'rgba(239,71,111,.08)',
-          borderWidth:2, pointRadius:0, tension:.1, spanGaps:true, fill:true},
+        {type:'bar', label:'Entrada', data:datos.entrada_kwh, backgroundColor:'rgba(0,150,199,.7)',
+          borderRadius:2, yAxisID:'yEnt', order:3, barPercentage:.85, categoryPercentage:.85},
+        {type:'bar', label:'Salida', data:datos.salida_kwh, backgroundColor:'rgba(6,214,160,.7)',
+          borderRadius:2, yAxisID:'yEnt', order:3, barPercentage:.85, categoryPercentage:.85},
+        {type:'line', label:'Pérdida kWh', data:datos.perdida_kwh, borderColor:'#ef476f', backgroundColor:'transparent',
+          borderWidth:2.5, pointRadius:0, tension:.15, spanGaps:true, yAxisID:'yKwh', order:1},
+        {type:'line', label:'Pérdida %', data:datos.perdida_pct, borderColor:'#f4a261', backgroundColor:'transparent',
+          borderWidth:2.5, pointRadius:0, tension:.15, spanGaps:true, yAxisID:'yPct', order:1, borderDash:[6,3]},
       ],
     },
     plugins:[tmPluginSeparadores],
@@ -1554,9 +1654,10 @@ function renderChartBalanceEstructura(datos){
       interaction:{mode:'index', intersect:false},
       plugins:{
         legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:10}, color:tickC}},
-        tooltip:{callbacks:{
-          label:c=>`${c.dataset.label}: ${(c.raw==null?0:c.raw).toLocaleString('es-CO',{maximumFractionDigits:2})} kWh`,
-        }},
+        tooltip:{callbacks:{label:c=>{
+          const v = c.raw==null ? 0 : c.raw;
+          return c.dataset.label==='Pérdida %' ? `Pérdida %: ${v.toFixed(2)}%` : `${c.dataset.label}: ${v.toLocaleString('es-CO',{maximumFractionDigits:2})} kWh`;
+        }}},
       },
       scales:{
         x:{
@@ -1577,10 +1678,54 @@ function renderChartBalanceEstructura(datos){
             },
           },
         },
-        y:{grid:{color:gridC}, ticks:{color:tickC, font:{size:11}, callback:v=>v.toLocaleString('es-CO')+' kWh'}},
+        yEnt:{type:'linear', position:'left', beginAtZero:true, grid:{color:gridC},
+          ticks:{color:'#0096c7', font:{size:11}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
+          title:{display:true, text:'Entrada / Salida (kWh)', color:'#0096c7', font:{size:11}}},
+        yKwh:{type:'linear', position:'right', grid:{drawOnChartArea:false},
+          ticks:{color:'#ef476f', font:{size:11}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
+          title:{display:true, text:'Pérdida (kWh)', color:'#ef476f', font:{size:11}}},
+        yPct:{type:'linear', position:'right', grid:{drawOnChartArea:false},
+          ticks:{color:'#f4a261', font:{size:11}, callback:v=>v.toFixed(1)+'%'},
+          afterFit:ax=>{ax.width=Math.max(ax.width,70)},
+          title:{display:true, text:'Pérdida %', color:'#f4a261', font:{size:11}}, offset:true},
       },
     },
   });
+}
+
+// Agrupa la serie diaria por mes (YYYY-MM) para la tabla de abajo -- pérdida
+// % del mes = pérdida total del mes / entrada total del mes (no el promedio
+// de los % diarios, que pesaría igual un día de mucho y uno de poco consumo).
+function renderTablaMensualBalance(datos){
+  const body = document.getElementById('be-tabla-mensual-body');
+  const fechas = datos.fechas || [];
+  if(!fechas.length){
+    body.innerHTML = `<tr><td colspan="5" class="be-tabla-vacio">Sin datos en el rango elegido.</td></tr>`;
+    return;
+  }
+  const porMes = {};
+  fechas.forEach((f,i)=>{
+    const mes = f.slice(0,7);
+    if(!porMes[mes]) porMes[mes] = {entrada:0, salida:0, tieneDato:false};
+    const e = datos.entrada_kwh[i], s = datos.salida_kwh[i];
+    if(e!=null){ porMes[mes].entrada += e; porMes[mes].tieneDato = true; }
+    if(s!=null){ porMes[mes].salida += s; porMes[mes].tieneDato = true; }
+  });
+  const meses = Object.keys(porMes).sort();
+  const f2 = v=>v.toLocaleString('es-CO',{maximumFractionDigits:0});
+  body.innerHTML = meses.map(mes=>{
+    const {entrada, salida, tieneDato} = porMes[mes];
+    if(!tieneDato) return '';
+    const perdida = entrada - salida;
+    const pct = entrada ? (perdida/entrada*100) : 0;
+    return `<tr>
+      <td>${_mselEsc(labelMes(mes))}</td>
+      <td class="num">${f2(entrada)}</td>
+      <td class="num">${f2(salida)}</td>
+      <td class="num">${f2(perdida)}</td>
+      <td class="num">${pct.toFixed(2)}%</td>
+    </tr>`;
+  }).join('');
 }
 
 async function confirmarDescargaTm(){
