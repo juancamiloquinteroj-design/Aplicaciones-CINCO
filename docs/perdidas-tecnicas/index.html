@@ -301,6 +301,7 @@ tfoot td:first-child{text-align:left}
 .be-tabla-creadas .borrar{color:#ef476f;cursor:pointer}
 .be-tabla-creadas .borrar:hover{opacity:.7}
 .be-tabla-vacio{padding:14px;text-align:center;color:var(--text3);font-size:12px}
+.be-tabla-creadas th.suma,.be-tabla-creadas td.suma{background:rgba(0,180,216,.08);font-weight:700;color:var(--text)}
 
 /* RANGE SLIDER */
 .range-wrap{margin-top:14px}
@@ -802,17 +803,17 @@ tfoot td:first-child{text-align:left}
       <input type="date" id="be-desde" onchange="verBalanceEstructura(BE_ACTIVA_ID)">
       <label>Hasta</label>
       <input type="date" id="be-hasta" onchange="verBalanceEstructura(BE_ACTIVA_ID)">
-      <span style="font-size:10.5px;color:var(--text3)">Por defecto: últimos 365 días con datos</span>
+      <span style="font-size:10.5px;color:var(--text3)">Por defecto: el último mes disponible</span>
     </div>
 
     <div class="chart-wrap" style="height:400px"><canvas id="ch-balance-estructura"></canvas></div>
 
     <div class="be-tabla-creadas-wrap">
-      <div class="be-tabla-creadas-titulo">Balance mensual</div>
+      <div class="be-tabla-creadas-titulo">Balance diario -- detalle por medidor</div>
       <div class="be-tabla-scroll">
-        <table class="be-tabla-creadas">
-          <thead><tr><th>Período</th><th>Entrada (kWh)</th><th>Salida (kWh)</th><th>Pérdida (kWh)</th><th>Pérdida (%)</th></tr></thead>
-          <tbody id="be-tabla-mensual-body"></tbody>
+        <table class="be-tabla-creadas" id="be-tabla-detalle">
+          <thead id="be-tabla-detalle-head"></thead>
+          <tbody id="be-tabla-detalle-body"></tbody>
         </table>
       </div>
     </div>
@@ -1496,6 +1497,8 @@ function irAUsuarioDesdeAlarma(usuarioId){
 }
 
 /* ---- Balances por Estructura ---- */
+const BE_NOMBRES_CANAL_CORTO = {canal1:'C1 kWhD', canal2:'C2 kVarhD', canal3:'C3 kWhR', canal4:'C4 kVarhR'};
+
 async function cargarBalancesEstructura(){
   // El mismo padrón de usuarios/medidores de Usuarios Telemedidos -- ahí
   // están los datos de entrada/salida, no hace falta duplicarlos.
@@ -1657,14 +1660,15 @@ async function verBalanceEstructura(id){
     return;
   }
   document.getElementById('be-chart-titulo').textContent = `${datos.nombre} -- Nivel ${datos.nivel_tension}`;
-  // Si no se habían fijado a mano, se completan con lo que trajo el
-  // backend (por defecto, los últimos 365 días con datos) -- así el
-  // usuario ve el rango real que está mirando, no los campos vacíos.
+  // Si no se habían fijado a mano, se completan con lo que trajo el backend
+  // (por defecto, el último mes disponible) -- así el usuario ve el rango
+  // real que está mirando, no los campos vacíos. Solo se "recuerda" un
+  // filtro manual mientras se navega entre estructuras, no entre sesiones.
   if(!desde && datos.fechas.length) document.getElementById('be-desde').value = datos.fechas[0];
   if(!hasta && datos.fechas.length) document.getElementById('be-hasta').value = datos.fechas[datos.fechas.length-1];
 
   renderChartBalanceEstructura(datos);
-  renderTablaMensualBalance(datos);
+  renderTablaDetalleBalance(datos);
 }
 
 function renderChartBalanceEstructura(datos){
@@ -1679,9 +1683,9 @@ function renderChartBalanceEstructura(datos){
     data:{
       labels: fechas,
       datasets:[
-        {type:'bar', label:'Entrada', data:datos.entrada_kwh, backgroundColor:'rgba(0,150,199,.7)',
+        {type:'bar', label:'Entrada', data:datos.entrada_kwh, backgroundColor:'rgba(52,84,209,.75)',
           borderRadius:2, yAxisID:'yEnt', order:3, barPercentage:.85, categoryPercentage:.85},
-        {type:'bar', label:'Salida', data:datos.salida_kwh, backgroundColor:'rgba(6,214,160,.7)',
+        {type:'bar', label:'Salida', data:datos.salida_kwh, backgroundColor:'rgba(123,47,255,.7)',
           borderRadius:2, yAxisID:'yEnt', order:3, barPercentage:.85, categoryPercentage:.85},
         {type:'line', label:'Pérdida kWh', data:datos.perdida_kwh, borderColor:'#ef476f', backgroundColor:'transparent',
           borderWidth:2.5, pointRadius:0, tension:.15, spanGaps:true, yAxisID:'yKwh', order:1},
@@ -1721,8 +1725,8 @@ function renderChartBalanceEstructura(datos){
           },
         },
         yEnt:{type:'linear', position:'left', beginAtZero:true, grid:{color:gridC},
-          ticks:{color:'#0096c7', font:{size:11}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
-          title:{display:true, text:'Entrada / Salida (kWh)', color:'#0096c7', font:{size:11}}},
+          ticks:{color:tickC, font:{size:11}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
+          title:{display:true, text:'Entrada / Salida (kWh)', color:tickC, font:{size:11}}},
         yKwh:{type:'linear', position:'right', grid:{drawOnChartArea:false},
           ticks:{color:'#ef476f', font:{size:11}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
           title:{display:true, text:'Pérdida (kWh)', color:'#ef476f', font:{size:11}}},
@@ -1738,34 +1742,47 @@ function renderChartBalanceEstructura(datos){
 // Agrupa la serie diaria por mes (YYYY-MM) para la tabla de abajo -- pérdida
 // % del mes = pérdida total del mes / entrada total del mes (no el promedio
 // de los % diarios, que pesaría igual un día de mucho y uno de poco consumo).
-function renderTablaMensualBalance(datos){
-  const body = document.getElementById('be-tabla-mensual-body');
+// Tabla diaria con el detalle por medidor -- una columna por cada medidor
+// de Entrada, la suma "ENTRADA", una columna por cada medidor de Salida, la
+// suma "SALIDA", y Pérdida kWh/%. Mismo espíritu que la planilla Excel que
+// se usaba a mano para armar estos balances.
+function renderTablaDetalleBalance(datos){
+  const head = document.getElementById('be-tabla-detalle-head');
+  const body = document.getElementById('be-tabla-detalle-body');
   const fechas = datos.fechas || [];
+  const entradas = datos.entradas || [];
+  const salidas = datos.salidas || [];
+  const totalCols = 1 + entradas.length + 1 + salidas.length + 2;
+
   if(!fechas.length){
-    body.innerHTML = `<tr><td colspan="5" class="be-tabla-vacio">Sin datos en el rango elegido.</td></tr>`;
+    head.innerHTML = '';
+    body.innerHTML = `<tr><td colspan="${totalCols}" class="be-tabla-vacio">Sin datos en el rango elegido.</td></tr>`;
     return;
   }
-  const porMes = {};
-  fechas.forEach((f,i)=>{
-    const mes = f.slice(0,7);
-    if(!porMes[mes]) porMes[mes] = {entrada:0, salida:0, tieneDato:false};
+
+  const etiquetaMedidor = m => `${m.usuario_id} · ${(BE_NOMBRES_CANAL_CORTO[m.canal]||m.canal)}`;
+  head.innerHTML = `<tr>
+    <th>Fecha</th>
+    ${entradas.map(m=>`<th>${_mselEsc(etiquetaMedidor(m))}</th>`).join('')}
+    <th class="suma">ENTRADA</th>
+    ${salidas.map(m=>`<th>${_mselEsc(etiquetaMedidor(m))}</th>`).join('')}
+    <th class="suma">SALIDA</th>
+    <th class="suma">PÉRDIDA (kWh)</th>
+    <th class="suma">PÉRDIDA (%)</th>
+  </tr>`;
+
+  const f2 = v => v==null ? '--' : v.toLocaleString('es-CO',{maximumFractionDigits:0});
+  body.innerHTML = fechas.map((f,i)=>{
     const e = datos.entrada_kwh[i], s = datos.salida_kwh[i];
-    if(e!=null){ porMes[mes].entrada += e; porMes[mes].tieneDato = true; }
-    if(s!=null){ porMes[mes].salida += s; porMes[mes].tieneDato = true; }
-  });
-  const meses = Object.keys(porMes).sort();
-  const f2 = v=>v.toLocaleString('es-CO',{maximumFractionDigits:0});
-  body.innerHTML = meses.map(mes=>{
-    const {entrada, salida, tieneDato} = porMes[mes];
-    if(!tieneDato) return '';
-    const perdida = entrada - salida;
-    const pct = entrada ? (perdida/entrada*100) : 0;
+    const p = datos.perdida_kwh[i], pct = datos.perdida_pct[i];
     return `<tr>
-      <td>${_mselEsc(labelMes(mes))}</td>
-      <td class="num">${f2(entrada)}</td>
-      <td class="num">${f2(salida)}</td>
-      <td class="num">${f2(perdida)}</td>
-      <td class="num">${pct.toFixed(2)}%</td>
+      <td>${f}</td>
+      ${entradas.map(m=>`<td class="num">${f2(m.valores[i])}</td>`).join('')}
+      <td class="num suma">${f2(e)}</td>
+      ${salidas.map(m=>`<td class="num">${f2(m.valores[i])}</td>`).join('')}
+      <td class="num suma">${f2(s)}</td>
+      <td class="num suma">${f2(p)}</td>
+      <td class="num suma">${pct==null?'--':pct.toFixed(2)+'%'}</td>
     </tr>`;
   }).join('');
 }
