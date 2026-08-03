@@ -944,6 +944,11 @@ const TM_NOMBRES_CANAL = {
   canal1:'Canal 1 (kWhD -- activa importada)', canal2:'Canal 2 (kVarhD -- reactiva importada)',
   canal3:'Canal 3 (kWhR -- activa exportada)', canal4:'Canal 4 (kVarhR -- reactiva exportada)',
 };
+// Color fijo por canal (no por usuario) -- así con varios canales a la vez
+// se distinguen de un vistazo, sin tener que leer la leyenda cada vez.
+const TM_COLOR_CANAL = {
+  canal1:'#0096c7', canal2:'#7b2fff', canal3:'#06d6a0', canal4:'#f4a261',
+};
 
 function tmUltimoDiaMes(mes){
   const [y,m] = mes.split('-').map(Number);
@@ -1099,17 +1104,22 @@ function renderTelemedida(datos, canales){
   const series = datos.series || [];
   const multiUsuario = series.length > 1;
 
+  // El color identifica el CANAL (fijo, ver TM_COLOR_CANAL) -- con varios
+  // usuarios a la vez, cada uno se distingue por intensidad (el primero,
+  // a color pleno; los siguientes, más tenues) en vez de cambiar el matiz,
+  // así el canal se sigue reconociendo igual de claro en toda la gráfica.
   const datasets = [];
   series.forEach((s, si)=>{
-    const colorBase = PALETA_ZONAS[si % PALETA_ZONAS.length];
-    canales.forEach((canal, ci)=>{
+    const alphaUsuario = multiUsuario ? Math.max(.4, 1 - si*0.22) : 1;
+    canales.forEach((canal)=>{
       const data = s[canal] || [];
-      const color = ci===0 ? colorBase : hexA(colorBase, .6);
+      const colorCanal = TM_COLOR_CANAL[canal] || '#0096c7';
+      const color = alphaUsuario < 1 ? hexA(colorCanal, alphaUsuario) : colorCanal;
       const etiqueta = multiUsuario ? `${s.nombre} · ${TM_NOMBRES_CANAL[canal]}` : TM_NOMBRES_CANAL[canal];
       datasets.push({
         type:'line', label: etiqueta, data,
         borderColor: color, backgroundColor:'transparent',
-        borderWidth:2, borderDash: ci>0 ? [ci*2+2, 2] : [],
+        borderWidth:2, borderDash: si>0 ? [si*2+3, 2] : [],
         pointRadius:0, pointHoverRadius:3, tension:.1, spanGaps:true,
       });
       if(data.length >= 14){
