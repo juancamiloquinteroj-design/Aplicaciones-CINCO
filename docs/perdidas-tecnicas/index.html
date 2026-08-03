@@ -129,12 +129,9 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(
 select{padding:6px 10px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg);cursor:pointer;outline:none}
 
 .chart-wrap{position:relative;height:320px}
-.zona-wrap{display:flex;gap:18px;align-items:stretch;flex-wrap:wrap}
 .split-wrap{display:flex;gap:18px;align-items:stretch;flex-wrap:wrap}
 .split-wrap>div{flex:1;min-width:280px}
 @media(max-width:800px){.split-wrap>div{flex:1 1 100%}}
-.zona-wrap>div:first-child{flex:2;min-width:280px;height:300px}
-.zona-wrap>div:last-child{flex:1;min-width:220px;height:300px}
 
 .tbl-wrap{overflow-x:auto;border-radius:9px;border:1px solid var(--border)}
 table{width:100%;border-collapse:collapse;font-size:12px}
@@ -150,7 +147,6 @@ tfoot td:first-child{text-align:left}
 .zb{display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:20px;font-size:10px;font-weight:700}
 .footer{margin-top:30px;text-align:center;border-top:1px solid var(--border);padding-top:20px;font-size:10px;color:var(--text3);letter-spacing:.5px;text-transform:uppercase}
 .hidden{display:none !important}
-@media(max-width:800px){.zona-wrap>div{flex:1 1 100%}}
 
 .valuacion-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:10px}
 .valuacion-hdr-controles{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
@@ -441,20 +437,6 @@ tfoot td:first-child{text-align:left}
     </div>
   </div>
 
-  <div class="sec-hdr">
-    <div class="sec-title">Pérdidas Técnicas por Zona</div>
-    <div style="display:flex;align-items:center;gap:6px;margin-left:auto">
-      <label style="font-size:11px;color:var(--text3)">Mes:</label>
-      <select id="fm-mes" onchange="cargarZonas()"></select>
-    </div>
-  </div>
-  <div class="card">
-    <div class="zona-wrap">
-      <div><canvas id="ch-zona"></canvas></div>
-      <div><canvas id="ch-dona"></canvas></div>
-    </div>
-  </div>
-
   <div class="card">
     <div class="valuacion-hdr">
       <div>
@@ -462,6 +444,8 @@ tfoot td:first-child{text-align:left}
         <div class="card-sub" id="tbl-sub" style="margin-bottom:0">—</div>
       </div>
       <div class="valuacion-hdr-controles">
+        <label style="font-size:12px;color:var(--text3);white-space:nowrap">Mes:</label>
+        <select id="fm-mes" onchange="cargarZonas()"></select>
         <button id="btn-contraer-zonas" onclick="toggleZonasContraidas()"
           style="padding:5px 11px;border:1px solid var(--accent);border-radius:7px;font-size:11px;font-weight:600;background:transparent;color:var(--accent);cursor:pointer;white-space:nowrap">
           ▴ Contraer por zona
@@ -548,7 +532,7 @@ function colorParaNivel(n, niveles){
   const i = niveles.indexOf(n);
   return PALETA_NIVELES[(i<0?0:i) % PALETA_NIVELES.length];
 }
-let chPrincipal=null, chZona=null, chDona=null, chNivelApilado=null, chZonaApilado=null;
+let chPrincipal=null;
 let META = {zonas:[], niveles:[], meses:[]};
 let RESUMEN = null;
 let RESUMEN_POR_NIVEL = null;
@@ -1048,7 +1032,6 @@ async function cargarZonas(){
   ]);
   const costo = parseFloat(document.getElementById('costo-kwh').value||'0') || 0;
   document.getElementById('tbl-sub').textContent = `Costo de la pérdida reconocida y no reconocida · ${labelMes(mes)} · ${costo.toLocaleString('es-CO')} $/kWh (G+T+R)`;
-  renderZona(zonas);
   VALUACION_ZONAS_CRUDA = valuacion;
   renderValuacionZonas();
 
@@ -1464,18 +1447,30 @@ function renderPrincipalMultiNivel(){
   const labels = datos.meses.map(labelMes);
   const niveles = datos.series.map(s=>s.clave);
 
+  // Con muchas series (4 niveles, a veces 8 barras con Entradas) suele haber
+  // barras muy chicas -- ej. al filtrar un solo alimentador que casi no pesa
+  // en un nivel. La etiqueta rotada de adentro no cabe ahí y se sale por
+  // abajo, encima de los meses. Por eso solo se muestra si la barra
+  // renderizada mide lo suficiente como para contenerla.
+  const barLoSuficientementeAlta = ctx2 => {
+    const meta = ctx2.chart.getDatasetMeta(ctx2.datasetIndex);
+    const el = meta.data[ctx2.dataIndex];
+    return el && el.height >= 26;
+  };
   const datasetsPT = datos.series.map(s=>({
     type:'bar', label:`PT Nivel ${s.clave}`, data: s.valores.map(v=>v>0?v:null),
     backgroundColor: colorParaNivel(s.clave, niveles), borderRadius:4, yAxisID:'yKwh',
     barPercentage:.85, categoryPercentage:.85,
-    datalabels:{display:ctx2=>ctx2.dataset.data[ctx2.dataIndex]>0 && labels.length<=24, anchor:'center', align:'center', rotation:-90,
+    datalabels:{display:ctx2=>ctx2.dataset.data[ctx2.dataIndex]>0 && labels.length<=24 && barLoSuficientementeAlta(ctx2),
+      anchor:'center', align:'center', rotation:-90,
       formatter:v=>v>0 ? fmtGwh(v) : '', font:{size:12,weight:'800'}, color:'#fff'},
   }));
   const datasetsEnt = mostrarEntradaMulti ? datos.series.map(s=>({
     type:'bar', label:`Entradas Nivel ${s.clave}`, data: s.entradas_kwh,
     backgroundColor: colorParaNivel(s.clave, niveles)+'55', borderRadius:4, yAxisID:'yEnt',
     barPercentage:.85, categoryPercentage:.85,
-    datalabels:{display:ctx2=>ctx2.dataset.data[ctx2.dataIndex]>0 && labels.length<=24, anchor:'center', align:'center', rotation:-90,
+    datalabels:{display:ctx2=>ctx2.dataset.data[ctx2.dataIndex]>0 && labels.length<=24 && barLoSuficientementeAlta(ctx2),
+      anchor:'center', align:'center', rotation:-90,
       formatter:v=>v>0 ? fmtGwh(v) : '', font:{size:12,weight:'800'}, color: dark?'#0d1117':'#1a2a4a'},
   })) : [];
   const datasetsPct = datos.series.map((s,i)=>({
@@ -1484,7 +1479,7 @@ function renderPrincipalMultiNivel(){
     borderColor: colorParaNivel(s.clave, niveles), backgroundColor:'transparent', borderWidth:2.5,
     pointRadius:4, pointBackgroundColor: colorParaNivel(s.clave, niveles), pointBorderColor:'#fff', pointBorderWidth:1.5,
     tension:.3, fill:false, yAxisID:'yPct', spanGaps:false,
-    datalabels:{display:labels.length<=24, anchor:'end', align:'top', offset:8,
+    datalabels:{display:labels.length<=24, anchor:'end', align:'top', offset:8+i*16,
       formatter:v=>(v||0).toFixed(2)+'%', font:{size:12,weight:'800'}, color: colorParaNivel(s.clave, niveles),
       backgroundColor:'rgba(255,255,255,.92)', borderRadius:4, padding:{left:5,right:5,top:2,bottom:2}},
   }));
@@ -1650,30 +1645,6 @@ function exportChartPNG(){
   a.download = `${(OPERADOR&&OPERADOR.slug)||'perdidas'}_perdidas_tecnicas.png`;
   a.href = tmp.toDataURL('image/png', 1.0);
   a.click();
-}
-
-function renderZona(zonas){
-  const ctxB = document.getElementById('ch-zona');
-  const ctxD = document.getElementById('ch-dona');
-  const labels = zonas.map(z=>z.zona);
-  const colores = zonas.map(z=>colorParaZona(z.zona));
-
-  if(chZona) chZona.destroy();
-  chZona = new Chart(ctxB, {
-    type:'bar',
-    data:{labels, datasets:[
-      {label:'Entradas (kWh)', data:zonas.map(z=>z.entradas_kwh), backgroundColor:'rgba(0,180,216,.35)'},
-      {label:'Pérdidas Técnicas (kWh)', data:zonas.map(z=>z.perdidas_kwh), backgroundColor:'rgba(239,71,111,.65)'},
-    ]},
-    options:{responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'bottom', labels:{boxWidth:12}}}}
-  });
-
-  if(chDona) chDona.destroy();
-  chDona = new Chart(ctxD, {
-    type:'doughnut',
-    data:{labels, datasets:[{data:zonas.map(z=>z.perdidas_kwh), backgroundColor:colores}]},
-    options:{responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'bottom', labels:{boxWidth:10, font:{size:10}}}}}
-  });
 }
 
 /* ---- Valuación económica de Pérdidas Técnicas por Zona ----
