@@ -380,6 +380,10 @@ tfoot td:first-child{text-align:left}
         <div id="chart-titulo" style="font-size:16px;font-weight:800;letter-spacing:1.5px;color:var(--text);text-transform:uppercase">Pérdidas Técnicas Total</div>
       </div>
       <div style="display:flex;gap:8px;flex-shrink:0">
+        <button id="btn-entrada-multi" onclick="toggleEntradaMulti()" title="Mostrar u ocultar las barras de Entradas por nivel"
+          style="display:none;align-items:center;gap:6px;padding:6px 14px;background:transparent;color:var(--accent);border:1px solid var(--accent);border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">
+          🔌 Entradas
+        </button>
         <button id="proj-btn" onclick="toggleProjection()" title="Proyectar PT kWh basado en entradas futuras"
           style="display:flex;align-items:center;gap:6px;padding:6px 14px;background:transparent;color:var(--accent);border:1px solid var(--accent);border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">
           📈 Proyección
@@ -547,9 +551,11 @@ function colorParaNivel(n, niveles){
 let chPrincipal=null, chZona=null, chDona=null, chNivelApilado=null, chZonaApilado=null;
 let META = {zonas:[], niveles:[], meses:[]};
 let RESUMEN = null;
+let RESUMEN_POR_NIVEL = null;
 let RANGO = {start:0, end:0};
 let RANGO2 = {start:0, end:0};
 let showProjection = false;
+let mostrarEntradaMulti = false;
 
 // Las etiquetas flotantes sobre barras/puntos son opt-in por dataset -- si no,
 // el plugin las dibuja por defecto en TODOS los charts (incluidos zona/dona).
@@ -1006,6 +1012,19 @@ async function aplicarFiltros(){
     : (nivel ? `Pérdidas Técnicas Nivel ${nivel}` : 'Pérdidas Técnicas Total');
 
   RESUMEN = await apiGet(`/api/resumen?${qs.toString()}`);
+
+  // Sin filtro de Nivel: la gráfica principal desglosa por nivel de tensión
+  // (así se calculan realmente las pérdidas técnicas), para lo cual hace
+  // falta esta serie aparte. Con un Nivel puntual filtrado, RESUMEN solo
+  // (ya filtrado por ese nivel) alcanza -- así se confirma que el filtro
+  // realmente aplica.
+  RESUMEN_POR_NIVEL = null;
+  if(!nivel){
+    const qsNivel = new URLSearchParams(qs);
+    qsNivel.delete('nivel');
+    RESUMEN_POR_NIVEL = await apiGet(`/api/perdidas-por-nivel?${qsNivel.toString()}`);
+  }
+
   renderPrincipal();
   renderKpiCards();
   await cargarZonas();
@@ -1294,8 +1313,41 @@ function fmtGwh(v){
   return g.toFixed(Math.abs(g)>=1?2:3)+' GWh';
 }
 
+function toggleEntradaMulti(){
+  mostrarEntradaMulti = !mostrarEntradaMulti;
+  const btn = document.getElementById('btn-entrada-multi');
+  btn.style.background = mostrarEntradaMulti ? 'var(--accent)' : 'transparent';
+  btn.style.color = mostrarEntradaMulti ? '#fff' : 'var(--accent)';
+  renderPrincipal();
+}
+
 function renderPrincipal(){
   if(!RESUMEN) return;
+  const nivel = document.getElementById('fm-nivel').value;
+  const projBtn = document.getElementById('proj-btn');
+  const projSel = document.getElementById('proj-method');
+  const entradaBtn = document.getElementById('btn-entrada-multi');
+
+  if(nivel || !RESUMEN_POR_NIVEL){
+    // Un nivel puntual filtrado (o sin datos de desglose): la vista clásica
+    // de una sola serie -- esto es lo que confirma que el filtro de Nivel
+    // realmente funciona (Entradas/PT/PT% quedan acotados a ese nivel).
+    projBtn.style.display = 'flex';
+    entradaBtn.style.display = 'none';
+    renderPrincipalUnNivel();
+  } else {
+    // Sin filtro de Nivel: las pérdidas técnicas se calculan por nivel de
+    // tensión, así que se desglosan las 4 (barras PT + líneas PT%). La
+    // Proyección es de una sola serie -- no aplica acá, se oculta.
+    projBtn.style.display = 'none';
+    projSel.style.display = 'none';
+    document.getElementById('kpi-notes-row').innerHTML = '';
+    entradaBtn.style.display = 'flex';
+    renderPrincipalMultiNivel();
+  }
+}
+
+function renderPrincipalUnNivel(){
   const ctx = document.getElementById('ch-principal');
   const dark = document.documentElement.getAttribute('data-theme')==='dark';
   const tickC = dark ? '#8899b5' : '#4b5e7a';
@@ -1386,6 +1438,70 @@ function renderPrincipal(){
       scales:{
         x:{grid:{display:false}, ticks:{color:tickC, font:{size:12}, autoSkip:false, maxRotation:0, minRotation:0}},
         yEnt:{type:'linear', position:'left', beginAtZero:true, grid:{color:gridC},
+          ticks:{color:'#0096c7', font:{size:13}, callback:v=>fmtGwh(v)},
+          title:{display:true, text:'Entradas (GWh)', color:'#0096c7', font:{size:12}}},
+        yKwh:{type:'linear', position:'right', beginAtZero:true, grid:{drawOnChartArea:false},
+          ticks:{color:'#ef476f', font:{size:13}, callback:v=>fmtGwh(v)},
+          afterFit:ax=>{ax.width=Math.max(ax.width,96)},
+          title:{display:true, text:'PT (GWh)', color:'#ef476f', font:{size:12}}},
+        yPct:{type:'linear', position:'right', beginAtZero:true, grid:{drawOnChartArea:false},
+          ticks:{color:'#f4a261', font:{size:13}, callback:v=>v.toFixed(1)+'%'},
+          afterFit:ax=>{ax.width=Math.max(ax.width,86)},
+          title:{display:true, text:'Pérd. Técnicas %', color:'#f4a261', font:{size:12}},
+          offset:true},
+      },
+    },
+  });
+}
+
+function renderPrincipalMultiNivel(){
+  const ctx = document.getElementById('ch-principal');
+  const dark = document.documentElement.getAttribute('data-theme')==='dark';
+  const tickC = dark ? '#8899b5' : '#4b5e7a';
+  const gridC = dark ? 'rgba(255,255,255,.06)' : 'rgba(0,0,0,.06)';
+
+  const datos = RESUMEN_POR_NIVEL || {meses:[], series:[]};
+  const labels = datos.meses.map(labelMes);
+  const niveles = datos.series.map(s=>s.clave);
+
+  const datasetsPT = datos.series.map(s=>({
+    type:'bar', label:`PT Nivel ${s.clave}`, data: s.valores.map(v=>v>0?v:null),
+    backgroundColor: colorParaNivel(s.clave, niveles), borderRadius:4, yAxisID:'yKwh',
+    barPercentage:.85, categoryPercentage:.85,
+  }));
+  const datasetsEnt = mostrarEntradaMulti ? datos.series.map(s=>({
+    type:'bar', label:`Entradas Nivel ${s.clave}`, data: s.entradas_kwh,
+    backgroundColor: colorParaNivel(s.clave, niveles)+'55', borderRadius:4, yAxisID:'yEnt',
+    barPercentage:.85, categoryPercentage:.85,
+  })) : [];
+  const datasetsPct = datos.series.map((s,i)=>({
+    type:'line', label:`PT% Nivel ${s.clave}`,
+    data: s.perdidas_pct.map((v,i2)=> s.entradas_kwh[i2]>0 && s.valores[i2]>0 ? v : null),
+    borderColor: colorParaNivel(s.clave, niveles), backgroundColor:'transparent', borderWidth:2.5,
+    pointRadius:4, pointBackgroundColor: colorParaNivel(s.clave, niveles), pointBorderColor:'#fff', pointBorderWidth:1.5,
+    tension:.3, fill:false, yAxisID:'yPct', spanGaps:false,
+  }));
+
+  if(chPrincipal) chPrincipal.destroy();
+  chPrincipal = new Chart(ctx, {
+    data:{ labels, datasets:[...datasetsEnt, ...datasetsPT, ...datasetsPct] },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      layout:{padding:{bottom:20, top:20, right:16}},
+      interaction:{mode:'index', intersect:false},
+      plugins:{
+        legend:{display:true, position:'bottom', labels:{boxWidth:14, font:{size:11}, color:tickC, padding:12}},
+        datalabels:{display:false},
+        tooltip:{callbacks:{label:c=>{
+          const v=c.raw;
+          if((c.dataset.label||'').startsWith('Entradas')) return c.dataset.label+': '+fmtGwh(v);
+          if((c.dataset.label||'').startsWith('PT%')) return c.dataset.label+': '+parseFloat(v||0).toFixed(2)+'%';
+          return c.dataset.label+': '+fmtGwh(v||0);
+        }}},
+      },
+      scales:{
+        x:{grid:{display:false}, ticks:{color:tickC, font:{size:12}, autoSkip:false, maxRotation:0, minRotation:0}},
+        yEnt:{type:'linear', position:'left', beginAtZero:true, display:mostrarEntradaMulti, grid:{color:gridC},
           ticks:{color:'#0096c7', font:{size:13}, callback:v=>fmtGwh(v)},
           title:{display:true, text:'Entradas (GWh)', color:'#0096c7', font:{size:12}}},
         yKwh:{type:'linear', position:'right', beginAtZero:true, grid:{drawOnChartArea:false},
