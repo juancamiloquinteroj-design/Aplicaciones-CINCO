@@ -205,6 +205,22 @@ tfoot td:first-child{text-align:left}
 .param-confianza-row span{font-size:12px;color:var(--text2)}
 .param-confianza-nota{margin-top:10px;font-size:11.5px;color:var(--text3)}
 
+/* USUARIOS TELEMEDIDOS -- navegación lateral y fórmula */
+.tm-chart-row{display:flex;gap:14px;align-items:stretch}
+.tm-chart-row .chart-wrap{flex:1;min-width:0}
+.tm-nav-lateral{display:flex;flex-direction:column;justify-content:center;gap:10px;flex-shrink:0}
+.tm-nav-btn{width:48px;height:48px;border:1px solid var(--border);border-radius:10px;background:var(--bg);
+  color:var(--accent);font-size:20px;font-weight:800;cursor:pointer}
+.tm-nav-btn:hover{background:var(--bg2)}
+.tm-ficha{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.tm-ficha-item{display:flex;flex-direction:column;gap:2px;padding:7px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg)}
+.tm-ficha-item .lbl{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text3)}
+.tm-ficha-item .val{font-size:12.5px;font-weight:700;color:var(--text);font-family:ui-monospace,"Cascadia Code","SF Mono",Consolas,monospace}
+.tm-formula{margin-top:16px;padding-top:14px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:8px}
+.tm-formula-item{font-size:11.5px;color:var(--text2);line-height:1.6;padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg)}
+.tm-formula-item b{color:var(--text)}
+.tm-formula-item .mono{font-family:ui-monospace,"Cascadia Code","SF Mono",Consolas,monospace;color:var(--text)}
+
 /* RANGE SLIDER */
 .range-wrap{margin-top:14px}
 .range-track-row{position:relative;height:26px;display:flex;align-items:center}
@@ -569,12 +585,18 @@ tfoot td:first-child{text-align:left}
   </div>
 
   <div class="card">
-    <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:4px;flex-wrap:wrap">
-      <button type="button" class="btn-theme" style="width:auto;padding:6px 10px" onclick="tmPaso(-1)" title="Usuario anterior (validación rápida)">▲</button>
+    <div style="text-align:center;margin-bottom:8px">
       <div id="tm-chart-titulo" style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Seleccioná uno o más usuarios</div>
-      <button type="button" class="btn-theme" style="width:auto;padding:6px 10px" onclick="tmPaso(1)" title="Usuario siguiente (validación rápida)">▼</button>
     </div>
-    <div class="chart-wrap" style="height:400px"><canvas id="ch-telemedida"></canvas></div>
+    <div class="tm-chart-row">
+      <div class="chart-wrap" style="height:420px"><canvas id="ch-telemedida"></canvas></div>
+      <div class="tm-nav-lateral">
+        <button type="button" class="tm-nav-btn" onclick="tmPaso(-1)" title="Usuario anterior (validación rápida)">▲</button>
+        <button type="button" class="tm-nav-btn" onclick="tmPaso(1)" title="Usuario siguiente (validación rápida)">▼</button>
+      </div>
+    </div>
+    <div id="tm-ficha" class="tm-ficha"></div>
+    <div id="tm-formula" class="tm-formula"></div>
   </div>
 
 </div>
@@ -1072,7 +1094,7 @@ async function cargarTelemedidos(){
     TM_CONFIANZA_PCT = cfg.confianza_pct;
   }catch(e){ /* se queda con el valor por defecto */ }
 
-  mselInit('msel-tm-usuarios', 'Usuarios', 'Ninguno', TM_USUARIOS.map(u=>({value:u.usuario_id, label:_tmEtiqueta(u)})), tmAplicarFiltros);
+  mselInit('msel-tm-usuarios', 'Usuarios', 'Ninguno', TM_USUARIOS.map(u=>({value:u.usuario_id, label:_tmEtiqueta(u)})), tmAplicarFiltros, null, 'Nombre o código (TST, FRT...)');
   mselInit('msel-tm-canales', 'Canales', 'Ninguno', [
     {value:'canal1', label:'Canal 1 (kWhD)'}, {value:'canal2', label:'Canal 2 (kVarhD)'},
     {value:'canal3', label:'Canal 3 (kWhR)'}, {value:'canal4', label:'Canal 4 (kVarhR)'},
@@ -1148,6 +1170,8 @@ async function tmAplicarFiltros(){
   if(!usuarios.length){
     if(chTelemedida){ chTelemedida.destroy(); chTelemedida = null; }
     titulo.textContent = TM_USUARIOS.length ? 'Seleccioná uno o más usuarios' : 'Todavía no hay usuarios telemedidos cargados para este operador';
+    document.getElementById('tm-formula').innerHTML = '';
+    document.getElementById('tm-ficha').innerHTML = '';
     return;
   }
 
@@ -1222,11 +1246,21 @@ function renderTelemedida(datos, canales){
   const series = datos.series || [];
   const multiUsuario = series.length > 1;
 
+  // Ficha con los datos "de identidad" del medidor tal cual vienen del
+  // archivo de balances -- para poder cruzarlos con otros sistemas.
+  document.getElementById('tm-ficha').innerHTML = series.map(s => `
+    <div class="tm-ficha-item"><span class="lbl">Descripción</span><span class="val">${_mselEsc(s.nombre||'--')}</span></div>
+    <div class="tm-ficha-item"><span class="lbl">Customer ID</span><span class="val">${_mselEsc(s.usuario_id||'--')}</span></div>
+    <div class="tm-ficha-item"><span class="lbl">Socket ID</span><span class="val">${_mselEsc(s.socket_id||'--')}</span></div>
+    <div class="tm-ficha-item"><span class="lbl">Account No (Cuenta)</span><span class="val">${_mselEsc(s.cuenta||'--')}</span></div>
+  `).join('');
+
   // El color identifica el CANAL (fijo, ver TM_COLOR_CANAL) -- con varios
   // usuarios a la vez, cada uno se distingue por intensidad (el primero,
   // a color pleno; los siguientes, más tenues) en vez de cambiar el matiz,
   // así el canal se sigue reconociendo igual de claro en toda la gráfica.
   const datasets = [];
+  const formulas = [];
   series.forEach((s, si)=>{
     const alphaUsuario = multiUsuario ? Math.max(.4, 1 - si*0.22) : 1;
     canales.forEach((canal)=>{
@@ -1255,7 +1289,7 @@ function renderTelemedida(datos, canales){
       // estándar del propio rango visible, con z derivado del % de
       // confianza que se fija en Parametrización (distribución normal).
       if(data.length >= 5){
-        const {media, desv} = tmMediaDesv(data);
+        const {media, desv, n} = tmMediaDesv(data);
         const z = zScoreDeConfianza(TM_CONFIANZA_PCT/100);
         const limSup = media + z*desv, limInf = Math.max(0, media - z*desv);
         [["superior", limSup], ["inferior", limInf]].forEach(([nombre, valor])=>{
@@ -1266,6 +1300,13 @@ function renderTelemedida(datos, canales){
             borderWidth:1.3, borderDash:[2,3], pointRadius:0, tension:0,
           });
         });
+        const f2 = v=>v.toLocaleString('es-CO',{maximumFractionDigits:2});
+        formulas.push(`<div class="tm-formula-item">
+          <b>${_mselEsc(etiqueta)}</b> -- ${n} días con dato, confianza ${TM_CONFIANZA_PCT}%<br>
+          <span class="mono">μ (media) = ${f2(media)} kWh &nbsp; σ (desv. estándar) = ${f2(desv)} kWh &nbsp; z = ${z.toFixed(3)}</span><br>
+          <span class="mono">Límite superior = μ + z·σ = ${f2(media)} + ${z.toFixed(3)}×${f2(desv)} = <b>${f2(limSup)} kWh</b></span><br>
+          <span class="mono">Límite inferior = máx(0, μ − z·σ) = máx(0, ${f2(media)} − ${z.toFixed(3)}×${f2(desv)}) = <b>${f2(limInf)} kWh</b></span>
+        </div>`);
       }
     });
   });
@@ -1293,10 +1334,14 @@ function renderTelemedida(datos, canales){
           // Filtrando ACÁ los ticks a solo 1° de mes, autoSkip ya elige
           // entre esos nomás.
           afterBuildTicks: scale => {
-            scale.ticks = scale.ticks.filter(t => {
+            const soloInicioDeMes = scale.ticks.filter(t => {
               const d = new Date(fechas[t.value]+'T00:00:00');
               return d.getDate() === 1;
             });
+            // Si el rango visible es tan corto que no llega a cruzar un
+            // 1° de mes (ej. 5 días sueltos), no lo dejamos sin ninguna
+            // etiqueta -- se queda con los ticks originales.
+            if(soloInicioDeMes.length) scale.ticks = soloInicioDeMes;
           },
           ticks:{
             color:tickC, font:{size:10}, maxRotation:0, minRotation:0, autoSkip:true, maxTicksLimit:14,
@@ -1310,6 +1355,8 @@ function renderTelemedida(datos, canales){
       },
     },
   });
+
+  document.getElementById('tm-formula').innerHTML = formulas.join('');
 }
 
 function authHeaders(){ return TOKEN ? {'Authorization':`Bearer ${TOKEN}`} : {}; }
@@ -1344,8 +1391,9 @@ const MSEL = {};
 
 function _mselEsc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
-function mselInit(id, label, vacio, opciones, onChange, seleccionInicial){
-  MSEL[id] = {opciones, seleccion:new Set(seleccionInicial||[]), onChange, label, vacio, abierto:false, filtro:''};
+function mselInit(id, label, vacio, opciones, onChange, seleccionInicial, placeholderBuscador){
+  MSEL[id] = {opciones, seleccion:new Set(seleccionInicial||[]), onChange, label, vacio, abierto:false, filtro:'',
+    placeholderBuscador: placeholderBuscador || 'Buscar...'};
   mselRender(id);
 }
 
@@ -1399,6 +1447,12 @@ function mselTogglePanel(id){
   Object.keys(MSEL).forEach(k=>{ MSEL[k].abierto = false; });
   if(MSEL[id]) MSEL[id].abierto = abrirEste;
   Object.keys(MSEL).forEach(k=> mselRender(k));
+  // Al abrir, el cursor queda listo para escribir de una -- sin esto había
+  // que abrir Y encima hacer clic en el buscador antes de poder tipear.
+  if(abrirEste){
+    const buscador = document.querySelector(`#${id}-panel .msel-search`);
+    if(buscador) buscador.focus();
+  }
 }
 
 function mselRender(id){
@@ -1419,7 +1473,7 @@ function mselRender(id){
   cont.innerHTML = `
     <button type="button" class="msel-btn" data-msel-toggle="${id}">${st.label}: <b>${_mselEsc(resumen)}</b><span class="car">▾</span></button>
     <div class="msel-panel ${st.abierto?'':'hidden'}" id="${id}-panel">
-      ${conBuscador ? `<input type="text" class="msel-search" placeholder="Buscar..." value="${_mselEsc(st.filtro||'')}" oninput="mselFiltrar('${id}', this.value)">` : ''}
+      ${conBuscador ? `<input type="text" class="msel-search" placeholder="${_mselEsc(st.placeholderBuscador||'Buscar...')}" value="${_mselEsc(st.filtro||'')}" oninput="mselFiltrar('${id}', this.value)">` : ''}
       <label class="msel-opt"><input type="checkbox" data-msel="${id}" data-clear="1" ${n===0?'checked':''}> ${_mselEsc(st.vacio)}</label>
       <div class="msel-sep"></div>
       <div class="msel-opciones" id="${id}-opciones"></div>
