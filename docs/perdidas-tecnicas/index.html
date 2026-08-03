@@ -156,7 +156,6 @@ tfoot td:first-child{text-align:left}
 }
 /* Línea más gruesa entre el bloque de filas de una zona y el de la siguiente. */
 #tb-valuacion tr.zona-sep td{border-top:2px solid var(--text3)}
-#tf-valuacion tr.nivel-total td{border-top:2px solid var(--text3);background:var(--bg3)}
 
 /* MAPA POR ZONA -- el contenedor confina el z-index interno de Leaflet
    (paneles/tooltips llegan hasta ~700) para que nunca tape la navbar sticky. */
@@ -171,13 +170,6 @@ tfoot td:first-child{text-align:left}
 .zc-rows{display:flex;flex-direction:column;gap:1px}
 .zc-rows>div{display:flex;justify-content:space-between;font-size:10.5px;color:#5a6570;line-height:1.5}
 .zc-rows>div b{color:#1a252f;font-weight:800}
-
-/* KPI CARDS */
-.kpi-row{display:flex;gap:12px;margin-bottom:14px;flex-wrap:wrap}
-.kpi-card{flex:1;min-width:150px;border:1px solid var(--border);border-radius:10px;padding:10px 14px;display:flex;flex-direction:column;gap:3px}
-.kpi-card .kpi-lbl{display:flex;align-items:center;gap:5px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--text3)}
-.kpi-card .kpi-main{font-size:19px;font-weight:900;letter-spacing:-.3px;line-height:1.2}
-.kpi-card .kpi-sub{font-size:10px;color:var(--text3)}
 
 /* RECONOCIMIENTO CREG POR NIVEL */
 .creg-tbl{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)}
@@ -331,14 +323,6 @@ tfoot td:first-child{text-align:left}
 <!-- ---------------- PÉRDIDAS TÉCNICAS ---------------- -->
 <div id="vista-perdidas" class="vista-modulo hidden">
 
-  <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">
-    <span style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">Período de referencia:</span>
-    <select id="kpi-period-sel" onchange="renderKpiCards()">
-      <option value="last">Último mes con datos</option>
-    </select>
-  </div>
-  <div class="kpi-row" id="top-kpi-row"></div>
-
   <div class="card">
     <div class="fbar" style="margin-bottom:0">
       <label>Zona</label>
@@ -376,10 +360,6 @@ tfoot td:first-child{text-align:left}
         <div id="chart-titulo" style="font-size:16px;font-weight:800;letter-spacing:1.5px;color:var(--text);text-transform:uppercase">Pérdidas Técnicas Total</div>
       </div>
       <div style="display:flex;gap:8px;flex-shrink:0">
-        <button id="btn-entrada-multi" onclick="toggleEntradaMulti()" title="Mostrar u ocultar las barras de Entradas por nivel"
-          style="display:none;align-items:center;gap:6px;padding:6px 14px;background:transparent;color:var(--accent);border:1px solid var(--accent);border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">
-          🔌 Entradas
-        </button>
         <button id="proj-btn" onclick="toggleProjection()" title="Proyectar PT kWh basado en entradas futuras"
           style="display:flex;align-items:center;gap:6px;padding:6px 14px;background:transparent;color:var(--accent);border:1px solid var(--accent);border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">
           📈 Proyección
@@ -539,7 +519,6 @@ let RESUMEN_POR_NIVEL = null;
 let RANGO = {start:0, end:0};
 let RANGO2 = {start:0, end:0};
 let showProjection = false;
-let mostrarEntradaMulti = false;
 
 // Las etiquetas flotantes sobre barras/puntos son opt-in por dataset -- si no,
 // el plugin las dibuja por defecto en TODOS los charts (incluidos zona/dona).
@@ -822,7 +801,6 @@ async function cargarMeta(){
   const selZona2 = document.getElementById('fm-zona2');
   const selNivel2 = document.getElementById('fm-nivel2');
   const selMes = document.getElementById('fm-mes');
-  const selPeriodo = document.getElementById('kpi-period-sel');
   const selStart = document.getElementById('range-start-sel');
   const selEnd = document.getElementById('range-end-sel');
   const selStart2 = document.getElementById('range-start-sel2');
@@ -837,10 +815,6 @@ async function cargarMeta(){
 
   selMes.innerHTML = META.meses.map(m=>`<option value="${m}">${labelMes(m)}</option>`).join('');
   selMes.value = META.meses[META.meses.length-1];
-
-  selPeriodo.innerHTML = '<option value="last">Último mes con datos</option>' +
-    META.meses.map(m=>`<option value="${m}">${labelMes(m)}</option>`).join('');
-  selPeriodo.value = 'last';
 
   const opcionesRango = META.meses.map((m,i)=>`<option value="${i}">${labelMes(m)}</option>`).join('');
   selStart.innerHTML = opcionesRango; selEnd.innerHTML = opcionesRango;
@@ -1010,7 +984,6 @@ async function aplicarFiltros(){
   }
 
   renderPrincipal();
-  renderKpiCards();
   await cargarZonas();
 }
 
@@ -1070,41 +1043,6 @@ async function descargarCSV(){
   }finally{
     btn.disabled = false; btn.textContent = textoOriginal;
   }
-}
-
-/* ---- Tarjetas KPI (arriba de la gráfica principal) ---- */
-function fmtKwhMes(v){ return v.toLocaleString('es-CO',{maximumFractionDigits:0})+' kWh/mes'; }
-
-function renderKpiCards(){
-  const row = document.getElementById('top-kpi-row');
-  if(!RESUMEN || !RESUMEN.meses.length){ row.innerHTML=''; return; }
-  const selVal = document.getElementById('kpi-period-sel').value || 'last';
-
-  let idx = -1;
-  if(selVal==='last'){
-    for(let i=RESUMEN.meses.length-1;i>=0;i--){
-      if(RESUMEN.entradas_kwh[i]>0 && RESUMEN.perdidas_kwh[i]>0){ idx=i; break; }
-    }
-  } else {
-    idx = RESUMEN.meses.indexOf(selVal);
-  }
-  if(idx<0){ row.innerHTML=''; return; }
-
-  const refLbl = labelMes(RESUMEN.meses[idx]);
-  const refEnt = RESUMEN.entradas_kwh[idx];
-  const refKwh = RESUMEN.perdidas_kwh[idx];
-
-  const cards = [
-    {icon:'📅', label:'Período', main:refLbl, sub:'Referencia de cálculo', color:'var(--accent2)'},
-    {icon:'⚡', label:'Entradas', main:fmtKwhMes(refEnt), sub:'Energía suministrada', color:'var(--accent2)'},
-    {icon:'📉', label:'PT kWh', main:fmtKwhMes(refKwh), sub:'Pérdidas técnicas absolutas', color:'var(--red)'},
-  ];
-  row.innerHTML = cards.map(c=>`
-    <div class="kpi-card" style="border-top:3px solid ${c.color}">
-      <div class="kpi-lbl"><span>${c.icon}</span><span>${c.label}</span></div>
-      <div class="kpi-main" style="color:${c.color}">${c.main}</div>
-      <div class="kpi-sub">${c.sub}</div>
-    </div>`).join('');
 }
 
 /* ---- Regresiones para la Proyección ---- */
@@ -1296,27 +1234,17 @@ function fmtGwh(v){
   return g.toFixed(Math.abs(g)>=1?2:3)+' GWh';
 }
 
-function toggleEntradaMulti(){
-  mostrarEntradaMulti = !mostrarEntradaMulti;
-  const btn = document.getElementById('btn-entrada-multi');
-  btn.style.background = mostrarEntradaMulti ? 'var(--accent)' : 'transparent';
-  btn.style.color = mostrarEntradaMulti ? '#fff' : 'var(--accent)';
-  renderPrincipal();
-}
-
 function renderPrincipal(){
   if(!RESUMEN) return;
   const nivel = document.getElementById('fm-nivel').value;
   const projBtn = document.getElementById('proj-btn');
   const projSel = document.getElementById('proj-method');
-  const entradaBtn = document.getElementById('btn-entrada-multi');
 
   if(nivel || !RESUMEN_POR_NIVEL){
     // Un nivel puntual filtrado (o sin datos de desglose): la vista clásica
     // de una sola serie -- esto es lo que confirma que el filtro de Nivel
     // realmente funciona (Entradas/PT/PT% quedan acotados a ese nivel).
     projBtn.style.display = 'flex';
-    entradaBtn.style.display = 'none';
     renderPrincipalUnNivel();
   } else {
     // Sin filtro de Nivel: las pérdidas técnicas se calculan por nivel de
@@ -1325,7 +1253,6 @@ function renderPrincipal(){
     projBtn.style.display = 'none';
     projSel.style.display = 'none';
     document.getElementById('kpi-notes-row').innerHTML = '';
-    entradaBtn.style.display = 'flex';
     renderPrincipalMultiNivel();
   }
 }
@@ -1446,6 +1373,11 @@ function renderPrincipalMultiNivel(){
   const datos = RESUMEN_POR_NIVEL || {meses:[], series:[]};
   const labels = datos.meses.map(labelMes);
   const niveles = datos.series.map(s=>s.clave);
+  // Las Entradas por nivel solo se ven al filtrar un Alimentador puntual
+  // (ahí sí interesa su contexto); con todo el operador junto, 4 barras de
+  // PT + 4 de Entradas sería demasiado ruido.
+  const alimentador = document.getElementById('fm-alimentador').value.trim();
+  const mostrarEntrada = !!alimentador;
 
   // Con muchas series (4 niveles, a veces 8 barras con Entradas) suele haber
   // barras muy chicas -- ej. al filtrar un solo alimentador que casi no pesa
@@ -1465,7 +1397,7 @@ function renderPrincipalMultiNivel(){
       anchor:'center', align:'center', rotation:-90,
       formatter:v=>v>0 ? fmtGwh(v) : '', font:{size:12,weight:'800'}, color:'#fff'},
   }));
-  const datasetsEnt = mostrarEntradaMulti ? datos.series.map(s=>({
+  const datasetsEnt = mostrarEntrada ? datos.series.map(s=>({
     type:'bar', label:`Entradas Nivel ${s.clave}`, data: s.entradas_kwh,
     backgroundColor: colorParaNivel(s.clave, niveles)+'55', borderRadius:4, yAxisID:'yEnt',
     barPercentage:.85, categoryPercentage:.85,
@@ -1473,23 +1405,31 @@ function renderPrincipalMultiNivel(){
       anchor:'center', align:'center', rotation:-90,
       formatter:v=>v>0 ? fmtGwh(v) : '', font:{size:12,weight:'800'}, color: dark?'#0d1117':'#1a2a4a'},
   })) : [];
-  const datasetsPct = datos.series.map((s,i)=>({
-    type:'line', label:`PT% Nivel ${s.clave}`,
-    data: s.perdidas_pct.map((v,i2)=> s.entradas_kwh[i2]>0 && s.valores[i2]>0 ? v : null),
-    borderColor: colorParaNivel(s.clave, niveles), backgroundColor:'transparent', borderWidth:2.5,
-    pointRadius:4, pointBackgroundColor: colorParaNivel(s.clave, niveles), pointBorderColor:'#fff', pointBorderWidth:1.5,
-    tension:.3, fill:false, yAxisID:'yPct', spanGaps:false,
-    datalabels:{display:labels.length<=24, anchor:'end', align:'top', offset:8+i*16,
-      formatter:v=>(v||0).toFixed(2)+'%', font:{size:12,weight:'800'}, color: colorParaNivel(s.clave, niveles),
-      backgroundColor:'rgba(255,255,255,.92)', borderRadius:4, padding:{left:5,right:5,top:2,bottom:2}},
-  }));
+  // Un valor por punto (4 niveles × N meses) se amontonaba imposible de leer
+  // aunque se escalonara el offset -- ahora cada línea muestra su % solo en
+  // el último punto (con el nivel incluido en el texto), como la mayoría de
+  // dashboards hacen con series múltiplas muy cercanas entre sí.
+  const datasetsPct = datos.series.map((s,i)=>{
+    const data = s.perdidas_pct.map((v,i2)=> s.entradas_kwh[i2]>0 && s.valores[i2]>0 ? v : null);
+    return {
+      type:'line', label:`PT% Nivel ${s.clave}`, data,
+      borderColor: colorParaNivel(s.clave, niveles), backgroundColor:'transparent', borderWidth:2.5,
+      pointRadius:4, pointBackgroundColor: colorParaNivel(s.clave, niveles), pointBorderColor:'#fff', pointBorderWidth:1.5,
+      tension:.3, fill:false, yAxisID:'yPct', spanGaps:false,
+      datalabels:{
+        display:ctx2=> labels.length<=24 && ctx2.dataIndex===data.length-1 && data[ctx2.dataIndex]!=null,
+        anchor:'end', align:'right', offset:4,
+        formatter:v=>`N${s.clave}: ${(v||0).toFixed(2)}%`, font:{size:11,weight:'800'}, color: colorParaNivel(s.clave, niveles),
+        backgroundColor:'rgba(255,255,255,.92)', borderRadius:4, padding:{left:5,right:5,top:2,bottom:2}},
+    };
+  });
 
   if(chPrincipal) chPrincipal.destroy();
   chPrincipal = new Chart(ctx, {
     data:{ labels, datasets:[...datasetsEnt, ...datasetsPT, ...datasetsPct] },
     options:{
       responsive:true, maintainAspectRatio:false,
-      layout:{padding:{bottom:20, top:20, right:16}},
+      layout:{padding:{bottom:20, top:20, right:80}},
       interaction:{mode:'index', intersect:false},
       plugins:{
         legend:{display:true, position:'bottom', labels:{boxWidth:14, font:{size:11}, color:tickC, padding:12}},
@@ -1502,7 +1442,7 @@ function renderPrincipalMultiNivel(){
       },
       scales:{
         x:{grid:{display:false}, ticks:{color:tickC, font:{size:12}, autoSkip:false, maxRotation:0, minRotation:0}},
-        yEnt:{type:'linear', position:'left', beginAtZero:true, display:mostrarEntradaMulti, grid:{color:gridC},
+        yEnt:{type:'linear', position:'left', beginAtZero:true, display:mostrarEntrada, grid:{color:gridC},
           ticks:{color:'#0096c7', font:{size:13}, callback:v=>fmtGwh(v)},
           title:{display:true, text:'Entradas (GWh)', color:'#0096c7', font:{size:12}}},
         yKwh:{type:'linear', position:'right', beginAtZero:true, grid:{drawOnChartArea:false},
@@ -1723,55 +1663,7 @@ function renderValuacionZonas(){
     </tr>`;
   }).join('');
 
-  // Totales por NIVEL DE TENSIÓN (sumando todas las zonas de ese nivel) --
-  // más útil que un solo total general, ya que el reconocimiento CREG se
-  // fija por nivel, no por zona.
-  const porNivel = new Map();
-  VALUACION_ZONAS_CRUDA.forEach(f=>{
-    if(!porNivel.has(f.nivel)) porNivel.set(f.nivel, {nivel:f.nivel, ent:0, per:0, ptr:0, ptn:0, peso:0});
-    const n = porNivel.get(f.nivel);
-    n.ent += f.entradas_kwh; n.per += f.perdidas_kwh;
-    n.ptr += f.pt_reconocida_kwh; n.ptn += f.pt_no_reconocida_kwh;
-    n.peso += f.entradas_kwh * f.reconocimiento_pct;
-  });
-  const filasNivelHtml = [...porNivel.values()].sort((a,b)=>a.nivel-b.nivel).map(n=>{
-    const pct = n.ent ? n.per/n.ent*100 : 0;
-    const creg = n.ent ? n.peso/n.ent : 0;
-    const nrColor = n.ptn>0 ? 'var(--red)' : 'var(--green)';
-    return `<tr class="nivel-total">
-      <td style="font-weight:800" colspan="2">Nivel ${n.nivel}</td>
-      <td style="font-weight:800">${creg.toFixed(2)}%</td>
-      <td style="font-weight:800">${fK(n.ent)}</td>
-      <td style="color:var(--red);font-weight:800">${fK(n.per)}</td>
-      <td style="font-weight:800">${pct.toFixed(2)}%</td>
-      <td style="color:var(--green);font-weight:800">${fK(n.ptr)}</td>
-      <td style="color:${nrColor};font-weight:800">${fK(n.ptn)}</td>
-      <td style="color:var(--green);font-weight:800">${f$(n.ptr*costo)}</td>
-      <td style="color:${nrColor};font-weight:800">${f$(n.ptn*costo)}</td>
-    </tr>`;
-  }).join('');
-
-  const tot = VALUACION_ZONAS_CRUDA.reduce((a,f)=>({
-    ent:a.ent+f.entradas_kwh, per:a.per+f.perdidas_kwh,
-    ptr:a.ptr+f.pt_reconocida_kwh, ptn:a.ptn+f.pt_no_reconocida_kwh,
-    peso:a.peso+f.entradas_kwh*f.reconocimiento_pct,
-  }), {ent:0,per:0,ptr:0,ptn:0,peso:0});
-  const totPct = tot.ent ? tot.per/tot.ent*100 : 0;
-  const totCreg = tot.ent ? tot.peso/tot.ent : 0;
-  const totNrColor = tot.ptn>0 ? 'var(--red)' : 'var(--green)';
-  const filaTotalGeneral = `<tr style="border-top:2px solid var(--border)">
-    <td style="font-weight:800" colspan="2">TOTAL</td>
-    <td style="font-weight:800">${totCreg.toFixed(2)}%</td>
-    <td style="font-weight:800">${fK(tot.ent)}</td>
-    <td style="color:var(--red);font-weight:800">${fK(tot.per)}</td>
-    <td style="font-weight:800">${totPct.toFixed(2)}%</td>
-    <td style="color:var(--green);font-weight:800">${fK(tot.ptr)}</td>
-    <td style="color:${totNrColor};font-weight:800">${fK(tot.ptn)}</td>
-    <td style="color:var(--green);font-weight:800">${f$(tot.ptr*costo)}</td>
-    <td style="color:${totNrColor};font-weight:800">${f$(tot.ptn*costo)}</td>
-  </tr>`;
-
-  tf.innerHTML = filasNivelHtml + filaTotalGeneral;
+  tf.innerHTML = '';
 }
 
 /* ============================================================
