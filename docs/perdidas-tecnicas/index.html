@@ -199,6 +199,12 @@ tfoot td:first-child{text-align:left}
 .param-zona-item{display:flex;align-items:center;gap:8px;padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg)}
 .param-zona-item input[type=color]{width:36px;height:28px;border:1px solid var(--border);border-radius:6px;padding:2px;cursor:pointer;background:var(--bg2)}
 
+.param-confianza-row{display:flex;align-items:center;gap:12px;margin-top:14px;flex-wrap:wrap}
+.param-confianza-row input[type=range]{width:220px}
+.param-confianza-row input[type=number]{width:70px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-weight:700;text-align:right;color:var(--text);background:var(--bg2)}
+.param-confianza-row span{font-size:12px;color:var(--text2)}
+.param-confianza-nota{margin-top:10px;font-size:11.5px;color:var(--text3)}
+
 /* RANGE SLIDER */
 .range-wrap{margin-top:14px}
 .range-track-row{position:relative;height:26px;display:flex;align-items:center}
@@ -507,12 +513,24 @@ tfoot td:first-child{text-align:left}
 
   <div class="sec-hdr">
     <div class="sec-title">Parametrización</div>
-    <div class="sec-sub">Colores de zona para todas las gráficas</div>
+    <div class="sec-sub">Colores de zona y límites estadísticos para todas las gráficas</div>
   </div>
   <div class="card">
     <div class="card-title">Color por zona</div>
     <div class="card-sub">Cada operador trae sus propios códigos de zona -- asigná un color a cada uno y se usa en todas las gráficas y tablas de Pérdidas Técnicas.</div>
     <div id="parametrizacion-zonas" class="param-zonas-grid"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Límites de consumo esperado (Usuarios Telemedidos)</div>
+    <div class="card-sub">El límite superior/inferior de cada gráfica se calcula con la media y la desviación estándar del consumo (distribución normal) -- acá elegís qué tan estricto es ese rango.</div>
+    <div class="param-confianza-row">
+      <input type="range" id="param-confianza-slider" min="50" max="99.9" step="0.1" oninput="onCambiaConfianzaSlider(this.value)">
+      <input type="number" id="param-confianza-num" min="50" max="99.9" step="0.1" oninput="onCambiaConfianzaNum(this.value)">
+      <span>% de confianza</span>
+      <span class="creg-st" id="param-confianza-st"></span>
+    </div>
+    <div class="param-confianza-nota" id="param-confianza-nota"></div>
   </div>
 
 </div>
@@ -530,8 +548,6 @@ tfoot td:first-child{text-align:left}
     <div class="fbar" style="margin-bottom:0">
       <label>Usuarios</label>
       <div class="msel" id="msel-tm-usuarios"></div>
-      <button type="button" class="btn-theme" style="width:auto;padding:6px 10px" onclick="tmPaso(-1)" title="Usuario anterior (validación rápida)">▲</button>
-      <button type="button" class="btn-theme" style="width:auto;padding:6px 10px" onclick="tmPaso(1)" title="Usuario siguiente (validación rápida)">▼</button>
       <label>Canales</label>
       <div class="msel" id="msel-tm-canales"></div>
     </div>
@@ -553,8 +569,10 @@ tfoot td:first-child{text-align:left}
   </div>
 
   <div class="card">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;flex-wrap:wrap;gap:8px">
+    <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:4px;flex-wrap:wrap">
+      <button type="button" class="btn-theme" style="width:auto;padding:6px 10px" onclick="tmPaso(-1)" title="Usuario anterior (validación rápida)">▲</button>
       <div id="tm-chart-titulo" style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Seleccioná uno o más usuarios</div>
+      <button type="button" class="btn-theme" style="width:auto;padding:6px 10px" onclick="tmPaso(1)" title="Usuario siguiente (validación rápida)">▼</button>
     </div>
     <div class="chart-wrap" style="height:400px"><canvas id="ch-telemedida"></canvas></div>
   </div>
@@ -608,6 +626,7 @@ let chTelemedida=null;
 let TM_USUARIOS = [];
 let TM_META = {meses:[]};
 let TM_RANGO = {start:0, end:0};
+let TM_CONFIANZA_PCT = 95;
 let META = {zonas:[], niveles:[], meses:[]};
 let RESUMEN = null;
 let RESUMEN_POR_NIVEL = null;
@@ -900,6 +919,57 @@ async function cargarParametrizacion(){
     return;
   }
   renderParametrizacionZonas(datos);
+  await cargarConfianzaEstadistica();
+}
+
+async function cargarConfianzaEstadistica(){
+  try{
+    const cfg = DEMO ? {confianza_pct:95} : await apiGet('/api/telemedida/configuracion');
+    TM_CONFIANZA_PCT = cfg.confianza_pct;
+  }catch(e){
+    TM_CONFIANZA_PCT = 95;
+  }
+  document.getElementById('param-confianza-slider').value = TM_CONFIANZA_PCT;
+  document.getElementById('param-confianza-num').value = TM_CONFIANZA_PCT;
+  actualizarNotaConfianza();
+}
+
+function actualizarNotaConfianza(){
+  const z = zScoreDeConfianza(TM_CONFIANZA_PCT/100);
+  document.getElementById('param-confianza-nota').textContent =
+    `Con ${TM_CONFIANZA_PCT}% de confianza, el límite queda en promedio ± ${z.toFixed(2)} desviaciones estándar. Más alto = rango más ancho (menos alertas); más bajo = rango más angosto (más alertas).`;
+}
+
+function onCambiaConfianzaSlider(v){
+  document.getElementById('param-confianza-num').value = v;
+  guardarConfianzaEstadisticaDebounced(parseFloat(v));
+}
+
+function onCambiaConfianzaNum(v){
+  document.getElementById('param-confianza-slider').value = v;
+  guardarConfianzaEstadisticaDebounced(parseFloat(v));
+}
+
+let _debounceConfianza = null;
+function guardarConfianzaEstadisticaDebounced(v){
+  TM_CONFIANZA_PCT = v;
+  actualizarNotaConfianza();
+  clearTimeout(_debounceConfianza);
+  _debounceConfianza = setTimeout(()=>guardarConfianzaEstadistica(v), 500);
+}
+
+async function guardarConfianzaEstadistica(v){
+  const st = document.getElementById('param-confianza-st');
+  if(DEMO){ st.textContent = '⚠'; st.title = 'No disponible en modo demo'; return; }
+  if(isNaN(v) || v<50 || v>=100){ st.textContent = '⚠'; st.title = 'Debe estar entre 50% y 99.9%'; return; }
+  st.textContent = '…';
+  try{
+    await apiPost('/api/telemedida/configuracion', {confianza_pct: v});
+    st.textContent = '✓';
+    setTimeout(()=>{ if(st.textContent==='✓') st.textContent=''; }, 2000);
+  }catch(e){
+    st.textContent = '⚠'; st.title = e.message || 'Error al guardar';
+  }
 }
 
 function renderParametrizacionZonas(datos){
@@ -937,6 +1007,37 @@ async function guardarZonaColor(zona, color){
   }
 }
 
+// Inversa de la distribución normal estándar (aproximación racional de
+// Acklam) -- convierte un percentil (0-1) en su z-score. Se usa para pasar
+// de "% de confianza" (Parametrización) a cuántas desviaciones estándar
+// entran en el límite superior/inferior de consumo esperado.
+function normSInv(p){
+  if(p<=0) return -Infinity;
+  if(p>=1) return Infinity;
+  const a=[-3.969683028665376e+01,2.209460984245205e+02,-2.759285104469687e+02,1.383577518672690e+02,-3.066479806614716e+01,2.506628277459239e+00];
+  const b=[-5.447609879822406e+01,1.615858368580409e+02,-1.556989798598866e+02,6.680131188771972e+01,-1.328068155288572e+01];
+  const c=[-7.784894002430293e-03,-3.223964580411365e-01,-2.400758277161838e+00,-2.549732539343734e+00,4.374664141464968e+00,2.938163982698783e+00];
+  const d=[7.784695709041462e-03,3.224671290700398e-01,2.445134137142996e+00,3.754408661907416e+00];
+  const plow=0.02425, phigh=1-plow;
+  let q, r;
+  if(p<plow){ q=Math.sqrt(-2*Math.log(p)); return (((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5])/((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1); }
+  if(p<=phigh){ q=p-0.5; r=q*q; return (((((a[0]*r+a[1])*r+a[2])*r+a[3])*r+a[4])*r+a[5])*q/(((((b[0]*r+b[1])*r+b[2])*r+b[3])*r+b[4])*r+1); }
+  q=Math.sqrt(-2*Math.log(1-p)); return -(((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5])/((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1);
+}
+
+// % de confianza (ej. 95) -> z-score de dos colas (ej. 1.96).
+function zScoreDeConfianza(confianza01){
+  return normSInv(0.5 + confianza01/2);
+}
+
+function tmMediaDesv(arr){
+  const vals = (arr||[]).filter(v=>v!=null);
+  if(!vals.length) return {media:0, desv:0, n:0};
+  const media = vals.reduce((a,b)=>a+b,0)/vals.length;
+  const varianza = vals.reduce((a,b)=>a+(b-media)*(b-media),0)/vals.length;
+  return {media, desv:Math.sqrt(varianza), n:vals.length};
+}
+
 /* ---- Usuarios Telemedidos: consumo diario por medidor, 4 canales ---- */
 function _tmEtiqueta(u){ return `${u.nombre} (${u.usuario_id})`; }
 
@@ -949,6 +1050,11 @@ const TM_NOMBRES_CANAL = {
 const TM_COLOR_CANAL = {
   canal1:'#0096c7', canal2:'#7b2fff', canal3:'#06d6a0', canal4:'#f4a261',
 };
+// Un solo color para TODAS las líneas de tendencia, sin importar el canal --
+// así se reconoce como "esto es la tendencia", no como un dato más. El rojo
+// queda reservado para los límites estadísticos (ver TM_COLOR_LIMITE).
+const TM_COLOR_TENDENCIA = '#4a5e7a';
+const TM_COLOR_LIMITE = '#c0132a';
 
 function tmUltimoDiaMes(mes){
   const [y,m] = mes.split('-').map(Number);
@@ -959,6 +1065,12 @@ async function cargarTelemedidos(){
   try{ TM_USUARIOS = DEMO ? [] : await apiGet('/api/telemedida/usuarios'); }catch(e){ TM_USUARIOS = []; }
   try{ TM_META = DEMO ? {meses:[]} : await apiGet('/api/telemedida/meta'); }catch(e){ TM_META = {meses:[]}; }
   if(!TM_META.meses) TM_META.meses = [];
+  // Se recarga acá también (no solo en Parametrización) por si el usuario
+  // entra directo a este módulo sin haber pasado por Parametrización antes.
+  try{
+    const cfg = DEMO ? {confianza_pct:95} : await apiGet('/api/telemedida/configuracion');
+    TM_CONFIANZA_PCT = cfg.confianza_pct;
+  }catch(e){ /* se queda con el valor por defecto */ }
 
   mselInit('msel-tm-usuarios', 'Usuarios', 'Ninguno', TM_USUARIOS.map(u=>({value:u.usuario_id, label:_tmEtiqueta(u)})), tmAplicarFiltros);
   mselInit('msel-tm-canales', 'Canales', 'Ninguno', [
@@ -1006,15 +1118,26 @@ async function tmSyncRangeFromSel(){
   await tmAplicarFiltros();
 }
 
-// Botones ▲▼: recorren TM_USUARIOS (orden alfabético, el mismo del buscador)
-// uno por uno para validación rápida -- reemplazan la selección actual por
-// un único usuario, en vez de sumarse a lo ya elegido.
+// Lo que haya escrito en el buscador del multiselect de Usuarios (ej. "tst"
+// o "frt", el prefijo del código) también acota por dónde se puede navegar
+// con ▲▼ -- si ya filtraste a un grupo puntual, los botones se quedan
+// recorriendo SOLO ese grupo, no los 1400+ usuarios completos.
+function tmListaFiltrada(){
+  const st = MSEL['msel-tm-usuarios'];
+  const filtro = (st && st.filtro || '').trim().toLowerCase();
+  return filtro ? TM_USUARIOS.filter(u => _tmEtiqueta(u).toLowerCase().includes(filtro)) : TM_USUARIOS;
+}
+
+// Botones ▲▼: recorren la lista (filtrada, ver arriba) uno por uno para
+// validación rápida -- reemplazan la selección actual por un único usuario,
+// en vez de sumarse a lo ya elegido.
 function tmPaso(delta){
-  if(!TM_USUARIOS.length) return;
+  const lista = tmListaFiltrada();
+  if(!lista.length) return;
   const actuales = mselValores('msel-tm-usuarios');
-  let idx = actuales.length===1 ? TM_USUARIOS.findIndex(u=>u.usuario_id===actuales[0]) : -1;
-  idx = idx<0 ? 0 : (idx + delta + TM_USUARIOS.length) % TM_USUARIOS.length;
-  mselSetSeleccion('msel-tm-usuarios', [TM_USUARIOS[idx].usuario_id]);
+  let idx = actuales.length===1 ? lista.findIndex(u=>u.usuario_id===actuales[0]) : -1;
+  idx = idx<0 ? 0 : (idx + delta + lista.length) % lista.length;
+  mselSetSeleccion('msel-tm-usuarios', [lista[idx].usuario_id]);
 }
 
 async function tmAplicarFiltros(){
@@ -1083,13 +1206,8 @@ const tmPluginSeparadores = {
       ctx.strokeStyle = esAnioNuevo ? 'rgba(120,120,120,.55)' : 'rgba(120,120,120,.16)';
       ctx.lineWidth = esAnioNuevo ? 1.3 : 1;
       ctx.stroke();
-      if(esAnioNuevo){
-        ctx.setLineDash([]);
-        ctx.fillStyle = 'rgba(120,120,120,.9)';
-        ctx.font = '700 11px -apple-system,Segoe UI,Arial,sans-serif';
-        ctx.textAlign = 'left';
-        ctx.fillText(String(d.getFullYear()), x+4, chartArea.top+13);
-      }
+      // El año ya lo muestra la 2da línea de la etiqueta del eje X -- acá
+      // solo queda la línea vertical más marcada como separador.
     });
     ctx.restore();
   },
@@ -1124,9 +1242,29 @@ function renderTelemedida(datos, canales){
       });
       if(data.length >= 14){
         datasets.push({
+          // Color fijo (no el del canal) -- así "tendencia" se reconoce
+          // como un concepto aparte del dato real, sin importar qué canal
+          // o usuario sea.
           type:'line', label:`Tendencia · ${etiqueta}`, data: tmPromedioMovil(data, 30),
-          borderColor: color, backgroundColor:'transparent',
+          borderColor: TM_COLOR_TENDENCIA, backgroundColor:'transparent',
           borderWidth:2, borderDash:[7,4], pointRadius:0, tension:.25, spanGaps:true,
+        });
+      }
+
+      // Límite superior/inferior de consumo esperado: media ± z·desviación
+      // estándar del propio rango visible, con z derivado del % de
+      // confianza que se fija en Parametrización (distribución normal).
+      if(data.length >= 5){
+        const {media, desv} = tmMediaDesv(data);
+        const z = zScoreDeConfianza(TM_CONFIANZA_PCT/100);
+        const limSup = media + z*desv, limInf = Math.max(0, media - z*desv);
+        [["superior", limSup], ["inferior", limInf]].forEach(([nombre, valor])=>{
+          datasets.push({
+            type:'line', label:`Límite ${nombre} (${TM_CONFIANZA_PCT}%) · ${etiqueta}`,
+            data: fechas.map(()=>valor),
+            borderColor: TM_COLOR_LIMITE, backgroundColor:'transparent',
+            borderWidth:1.3, borderDash:[2,3], pointRadius:0, tension:0,
+          });
         });
       }
     });
@@ -1141,14 +1279,33 @@ function renderTelemedida(datos, canales){
       interaction:{mode:'index', intersect:false},
       plugins:{
         legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:10}, color:tickC,
-          filter:item=>!item.text.startsWith('Tendencia')}},
+          filter:item=>!item.text.startsWith('Tendencia') && !item.text.startsWith('Límite')}},
         tooltip:{callbacks:{
           label:c=>`${c.dataset.label}: ${(c.raw==null?0:c.raw).toLocaleString('es-CO',{maximumFractionDigits:2})} kWh`,
         }},
       },
       scales:{
-        x:{grid:{display:false}, ticks:{color:tickC, font:{size:10}, maxRotation:0, autoSkip:true, maxTicksLimit:18,
-          callback:function(val,i){ const d=new Date(fechas[i]+'T00:00:00'); return d.getDate()===1 ? d.toLocaleDateString('es-CO',{month:'short'}) : ''; }}},
+        x:{
+          grid:{display:false},
+          // Sin esto, autoSkip elige índices "parejos" que casi nunca caen
+          // justo en un 1° de mes -- entre eso y que el resto de labels
+          // devuelve '', terminaba mostrando un solo mes en toda la gráfica.
+          // Filtrando ACÁ los ticks a solo 1° de mes, autoSkip ya elige
+          // entre esos nomás.
+          afterBuildTicks: scale => {
+            scale.ticks = scale.ticks.filter(t => {
+              const d = new Date(fechas[t.value]+'T00:00:00');
+              return d.getDate() === 1;
+            });
+          },
+          ticks:{
+            color:tickC, font:{size:10}, maxRotation:0, minRotation:0, autoSkip:true, maxTicksLimit:14,
+            callback:function(val){
+              const d = new Date(fechas[val]+'T00:00:00');
+              return [d.toLocaleDateString('es-CO',{month:'short'}), String(d.getFullYear())];
+            },
+          },
+        },
         y:{beginAtZero:true, grid:{color:gridC}, ticks:{color:tickC, font:{size:11}, callback:v=>v.toLocaleString('es-CO')+' kWh'}},
       },
     },
