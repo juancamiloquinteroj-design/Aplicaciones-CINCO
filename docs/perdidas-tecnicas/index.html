@@ -1356,11 +1356,25 @@ function renderPrincipal(){
   }
 }
 
+function hexA(hex, alpha){
+  const h = (hex||'').replace('#','');
+  const r = parseInt(h.substring(0,2),16), g = parseInt(h.substring(2,4),16), b = parseInt(h.substring(4,6),16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
 function renderPrincipalUnNivel(){
   const ctx = document.getElementById('ch-principal');
   const dark = document.documentElement.getAttribute('data-theme')==='dark';
   const tickC = dark ? '#8899b5' : '#4b5e7a';
   const gridC = dark ? 'rgba(255,255,255,.06)' : 'rgba(0,0,0,.06)';
+
+  // Si hay una zona puntual filtrada, la gráfica adopta SU color (el mismo
+  // que se le asignó en Parametrización) -- así se confirma de un vistazo
+  // que se está viendo esa zona, consistente con el resto de la app.
+  const zonaFiltro = document.getElementById('fm-zona').value;
+  const colorZona = zonaFiltro ? colorParaZona(zonaFiltro) : null;
+  const colorKwh = colorZona ? hexA(colorZona, .85) : 'rgba(239,71,111,.85)';
+  const colorPct = colorZona || '#f4a261';
 
   let labels = RESUMEN.meses.map(labelMes);
   let entV = RESUMEN.entradas_kwh.slice();
@@ -1414,15 +1428,15 @@ function renderPrincipalUnNivel(){
           yAxisID:'yEnt', order:3, stack:'ent', barPercentage:.7, categoryPercentage:.8,
           datalabels:{display:ctx2=>ctx2.dataset.data[ctx2.dataIndex]>0 && labels.length<=24, anchor:'center', align:'center',
             formatter:v=>(v||0).toLocaleString('es-CO',{maximumFractionDigits:0}), font:{size:13,weight:'bold'}, color:'#fff', rotation:-90}},
-        {type:'bar', label:'Pérdidas Técnicas kWh', data:kwhV, backgroundColor:'rgba(239,71,111,.85)', borderRadius:5,
+        {type:'bar', label:'Pérdidas Técnicas kWh', data:kwhV, backgroundColor:colorKwh, borderRadius:5,
           yAxisID:'yKwh', order:3, stack:'kwh', barPercentage:.7, categoryPercentage:.8,
           datalabels:{display:ctx2=>ctx2.dataset.data[ctx2.dataIndex]>0 && labels.length<=24, anchor:'center', align:'center',
             formatter:v=>(v||0).toLocaleString('es-CO',{maximumFractionDigits:0}), font:{size:13,weight:'bold'}, color:'#fff', rotation:-90}},
-        {type:'line', label:'Pérdidas Técnicas %', data:pctV, borderColor:'#f4a261', backgroundColor:'rgba(244,162,97,.08)',
-          borderWidth:3, pointRadius:6, pointBackgroundColor:'#f4a261', pointBorderColor:'#fff', pointBorderWidth:2,
+        {type:'line', label:'Pérdidas Técnicas %', data:pctV, borderColor:colorPct, backgroundColor:hexA(colorZona||'#f4a261',.08),
+          borderWidth:3, pointRadius:6, pointBackgroundColor:colorPct, pointBorderColor:'#fff', pointBorderWidth:2,
           tension:.35, fill:false, yAxisID:'yPct', order:1, spanGaps:false,
           datalabels:{display:labels.length<=24, anchor:'end', align:'top', offset:10,
-            formatter:v=>(v||0).toFixed(2)+'%', font:{size:13,weight:'800'}, color:'#c47a2a',
+            formatter:v=>(v||0).toFixed(2)+'%', font:{size:13,weight:'800'}, color:colorPct,
             backgroundColor:'rgba(255,255,255,.92)', borderRadius:4, padding:{left:5,right:5,top:2,bottom:2}}},
         {type:'line', label:'Senda Regulatoria', data:labels.map(()=>cregVal),
           borderColor:'rgba(120,120,120,.7)', backgroundColor:'transparent', borderWidth:2, borderDash:[7,5],
@@ -1450,13 +1464,13 @@ function renderPrincipalUnNivel(){
           ticks:{color:'#0096c7', font:{size:13}, callback:v=>fmtGwh(v)},
           title:{display:true, text:'Entradas (GWh)', color:'#0096c7', font:{size:12}}},
         yKwh:{type:'linear', position:'right', beginAtZero:true, grid:{drawOnChartArea:false},
-          ticks:{color:'#ef476f', font:{size:13}, callback:v=>fmtGwh(v)},
+          ticks:{color:colorPct, font:{size:13}, callback:v=>fmtGwh(v)},
           afterFit:ax=>{ax.width=Math.max(ax.width,96)},
-          title:{display:true, text:'PT (GWh)', color:'#ef476f', font:{size:12}}},
+          title:{display:true, text:'PT (GWh)', color:colorPct, font:{size:12}}},
         yPct:{type:'linear', position:'right', beginAtZero:true, grid:{drawOnChartArea:false},
-          ticks:{color:'#f4a261', font:{size:13}, callback:v=>v.toFixed(1)+'%'},
+          ticks:{color:colorPct, font:{size:13}, callback:v=>v.toFixed(1)+'%'},
           afterFit:ax=>{ax.width=Math.max(ax.width,86)},
-          title:{display:true, text:'Pérd. Técnicas %', color:'#f4a261', font:{size:12}},
+          title:{display:true, text:'Pérd. Técnicas %', color:colorPct, font:{size:12}},
           offset:true},
       },
     },
