@@ -884,29 +884,31 @@ tfoot td:first-child{text-align:left}
     </div>
     <div id="be-chart-nota" class="tm-modal-msg" style="text-align:center"></div>
 
-    <div class="fbar" style="justify-content:center;margin-bottom:10px">
-      <button type="button" class="be-modo-btn" data-modo="1" onclick="beCambiarModoGrafico(1)">📉 Pérdida diaria vs. técnica</button>
-      <button type="button" class="be-modo-btn" data-modo="2" onclick="beCambiarModoGrafico(2)">🔀 Entrada / Salida diaria</button>
-      <button type="button" class="be-modo-btn" data-modo="3" onclick="beCambiarModoGrafico(3)">📅 Histórico mensual</button>
+    <div class="fbar" style="justify-content:space-between;margin-bottom:6px">
+      <div id="be-filtro-diario" class="fbar" style="margin:0">
+        <button type="button" class="be-editar-btn" onclick="beMoverMes(-1)" title="Mes anterior">◄ Mes anterior</button>
+        <label>Desde</label>
+        <input type="date" id="be-desde" onchange="verBalanceEstructura(BE_ACTIVA_ID)">
+        <label>Hasta</label>
+        <input type="date" id="be-hasta" onchange="verBalanceEstructura(BE_ACTIVA_ID)">
+        <button type="button" class="be-editar-btn" onclick="beMoverMes(1)" title="Mes siguiente">Mes siguiente ►</button>
+        <button type="button" class="be-editar-btn" onclick="if(chBalanceEstructura) chBalanceEstructura.resetZoom()" title="Volver al zoom original">⤢ Restablecer zoom</button>
+      </div>
+      <div id="be-filtro-mensual" class="fbar hidden" style="margin:0">
+        <label>Desde</label>
+        <input type="month" id="be-comp-desde" onchange="this.dataset.manual='1'; verComparacionEstructura()">
+        <label>Hasta</label>
+        <input type="month" id="be-comp-hasta" onchange="verComparacionEstructura()">
+        <button type="button" class="be-modo-btn" id="be-btn-entrada-comp" onclick="beToggleEntradaComparacion()">⊕ Ver entrada</button>
+      </div>
+      <div class="fbar" style="margin:0">
+        <button type="button" class="be-modo-btn" data-modo="1" onclick="beCambiarModoGrafico(1)">📉 Pérdida diaria vs. técnica</button>
+        <button type="button" class="be-modo-btn" data-modo="2" onclick="beCambiarModoGrafico(2)">🔀 Entrada / Salida diaria</button>
+        <button type="button" class="be-modo-btn" data-modo="3" onclick="beCambiarModoGrafico(3)">📅 Histórico mensual</button>
+      </div>
     </div>
+    <div id="be-filtro-diario-nota" style="text-align:left;font-size:10px;color:var(--text3);margin:-2px 0 10px">Por defecto: el último mes disponible -- rueda del mouse o pellizco para hacer zoom, arrastrar para mover</div>
 
-    <div id="be-filtro-diario" class="fbar" style="justify-content:center;margin-bottom:12px">
-      <button type="button" class="be-editar-btn" onclick="beMoverMes(-1)" title="Mes anterior">◄ Mes anterior</button>
-      <label>Desde</label>
-      <input type="date" id="be-desde" onchange="verBalanceEstructura(BE_ACTIVA_ID)">
-      <label>Hasta</label>
-      <input type="date" id="be-hasta" onchange="verBalanceEstructura(BE_ACTIVA_ID)">
-      <button type="button" class="be-editar-btn" onclick="beMoverMes(1)" title="Mes siguiente">Mes siguiente ►</button>
-      <button type="button" class="be-editar-btn" onclick="if(chBalanceEstructura) chBalanceEstructura.resetZoom()" title="Volver al zoom original">⤢ Restablecer zoom</button>
-    </div>
-    <div id="be-filtro-diario-nota" style="text-align:center;font-size:10px;color:var(--text3);margin:-8px 0 10px">Por defecto: el último mes disponible -- rueda del mouse o pellizco para hacer zoom, arrastrar para mover</div>
-
-    <div id="be-filtro-mensual" class="fbar hidden" style="justify-content:center;margin-bottom:12px">
-      <label>Desde</label>
-      <input type="month" id="be-comp-desde" onchange="this.dataset.manual='1'; verComparacionEstructura()">
-      <label>Hasta</label>
-      <input type="month" id="be-comp-hasta" onchange="verComparacionEstructura()">
-    </div>
     <div id="be-comparacion-vacio" class="be-comparacion-vacio hidden">Esta estructura no tiene un circuito de Pérdidas Técnicas vinculado -- entrá a "✎ Editar" para elegirlo y poder comparar.</div>
 
     <div class="chart-wrap" id="be-chart-wrap" style="height:420px"><canvas id="ch-balance-estructura"></canvas></div>
@@ -1976,7 +1978,30 @@ function renderListaEstructuras(){
       <div class="niv">Nivel ${e.nivel_tension}${e.tipo ? ' · '+_mselEsc(BE_NOMBRES_TIPO[e.tipo]||e.tipo) : ''}</div>
       <div class="rutas">${_mselEsc(_beResumenLado(e.entradas))} → ${_mselEsc(_beResumenLado(e.salidas))}</div>
     </div>`).join('');
+  const activa = cont.querySelector('.be-estructura-item.activa');
+  if(activa) activa.scrollIntoView({block:'nearest'});
 }
+
+// Flecha arriba/abajo cambia de estructura sin tocar el mouse -- útil para
+// repasar varias rápido. Se ignora si el foco está en un campo de texto/
+// select/fecha (ahí las flechas ya tienen su uso normal) o si no estamos
+// parados en la vista "Ver Balance".
+document.addEventListener('keydown', (ev)=>{
+  if(ev.key !== 'ArrowUp' && ev.key !== 'ArrowDown') return;
+  const vista = document.getElementById('vista-be-ver');
+  if(!vista || vista.classList.contains('hidden')) return;
+  const tagActivo = document.activeElement && document.activeElement.tagName;
+  if(['INPUT','SELECT','TEXTAREA'].includes(tagActivo)) return;
+  if(!BE_ESTRUCTURAS.length) return;
+  ev.preventDefault();
+  const idx = BE_ESTRUCTURAS.findIndex(e=>e.id===BE_ACTIVA_ID);
+  let nuevoIdx;
+  if(idx === -1) nuevoIdx = 0;
+  else if(ev.key === 'ArrowDown') nuevoIdx = Math.min(idx+1, BE_ESTRUCTURAS.length-1);
+  else nuevoIdx = Math.max(idx-1, 0);
+  if(nuevoIdx === idx) return;
+  verBalanceEstructura(BE_ESTRUCTURAS[nuevoIdx].id);
+});
 
 function renderTablaEstructurasCreadas(){
   const body = document.getElementById('be-tabla-creadas-body');
@@ -2411,6 +2436,8 @@ function renderChartComparacionEstructura(datos){
   const tickC = dark ? '#8899b5' : '#4b5e7a';
   const gridC = dark ? 'rgba(255,255,255,.06)' : 'rgba(0,0,0,.06)';
 
+  document.getElementById('be-btn-entrada-comp').classList.remove('activo');
+
   if(chBalanceEstructura) chBalanceEstructura.destroy();
   chBalanceEstructura = new Chart(ctx, {
     data:{
@@ -2425,6 +2452,9 @@ function renderChartComparacionEstructura(datos){
         {type:'line', label:'Pérdida %', data:datos.perdida_balance_pct,
           borderColor:'#f4a261', backgroundColor:'transparent', borderWidth:2, pointRadius:2,
           tension:.15, spanGaps:true, borderDash:[6,3], yAxisID:'yPct'},
+        {type:'line', label:'Entrada mensual', data:datos.entrada_kwh,
+          borderColor:'#06d6a0', backgroundColor:'transparent', borderWidth:2, pointRadius:2,
+          tension:.15, spanGaps:true, yAxisID:'yEntrada', hidden:true},
       ],
     },
     options:{
@@ -2446,9 +2476,30 @@ function renderChartComparacionEstructura(datos){
           ticks:{color:'#f4a261', font:{size:11}, callback:v=>v.toFixed(1)+'%'},
           afterFit:ax=>{ax.width=Math.max(ax.width,70)},
           title:{display:true, text:'Pérdida %', color:'#f4a261', font:{size:11}}, offset:true},
+        // Eje propio SIN mostrar ticks/grid/título -- la Entrada (millones
+        // de kWh) es de otra escala que la Pérdida, así que necesita su
+        // propio rango para no aplastar las demás líneas al activarla. OJO:
+        // display:false (en vez de ocultar cada parte por separado) le
+        // reduce a Chart.js el alto asignado al eje casi a 0, y termina
+        // mapeando los puntos MUY afuera del área visible del gráfico.
+        yEntrada:{type:'linear', position:'right', beginAtZero:true,
+          grid:{drawOnChartArea:false, drawTicks:false}, ticks:{display:false}, border:{display:false}},
       },
     },
   });
+}
+
+// El botón "Ver entrada" del histórico mensual solo agrega/quita esa UNA
+// línea (reusa el toggle nativo de visibilidad de Chart.js) -- no hace falta
+// re-pedir datos ni redibujar todo el gráfico.
+function beToggleEntradaComparacion(){
+  if(!chBalanceEstructura || BE_MODO_GRAFICO!==3) return;
+  const idx = chBalanceEstructura.data.datasets.findIndex(d=>d.label==='Entrada mensual');
+  if(idx<0) return;
+  const visible = chBalanceEstructura.isDatasetVisible(idx);
+  chBalanceEstructura.setDatasetVisibility(idx, !visible);
+  chBalanceEstructura.update();
+  document.getElementById('be-btn-entrada-comp').classList.toggle('activo', !visible);
 }
 
 // Tarjetas de resumen -- llenan el espacio que queda libre debajo del
