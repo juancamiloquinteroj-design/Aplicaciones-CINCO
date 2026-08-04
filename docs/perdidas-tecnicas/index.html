@@ -797,6 +797,15 @@ tfoot td:first-child{text-align:left}
         </select>
       </div>
       <div class="be-field">
+        <label>Tipo de estructura</label>
+        <select id="be-tipo">
+          <option value="">Elegí un tipo...</option>
+          <option value="PT">Transformador (PT)</option>
+          <option value="PB">Barra (PB)</option>
+          <option value="L">Línea (L)</option>
+        </select>
+      </div>
+      <div class="be-field">
         <label>Circuito de Pérdidas Técnicas (opcional)</label>
         <select id="be-circuito"><option value="">Sin vincular</option></select>
       </div>
@@ -829,7 +838,7 @@ tfoot td:first-child{text-align:left}
       <div class="be-tabla-creadas-titulo">Estructuras ya creadas</div>
       <div class="be-tabla-scroll">
         <table class="be-tabla-creadas">
-          <thead><tr><th>Nombre</th><th>Nivel</th><th>Entrada(s)</th><th>Salida(s)</th><th></th></tr></thead>
+          <thead><tr><th>Nombre</th><th>Nivel</th><th>Tipo</th><th>Entrada(s)</th><th>Salida(s)</th><th></th></tr></thead>
           <tbody id="be-tabla-creadas-body"></tbody>
         </table>
       </div>
@@ -856,6 +865,13 @@ tfoot td:first-child{text-align:left}
         <option value="2">Nivel 2</option>
         <option value="3">Nivel 3</option>
         <option value="4">Nivel 4</option>
+      </select>
+      <label>Tipo</label>
+      <select id="be-filtro-tipo" onchange="cargarListaEstructuras()">
+        <option value="">Todos</option>
+        <option value="PT">Transformador (PT)</option>
+        <option value="PB">Barra (PB)</option>
+        <option value="L">Línea (L)</option>
       </select>
     </div>
     <div id="be-lista-estructuras" class="be-lista-estructuras" style="margin-top:14px"></div>
@@ -955,6 +971,15 @@ tfoot td:first-child{text-align:left}
           <option value="2">Nivel 2</option>
           <option value="3">Nivel 3</option>
           <option value="4">Nivel 4</option>
+        </select>
+      </div>
+      <div class="be-field">
+        <label>Tipo de estructura</label>
+        <select id="beed-tipo">
+          <option value="">Sin elegir</option>
+          <option value="PT">Transformador (PT)</option>
+          <option value="PB">Barra (PB)</option>
+          <option value="L">Línea (L)</option>
         </select>
       </div>
       <div class="be-field">
@@ -1648,6 +1673,7 @@ function irAUsuarioDesdeAlarma(usuarioId){
 
 /* ---- Balances por Estructura ---- */
 const BE_NOMBRES_CANAL_CORTO = {canal1:'C1 kWhD', canal2:'C2 kVarhD', canal3:'C3 kWhR', canal4:'C4 kVarhR'};
+const BE_NOMBRES_TIPO = {PT:'Transformador', PB:'Barra', L:'Línea'};
 
 async function beCargarCircuitos(nivel, selectEl, seleccionActual){
   const actual = seleccionActual!=null ? String(seleccionActual) : selectEl.value;
@@ -1878,10 +1904,23 @@ function _beRecolectarFilas(tipo){
   });
 }
 
+// Si el usuario cambia los filtros rápido (nivel y/o tipo casi a la vez),
+// puede haber 2+ fetches en vuelo -- sin este control, uno más VIEJO podría
+// resolver DESPUÉS que uno más nuevo y pisar la lista con el filtro que ya
+// no está seleccionado. Solo se aplica la respuesta del último llamado.
+let _beListaEstructurasSeq = 0;
 async function cargarListaEstructuras(){
+  const miSeq = ++_beListaEstructurasSeq;
   const nivel = document.getElementById('be-filtro-nivel').value;
-  const qs = nivel ? `?nivel_tension=${nivel}` : '';
-  try{ BE_ESTRUCTURAS = DEMO ? [] : await apiGet(`/api/balances-estructura${qs}`); }catch(e){ BE_ESTRUCTURAS = []; }
+  const tipo = document.getElementById('be-filtro-tipo').value;
+  const qs = new URLSearchParams();
+  if(nivel) qs.set('nivel_tension', nivel);
+  if(tipo) qs.set('tipo', tipo);
+  const qstr = qs.toString();
+  let datos;
+  try{ datos = DEMO ? [] : await apiGet(`/api/balances-estructura${qstr?'?'+qstr:''}`); }catch(e){ datos = []; }
+  if(miSeq !== _beListaEstructurasSeq) return;  // una llamada más nueva ya está en vuelo/resuelta
+  BE_ESTRUCTURAS = datos;
   renderListaEstructuras();
   renderTablaEstructurasCreadas();
   cargarAlertasBalance();
@@ -1934,7 +1973,7 @@ function renderListaEstructuras(){
   cont.innerHTML = BE_ESTRUCTURAS.map(e => `
     <div class="be-estructura-item ${e.id===BE_ACTIVA_ID?'activa':''}" onclick="verBalanceEstructura(${e.id})">
       <div class="nom">${_mselEsc(e.nombre)}</div>
-      <div class="niv">Nivel ${e.nivel_tension}</div>
+      <div class="niv">Nivel ${e.nivel_tension}${e.tipo ? ' · '+_mselEsc(BE_NOMBRES_TIPO[e.tipo]||e.tipo) : ''}</div>
       <div class="rutas">${_mselEsc(_beResumenLado(e.entradas))} → ${_mselEsc(_beResumenLado(e.salidas))}</div>
     </div>`).join('');
 }
@@ -1942,13 +1981,14 @@ function renderListaEstructuras(){
 function renderTablaEstructurasCreadas(){
   const body = document.getElementById('be-tabla-creadas-body');
   if(!BE_ESTRUCTURAS.length){
-    body.innerHTML = `<tr><td colspan="5" class="be-tabla-vacio">Todavía no creaste ninguna estructura.</td></tr>`;
+    body.innerHTML = `<tr><td colspan="6" class="be-tabla-vacio">Todavía no creaste ninguna estructura.</td></tr>`;
     return;
   }
   body.innerHTML = BE_ESTRUCTURAS.map(e => `
     <tr>
       <td>${_mselEsc(e.nombre)}</td>
       <td>Nivel ${e.nivel_tension}</td>
+      <td>${e.tipo ? _mselEsc(BE_NOMBRES_TIPO[e.tipo]||e.tipo) : '--'}</td>
       <td>${_mselEsc(_beResumenLado(e.entradas))}</td>
       <td>${_mselEsc(_beResumenLado(e.salidas))}</td>
       <td style="white-space:nowrap">
@@ -1964,6 +2004,7 @@ async function crearEstructuraBalance(){
 
   const nombre = document.getElementById('be-nombre').value.trim();
   const nivel_tension = parseInt(document.getElementById('be-nivel').value);
+  const tipo = document.getElementById('be-tipo').value;
   const circuitoVal = document.getElementById('be-circuito').value;
   const circuito_id = circuitoVal ? parseInt(circuitoVal) : null;
   const nota = document.getElementById('be-nota').value.trim() || null;
@@ -1971,15 +2012,17 @@ async function crearEstructuraBalance(){
   const salidas = _beRecolectarFilas('salida');
 
   if(!nombre){ msg.className='tm-modal-msg err'; msg.textContent='Ponele un nombre a la estructura.'; return; }
+  if(!tipo){ msg.className='tm-modal-msg err'; msg.textContent='Elegí el tipo de estructura (Transformador, Barra o Línea).'; return; }
   if(!entradas.length || entradas.some(m=>!m)){ msg.className='tm-modal-msg err'; msg.textContent='Alguna fila de Entrada no coincide con ningún usuario/medidor real -- elegilo del buscador.'; return; }
   if(!salidas.length || salidas.some(m=>!m)){ msg.className='tm-modal-msg err'; msg.textContent='Alguna fila de Salida no coincide con ningún usuario/medidor real -- elegilo del buscador.'; return; }
 
   if(DEMO){ msg.className='tm-modal-msg err'; msg.textContent='No disponible en modo demo (sin conexión al servidor).'; return; }
 
   try{
-    await apiPost('/api/balances-estructura', {nombre, nivel_tension, circuito_id, nota, entradas, salidas});
+    await apiPost('/api/balances-estructura', {nombre, nivel_tension, tipo, circuito_id, nota, entradas, salidas});
     document.getElementById('be-nombre').value = '';
     document.getElementById('be-nota').value = '';
+    document.getElementById('be-tipo').value = '';
     document.getElementById('be-circuito').value = '';
     document.getElementById('be-filas-entrada').innerHTML = '';
     document.getElementById('be-filas-salida').innerHTML = '';
@@ -2030,8 +2073,9 @@ async function verBalanceEstructura(id){
     document.getElementById('be-chart-titulo').textContent = 'No se pudo cargar el balance.';
     return;
   }
-  document.getElementById('be-chart-titulo').textContent = `${datos.nombre} -- Nivel ${datos.nivel_tension}`;
   const estructura = BE_ESTRUCTURAS.find(e=>e.id===id);
+  const tipoTxt = estructura && estructura.tipo ? ` · ${BE_NOMBRES_TIPO[estructura.tipo]||estructura.tipo}` : '';
+  document.getElementById('be-chart-titulo').textContent = `${datos.nombre} -- Nivel ${datos.nivel_tension}${tipoTxt}`;
   document.getElementById('be-chart-nota').textContent = estructura && estructura.nota ? `📝 ${estructura.nota}` : '';
   // Si no se habían fijado a mano, se completan con lo que trajo el backend
   // (por defecto, el último mes disponible) -- así el usuario ve el rango
@@ -2680,6 +2724,7 @@ async function recargarModalEditarEstructura(){
 
   document.getElementById('beed-nombre').value = datos.nombre;
   document.getElementById('beed-nivel').value = datos.nivel_tension;
+  document.getElementById('beed-tipo').value = datos.tipo || '';
   document.getElementById('beed-nota').value = datos.nota || '';
   await beCargarCircuitos(datos.nivel_tension, document.getElementById('beed-circuito'), datos.circuito_id);
 
@@ -2695,11 +2740,12 @@ async function guardarMetadatosEstructura(){
   const nombre = document.getElementById('beed-nombre').value.trim();
   if(!nombre){ msg.className='tm-modal-msg err'; msg.textContent='El nombre no puede quedar vacío.'; return; }
   const nivel_tension = parseInt(document.getElementById('beed-nivel').value);
+  const tipo = document.getElementById('beed-tipo').value || null;
   const circuitoVal = document.getElementById('beed-circuito').value;
   const circuito_id = circuitoVal ? parseInt(circuitoVal) : 0;  // 0 = desvincular
   const nota = document.getElementById('beed-nota').value.trim();
   try{
-    await apiPut(`/api/balances-estructura/${BE_EDITAR_ID}`, {nombre, nivel_tension, circuito_id, nota});
+    await apiPut(`/api/balances-estructura/${BE_EDITAR_ID}`, {nombre, nivel_tension, tipo, circuito_id, nota});
     msg.textContent = 'Cambios guardados.';
     await cargarListaEstructuras();
     if(BE_ACTIVA_ID === BE_EDITAR_ID) verBalanceEstructura(BE_ACTIVA_ID);
