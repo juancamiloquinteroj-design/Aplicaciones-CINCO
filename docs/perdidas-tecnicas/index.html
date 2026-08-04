@@ -305,6 +305,9 @@ tfoot td:first-child{text-align:left}
 .be-tabla-scroll{overflow-x:auto}
 .be-tabla-scroll-acotada{max-height:1120px;overflow-y:auto}
 .be-tabla-scroll-acotada thead th{position:sticky;top:0;background:var(--bg2);z-index:5}
+/* Fila 2 del thead = el viejo pie ("Total del rango") reubicado justo debajo
+   del encabezado -- queda siempre visible sin bajar hasta el final. */
+.be-tabla-scroll-acotada thead tr:nth-child(2) td{position:sticky;top:var(--be-fila2-top,34px);z-index:5}
 .be-tabla-scroll-acotada tfoot td{position:sticky;bottom:0;z-index:5}
 .be-tabla-creadas.detalle-oculto .be-col-detalle{display:none}
 .be-tabla-detalle-resumen{margin-top:10px;padding-top:8px;border-top:1px solid var(--border);font-size:11px;color:var(--text3);display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px}
@@ -332,6 +335,12 @@ tfoot td:first-child{text-align:left}
 .be-resp-toggle:hover{background:var(--accent2);color:#fff}
 .be-tabla-creadas tfoot td,.be-tabla-creadas tfoot td.suma,.be-tabla-creadas tfoot td.pto,.be-tabla-creadas tfoot td.back,.be-tabla-creadas tfoot td.dif{padding:6px 10px;border-top:2px solid var(--border);font-weight:700;color:var(--text3);background:var(--bg3) !important}
 .be-tabla-creadas tfoot td.suma{color:var(--text)}
+/* Fila 1 (encabezado): th.suma/th.pto (2 clases) le ganaban por
+   especificidad al fondo sólido del sticky de arriba (1 clase+tipo) y
+   dejaban ver las filas de abajo a través del encabezado al hacer scroll. */
+.be-tabla-creadas thead tr:first-child th,.be-tabla-creadas thead tr:first-child th.suma,.be-tabla-creadas thead tr:first-child th.pto{background:var(--bg3) !important}
+.be-tabla-creadas thead tr:nth-child(2) td,.be-tabla-creadas thead tr:nth-child(2) td.suma,.be-tabla-creadas thead tr:nth-child(2) td.pto,.be-tabla-creadas thead tr:nth-child(2) td.back,.be-tabla-creadas thead tr:nth-child(2) td.dif{padding:6px 10px;border-bottom:2px solid var(--border);font-weight:700;color:var(--text3);background:var(--bg2) !important}
+.be-tabla-creadas thead tr:nth-child(2) td.suma{color:var(--text)}
 .be-editar-btn{padding:4px 10px;border:1px solid var(--border);border-radius:7px;background:transparent;color:var(--text2);font-size:11px;font-weight:700;cursor:pointer}
 .be-editar-btn:hover{border-color:var(--accent);color:var(--accent)}
 .be-modo-btn{padding:7px 16px;border:1px solid var(--border);border-radius:8px;background:transparent;color:var(--text2);font-size:12px;font-weight:700;cursor:pointer}
@@ -904,6 +913,7 @@ tfoot td:first-child{text-align:left}
         <input type="month" id="be-comp-hasta" onchange="verComparacionEstructura()">
         <button type="button" class="be-modo-btn" id="be-btn-entrada-comp" onclick="beToggleEntradaComparacion()">⊕ Ver entrada</button>
         <button type="button" class="be-modo-btn" id="be-btn-salida-comp" onclick="beToggleSalidaComparacion()">⊖ Ver salida</button>
+        <button type="button" class="be-editar-btn" onclick="if(chBalanceEstructura) chBalanceEstructura.resetZoom()" title="Volver al zoom original">⤢ Restablecer zoom</button>
       </div>
       <div class="fbar" style="margin:0">
         <button type="button" class="be-modo-btn" data-modo="1" onclick="beCambiarModoGrafico(1)">📉 Pérdida diaria vs. técnica</button>
@@ -2291,7 +2301,7 @@ async function renderChartBalanceEstructura(datos, modo){
       {type:'line', label:'Pérdida %', data:perdidaPct, borderColor:'#f4a261', backgroundColor:'transparent',
         borderWidth:2, pointRadius:0, tension:.15, spanGaps:true, yAxisID:'yPct', order:1, borderDash:[6,3],
         datalabels:{display: mesUnico, anchor:'end', align:'top', offset:6,
-          formatter:v=>v==null ? '' : v.toFixed(2)+'%', font:{size:13, weight:'800'}, color:'#f4a261',
+          formatter:v=>v==null ? '' : v.toFixed(2)+'%', font:{size:11, weight:'800'}, color:'#f4a261',
           backgroundColor:'rgba(255,255,255,.9)', borderRadius:4, padding:{left:5,right:5,top:2,bottom:2}}},
     ];
   }
@@ -2469,6 +2479,11 @@ function renderChartComparacionEstructura(datos){
           const v = c.raw==null ? 0 : c.raw;
           return c.dataset.label==='Pérdida %' ? `Pérdida %: ${v.toFixed(2)}%` : `${c.dataset.label}: ${v.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`;
         }}},
+        zoom:{
+          pan:{enabled:true, mode:'x'},
+          zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'},
+          limits:{x:{minRange:3}},
+        },
       },
       scales:{
         x:{ grid:{display:false}, ticks:{color:tickC, font:{size:10}, maxRotation:0, autoSkip:true, maxTicksLimit:14} },
@@ -2627,15 +2642,6 @@ function renderTablaDetalleBalance(datos){
   let headDetalle = '';
   gruposPorMedidor.forEach(grupo => grupo.forEach((col,i) => headDetalle += thPunto(col, i===0)));
 
-  head.innerHTML = `<tr>
-    <th>Fecha</th>
-    ${headDetalle}
-    <th class="suma">ENTRADA</th>
-    <th class="suma">SALIDA</th>
-    <th class="suma">PÉRDIDA (kWh)</th>
-    <th class="suma">PÉRDIDA (%)</th>
-  </tr>`;
-
   const f2 = v => v==null ? '--' : v.toLocaleString('es-CO',{maximumFractionDigits:0});
   const tdPunto = (col, i, esInicioDeGrupo) => {
     const claseGrupo = esInicioDeGrupo ? ' grupo-inicio' : '';
@@ -2668,10 +2674,12 @@ function renderTablaDetalleBalance(datos){
     </tr>`;
   }).join('');
 
-  // Pie de la tabla -- días CON DATO por columna (no un total único: cada
-  // medidor puede tener huecos distintos, ej. el respaldo recién empezó a
-  // reportar en cierta fecha) -- lo que pidió el usuario en vez de un solo
-  // número global.
+  // Total del rango -- días CON DATO por columna en el detalle por medidor
+  // (cada uno puede tener huecos distintos, ej. el respaldo recién empezó a
+  // reportar en cierta fecha) y TOTAL sumado en las columnas de resumen
+  // (entrada/salida/pérdida/%). Va como 2da fila del encabezado (sticky,
+  // debajo de los títulos) en vez de al final -- así queda visible sin
+  // tener que bajar hasta el final de la tabla.
   const contar = arr => (arr||[]).filter(v=>v!=null).length;
   let footDetalle = '';
   gruposPorMedidor.forEach(grupo => grupo.forEach((col,j) => {
@@ -2683,16 +2691,20 @@ function renderTablaDetalleBalance(datos){
       footDetalle += `<td class="num dif be-col-detalle hidden" data-resp-grupo="${col._respIdx}">${contar(col.dif)}</td>`;
     }
   }));
-  // Las columnas amarillas (detalle por medidor) muestran días con dato,
-  // igual que antes -- pero las azules (resumen) muestran el TOTAL del
-  // rango completo (suma de toda la entrada/salida, pérdida y % resultante),
-  // no una cantidad de días, que es lo que pidió el usuario.
   const sumar = arr => (arr||[]).reduce((acc,v)=> v!=null ? acc+v : acc, 0);
   const totalEntrada = sumar(datos.entrada_kwh);
   const totalSalida = sumar(datos.salida_kwh);
   const totalPerdida = sumar(datos.perdida_kwh);
   const totalPct = totalEntrada ? totalPerdida/totalEntrada*100 : null;
-  foot.innerHTML = `<tr>
+
+  head.innerHTML = `<tr>
+    <th>Fecha</th>
+    ${headDetalle}
+    <th class="suma">ENTRADA</th>
+    <th class="suma">SALIDA</th>
+    <th class="suma">PÉRDIDA (kWh)</th>
+    <th class="suma">PÉRDIDA (%)</th>
+  </tr><tr>
     <td>Total del rango</td>
     ${footDetalle}
     <td class="num suma">${f2(totalEntrada)}</td>
@@ -2700,6 +2712,8 @@ function renderTablaDetalleBalance(datos){
     <td class="num suma">${f2(totalPerdida)}</td>
     <td class="num suma">${totalPct==null?'--':totalPct.toFixed(2)+'%'}</td>
   </tr>`;
+  foot.innerHTML = '';
+  head.style.setProperty('--be-fila2-top', head.rows[0].offsetHeight + 'px');
 
   // Resumen fuera de la tabla -- una lectura rápida del total del rango,
   // sin tener que sumar columna por columna.
