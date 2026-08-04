@@ -6,6 +6,7 @@
 <title>CINCO Vision · Visualizador de Datos</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
@@ -302,10 +303,13 @@ tfoot td:first-child{text-align:left}
 .be-tabla-creadas-wrap{margin-top:20px;padding-top:16px;border-top:1px solid var(--border)}
 .be-tabla-creadas-titulo{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text3);margin-bottom:10px}
 .be-tabla-scroll{overflow-x:auto}
-.be-fila-abajo{display:grid;grid-template-columns:minmax(320px,420px) 1fr;gap:18px;align-items:start}
+.be-fila-abajo{display:grid;grid-template-columns:minmax(380px,520px) 1fr;gap:18px;align-items:start}
+.be-fila-abajo>*{min-width:0}
 @media (max-width:900px){ .be-fila-abajo{grid-template-columns:1fr} }
 .be-tabla-scroll-acotada{max-height:420px;overflow-y:auto}
 .be-tabla-scroll-acotada thead th{position:sticky;top:0;background:var(--bg2);z-index:5}
+.be-tabla-creadas.detalle-oculto .be-col-detalle{display:none}
+.be-tabla-detalle-resumen{margin-top:10px;padding-top:8px;border-top:1px solid var(--border);font-size:11px;color:var(--text3);display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px}
 .be-tabla-creadas{width:100%;border-collapse:collapse;font-size:12px}
 .be-tabla-creadas th{text-align:left;padding:7px 10px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:var(--text3);border-bottom:1px solid var(--border);white-space:nowrap}
 .be-tabla-creadas td{padding:7px 10px;border-bottom:1px solid var(--border);color:var(--text2);white-space:nowrap}
@@ -849,12 +853,15 @@ tfoot td:first-child{text-align:left}
     <div id="be-chart-nota" class="tm-modal-msg" style="text-align:center"></div>
 
     <div class="fbar" style="justify-content:center;margin-bottom:12px">
+      <button type="button" class="be-editar-btn" onclick="beMoverMes(-1)" title="Mes anterior">◄ Mes anterior</button>
       <label>Desde</label>
       <input type="date" id="be-desde" onchange="verBalanceEstructura(BE_ACTIVA_ID)">
       <label>Hasta</label>
       <input type="date" id="be-hasta" onchange="verBalanceEstructura(BE_ACTIVA_ID)">
-      <span style="font-size:10.5px;color:var(--text3)">Por defecto: el último mes disponible</span>
+      <button type="button" class="be-editar-btn" onclick="beMoverMes(1)" title="Mes siguiente">Mes siguiente ►</button>
+      <button type="button" class="be-editar-btn" onclick="if(chBalanceEstructura) chBalanceEstructura.resetZoom()" title="Volver al zoom original">⤢ Restablecer zoom</button>
     </div>
+    <div style="text-align:center;font-size:10px;color:var(--text3);margin:-8px 0 10px">Por defecto: el último mes disponible -- rueda del mouse o pellizco para hacer zoom, arrastrar para mover</div>
 
     <div class="chart-wrap" style="height:400px"><canvas id="ch-balance-estructura"></canvas></div>
 
@@ -868,17 +875,21 @@ tfoot td:first-child{text-align:left}
           <input type="month" id="be-comp-hasta" onchange="verComparacionEstructura()">
         </div>
         <div id="be-comparacion-vacio" class="be-comparacion-vacio hidden">Esta estructura no tiene un circuito de Pérdidas Técnicas vinculado -- entrá a "✎ Editar" para elegirlo y poder comparar.</div>
-        <div class="chart-wrap" id="be-comparacion-wrap" style="height:280px"><canvas id="ch-be-comparacion"></canvas></div>
+        <div class="chart-wrap" id="be-comparacion-wrap" style="height:340px"><canvas id="ch-be-comparacion"></canvas></div>
       </div>
 
       <div class="be-tabla-creadas-wrap" style="margin-top:0">
-        <div class="be-tabla-creadas-titulo">Balance diario -- detalle por medidor</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+          <div class="be-tabla-creadas-titulo" style="margin-bottom:0">Balance diario</div>
+          <button type="button" class="be-btn-respaldo" id="be-btn-detalle-medidor" onclick="beToggleDetalleMedidor()">▸ Ver detalle por medidor (Principal/Respaldo)</button>
+        </div>
         <div class="be-tabla-scroll be-tabla-scroll-acotada">
-          <table class="be-tabla-creadas" id="be-tabla-detalle">
+          <table class="be-tabla-creadas detalle-oculto" id="be-tabla-detalle">
             <thead id="be-tabla-detalle-head"></thead>
             <tbody id="be-tabla-detalle-body"></tbody>
           </table>
         </div>
+        <div id="be-tabla-detalle-resumen" class="be-tabla-detalle-resumen"></div>
       </div>
     </div>
   </div>
@@ -2044,6 +2055,11 @@ function renderChartBalanceEstructura(datos){
           const v = c.raw==null ? 0 : c.raw;
           return c.dataset.label==='Pérdida %' ? `Pérdida %: ${v.toFixed(2)}%` : `${c.dataset.label}: ${v.toLocaleString('es-CO',{maximumFractionDigits:2})} kWh`;
         }}},
+        zoom:{
+          pan:{enabled:true, mode:'x'},
+          zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'},
+          limits:{x:{minRange:5}},
+        },
       },
       scales:{
         x:{
@@ -2054,8 +2070,12 @@ function renderChartBalanceEstructura(datos){
             if(soloInicioDeMes.length) scale.ticks = soloInicioDeMes;
           },
           ticks:{
-            color:tickC, font:{size:10}, maxRotation:0, minRotation:0, autoSkip:true,
-            maxTicksLimit: fechas.length<=45 ? 20 : 14,
+            color:tickC, font:{size:10},
+            // Con <=45 días se muestran TODOS (sin autoSkip) -- con más
+            // (varios meses), se vuelve a la reducción a 1 tick por mes de
+            // arriba, ahí sí autoSkip para no saturar.
+            autoSkip: fechas.length > 45, maxRotation: fechas.length<=45 ? 60 : 0, minRotation: fechas.length<=45 ? 60 : 0,
+            maxTicksLimit: fechas.length<=45 ? undefined : 14,
             callback:function(val){
               const d = new Date(fechas[val]+'T00:00:00');
               return fechas.length<=45
@@ -2181,10 +2201,10 @@ function renderTablaDetalleBalance(datos){
 
   const etiquetaMedidor = p => `${p.usuario_id} · ${(BE_NOMBRES_CANAL_CORTO[p.canal]||p.canal)}`;
   const columnasPunto = p => {
-    if(!_bePuntoTieneBack(p)) return `<th class="pto">${_mselEsc(etiquetaMedidor(p))}</th>`;
+    if(!_bePuntoTieneBack(p)) return `<th class="pto be-col-detalle">${_mselEsc(etiquetaMedidor(p))}</th>`;
     const titulo = `Respaldo: ${p.usuario_id_back} · ${BE_NOMBRES_CANAL_CORTO[p.canal_back]||p.canal_back}`;
-    return `<th class="pto" title="${_mselEsc(titulo)}">${_mselEsc(etiquetaMedidor(p))} (+resp.)</th>`
-      + `<th class="pto">Respaldo</th><th class="pto">Dif.</th>`;
+    return `<th class="pto be-col-detalle" title="${_mselEsc(titulo)}">${_mselEsc(etiquetaMedidor(p))} (+resp.)</th>`
+      + `<th class="pto be-col-detalle">Respaldo</th><th class="pto be-col-detalle">Dif.</th>`;
   };
 
   head.innerHTML = `<tr>
@@ -2200,15 +2220,15 @@ function renderTablaDetalleBalance(datos){
   const f2 = v => v==null ? '--' : v.toLocaleString('es-CO',{maximumFractionDigits:0});
   const celdasPunto = (punto,i) => {
     const usoBack = punto.fuentes && punto.fuentes[i] === 'back';
-    let td = `<td class="num pto${usoBack?' usoback':''}"${usoBack?' title="Este día se usó el medidor de respaldo -- el principal no reportó."':''}>${f2(punto.valores[i])}</td>`;
+    let td = `<td class="num pto be-col-detalle${usoBack?' usoback':''}"${usoBack?' title="Este día se usó el medidor de respaldo -- el principal no reportó."':''}>${f2(punto.valores[i])}</td>`;
     if(_bePuntoTieneBack(punto)){
       const dif = punto.dif ? punto.dif[i] : null;
       // El respaldo solo "viaja" aparte cuando se usó como reemplazo (ahí es
       // el mismo valor de la celda principal); si el principal reportó, se
       // reconstruye a partir de la diferencia que ya calculó el backend.
       const backVisible = usoBack ? punto.valores[i] : (dif!=null ? punto.valores[i] - dif : null);
-      td += `<td class="num back">${f2(backVisible)}</td>`;
-      td += `<td class="num dif">${dif==null?'--':dif.toLocaleString('es-CO',{maximumFractionDigits:0})}</td>`;
+      td += `<td class="num back be-col-detalle">${f2(backVisible)}</td>`;
+      td += `<td class="num dif be-col-detalle">${dif==null?'--':dif.toLocaleString('es-CO',{maximumFractionDigits:0})}</td>`;
     }
     return td;
   };
@@ -2226,6 +2246,43 @@ function renderTablaDetalleBalance(datos){
       <td class="num suma">${pct==null?'--':pct.toFixed(2)+'%'}</td>
     </tr>`;
   }).join('');
+
+  // Resumen al pie -- cuántos días del rango elegido realmente tienen dato
+  // (puede haber menos que el total si algún medidor todavía no reportó).
+  const resumen = document.getElementById('be-tabla-detalle-resumen');
+  const desdeVal = document.getElementById('be-desde').value;
+  const hastaVal = document.getElementById('be-hasta').value;
+  let diasDelRango = fechas.length;
+  if(desdeVal && hastaVal){
+    diasDelRango = Math.round((new Date(hastaVal+'T00:00:00') - new Date(desdeVal+'T00:00:00')) / 86400000) + 1;
+  }
+  resumen.innerHTML = `<span>Días con datos: <b style="color:var(--text)">${fechas.length}</b> de ${diasDelRango} días del rango elegido</span>
+    <span>${entradas.length} punto(s) de entrada · ${salidas.length} punto(s) de salida</span>`;
+}
+
+// Las columnas de detalle por medidor (Principal/Respaldo/Dif) quedan
+// ocultas por defecto -- con varios puntos + respaldo la tabla se vuelve
+// ilegible y lo que importa a simple vista es ENTRADA/SALIDA/PÉRDIDA. Este
+// botón las muestra/oculta sin tener que volver a pedir los datos.
+function beToggleDetalleMedidor(){
+  const tabla = document.getElementById('be-tabla-detalle');
+  const btn = document.getElementById('be-btn-detalle-medidor');
+  const oculto = tabla.classList.toggle('detalle-oculto');
+  btn.textContent = oculto ? '▸ Ver detalle por medidor (Principal/Respaldo)' : '▾ Ocultar detalle por medidor';
+}
+
+// "Mes anterior"/"Mes siguiente": mueve el rango completo un mes hacia
+// atrás o adelante (al primer y último día de ese mes) -- más simple que
+// tocar las dos fechas a mano para ver otro mes.
+function beMoverMes(delta){
+  const desdeInput = document.getElementById('be-desde');
+  const base = desdeInput.value ? new Date(desdeInput.value+'T00:00:00') : new Date();
+  const primerDia = new Date(base.getFullYear(), base.getMonth()+delta, 1);
+  const ultimoDia = new Date(primerDia.getFullYear(), primerDia.getMonth()+1, 0);
+  const fmt = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  desdeInput.value = fmt(primerDia);
+  document.getElementById('be-hasta').value = fmt(ultimoDia);
+  verBalanceEstructura(BE_ACTIVA_ID);
 }
 
 /* ---- Balances por Estructura -- Editar (metadatos + vigencias por punto) ---- */
