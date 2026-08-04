@@ -306,7 +306,7 @@ tfoot td:first-child{text-align:left}
 .be-fila-abajo{display:grid;grid-template-columns:minmax(380px,520px) 1fr;gap:18px;align-items:start}
 .be-fila-abajo>*{min-width:0}
 @media (max-width:900px){ .be-fila-abajo{grid-template-columns:1fr} }
-.be-tabla-scroll-acotada{max-height:420px;overflow-y:auto}
+.be-tabla-scroll-acotada{max-height:1120px;overflow-y:auto}
 .be-tabla-scroll-acotada thead th{position:sticky;top:0;background:var(--bg2);z-index:5}
 .be-tabla-scroll-acotada tfoot td{position:sticky;bottom:0;z-index:5}
 .be-tabla-creadas.detalle-oculto .be-col-detalle{display:none}
@@ -331,9 +331,9 @@ tfoot td:first-child{text-align:left}
 .be-tabla-creadas td.usoback{position:relative}
 .be-tabla-creadas td.usoback::after{content:'●';color:var(--amber);font-size:8px;position:relative;left:4px;top:-5px}
 .be-tabla-creadas th.grupo-inicio,.be-tabla-creadas td.grupo-inicio{border-left:2px solid var(--text3)}
-.be-resp-toggle{margin-left:4px;border:none;background:transparent;color:var(--accent2);cursor:pointer;font-size:10px;padding:0;vertical-align:middle}
-.be-resp-toggle:hover{color:var(--accent)}
-.be-tabla-creadas tfoot td{padding:6px 10px;border-top:2px solid var(--border);font-weight:700;color:var(--text3);background:var(--bg3)}
+.be-resp-toggle{margin-left:6px;border:1px solid var(--accent2);background:rgba(0,150,199,.1);color:var(--accent2);cursor:pointer;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;vertical-align:middle}
+.be-resp-toggle:hover{background:var(--accent2);color:#fff}
+.be-tabla-creadas tfoot td,.be-tabla-creadas tfoot td.suma,.be-tabla-creadas tfoot td.pto,.be-tabla-creadas tfoot td.back,.be-tabla-creadas tfoot td.dif{padding:6px 10px;border-top:2px solid var(--border);font-weight:700;color:var(--text3);background:var(--bg3) !important}
 .be-tabla-creadas tfoot td.suma{color:var(--text)}
 .be-editar-btn{padding:4px 10px;border:1px solid var(--border);border-radius:7px;background:transparent;color:var(--text2);font-size:11px;font-weight:700;cursor:pointer}
 .be-editar-btn:hover{border-color:var(--accent);color:var(--accent)}
@@ -892,7 +892,14 @@ tfoot td:first-child{text-align:left}
       <div class="be-tabla-creadas-wrap" style="margin-top:0">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
           <div class="be-tabla-creadas-titulo" style="margin-bottom:0">Balance diario</div>
-          <button type="button" class="be-btn-respaldo" id="be-btn-detalle-medidor" onclick="beToggleDetalleMedidor()">▸ Ver detalle por medidor (Principal/Respaldo)</button>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <label style="font-size:10px;color:var(--text3)">Desde</label>
+            <input type="month" id="be-tabla-desde" onchange="cargarTablaBalance()">
+            <label style="font-size:10px;color:var(--text3)">Hasta</label>
+            <input type="month" id="be-tabla-hasta" onchange="cargarTablaBalance()">
+            <button type="button" class="be-editar-btn" onclick="beExportarCsv()" title="Exportar el balance de este rango a CSV">⬇ Exportar CSV</button>
+            <button type="button" class="be-btn-respaldo" id="be-btn-detalle-medidor" onclick="beToggleDetalleMedidor()">▸ Ver detalle por medidor (Principal/Respaldo)</button>
+          </div>
         </div>
         <div class="be-tabla-scroll be-tabla-scroll-acotada">
           <table class="be-tabla-creadas detalle-oculto" id="be-tabla-detalle">
@@ -1057,6 +1064,7 @@ let TM_CONFIANZA_PCT = 95;
 let BE_USUARIOS = [];
 let BE_PUNTOS = [];      // BE_USUARIOS agrupado por customer_id (Principal+Respaldo del mismo punto)
 let BE_FECHA_MINIMA = null;  // primera fecha con datos -- default de "vigente desde" al crear un punto
+let BE_TABLA_DATOS = null;   // últimos datos cargados en "Balance diario" (rango propio) -- para exportar a CSV
 let BE_ESTRUCTURAS = [];
 let BE_ACTIVA_ID = null;
 let BE_EDITAR_ID = null;
@@ -2024,9 +2032,86 @@ async function verBalanceEstructura(id){
   if(!hasta && datos.fechas.length) document.getElementById('be-hasta').value = datos.fechas[datos.fechas.length-1];
 
   renderChartBalanceEstructura(datos);
-  renderTablaDetalleBalance(datos);
   _beInicializarFiltroComparacion();
   verComparacionEstructura();
+  // La tabla de "Balance diario" tiene su PROPIO rango (independiente del
+  // gráfico) -- por defecto arranca igual al del gráfico, pero se puede
+  // ampliar a varios meses sin afectar lo que se grafica arriba.
+  _beInicializarFiltroTabla(datos);
+  cargarTablaBalance();
+}
+
+function _beInicializarFiltroTabla(datosChart){
+  const desdeInput = document.getElementById('be-tabla-desde');
+  const hastaInput = document.getElementById('be-tabla-hasta');
+  if(!desdeInput.value && datosChart.fechas.length) desdeInput.value = datosChart.fechas[0].slice(0,7);
+  if(!hastaInput.value && datosChart.fechas.length) hastaInput.value = datosChart.fechas[datosChart.fechas.length-1].slice(0,7);
+}
+
+async function cargarTablaBalance(){
+  if(!BE_ACTIVA_ID) return;
+  const desdeMes = document.getElementById('be-tabla-desde').value;
+  const hastaMes = document.getElementById('be-tabla-hasta').value;
+  const qs = new URLSearchParams();
+  if(desdeMes) qs.set('desde', `${desdeMes}-01`);
+  if(hastaMes){
+    const [y,m] = hastaMes.split('-').map(Number);
+    const ultimoDia = new Date(y, m, 0).getDate();
+    qs.set('hasta', `${hastaMes}-${String(ultimoDia).padStart(2,'0')}`);
+  }
+  let datos;
+  try{ datos = await apiGet(`/api/balances-estructura/${BE_ACTIVA_ID}/consumo?${qs.toString()}`); }
+  catch(e){ return; }
+  BE_TABLA_DATOS = datos;
+  renderTablaDetalleBalance(datos);
+}
+
+// Exporta a CSV exactamente lo que hay cargado en "Balance diario" en este
+// momento (respeta el rango de la tabla, no el del gráfico) -- incluye
+// siempre el detalle completo por medidor (con Respaldo/Dif si aplica),
+// esté o no desplegado en pantalla.
+function beExportarCsv(){
+  const datos = BE_TABLA_DATOS;
+  if(!datos || !(datos.fechas||[]).length){ alert('Todavía no hay datos cargados en la tabla para exportar.'); return; }
+  const columnas = [
+    ...(datos.entradas||[]).map(p=>({...p, tipo:'Entrada'})),
+    ...(datos.salidas||[]).map(p=>({...p, tipo:'Salida'})),
+  ];
+  const encabezado = ['Fecha','Entrada (kWh)','Salida (kWh)','Perdida (kWh)','Perdida (%)'];
+  columnas.forEach(c=>{
+    encabezado.push(`${c.tipo} ${c.usuario_id} ${BE_NOMBRES_CANAL_CORTO[c.canal]||c.canal}`);
+    if(_bePuntoTieneBack(c)){
+      encabezado.push(`${c.tipo} ${c.usuario_id} Respaldo`);
+      encabezado.push(`${c.tipo} ${c.usuario_id} Dif.`);
+    }
+  });
+  const filas = datos.fechas.map((f,i)=>{
+    const fila = [f, datos.entrada_kwh[i], datos.salida_kwh[i], datos.perdida_kwh[i], datos.perdida_pct[i]];
+    columnas.forEach(c=>{
+      fila.push(c.valores[i]);
+      if(_bePuntoTieneBack(c)){
+        const usoBack = c.fuentes && c.fuentes[i]==='back';
+        const dif = c.dif ? c.dif[i] : null;
+        fila.push(usoBack ? c.valores[i] : (dif!=null ? c.valores[i]-dif : ''));
+        fila.push(dif);
+      }
+    });
+    return fila;
+  });
+  // El punto -> coma decimal SOLO aplica a números (fechas y encabezados
+  // son texto y no deben tocarse -- por eso el chequeo de typeof).
+  const linea = fila => fila.map(v => {
+    if(v==null||v===undefined) return '';
+    return typeof v === 'number' ? String(v).replace('.',',') : String(v);
+  }).join(';');
+  const csv = [linea(encabezado), ...filas.map(linea)].join('\r\n');
+  const blob = new Blob(['﻿'+csv], {type:'text/csv;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const nombre = (BE_ESTRUCTURAS.find(e=>e.id===BE_ACTIVA_ID)||{}).nombre || 'balance';
+  const a = document.createElement('a');
+  a.href = url; a.download = `balance_${nombre.replace(/[^a-z0-9]+/gi,'_')}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
 }
 
 // Todo en líneas, sobre un solo eje de kWh compartido por Entrada/Salida/
@@ -2039,24 +2124,31 @@ function renderChartBalanceEstructura(datos){
   const dark = document.documentElement.getAttribute('data-theme')==='dark';
   const tickC = dark ? '#8899b5' : '#4b5e7a';
   const gridC = dark ? 'rgba(255,255,255,.06)' : 'rgba(0,0,0,.06)';
-  const fechas = datos.fechas || [];
+  // Se grafica n-1: el ÚLTIMO día del rango casi siempre está incompleto
+  // (todavía no terminó de reportar todas las horas), y eso dibuja una caída
+  // engañosa al final -- se recorta solo en el GRÁFICO, la tabla de abajo
+  // sigue mostrando el día completo tal cual llegó.
+  const recortar = arr => (arr||[]).length > 1 ? arr.slice(0,-1) : (arr||[]);
+  const fechas = recortar(datos.fechas);
+  const entradaKwh = recortar(datos.entrada_kwh), salidaKwh = recortar(datos.salida_kwh);
+  const perdidaKwh = recortar(datos.perdida_kwh), perdidaPct = recortar(datos.perdida_pct);
 
   if(chBalanceEstructura) chBalanceEstructura.destroy();
   chBalanceEstructura = new Chart(ctx, {
     data:{
       labels: fechas,
       datasets:[
-        {type:'line', label:'Entrada', data:datos.entrada_kwh, borderColor:'#06d6a0', backgroundColor:'transparent',
+        {type:'line', label:'Entrada', data:entradaKwh, borderColor:'#06d6a0', backgroundColor:'transparent',
           borderWidth:2, pointRadius:0, tension:.15, spanGaps:true, yAxisID:'yKwh', order:2},
-        {type:'line', label:'Salida', data:datos.salida_kwh, borderColor:'#ef476f', backgroundColor:'transparent',
+        {type:'line', label:'Salida', data:salidaKwh, borderColor:'#ef476f', backgroundColor:'transparent',
           borderWidth:2, pointRadius:0, tension:.15, spanGaps:true, yAxisID:'yKwh', order:2},
-        {type:'line', label:'Pérdida kWh', data:datos.perdida_kwh, borderColor:'#3454d1', backgroundColor:'transparent',
+        {type:'line', label:'Pérdida kWh', data:perdidaKwh, borderColor:'#3454d1', backgroundColor:'transparent',
           borderWidth:2.5, pointRadius:0, tension:.15, spanGaps:true, yAxisID:'yKwh', order:1},
-        {type:'line', label:'Pérdida %', data:datos.perdida_pct, borderColor:'#f4a261', backgroundColor:'transparent',
+        {type:'line', label:'Pérdida %', data:perdidaPct, borderColor:'#f4a261', backgroundColor:'transparent',
           borderWidth:2, pointRadius:0, tension:.15, spanGaps:true, yAxisID:'yPct', order:1, borderDash:[6,3]},
       ],
     },
-    plugins:[tmPluginSeparadores],
+    plugins:[tmPluginSeparadores, tmPluginCrosshair],
     options:{
       responsive:true, maintainAspectRatio:false,
       layout:{padding:{top:22}},
@@ -2247,11 +2339,11 @@ function renderTablaDetalleBalance(datos){
 
   head.innerHTML = `<tr>
     <th>Fecha</th>
+    ${headDetalle}
     <th class="suma">ENTRADA</th>
     <th class="suma">SALIDA</th>
     <th class="suma">PÉRDIDA (kWh)</th>
     <th class="suma">PÉRDIDA (%)</th>
-    ${headDetalle}
   </tr>`;
 
   const f2 = v => v==null ? '--' : v.toLocaleString('es-CO',{maximumFractionDigits:0});
@@ -2278,11 +2370,11 @@ function renderTablaDetalleBalance(datos){
     gruposPorMedidor.forEach(grupo => grupo.forEach((col,j) => detalle += tdPunto(col, i, j===0)));
     return `<tr>
       <td>${f}</td>
+      ${detalle}
       <td class="num suma">${f2(e)}</td>
       <td class="num suma">${f2(s)}</td>
       <td class="num suma">${f2(p)}</td>
       <td class="num suma">${pct==null?'--':pct.toFixed(2)+'%'}</td>
-      ${detalle}
     </tr>`;
   }).join('');
 
@@ -2303,21 +2395,24 @@ function renderTablaDetalleBalance(datos){
   }));
   foot.innerHTML = `<tr>
     <td>Días con datos</td>
+    ${footDetalle}
     <td class="num suma">${contar(datos.entrada_kwh)}</td>
     <td class="num suma">${contar(datos.salida_kwh)}</td>
     <td class="num suma">${contar(datos.perdida_kwh)}</td>
     <td class="num suma">${contar(datos.perdida_pct)}</td>
-    ${footDetalle}
   </tr>`;
 
   // Resumen fuera de la tabla -- una lectura rápida del total del rango,
   // sin tener que sumar columna por columna.
   const resumen = document.getElementById('be-tabla-detalle-resumen');
-  const desdeVal = document.getElementById('be-desde').value;
-  const hastaVal = document.getElementById('be-hasta').value;
+  const desdeMesVal = document.getElementById('be-tabla-desde').value;
+  const hastaMesVal = document.getElementById('be-tabla-hasta').value;
   let diasDelRango = fechas.length;
-  if(desdeVal && hastaVal){
-    diasDelRango = Math.round((new Date(hastaVal+'T00:00:00') - new Date(desdeVal+'T00:00:00')) / 86400000) + 1;
+  if(desdeMesVal && hastaMesVal){
+    const [ay,am] = desdeMesVal.split('-').map(Number);
+    const [hy,hm] = hastaMesVal.split('-').map(Number);
+    const desdeD = new Date(ay, am-1, 1), hastaD = new Date(hy, hm, 0);
+    diasDelRango = Math.round((hastaD - desdeD) / 86400000) + 1;
   }
   resumen.innerHTML = `<span>Días con datos: <b style="color:var(--text)">${fechas.length}</b> de ${diasDelRango} días del rango elegido</span>
     <span>${(datos.entradas||[]).length} punto(s) de entrada · ${(datos.salidas||[]).length} punto(s) de salida</span>`;
@@ -2713,6 +2808,28 @@ const tmPluginSeparadores = {
         ctx.fillText(String(d.getFullYear()), x+5, chartArea.top+14);
       }
     });
+    ctx.restore();
+  },
+};
+
+// Línea guía vertical punteada gris, del día que se está mirando (hover)
+// hasta el punto -- usa el mismo punto activo que ya calcula el tooltip
+// (interaction.mode:'index'), no hace falta rastrear el mouse aparte.
+const tmPluginCrosshair = {
+  id: 'crosshair',
+  afterDraw(chart){
+    const activos = chart.tooltip && chart.tooltip._active;
+    if(!activos || !activos.length) return;
+    const {ctx, chartArea} = chart;
+    const x = activos[0].element.x;
+    ctx.save();
+    ctx.beginPath();
+    ctx.setLineDash([4,4]);
+    ctx.strokeStyle = 'rgba(140,140,140,.65)';
+    ctx.lineWidth = 1;
+    ctx.moveTo(x, chartArea.top);
+    ctx.lineTo(x, chartArea.bottom);
+    ctx.stroke();
     ctx.restore();
   },
 };
