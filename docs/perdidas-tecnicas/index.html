@@ -2139,6 +2139,10 @@ function renderChartBalanceEstructura(datos){
   const fechas = recortar(datos.fechas);
   const entradaKwh = recortar(datos.entrada_kwh), salidaKwh = recortar(datos.salida_kwh);
   const perdidaKwh = recortar(datos.perdida_kwh), perdidaPct = recortar(datos.perdida_pct);
+  // Etiquetas de % sobre la línea punteada solo cuando el rango visible cae
+  // dentro de UN mismo mes calendario (ej. tras "Mes anterior/siguiente") --
+  // con varios meses a la vez se solaparían y ensucian el gráfico.
+  const mesUnico = fechas.length>0 && fechas.every(f => f.slice(0,7)===fechas[0].slice(0,7));
 
   if(chBalanceEstructura) chBalanceEstructura.destroy();
   chBalanceEstructura = new Chart(ctx, {
@@ -2152,7 +2156,10 @@ function renderChartBalanceEstructura(datos){
         {type:'line', label:'Pérdida kWh', data:perdidaKwh, borderColor:'#3454d1', backgroundColor:'transparent',
           borderWidth:2.5, pointRadius:0, tension:.15, spanGaps:true, yAxisID:'yKwh', order:1},
         {type:'line', label:'Pérdida %', data:perdidaPct, borderColor:'#f4a261', backgroundColor:'transparent',
-          borderWidth:2, pointRadius:0, tension:.15, spanGaps:true, yAxisID:'yPct', order:1, borderDash:[6,3]},
+          borderWidth:2, pointRadius:0, tension:.15, spanGaps:true, yAxisID:'yPct', order:1, borderDash:[6,3],
+          datalabels:{display: mesUnico, anchor:'end', align:'top', offset:6,
+            formatter:v=>v==null ? '' : v.toFixed(2)+'%', font:{size:9, weight:'700'}, color:'#f4a261',
+            backgroundColor:'rgba(255,255,255,.85)', borderRadius:3, padding:{left:3,right:3,top:1,bottom:1}}},
       ],
     },
     plugins:[tmPluginSeparadores, tmPluginCrosshair],
