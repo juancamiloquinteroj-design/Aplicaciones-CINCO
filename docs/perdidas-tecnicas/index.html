@@ -912,9 +912,9 @@ tfoot td:first-child{text-align:left}
       </div>
       <div id="be-filtro-mensual" class="fbar hidden" style="margin:0">
         <label>Desde</label>
-        <input type="month" id="be-comp-desde" onchange="this.dataset.manual='1'; verComparacionEstructura()">
+        <input type="month" id="be-comp-desde" onchange="this.dataset.manual='1'; beRecargarFiltroMensual()">
         <label>Hasta</label>
-        <input type="month" id="be-comp-hasta" onchange="verComparacionEstructura()">
+        <input type="month" id="be-comp-hasta" onchange="beRecargarFiltroMensual()">
         <button type="button" class="be-modo-btn" id="be-btn-entrada-comp" onclick="beToggleEntradaComparacion()">⊕ Ver entrada</button>
         <button type="button" class="be-modo-btn" id="be-btn-salida-comp" onclick="beToggleSalidaComparacion()">⊖ Ver salida</button>
         <button type="button" class="be-editar-btn" onclick="if(chBalanceEstructura) chBalanceEstructura.resetZoom()" title="Volver al zoom original">⤢ Restablecer zoom</button>
@@ -2158,12 +2158,31 @@ function beCambiarModoGrafico(modo){
   if(modo===3){
     verComparacionEstructura();
   }else if(modo===4){
+    // Al entrar a este modo (vía el botón, no un ajuste manual del filtro)
+    // siempre arranca mostrando el último año -- ver todo el histórico de
+    // golpe no aporta tanto en un indicador que ya de por sí resume 12
+    // meses en cada punto, y "el último año" es lo que más se consulta.
+    const desdeInput = document.getElementById('be-comp-desde');
+    const hastaInput = document.getElementById('be-comp-hasta');
+    const hoy = new Date();
+    const haceUnAnio = new Date(hoy.getFullYear(), hoy.getMonth()-11, 1);
+    desdeInput.value = `${haceUnAnio.getFullYear()}-${String(haceUnAnio.getMonth()+1).padStart(2,'0')}`;
+    hastaInput.value = `${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}`;
+    delete desdeInput.dataset.manual;
     verMovilAnualEstructura();
   }else if(BE_CONSUMO_DATOS){
     document.getElementById('be-comparacion-vacio').classList.add('hidden');
     document.getElementById('be-chart-wrap').classList.remove('hidden');
     renderChartBalanceEstructura(BE_CONSUMO_DATOS, modo);
   }
+}
+
+// Los inputs de mes (be-comp-desde/hasta) son la MISMA fila para Histórico
+// mensual y para Indicador móvil anual -- al tocarlos a mano hay que
+// recargar el que esté activo en ese momento, no siempre el mismo.
+function beRecargarFiltroMensual(){
+  if(BE_MODO_GRAFICO===4) verMovilAnualEstructura();
+  else verComparacionEstructura();
 }
 
 function _beInicializarFiltroTabla(datosChart){
@@ -2329,6 +2348,12 @@ async function renderChartBalanceEstructura(datos, modo){
     plugins:[tmPluginSeparadores, tmPluginCrosshair],
     options:{
       responsive:true, maintainAspectRatio:false,
+      // Chart.js por defecto NO reenvía mousedown/mouseup a sus plugins
+      // (solo mousemove/mouseout/click/touch) -- sin agregarlos acá,
+      // chartjs-plugin-zoom nunca detecta cuándo arranca/termina el
+      // arrastre y el pan (mover con el clic sostenido) queda mudo aunque
+      // el cursor cambie a "manito" con normalidad.
+      events:['mousemove','mouseout','click','touchstart','touchmove','mousedown','mouseup'],
       layout:{padding:{top:22}},
       interaction:{mode:'index', intersect:false},
       plugins:{
@@ -2497,6 +2522,7 @@ function renderChartComparacionEstructura(datos){
     },
     options:{
       responsive:true, maintainAspectRatio:false,
+      events:['mousemove','mouseout','click','touchstart','touchmove','mousedown','mouseup'],
       interaction:{mode:'index', intersect:false},
       plugins:{
         legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:10}, color:tickC}},
@@ -2621,6 +2647,7 @@ function renderChartMovilAnual(datos){
     },
     options:{
       responsive:true, maintainAspectRatio:false,
+      events:['mousemove','mouseout','click','touchstart','touchmove','mousedown','mouseup'],
       interaction:{mode:'index', intersect:false},
       plugins:{
         legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:10}, color:tickC}},
