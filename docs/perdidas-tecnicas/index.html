@@ -303,9 +303,6 @@ tfoot td:first-child{text-align:left}
 .be-tabla-creadas-wrap{margin-top:20px;padding-top:16px;border-top:1px solid var(--border)}
 .be-tabla-creadas-titulo{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text3);margin-bottom:10px}
 .be-tabla-scroll{overflow-x:auto}
-.be-fila-abajo{display:grid;grid-template-columns:minmax(380px,520px) 1fr;gap:18px;align-items:start}
-.be-fila-abajo>*{min-width:0}
-@media (max-width:900px){ .be-fila-abajo{grid-template-columns:1fr} }
 .be-tabla-scroll-acotada{max-height:1120px;overflow-y:auto}
 .be-tabla-scroll-acotada thead th{position:sticky;top:0;background:var(--bg2);z-index:5}
 .be-tabla-scroll-acotada tfoot td{position:sticky;bottom:0;z-index:5}
@@ -337,8 +334,11 @@ tfoot td:first-child{text-align:left}
 .be-tabla-creadas tfoot td.suma{color:var(--text)}
 .be-editar-btn{padding:4px 10px;border:1px solid var(--border);border-radius:7px;background:transparent;color:var(--text2);font-size:11px;font-weight:700;cursor:pointer}
 .be-editar-btn:hover{border-color:var(--accent);color:var(--accent)}
+.be-modo-btn{padding:7px 16px;border:1px solid var(--border);border-radius:8px;background:transparent;color:var(--text2);font-size:12px;font-weight:700;cursor:pointer}
+.be-modo-btn:hover{border-color:var(--accent);color:var(--accent)}
+.be-modo-btn.activo{background:var(--accent);border-color:var(--accent);color:#fff}
 .be-comparacion-vacio{padding:20px;text-align:center;color:var(--text3);font-size:12px;border:1px dashed var(--border);border-radius:8px}
-.be-resumen-cards{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:16px}
+.be-resumen-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin:16px 0}
 .be-resumen-tile{border:1px solid var(--border);border-radius:8px;padding:10px 12px;background:var(--bg)}
 .be-resumen-tile .etiqueta{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:var(--text3);margin-bottom:4px}
 .be-resumen-tile .valor{font-size:14.5px;font-weight:800;color:var(--text);line-height:1.25}
@@ -868,7 +868,13 @@ tfoot td:first-child{text-align:left}
     </div>
     <div id="be-chart-nota" class="tm-modal-msg" style="text-align:center"></div>
 
-    <div class="fbar" style="justify-content:center;margin-bottom:12px">
+    <div class="fbar" style="justify-content:center;margin-bottom:10px">
+      <button type="button" class="be-modo-btn" data-modo="1" onclick="beCambiarModoGrafico(1)">📉 Pérdida diaria vs. técnica</button>
+      <button type="button" class="be-modo-btn" data-modo="2" onclick="beCambiarModoGrafico(2)">🔀 Entrada / Salida diaria</button>
+      <button type="button" class="be-modo-btn" data-modo="3" onclick="beCambiarModoGrafico(3)">📅 Histórico mensual</button>
+    </div>
+
+    <div id="be-filtro-diario" class="fbar" style="justify-content:center;margin-bottom:12px">
       <button type="button" class="be-editar-btn" onclick="beMoverMes(-1)" title="Mes anterior">◄ Mes anterior</button>
       <label>Desde</label>
       <input type="date" id="be-desde" onchange="verBalanceEstructura(BE_ACTIVA_ID)">
@@ -877,45 +883,40 @@ tfoot td:first-child{text-align:left}
       <button type="button" class="be-editar-btn" onclick="beMoverMes(1)" title="Mes siguiente">Mes siguiente ►</button>
       <button type="button" class="be-editar-btn" onclick="if(chBalanceEstructura) chBalanceEstructura.resetZoom()" title="Volver al zoom original">⤢ Restablecer zoom</button>
     </div>
-    <div style="text-align:center;font-size:10px;color:var(--text3);margin:-8px 0 10px">Por defecto: el último mes disponible -- rueda del mouse o pellizco para hacer zoom, arrastrar para mover</div>
+    <div id="be-filtro-diario-nota" style="text-align:center;font-size:10px;color:var(--text3);margin:-8px 0 10px">Por defecto: el último mes disponible -- rueda del mouse o pellizco para hacer zoom, arrastrar para mover</div>
 
-    <div class="chart-wrap" style="height:400px"><canvas id="ch-balance-estructura"></canvas></div>
+    <div id="be-filtro-mensual" class="fbar hidden" style="justify-content:center;margin-bottom:12px">
+      <label>Desde</label>
+      <input type="month" id="be-comp-desde" onchange="this.dataset.manual='1'; verComparacionEstructura()">
+      <label>Hasta</label>
+      <input type="month" id="be-comp-hasta" onchange="verComparacionEstructura()">
+    </div>
+    <div id="be-comparacion-vacio" class="be-comparacion-vacio hidden">Esta estructura no tiene un circuito de Pérdidas Técnicas vinculado -- entrá a "✎ Editar" para elegirlo y poder comparar.</div>
 
-    <div class="be-fila-abajo">
-      <div class="be-tabla-creadas-wrap" style="margin-top:0">
-        <div class="be-tabla-creadas-titulo">Pérdida técnica vs. balance de la estructura -- mensual</div>
-        <div class="fbar" style="margin-bottom:8px">
-          <label>Desde</label>
-          <input type="month" id="be-comp-desde" onchange="this.dataset.manual='1'; verComparacionEstructura()">
-          <label>Hasta</label>
-          <input type="month" id="be-comp-hasta" onchange="verComparacionEstructura()">
+    <div class="chart-wrap" id="be-chart-wrap" style="height:420px"><canvas id="ch-balance-estructura"></canvas></div>
+
+    <div id="be-resumen-cards" class="be-resumen-cards"></div>
+
+    <div class="be-tabla-creadas-wrap">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+        <div class="be-tabla-creadas-titulo" style="margin-bottom:0">Balance diario</div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <label style="font-size:10px;color:var(--text3)">Desde</label>
+          <input type="month" id="be-tabla-desde" onchange="cargarTablaBalance()">
+          <label style="font-size:10px;color:var(--text3)">Hasta</label>
+          <input type="month" id="be-tabla-hasta" onchange="cargarTablaBalance()">
+          <button type="button" class="be-editar-btn" onclick="beExportarCsv()" title="Exportar el balance de este rango a CSV">⬇ Exportar CSV</button>
+          <button type="button" class="be-btn-respaldo" id="be-btn-detalle-medidor" onclick="beToggleDetalleMedidor()">▸ Ver detalle por medidor (Principal/Respaldo)</button>
         </div>
-        <div id="be-comparacion-vacio" class="be-comparacion-vacio hidden">Esta estructura no tiene un circuito de Pérdidas Técnicas vinculado -- entrá a "✎ Editar" para elegirlo y poder comparar.</div>
-        <div class="chart-wrap" id="be-comparacion-wrap" style="height:340px"><canvas id="ch-be-comparacion"></canvas></div>
-        <div id="be-resumen-cards" class="be-resumen-cards"></div>
       </div>
-
-      <div class="be-tabla-creadas-wrap" style="margin-top:0">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
-          <div class="be-tabla-creadas-titulo" style="margin-bottom:0">Balance diario</div>
-          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-            <label style="font-size:10px;color:var(--text3)">Desde</label>
-            <input type="month" id="be-tabla-desde" onchange="cargarTablaBalance()">
-            <label style="font-size:10px;color:var(--text3)">Hasta</label>
-            <input type="month" id="be-tabla-hasta" onchange="cargarTablaBalance()">
-            <button type="button" class="be-editar-btn" onclick="beExportarCsv()" title="Exportar el balance de este rango a CSV">⬇ Exportar CSV</button>
-            <button type="button" class="be-btn-respaldo" id="be-btn-detalle-medidor" onclick="beToggleDetalleMedidor()">▸ Ver detalle por medidor (Principal/Respaldo)</button>
-          </div>
-        </div>
-        <div class="be-tabla-scroll be-tabla-scroll-acotada">
-          <table class="be-tabla-creadas detalle-oculto" id="be-tabla-detalle">
-            <thead id="be-tabla-detalle-head"></thead>
-            <tbody id="be-tabla-detalle-body"></tbody>
-            <tfoot id="be-tabla-detalle-foot"></tfoot>
-          </table>
-        </div>
-        <div id="be-tabla-detalle-resumen" class="be-tabla-detalle-resumen"></div>
+      <div class="be-tabla-scroll be-tabla-scroll-acotada">
+        <table class="be-tabla-creadas detalle-oculto" id="be-tabla-detalle">
+          <thead id="be-tabla-detalle-head"></thead>
+          <tbody id="be-tabla-detalle-body"></tbody>
+          <tfoot id="be-tabla-detalle-foot"></tfoot>
+        </table>
       </div>
+      <div id="be-tabla-detalle-resumen" class="be-tabla-detalle-resumen"></div>
     </div>
   </div>
 
@@ -1072,11 +1073,12 @@ let BE_PUNTOS = [];      // BE_USUARIOS agrupado por customer_id (Principal+Resp
 let BE_FECHA_MINIMA = null;  // primera fecha con datos -- default de "vigente desde" al crear un punto
 let BE_TABLA_DATOS = null;   // últimos datos cargados en "Balance diario" (rango propio) -- para exportar a CSV
 let BE_COMPARACION_DATOS = null;  // última comparación cargada -- para la tarjeta de "última pérdida técnica"
+let BE_CONSUMO_DATOS = null;  // último /consumo cargado (rango del gráfico) -- lo reusan los modos 1 y 2 sin refetch
+let BE_MODO_GRAFICO = 1;  // 1=pérdida diaria vs técnica, 2=entrada/salida diaria, 3=histórico mensual
 let BE_ESTRUCTURAS = [];
 let BE_ACTIVA_ID = null;
 let BE_EDITAR_ID = null;
-let chBalanceEstructura = null;
-let chBeComparacion = null;
+let chBalanceEstructura = null;  // un solo chart/canvas para los 3 modos de "Ver Balance" -- se destruye y recrea al cambiar de modo
 let META = {zonas:[], niveles:[], meses:[]};
 let RESUMEN = null;
 let RESUMEN_POR_NIVEL = null;
@@ -2038,14 +2040,43 @@ async function verBalanceEstructura(id){
   if(!desde && datos.fechas.length) document.getElementById('be-desde').value = datos.fechas[0];
   if(!hasta && datos.fechas.length) document.getElementById('be-hasta').value = datos.fechas[datos.fechas.length-1];
 
-  renderChartBalanceEstructura(datos);
+  BE_CONSUMO_DATOS = datos;
   _beInicializarFiltroComparacion();
-  verComparacionEstructura();
+  // Se pide SIEMPRE (sin importar el modo activo) porque la tarjeta "última
+  // pérdida técnica" depende de BE_COMPARACION_DATOS -- si el modo activo es
+  // "histórico mensual" (3), este mismo llamado ya deja el gráfico dibujado.
+  await verComparacionEstructura();
+  _beAplicarModoUI(BE_MODO_GRAFICO);
+  if(BE_MODO_GRAFICO!==3) renderChartBalanceEstructura(BE_CONSUMO_DATOS, BE_MODO_GRAFICO);
+  renderResumenEstructura();
   // La tabla de "Balance diario" tiene su PROPIO rango (independiente del
   // gráfico) -- por defecto arranca igual al del gráfico, pero se puede
   // ampliar a varios meses sin afectar lo que se grafica arriba.
   _beInicializarFiltroTabla(datos);
   cargarTablaBalance();
+}
+
+function _beAplicarModoUI(modo){
+  document.querySelectorAll('.be-modo-btn').forEach(b=>b.classList.toggle('activo', Number(b.dataset.modo)===modo));
+  document.getElementById('be-filtro-diario').classList.toggle('hidden', modo===3);
+  document.getElementById('be-filtro-diario-nota').classList.toggle('hidden', modo===3);
+  document.getElementById('be-filtro-mensual').classList.toggle('hidden', modo!==3);
+}
+
+// Los 3 "modos" comparten un solo canvas -- cambiar de modo solo cambia qué
+// series se dibujan y qué fila de filtro (diario vs. mensual) se ve, nunca
+// hace falta volver a pedir /consumo si ya se tiene (modos 1 y 2 reusan
+// BE_CONSUMO_DATOS; el modo 3 pide su propio rango mensual aparte).
+function beCambiarModoGrafico(modo){
+  BE_MODO_GRAFICO = modo;
+  _beAplicarModoUI(modo);
+  if(modo===3){
+    verComparacionEstructura();
+  }else if(BE_CONSUMO_DATOS){
+    document.getElementById('be-comparacion-vacio').classList.add('hidden');
+    document.getElementById('be-chart-wrap').classList.remove('hidden');
+    renderChartBalanceEstructura(BE_CONSUMO_DATOS, modo);
+  }
 }
 
 function _beInicializarFiltroTabla(datosChart){
@@ -2126,7 +2157,33 @@ function beExportarCsv(){
 // redundante con el de Entrada/Salida ya que las tres están en las mismas
 // unidades) -- el % de pérdida sigue en su propio eje, es la única serie
 // con otra unidad.
-function renderChartBalanceEstructura(datos){
+// La pérdida "técnica" oficial solo existe MENSUAL (CSV de Pérdidas
+// Técnicas) -- para poder dibujarla junto a la pérdida diaria del balance
+// (modo 1) se prorratea: el valor del mes se divide entre sus días
+// calendario y se repite igual en cada día -- es una recta escalonada de
+// referencia, no un dato real diario.
+async function _beTecnicaDiariaProrateada(fechas){
+  if(!fechas.length || !BE_ACTIVA_ID) return fechas.map(()=>null);
+  let datos = {vinculado:false};
+  try{
+    datos = await apiGet(`/api/balances-estructura/${BE_ACTIVA_ID}/comparacion?desde=${fechas[0]}&hasta=${fechas[fechas.length-1]}`);
+  }catch(e){ /* se grafica igual, la serie queda vacía */ }
+  if(!datos.vinculado) return fechas.map(()=>null);
+  const porMes = {};
+  datos.meses.forEach((m,i)=>{ porMes[m] = datos.perdida_tecnica_kwh[i]; });
+  return fechas.map(f=>{
+    const mes = f.slice(0,7);
+    const tecnicaMes = porMes[mes];
+    if(tecnicaMes==null) return null;
+    const [anio, mesNum] = mes.split('-').map(Number);
+    const diasEnMes = new Date(anio, mesNum, 0).getDate();
+    return tecnicaMes / diasEnMes;
+  });
+}
+
+// Un solo canvas para 3 "modos": 1=pérdida diaria vs técnica (prorrateada),
+// 2=entrada/salida diaria, 3=histórico mensual (ver renderChartComparacionEstructura).
+async function renderChartBalanceEstructura(datos, modo){
   const ctx = document.getElementById('ch-balance-estructura');
   const dark = document.documentElement.getAttribute('data-theme')==='dark';
   const tickC = dark ? '#8899b5' : '#4b5e7a';
@@ -2144,24 +2201,40 @@ function renderChartBalanceEstructura(datos){
   // con varios meses a la vez se solaparían y ensucian el gráfico.
   const mesUnico = fechas.length>0 && fechas.every(f => f.slice(0,7)===fechas[0].slice(0,7));
 
+  let datasets, yKwhTitulo, usaPct;
+  if(modo===2){
+    usaPct = false;
+    yKwhTitulo = 'Entrada / Salida (kWh)';
+    datasets = [
+      {type:'line', label:'Entrada', data:entradaKwh, borderColor:'#06d6a0', backgroundColor:'transparent',
+        borderWidth:2, pointRadius:0, tension:.15, spanGaps:true, yAxisID:'yKwh', order:2},
+      {type:'line', label:'Salida', data:salidaKwh, borderColor:'#ef476f', backgroundColor:'transparent',
+        borderWidth:2, pointRadius:0, tension:.15, spanGaps:true, yAxisID:'yKwh', order:2},
+    ];
+  }else{
+    usaPct = true;
+    yKwhTitulo = 'Pérdida / Pérdida técnica (kWh)';
+    const tecnicaKwh = await _beTecnicaDiariaProrateada(fechas);
+    datasets = [
+      {type:'line', label:'Pérdida kWh', data:perdidaKwh, borderColor:'#3454d1', backgroundColor:'transparent',
+        borderWidth:2.5, pointRadius:0, tension:.15, spanGaps:true, yAxisID:'yKwh', order:1},
+      {type:'line', label:'Pérdida técnica (prorrateada)', data:tecnicaKwh, borderColor:'#00b4d8', backgroundColor:'transparent',
+        borderWidth:2, pointRadius:0, tension:.15, spanGaps:true, yAxisID:'yKwh', order:1, borderDash:[2,2]},
+      {type:'line', label:'Pérdida %', data:perdidaPct, borderColor:'#f4a261', backgroundColor:'transparent',
+        borderWidth:2, pointRadius:0, tension:.15, spanGaps:true, yAxisID:'yPct', order:1, borderDash:[6,3],
+        datalabels:{display: mesUnico, anchor:'end', align:'top', offset:6,
+          formatter:v=>v==null ? '' : v.toFixed(2)+'%', font:{size:9, weight:'700'}, color:'#f4a261',
+          backgroundColor:'rgba(255,255,255,.85)', borderRadius:3, padding:{left:3,right:3,top:1,bottom:1}}},
+    ];
+  }
+
+  // El fetch de la técnica prorrateada es async -- si mientras se esperaba
+  // el usuario ya cambió a otro modo, no pisar lo que se está mostrando ahora.
+  if(BE_MODO_GRAFICO !== modo) return;
+
   if(chBalanceEstructura) chBalanceEstructura.destroy();
   chBalanceEstructura = new Chart(ctx, {
-    data:{
-      labels: fechas,
-      datasets:[
-        {type:'line', label:'Entrada', data:entradaKwh, borderColor:'#06d6a0', backgroundColor:'transparent',
-          borderWidth:2, pointRadius:0, tension:.15, spanGaps:true, yAxisID:'yKwh', order:2},
-        {type:'line', label:'Salida', data:salidaKwh, borderColor:'#ef476f', backgroundColor:'transparent',
-          borderWidth:2, pointRadius:0, tension:.15, spanGaps:true, yAxisID:'yKwh', order:2},
-        {type:'line', label:'Pérdida kWh', data:perdidaKwh, borderColor:'#3454d1', backgroundColor:'transparent',
-          borderWidth:2.5, pointRadius:0, tension:.15, spanGaps:true, yAxisID:'yKwh', order:1},
-        {type:'line', label:'Pérdida %', data:perdidaPct, borderColor:'#f4a261', backgroundColor:'transparent',
-          borderWidth:2, pointRadius:0, tension:.15, spanGaps:true, yAxisID:'yPct', order:1, borderDash:[6,3],
-          datalabels:{display: mesUnico, anchor:'end', align:'top', offset:6,
-            formatter:v=>v==null ? '' : v.toFixed(2)+'%', font:{size:9, weight:'700'}, color:'#f4a261',
-            backgroundColor:'rgba(255,255,255,.85)', borderRadius:3, padding:{left:3,right:3,top:1,bottom:1}}},
-      ],
-    },
+    data:{ labels: fechas, datasets },
     plugins:[tmPluginSeparadores, tmPluginCrosshair],
     options:{
       responsive:true, maintainAspectRatio:false,
@@ -2204,11 +2277,13 @@ function renderChartBalanceEstructura(datos){
         },
         yKwh:{type:'linear', position:'left', beginAtZero:true, grid:{color:gridC},
           ticks:{color:tickC, font:{size:11}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
-          title:{display:true, text:'Entrada / Salida / Pérdida (kWh)', color:tickC, font:{size:11}}},
-        yPct:{type:'linear', position:'right', grid:{drawOnChartArea:false},
-          ticks:{color:'#f4a261', font:{size:11}, callback:v=>v.toFixed(1)+'%'},
-          afterFit:ax=>{ax.width=Math.max(ax.width,70)},
-          title:{display:true, text:'Pérdida %', color:'#f4a261', font:{size:11}}, offset:true},
+          title:{display:true, text:yKwhTitulo, color:tickC, font:{size:11}}},
+        ...(usaPct ? {
+          yPct:{type:'linear', position:'right', grid:{drawOnChartArea:false},
+            ticks:{color:'#f4a261', font:{size:11}, callback:v=>v.toFixed(1)+'%'},
+            afterFit:ax=>{ax.width=Math.max(ax.width,70)},
+            title:{display:true, text:'Pérdida %', color:'#f4a261', font:{size:11}}, offset:true},
+        } : {}),
       },
     },
   });
@@ -2240,8 +2315,6 @@ async function verComparacionEstructura(){
   const desdeInput = document.getElementById('be-comp-desde');
   const desdeMes = desdeInput.value;  // 'YYYY-MM'
   const hastaMes = document.getElementById('be-comp-hasta').value;
-  const vacio = document.getElementById('be-comparacion-vacio');
-  const wrap = document.getElementById('be-comparacion-wrap');
   let datos = {vinculado:false};
   try{
     const qs = new URLSearchParams();
@@ -2251,10 +2324,16 @@ async function verComparacionEstructura(){
   }catch(e){ datos = {vinculado:false}; }
 
   if(!datos.vinculado || !datos.meses.length){
-    vacio.classList.remove('hidden'); wrap.classList.add('hidden');
-    if(chBeComparacion){ chBeComparacion.destroy(); chBeComparacion = null; }
     BE_COMPARACION_DATOS = null;
-    renderResumenEstructura();
+    // El aviso de "no vinculado" y el ocultar el canvas solo aplican cuando
+    // el modo activo ES el histórico mensual -- si estamos en modo 1/2, esta
+    // llamada es solo para refrescar la tarjeta de "última pérdida técnica"
+    // y no debe tocar lo que se está mostrando arriba.
+    if(BE_MODO_GRAFICO===3){
+      document.getElementById('be-comparacion-vacio').classList.remove('hidden');
+      document.getElementById('be-chart-wrap').classList.add('hidden');
+      if(chBalanceEstructura){ chBalanceEstructura.destroy(); chBalanceEstructura = null; }
+    }
     return;
   }
 
@@ -2269,33 +2348,39 @@ async function verComparacionEstructura(){
         meses: datos.meses.slice(idx),
         perdida_tecnica_kwh: datos.perdida_tecnica_kwh.slice(idx),
         perdida_balance_kwh: datos.perdida_balance_kwh.slice(idx),
+        perdida_balance_pct: datos.perdida_balance_pct.slice(idx),
       };
     }
   }
 
-  vacio.classList.add('hidden'); wrap.classList.remove('hidden');
   BE_COMPARACION_DATOS = datos;
-  renderChartComparacionEstructura(datos);
-  renderResumenEstructura();
+  if(BE_MODO_GRAFICO===3){
+    document.getElementById('be-comparacion-vacio').classList.add('hidden');
+    document.getElementById('be-chart-wrap').classList.remove('hidden');
+    renderChartComparacionEstructura(datos);
+  }
 }
 
 function renderChartComparacionEstructura(datos){
-  const ctx = document.getElementById('ch-be-comparacion');
+  const ctx = document.getElementById('ch-balance-estructura');
   const dark = document.documentElement.getAttribute('data-theme')==='dark';
   const tickC = dark ? '#8899b5' : '#4b5e7a';
   const gridC = dark ? 'rgba(255,255,255,.06)' : 'rgba(0,0,0,.06)';
 
-  if(chBeComparacion) chBeComparacion.destroy();
-  chBeComparacion = new Chart(ctx, {
+  if(chBalanceEstructura) chBalanceEstructura.destroy();
+  chBalanceEstructura = new Chart(ctx, {
     data:{
       labels: datos.meses.map(labelMes),
       datasets:[
         {type:'line', label:'Pérdida técnica (Pérdidas Técnicas)', data:datos.perdida_tecnica_kwh,
           borderColor:'#00b4d8', backgroundColor:'transparent', borderWidth:2.5, pointRadius:2,
-          tension:.15, spanGaps:true},
+          tension:.15, spanGaps:true, yAxisID:'y'},
         {type:'line', label:'Pérdida del balance (esta estructura)', data:datos.perdida_balance_kwh,
           borderColor:'#ef476f', backgroundColor:'transparent', borderWidth:2.5, pointRadius:2,
-          tension:.15, spanGaps:true},
+          tension:.15, spanGaps:true, yAxisID:'y'},
+        {type:'line', label:'Pérdida %', data:datos.perdida_balance_pct,
+          borderColor:'#f4a261', backgroundColor:'transparent', borderWidth:2, pointRadius:2,
+          tension:.15, spanGaps:true, borderDash:[6,3], yAxisID:'yPct'},
       ],
     },
     options:{
@@ -2305,7 +2390,7 @@ function renderChartComparacionEstructura(datos){
         legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:10}, color:tickC}},
         tooltip:{callbacks:{label:c=>{
           const v = c.raw==null ? 0 : c.raw;
-          return `${c.dataset.label}: ${v.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`;
+          return c.dataset.label==='Pérdida %' ? `Pérdida %: ${v.toFixed(2)}%` : `${c.dataset.label}: ${v.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`;
         }}},
       },
       scales:{
@@ -2313,6 +2398,10 @@ function renderChartComparacionEstructura(datos){
         y:{ beginAtZero:true, grid:{color:gridC},
           ticks:{color:tickC, font:{size:11}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
           title:{display:true, text:'Pérdida (kWh/mes)', color:tickC, font:{size:11}} },
+        yPct:{type:'linear', position:'right', grid:{drawOnChartArea:false},
+          ticks:{color:'#f4a261', font:{size:11}, callback:v=>v.toFixed(1)+'%'},
+          afterFit:ax=>{ax.width=Math.max(ax.width,70)},
+          title:{display:true, text:'Pérdida %', color:'#f4a261', font:{size:11}}, offset:true},
       },
     },
   });
