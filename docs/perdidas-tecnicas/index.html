@@ -459,6 +459,7 @@ tfoot td:first-child{text-align:left}
   <div class="sidebar-submenu hidden" id="sidebar-submenu-be">
     <button class="sidebar-sublink" data-vista="be-crear" onclick="mostrarVista('be-crear')">➕ Crear Estructura</button>
     <button class="sidebar-sublink" data-vista="be-ver" onclick="mostrarVista('be-ver')">📊 Ver Balance</button>
+    <button class="sidebar-sublink" data-vista="be-alertas" onclick="mostrarVista('be-alertas')">🔔 Alertas de Balance</button>
   </div>
   <div class="sidebar-proximamente">Más módulos próximamente</div>
   <div class="sidebar-acceso" id="sidebar-acceso"></div>
@@ -834,14 +835,6 @@ tfoot td:first-child{text-align:left}
     <div id="be-lista-estructuras" class="be-lista-estructuras" style="margin-top:14px"></div>
   </div>
 
-  <div class="card">
-    <div class="sec-hdr" style="margin-bottom:0">
-      <div class="sec-title" style="font-size:13px">🔔 Alertas de Balance</div>
-      <div class="sec-sub">Puntos con medidor de respaldo: atraso del principal o uso reciente del respaldo</div>
-    </div>
-    <div id="be-alertas-lista" class="tm-alarma-lista" style="margin-top:12px"></div>
-  </div>
-
   <div id="be-chart-card" class="card hidden">
     <div style="display:flex;align-items:center;justify-content:center;gap:10px;position:relative;margin-bottom:10px">
       <div id="be-chart-titulo" style="text-align:center;font-size:15px;font-weight:800;color:var(--text);text-transform:uppercase"></div>
@@ -878,6 +871,21 @@ tfoot td:first-child{text-align:left}
 
 </div>
 <!-- fin vista-be-ver -->
+
+<!-- ---------------- BALANCES POR ESTRUCTURA · ALERTAS ---------------- -->
+<div id="vista-be-alertas" class="vista-modulo hidden">
+
+  <div class="sec-hdr">
+    <div class="sec-title">Alertas de Balance</div>
+    <div class="sec-sub">Puntos con medidor de respaldo: atraso del principal o uso reciente del respaldo</div>
+  </div>
+
+  <div class="card">
+    <div id="be-alertas-lista" class="tm-alarma-lista"></div>
+  </div>
+
+</div>
+<!-- fin vista-be-alertas -->
 
 <div id="modal-be-editar" class="tm-modal-overlay hidden" onclick="if(event.target===this) cerrarModalEditarEstructura()">
   <div class="tm-modal be-editar-modal">
@@ -1191,11 +1199,11 @@ async function mostrarVista(nombre){
   document.getElementById(`vista-${nombre}`).classList.remove('hidden');
   document.querySelectorAll('.sidebar-link, .sidebar-sublink').forEach(a=>a.classList.toggle('active', a.dataset.vista===nombre));
 
-  // "Balances por Estructura" es un padre con 2 sub-vistas -- si vamos a
-  // cualquiera de las dos, se resalta el padre y se despliega el submenú
+  // "Balances por Estructura" es un padre con 3 sub-vistas -- si vamos a
+  // cualquiera de las tres, se resalta el padre y se despliega el submenú
   // (si no, entrar por la tarjeta de Inicio dejaría el submenú cerrado
   // aunque ya estés adentro de una de sus vistas).
-  const esBalancesEstructura = nombre==='be-crear' || nombre==='be-ver';
+  const esBalancesEstructura = nombre==='be-crear' || nombre==='be-ver' || nombre==='be-alertas';
   document.getElementById('sidebar-be-padre').classList.toggle('activa', esBalancesEstructura);
   if(esBalancesEstructura) abrirSubmenuBE();
 
@@ -1220,6 +1228,12 @@ async function mostrarVista(nombre){
   if(esBalancesEstructura && !vistaCargada.balancesEstructura){
     vistaCargada.balancesEstructura = true;
     await cargarBalancesEstructura();
+  }
+  // Las alertas se piden de nuevo cada vez que se entra a esta vista puntual
+  // (no solo la primera vez) -- son datos que cambian seguido (atraso día a
+  // día), a diferencia del resto de Balances por Estructura.
+  if(nombre==='be-alertas'){
+    await cargarAlertasBalance();
   }
 }
 
