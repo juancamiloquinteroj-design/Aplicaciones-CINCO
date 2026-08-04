@@ -2855,7 +2855,7 @@ function renderTablaDetalleBalance(datos){
     const formulaAjuste = col.formulas ? col.formulas[i] : null;
     const claseAjustado = comentarioAjuste ? ' ajustado' : '';
     const titulo = comentarioAjuste
-      ? `Ajuste manual (${formulaAjuste}): ${comentarioAjuste}`
+      ? `Ajuste manual (${formulaAjuste}): ${comentarioAjuste} -- doble clic, borrar y Enter para quitarlo desde acá.`
       : (usoBack ? 'Este día se usó el medidor de respaldo -- el principal no reportó.' : '');
     const manija = formulaAjuste ? '<div class="be-fill-handle" title="Arrastrar para repetir este ajuste en otros días"></div>' : '';
     let td = `<td class="num pto be-col-detalle${claseGrupo}${usoBack?' usoback':''}${claseAjustado}" data-editable="1" data-tipo="${col.tipo}" data-orden="${col.orden}" data-fecha="${fechas[i]}" data-formula="${formulaAjuste ? _mselEsc(formulaAjuste) : ''}"${titulo?` title="${_mselEsc(titulo)}"`:''}>${f2(col.valores[i])}${manija}</td>`;
@@ -2965,7 +2965,7 @@ function _beInicializarEdicionTabla(){
   body.addEventListener('keydown', (ev)=>{
     if(!ev.target.classList || !ev.target.classList.contains('be-input-celda')) return;
     if(ev.key === 'Enter'){ ev.preventDefault(); _beConfirmarEdicionInput(ev.target); }
-    else if(ev.key === 'Escape'){ ev.preventDefault(); cargarTablaBalance(); }
+    else if(ev.key === 'Escape'){ ev.preventDefault(); ev.target.dataset.confirmado = '1'; cargarTablaBalance(); }
   });
   body.addEventListener('focusout', (ev)=>{
     if(ev.target.classList && ev.target.classList.contains('be-input-celda')) _beConfirmarEdicionInput(ev.target);
@@ -2986,16 +2986,43 @@ function _beIniciarEdicionCelda(td){
 }
 
 function _beConfirmarEdicionInput(input){
+  // Enter dispara esto y a la vez saca el foco del input -- eso vuelve a
+  // disparar "focusout" sobre el MISMO input un instante después. Sin este
+  // guard, una edición terminaba procesándose dos veces (y un borrado
+  // mostraba el confirm() del navegador duplicado).
+  if(input.dataset.confirmado) return;
+  input.dataset.confirmado = '1';
   const td = input.closest('td');
   if(!td) return;
   const nuevo = input.value.trim();
   const actual = td.dataset.formula || '';
-  if(!nuevo || nuevo === actual){ cargarTablaBalance(); return; }
+  if(nuevo === actual){ cargarTablaBalance(); return; }
+  // Borrar el contenido de una celda YA ajustada = quitar el ajuste (desde
+  // esa fecha en adelante, es lo único que soporta el borrado -- no tiene
+  // sentido "un solo día suelto" en el medio de un tramo corregido).
+  if(!nuevo){
+    if(actual) beQuitarAjusteDesde(td.dataset.tipo, td.dataset.orden, td.dataset.fecha);
+    else cargarTablaBalance();
+    return;
+  }
   BE_AJUSTE_PENDIENTE = {
     tipo: td.dataset.tipo, orden: Number(td.dataset.orden),
     fechaDesde: td.dataset.fecha, fechaHasta: td.dataset.fecha, formula: nuevo,
   };
   _beAbrirModalAjuste(`${td.dataset.tipo==='entrada'?'Entrada':'Salida'} -- ${td.dataset.fecha}: nuevo valor "${nuevo}"`);
+}
+
+async function beQuitarAjusteDesde(tipo, orden, desde){
+  if(!confirm(`¿Quitar el ajuste manual de esta columna desde el ${desde} en adelante? Esos días vuelven a mostrar el dato crudo del medidor (o del respaldo, si aplica).`)){
+    cargarTablaBalance();
+    return;
+  }
+  try{
+    await apiDelete(`/api/balances-estructura/${BE_ACTIVA_ID}/ajustes?tipo=${tipo}&orden=${orden}&desde=${desde}`);
+  }catch(e){
+    alert(e.message || 'No se pudo quitar el ajuste.');
+  }
+  await verBalanceEstructura(BE_ACTIVA_ID);
 }
 
 function _beAbrirModalAjuste(resumenTexto){
