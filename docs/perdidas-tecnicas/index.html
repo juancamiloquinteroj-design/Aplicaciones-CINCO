@@ -330,6 +330,14 @@ tfoot td:first-child{text-align:left}
 .be-tabla-vacio{padding:14px;text-align:center;color:var(--text3);font-size:12px}
 .be-tabla-creadas th.suma,.be-tabla-creadas td.suma{background:rgba(0,180,216,.08);font-weight:700;color:var(--text)}
 .be-tabla-creadas th.pto,.be-tabla-creadas td.pto{background:rgba(244,162,97,.12)}
+.be-tabla-creadas td.pto[data-editable]{cursor:cell;position:relative}
+.be-tabla-creadas td.pto[data-editable]:hover{outline:1px dashed var(--accent2)}
+.be-tabla-creadas td.pto.ajustado{background:rgba(255,193,7,.4) !important}
+.be-tabla-creadas td.pto.ajustado::after{content:'';position:absolute;top:0;right:0;border-width:0 7px 7px 0;border-style:solid;border-color:transparent #c77700 transparent transparent}
+.be-tabla-creadas td.pto.celda-editando{padding:0;outline:2px solid var(--accent2)}
+.be-tabla-creadas td.pto.celda-editando input{width:100%;box-sizing:border-box;border:none;background:var(--bg2);color:var(--text);font:inherit;text-align:right;padding:7px 10px;font-family:ui-monospace,"Cascadia Code","SF Mono",Consolas,monospace}
+.be-fill-handle{position:absolute;bottom:-1px;right:-1px;width:8px;height:8px;background:var(--accent2);border:1px solid var(--bg2);cursor:crosshair;z-index:3}
+.be-tabla-creadas td.pto.celda-arrastrando{outline:2px dashed var(--accent2);background:rgba(0,150,199,.15) !important}
 .be-tabla-creadas td.back{color:var(--text3);font-style:italic}
 .be-tabla-creadas td.dif{color:var(--text3)}
 .be-tabla-creadas td.usoback{position:relative}
@@ -1035,6 +1043,23 @@ tfoot td:first-child{text-align:left}
 
     <div class="tm-modal-botones">
       <button class="btn-theme" style="width:auto;padding:8px 16px" onclick="cerrarModalEditarEstructura()">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ---------------- BALANCE DIARIO · AJUSTE MANUAL DE UNA CELDA ---------------- -->
+<div id="modal-be-ajuste" class="tm-modal-overlay hidden" onclick="if(event.target===this) beCancelarAjuste()">
+  <div class="tm-modal">
+    <div class="tm-modal-title">Ajuste manual de balance</div>
+    <div class="tm-modal-sub" id="beaj-resumen"></div>
+    <div class="be-field" style="margin-top:12px">
+      <label>¿Por qué hace falta este ajuste? (obligatorio)</label>
+      <textarea id="beaj-comentario" rows="3" placeholder="Ej. medidor dañado, dato atrasado, se estima con el promedio de días anteriores..." style="width:100%;resize:vertical;font-family:inherit;font-size:13px;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></textarea>
+    </div>
+    <div id="beaj-msg" class="tm-modal-msg"></div>
+    <div class="tm-modal-botones">
+      <button class="btn-theme" style="width:auto;padding:8px 16px;background:transparent;color:var(--text2);border:1px solid var(--border)" onclick="beCancelarAjuste()">Cancelar</button>
+      <button class="btn-theme" style="width:auto;padding:8px 16px" onclick="beConfirmarAjuste()">Guardar ajuste</button>
     </div>
   </div>
 </div>
@@ -2826,7 +2851,14 @@ function renderTablaDetalleBalance(datos){
   const tdPunto = (col, i, esInicioDeGrupo) => {
     const claseGrupo = esInicioDeGrupo ? ' grupo-inicio' : '';
     const usoBack = col.fuentes && col.fuentes[i] === 'back';
-    let td = `<td class="num pto be-col-detalle${claseGrupo}${usoBack?' usoback':''}"${usoBack?' title="Este día se usó el medidor de respaldo -- el principal no reportó."':''}>${f2(col.valores[i])}</td>`;
+    const comentarioAjuste = col.ajustes ? col.ajustes[i] : null;
+    const formulaAjuste = col.formulas ? col.formulas[i] : null;
+    const claseAjustado = comentarioAjuste ? ' ajustado' : '';
+    const titulo = comentarioAjuste
+      ? `Ajuste manual (${formulaAjuste}): ${comentarioAjuste}`
+      : (usoBack ? 'Este día se usó el medidor de respaldo -- el principal no reportó.' : '');
+    const manija = formulaAjuste ? '<div class="be-fill-handle" title="Arrastrar para repetir este ajuste en otros días"></div>' : '';
+    let td = `<td class="num pto be-col-detalle${claseGrupo}${usoBack?' usoback':''}${claseAjustado}" data-editable="1" data-tipo="${col.tipo}" data-orden="${col.orden}" data-fecha="${fechas[i]}" data-formula="${formulaAjuste ? _mselEsc(formulaAjuste) : ''}"${titulo?` title="${_mselEsc(titulo)}"`:''}>${f2(col.valores[i])}${manija}</td>`;
     if(_bePuntoTieneBack(col)){
       const dif = col.dif ? col.dif[i] : null;
       // El respaldo solo "viaja" aparte cuando se usó como reemplazo (ahí es
@@ -2909,6 +2941,141 @@ function renderTablaDetalleBalance(datos){
   }
   resumen.innerHTML = `<span>Días con datos: <b style="color:var(--text)">${fechas.length}</b> de ${diasDelRango} días del rango elegido</span>
     <span>${(datos.entradas||[]).length} punto(s) de entrada · ${(datos.salidas||[]).length} punto(s) de salida</span>`;
+}
+
+// ---- Ajustes manuales de "Balance diario" -- edición estilo Excel de las
+// columnas amarillas (el valor crudo de un medidor), con fórmulas simples
+// de referencia relativa (D, D-1, D+2...) y arrastre para repetir la MISMA
+// fórmula en varios días seguidos (cada día resuelve sus propias
+// referencias, así que arrastrar no necesita reescribir nada). Todo ajuste
+// exige un comentario -- es la justificación de por qué se pisa un dato
+// real, y queda guardado como auditoría (ver EstructuraBalanceAjuste).
+let BE_AJUSTE_PENDIENTE = null;  // {tipo, orden, fechaDesde, fechaHasta, formula} -- esperando el comentario del modal
+let BE_ARRASTRE = null;          // {tipo, orden, fechaOrigen, formula, tdOrigen, ultimaTd} -- mientras se sostiene el tirador
+
+function _beInicializarEdicionTabla(){
+  const body = document.getElementById('be-tabla-detalle-body');
+  if(!body || body.dataset.edicionLista) return;
+  body.dataset.edicionLista = '1';
+
+  body.addEventListener('dblclick', (ev)=>{
+    const td = ev.target.closest('td.pto[data-editable]');
+    if(td) _beIniciarEdicionCelda(td);
+  });
+  body.addEventListener('keydown', (ev)=>{
+    if(!ev.target.classList || !ev.target.classList.contains('be-input-celda')) return;
+    if(ev.key === 'Enter'){ ev.preventDefault(); _beConfirmarEdicionInput(ev.target); }
+    else if(ev.key === 'Escape'){ ev.preventDefault(); cargarTablaBalance(); }
+  });
+  body.addEventListener('focusout', (ev)=>{
+    if(ev.target.classList && ev.target.classList.contains('be-input-celda')) _beConfirmarEdicionInput(ev.target);
+  });
+  body.addEventListener('mousedown', (ev)=>{
+    if(ev.target.classList.contains('be-fill-handle')) _beIniciarArrastre(ev);
+  });
+}
+_beInicializarEdicionTabla();
+
+function _beIniciarEdicionCelda(td){
+  if(td.querySelector('input')) return;
+  const valorActual = td.dataset.formula || (td.childNodes[0] ? td.childNodes[0].textContent.trim().replace(/\./g,'') : '');
+  td.classList.add('celda-editando');
+  td.innerHTML = `<input type="text" class="be-input-celda" value="${_mselEsc(valorActual)}">`;
+  const input = td.querySelector('input');
+  input.focus(); input.select();
+}
+
+function _beConfirmarEdicionInput(input){
+  const td = input.closest('td');
+  if(!td) return;
+  const nuevo = input.value.trim();
+  const actual = td.dataset.formula || '';
+  if(!nuevo || nuevo === actual){ cargarTablaBalance(); return; }
+  BE_AJUSTE_PENDIENTE = {
+    tipo: td.dataset.tipo, orden: Number(td.dataset.orden),
+    fechaDesde: td.dataset.fecha, fechaHasta: td.dataset.fecha, formula: nuevo,
+  };
+  _beAbrirModalAjuste(`${td.dataset.tipo==='entrada'?'Entrada':'Salida'} -- ${td.dataset.fecha}: nuevo valor "${nuevo}"`);
+}
+
+function _beAbrirModalAjuste(resumenTexto){
+  document.getElementById('beaj-resumen').textContent = resumenTexto;
+  document.getElementById('beaj-comentario').value = '';
+  document.getElementById('beaj-msg').className = 'tm-modal-msg';
+  document.getElementById('beaj-msg').textContent = '';
+  document.getElementById('modal-be-ajuste').classList.remove('hidden');
+  document.getElementById('beaj-comentario').focus();
+}
+
+function beCancelarAjuste(){
+  BE_AJUSTE_PENDIENTE = null;
+  document.getElementById('modal-be-ajuste').classList.add('hidden');
+  cargarTablaBalance();
+}
+
+async function beConfirmarAjuste(){
+  const msg = document.getElementById('beaj-msg');
+  const comentario = document.getElementById('beaj-comentario').value.trim();
+  if(!comentario){ msg.className='tm-modal-msg err'; msg.textContent='El comentario es obligatorio.'; return; }
+  if(!BE_AJUSTE_PENDIENTE){ document.getElementById('modal-be-ajuste').classList.add('hidden'); return; }
+  try{
+    await apiPost(`/api/balances-estructura/${BE_ACTIVA_ID}/ajustes`, {
+      tipo: BE_AJUSTE_PENDIENTE.tipo, orden: BE_AJUSTE_PENDIENTE.orden,
+      fecha_desde: BE_AJUSTE_PENDIENTE.fechaDesde, fecha_hasta: BE_AJUSTE_PENDIENTE.fechaHasta,
+      formula: BE_AJUSTE_PENDIENTE.formula, comentario,
+    });
+    BE_AJUSTE_PENDIENTE = null;
+    document.getElementById('modal-be-ajuste').classList.add('hidden');
+    // Recarga todo (tabla, gráfico diario y tarjetas) -- el ajuste afecta el
+    // balance real de esos días, no solo esta tabla.
+    await verBalanceEstructura(BE_ACTIVA_ID);
+  }catch(e){
+    msg.className = 'tm-modal-msg err';
+    msg.textContent = e.message || 'No se pudo guardar el ajuste.';
+  }
+}
+
+function _beIniciarArrastre(ev){
+  ev.preventDefault();
+  const td = ev.target.closest('td.pto');
+  if(!td || !td.dataset.formula) return;
+  BE_ARRASTRE = {
+    tipo: td.dataset.tipo, orden: td.dataset.orden, fechaOrigen: td.dataset.fecha,
+    formula: td.dataset.formula, tdOrigen: td, ultimaTd: td,
+  };
+  document.addEventListener('mouseover', _beArrastreMouseOver);
+  document.addEventListener('mouseup', _beArrastreMouseUp, {once:true});
+}
+
+function _beArrastreMouseOver(ev){
+  if(!BE_ARRASTRE) return;
+  const td = ev.target.closest('td.pto[data-editable]');
+  if(!td || td.dataset.tipo!==BE_ARRASTRE.tipo || td.dataset.orden!==BE_ARRASTRE.orden) return;
+  document.querySelectorAll('.celda-arrastrando').forEach(el=>el.classList.remove('celda-arrastrando'));
+  const tabla = document.getElementById('be-tabla-detalle');
+  const filaOrigen = BE_ARRASTRE.tdOrigen.closest('tr').rowIndex;
+  const filaActual = td.closest('tr').rowIndex;
+  const [desde, hasta] = filaOrigen <= filaActual ? [filaOrigen, filaActual] : [filaActual, filaOrigen];
+  for(let r=desde; r<=hasta; r++){
+    const fila = tabla.rows[r]; if(!fila) continue;
+    const celda = [...fila.cells].find(c=>c.dataset && c.dataset.tipo===BE_ARRASTRE.tipo && c.dataset.orden===BE_ARRASTRE.orden);
+    if(celda) celda.classList.add('celda-arrastrando');
+  }
+  BE_ARRASTRE.ultimaTd = td;
+}
+
+function _beArrastreMouseUp(){
+  document.removeEventListener('mouseover', _beArrastreMouseOver);
+  document.querySelectorAll('.celda-arrastrando').forEach(el=>el.classList.remove('celda-arrastrando'));
+  if(!BE_ARRASTRE) return;
+  const fechaFin = BE_ARRASTRE.ultimaTd.dataset.fecha;
+  const [fechaDesde, fechaHasta] = fechaFin >= BE_ARRASTRE.fechaOrigen
+    ? [BE_ARRASTRE.fechaOrigen, fechaFin] : [fechaFin, BE_ARRASTRE.fechaOrigen];
+  const {tipo, orden, formula} = BE_ARRASTRE;
+  BE_ARRASTRE = null;
+  if(fechaDesde === fechaHasta) return;  // no se movió de la celda de origen
+  BE_AJUSTE_PENDIENTE = {tipo, orden: Number(orden), fechaDesde, fechaHasta, formula};
+  _beAbrirModalAjuste(`${tipo==='entrada'?'Entrada':'Salida'} -- del ${fechaDesde} al ${fechaHasta}: se repite la fórmula "${formula}" en cada día`);
 }
 
 // Desplegable lateral del respaldo: cada punto con respaldo tiene su propio
