@@ -308,6 +308,7 @@ tfoot td:first-child{text-align:left}
 @media (max-width:900px){ .be-fila-abajo{grid-template-columns:1fr} }
 .be-tabla-scroll-acotada{max-height:420px;overflow-y:auto}
 .be-tabla-scroll-acotada thead th{position:sticky;top:0;background:var(--bg2);z-index:5}
+.be-tabla-scroll-acotada tfoot td{position:sticky;bottom:0;z-index:5}
 .be-tabla-creadas.detalle-oculto .be-col-detalle{display:none}
 .be-tabla-detalle-resumen{margin-top:10px;padding-top:8px;border-top:1px solid var(--border);font-size:11px;color:var(--text3);display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px}
 .be-tabla-creadas{width:100%;border-collapse:collapse;font-size:12px}
@@ -329,6 +330,11 @@ tfoot td:first-child{text-align:left}
 .be-tabla-creadas td.dif{color:var(--text3)}
 .be-tabla-creadas td.usoback{position:relative}
 .be-tabla-creadas td.usoback::after{content:'●';color:var(--amber);font-size:8px;position:relative;left:4px;top:-5px}
+.be-tabla-creadas th.grupo-inicio,.be-tabla-creadas td.grupo-inicio{border-left:2px solid var(--text3)}
+.be-resp-toggle{margin-left:4px;border:none;background:transparent;color:var(--accent2);cursor:pointer;font-size:10px;padding:0;vertical-align:middle}
+.be-resp-toggle:hover{color:var(--accent)}
+.be-tabla-creadas tfoot td{padding:6px 10px;border-top:2px solid var(--border);font-weight:700;color:var(--text3);background:var(--bg3)}
+.be-tabla-creadas tfoot td.suma{color:var(--text)}
 .be-editar-btn{padding:4px 10px;border:1px solid var(--border);border-radius:7px;background:transparent;color:var(--text2);font-size:11px;font-weight:700;cursor:pointer}
 .be-editar-btn:hover{border-color:var(--accent);color:var(--accent)}
 .be-comparacion-vacio{padding:20px;text-align:center;color:var(--text3);font-size:12px;border:1px dashed var(--border);border-radius:8px}
@@ -892,6 +898,7 @@ tfoot td:first-child{text-align:left}
           <table class="be-tabla-creadas detalle-oculto" id="be-tabla-detalle">
             <thead id="be-tabla-detalle-head"></thead>
             <tbody id="be-tabla-detalle-body"></tbody>
+            <tfoot id="be-tabla-detalle-foot"></tfoot>
           </table>
         </div>
         <div id="be-tabla-detalle-resumen" class="be-tabla-detalle-resumen"></div>
@@ -2184,56 +2191,82 @@ function renderChartComparacionEstructura(datos){
 
 function _bePuntoTieneBack(p){ return !!(p.usuario_id_back && p.canal_back); }
 
-// Tabla diaria con el detalle por punto -- una columna por cada punto de
-// Entrada (más "Respaldo"/"Dif." si tiene medidor de respaldo), la suma
-// "ENTRADA", lo mismo para Salida, y Pérdida kWh/%. Mismo espíritu que la
-// planilla Excel que se usaba a mano para armar estos balances (columnas
-// de respaldo en naranja, bloque de balance en azul).
+// Tabla diaria -- por defecto solo Fecha/ENTRADA/SALIDA/PÉRDIDA (lo que
+// importa a simple vista). "Ver detalle por medidor" agrega, A LA DERECHA,
+// una columna por cada punto -- agrupadas por MEDIDOR FÍSICO (un mismo
+// medidor puede aportar a la entrada y a la salida a la vez, ej. un
+// auxiliar, y sus canales quedan juntos en vez de separados por lado),
+// con una línea gris entre medidores distintos. El respaldo de cada punto
+// (si tiene) queda oculto un nivel más adentro, como un desplegable lateral
+// propio -- el botón ▸ junto al medidor lo despliega sin afectar a los demás.
 function renderTablaDetalleBalance(datos){
   const head = document.getElementById('be-tabla-detalle-head');
+  const foot = document.getElementById('be-tabla-detalle-foot');
   const body = document.getElementById('be-tabla-detalle-body');
   const fechas = datos.fechas || [];
-  const entradas = datos.entradas || [];
-  const salidas = datos.salidas || [];
-  const colsPorPunto = p => 1 + (_bePuntoTieneBack(p) ? 2 : 0);
-  const totalCols = 1 + entradas.reduce((n,p)=>n+colsPorPunto(p),0) + 1 + salidas.reduce((n,p)=>n+colsPorPunto(p),0) + 2;
+  const columnas = [
+    ...(datos.entradas||[]).map(p=>({...p, tipo:'entrada'})),
+    ...(datos.salidas||[]).map(p=>({...p, tipo:'salida'})),
+  ];
 
   if(!fechas.length){
-    head.innerHTML = '';
-    body.innerHTML = `<tr><td colspan="${totalCols}" class="be-tabla-vacio">Sin datos en el rango elegido.</td></tr>`;
+    head.innerHTML = ''; foot.innerHTML = '';
+    body.innerHTML = `<tr><td colspan="5" class="be-tabla-vacio">Sin datos en el rango elegido.</td></tr>`;
     return;
   }
 
-  const etiquetaMedidor = p => `${p.usuario_id} · ${(BE_NOMBRES_CANAL_CORTO[p.canal]||p.canal)}`;
-  const columnasPunto = p => {
-    if(!_bePuntoTieneBack(p)) return `<th class="pto be-col-detalle">${_mselEsc(etiquetaMedidor(p))}</th>`;
-    const titulo = `Respaldo: ${p.usuario_id_back} · ${BE_NOMBRES_CANAL_CORTO[p.canal_back]||p.canal_back}`;
-    return `<th class="pto be-col-detalle" title="${_mselEsc(titulo)}">${_mselEsc(etiquetaMedidor(p))} (+resp.)</th>`
-      + `<th class="pto be-col-detalle">Respaldo</th><th class="pto be-col-detalle">Dif.</th>`;
+  // Agrupar por usuario_id preservando el orden de aparición, y asignar un
+  // índice estable a cada punto-con-respaldo (para el desplegable lateral).
+  const gruposPorMedidor = [];
+  const indicePorMedidor = {};
+  let respIdx = 0;
+  columnas.forEach(col=>{
+    if(_bePuntoTieneBack(col)) col._respIdx = respIdx++;
+    if(!(col.usuario_id in indicePorMedidor)){
+      indicePorMedidor[col.usuario_id] = gruposPorMedidor.length;
+      gruposPorMedidor.push([]);
+    }
+    gruposPorMedidor[indicePorMedidor[col.usuario_id]].push(col);
+  });
+
+  const etiquetaMedidor = p => `${p.usuario_id} · ${(BE_NOMBRES_CANAL_CORTO[p.canal]||p.canal)}${p.tipo==='salida'?' (salida)':''}`;
+  const totalCols = 5 + columnas.reduce((n,c)=>n+(_bePuntoTieneBack(c)?3:1),0);
+
+  const thPunto = (col, esInicioDeGrupo) => {
+    const claseGrupo = esInicioDeGrupo ? ' grupo-inicio' : '';
+    if(!_bePuntoTieneBack(col)) return `<th class="pto be-col-detalle${claseGrupo}">${_mselEsc(etiquetaMedidor(col))}</th>`;
+    const titulo = `Respaldo: ${col.usuario_id_back} · ${BE_NOMBRES_CANAL_CORTO[col.canal_back]||col.canal_back}`;
+    return `<th class="pto be-col-detalle${claseGrupo}" title="${_mselEsc(titulo)}">${_mselEsc(etiquetaMedidor(col))}
+        <button type="button" class="be-resp-toggle" onclick="beToggleRespaldoColumna(${col._respIdx},this)" title="Ver respaldo/diferencia">▸</button></th>`
+      + `<th class="pto back be-col-detalle hidden" data-resp-grupo="${col._respIdx}">Respaldo</th>`
+      + `<th class="pto dif be-col-detalle hidden" data-resp-grupo="${col._respIdx}">Dif.</th>`;
   };
+
+  let headDetalle = '';
+  gruposPorMedidor.forEach(grupo => grupo.forEach((col,i) => headDetalle += thPunto(col, i===0)));
 
   head.innerHTML = `<tr>
     <th>Fecha</th>
-    ${entradas.map(columnasPunto).join('')}
     <th class="suma">ENTRADA</th>
-    ${salidas.map(columnasPunto).join('')}
     <th class="suma">SALIDA</th>
     <th class="suma">PÉRDIDA (kWh)</th>
     <th class="suma">PÉRDIDA (%)</th>
+    ${headDetalle}
   </tr>`;
 
   const f2 = v => v==null ? '--' : v.toLocaleString('es-CO',{maximumFractionDigits:0});
-  const celdasPunto = (punto,i) => {
-    const usoBack = punto.fuentes && punto.fuentes[i] === 'back';
-    let td = `<td class="num pto be-col-detalle${usoBack?' usoback':''}"${usoBack?' title="Este día se usó el medidor de respaldo -- el principal no reportó."':''}>${f2(punto.valores[i])}</td>`;
-    if(_bePuntoTieneBack(punto)){
-      const dif = punto.dif ? punto.dif[i] : null;
+  const tdPunto = (col, i, esInicioDeGrupo) => {
+    const claseGrupo = esInicioDeGrupo ? ' grupo-inicio' : '';
+    const usoBack = col.fuentes && col.fuentes[i] === 'back';
+    let td = `<td class="num pto be-col-detalle${claseGrupo}${usoBack?' usoback':''}"${usoBack?' title="Este día se usó el medidor de respaldo -- el principal no reportó."':''}>${f2(col.valores[i])}</td>`;
+    if(_bePuntoTieneBack(col)){
+      const dif = col.dif ? col.dif[i] : null;
       // El respaldo solo "viaja" aparte cuando se usó como reemplazo (ahí es
       // el mismo valor de la celda principal); si el principal reportó, se
       // reconstruye a partir de la diferencia que ya calculó el backend.
-      const backVisible = usoBack ? punto.valores[i] : (dif!=null ? punto.valores[i] - dif : null);
-      td += `<td class="num back be-col-detalle">${f2(backVisible)}</td>`;
-      td += `<td class="num dif be-col-detalle">${dif==null?'--':dif.toLocaleString('es-CO',{maximumFractionDigits:0})}</td>`;
+      const backVisible = usoBack ? col.valores[i] : (dif!=null ? col.valores[i] - dif : null);
+      td += `<td class="num back be-col-detalle hidden" data-resp-grupo="${col._respIdx}">${f2(backVisible)}</td>`;
+      td += `<td class="num dif be-col-detalle hidden" data-resp-grupo="${col._respIdx}">${dif==null?'--':dif.toLocaleString('es-CO',{maximumFractionDigits:0})}</td>`;
     }
     return td;
   };
@@ -2241,19 +2274,44 @@ function renderTablaDetalleBalance(datos){
   body.innerHTML = fechas.map((f,i)=>{
     const e = datos.entrada_kwh[i], s = datos.salida_kwh[i];
     const p = datos.perdida_kwh[i], pct = datos.perdida_pct[i];
+    let detalle = '';
+    gruposPorMedidor.forEach(grupo => grupo.forEach((col,j) => detalle += tdPunto(col, i, j===0)));
     return `<tr>
       <td>${f}</td>
-      ${entradas.map(m=>celdasPunto(m,i)).join('')}
       <td class="num suma">${f2(e)}</td>
-      ${salidas.map(m=>celdasPunto(m,i)).join('')}
       <td class="num suma">${f2(s)}</td>
       <td class="num suma">${f2(p)}</td>
       <td class="num suma">${pct==null?'--':pct.toFixed(2)+'%'}</td>
+      ${detalle}
     </tr>`;
   }).join('');
 
-  // Resumen al pie -- cuántos días del rango elegido realmente tienen dato
-  // (puede haber menos que el total si algún medidor todavía no reportó).
+  // Pie de la tabla -- días CON DATO por columna (no un total único: cada
+  // medidor puede tener huecos distintos, ej. el respaldo recién empezó a
+  // reportar en cierta fecha) -- lo que pidió el usuario en vez de un solo
+  // número global.
+  const contar = arr => (arr||[]).filter(v=>v!=null).length;
+  let footDetalle = '';
+  gruposPorMedidor.forEach(grupo => grupo.forEach((col,j) => {
+    const claseGrupo = j===0 ? ' grupo-inicio' : '';
+    footDetalle += `<td class="num pto be-col-detalle${claseGrupo}">${contar(col.valores)}</td>`;
+    if(_bePuntoTieneBack(col)){
+      const backCount = col.valores.filter((v,i)=> (col.fuentes&&col.fuentes[i]==='back') || (col.dif&&col.dif[i]!=null)).length;
+      footDetalle += `<td class="num back be-col-detalle hidden" data-resp-grupo="${col._respIdx}">${backCount}</td>`;
+      footDetalle += `<td class="num dif be-col-detalle hidden" data-resp-grupo="${col._respIdx}">${contar(col.dif)}</td>`;
+    }
+  }));
+  foot.innerHTML = `<tr>
+    <td>Días con datos</td>
+    <td class="num suma">${contar(datos.entrada_kwh)}</td>
+    <td class="num suma">${contar(datos.salida_kwh)}</td>
+    <td class="num suma">${contar(datos.perdida_kwh)}</td>
+    <td class="num suma">${contar(datos.perdida_pct)}</td>
+    ${footDetalle}
+  </tr>`;
+
+  // Resumen fuera de la tabla -- una lectura rápida del total del rango,
+  // sin tener que sumar columna por columna.
   const resumen = document.getElementById('be-tabla-detalle-resumen');
   const desdeVal = document.getElementById('be-desde').value;
   const hastaVal = document.getElementById('be-hasta').value;
@@ -2262,7 +2320,18 @@ function renderTablaDetalleBalance(datos){
     diasDelRango = Math.round((new Date(hastaVal+'T00:00:00') - new Date(desdeVal+'T00:00:00')) / 86400000) + 1;
   }
   resumen.innerHTML = `<span>Días con datos: <b style="color:var(--text)">${fechas.length}</b> de ${diasDelRango} días del rango elegido</span>
-    <span>${entradas.length} punto(s) de entrada · ${salidas.length} punto(s) de salida</span>`;
+    <span>${(datos.entradas||[]).length} punto(s) de entrada · ${(datos.salidas||[]).length} punto(s) de salida</span>`;
+}
+
+// Desplegable lateral del respaldo: cada punto con respaldo tiene su propio
+// índice (col._respIdx) -- togglea SOLO las celdas de ese punto (header,
+// filas y pie), no las de otros medidores.
+function beToggleRespaldoColumna(idx, btn){
+  const celdas = document.querySelectorAll(`[data-resp-grupo="${idx}"]`);
+  if(!celdas.length) return;
+  const estabaOculto = celdas[0].classList.contains('hidden');
+  celdas.forEach(c => c.classList.toggle('hidden', !estabaOculto));
+  if(btn) btn.textContent = estabaOculto ? '▾' : '▸';
 }
 
 // Las columnas de detalle por medidor (Principal/Respaldo/Dif) quedan
