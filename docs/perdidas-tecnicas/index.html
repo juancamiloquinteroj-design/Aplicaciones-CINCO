@@ -338,6 +338,11 @@ tfoot td:first-child{text-align:left}
 .be-editar-btn{padding:4px 10px;border:1px solid var(--border);border-radius:7px;background:transparent;color:var(--text2);font-size:11px;font-weight:700;cursor:pointer}
 .be-editar-btn:hover{border-color:var(--accent);color:var(--accent)}
 .be-comparacion-vacio{padding:20px;text-align:center;color:var(--text3);font-size:12px;border:1px dashed var(--border);border-radius:8px}
+.be-resumen-cards{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:16px}
+.be-resumen-tile{border:1px solid var(--border);border-radius:8px;padding:10px 12px;background:var(--bg)}
+.be-resumen-tile .etiqueta{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:var(--text3);margin-bottom:4px}
+.be-resumen-tile .valor{font-size:14.5px;font-weight:800;color:var(--text);line-height:1.25}
+.be-resumen-tile .sub{font-size:10px;color:var(--text3);margin-top:3px}
 
 /* Editar Estructura -- modal */
 .be-editar-modal{width:min(760px,94vw);max-height:88vh;overflow-y:auto}
@@ -881,12 +886,13 @@ tfoot td:first-child{text-align:left}
         <div class="be-tabla-creadas-titulo">Pérdida técnica vs. balance de la estructura -- mensual</div>
         <div class="fbar" style="margin-bottom:8px">
           <label>Desde</label>
-          <input type="month" id="be-comp-desde" onchange="verComparacionEstructura()">
+          <input type="month" id="be-comp-desde" onchange="this.dataset.manual='1'; verComparacionEstructura()">
           <label>Hasta</label>
           <input type="month" id="be-comp-hasta" onchange="verComparacionEstructura()">
         </div>
         <div id="be-comparacion-vacio" class="be-comparacion-vacio hidden">Esta estructura no tiene un circuito de Pérdidas Técnicas vinculado -- entrá a "✎ Editar" para elegirlo y poder comparar.</div>
         <div class="chart-wrap" id="be-comparacion-wrap" style="height:340px"><canvas id="ch-be-comparacion"></canvas></div>
+        <div id="be-resumen-cards" class="be-resumen-cards"></div>
       </div>
 
       <div class="be-tabla-creadas-wrap" style="margin-top:0">
@@ -1065,6 +1071,7 @@ let BE_USUARIOS = [];
 let BE_PUNTOS = [];      // BE_USUARIOS agrupado por customer_id (Principal+Respaldo del mismo punto)
 let BE_FECHA_MINIMA = null;  // primera fecha con datos -- default de "vigente desde" al crear un punto
 let BE_TABLA_DATOS = null;   // últimos datos cargados en "Balance diario" (rango propio) -- para exportar a CSV
+let BE_COMPARACION_DATOS = null;  // última comparación cargada -- para la tarjeta de "última pérdida técnica"
 let BE_ESTRUCTURAS = [];
 let BE_ACTIVA_ID = null;
 let BE_EDITAR_ID = null;
@@ -2200,14 +2207,16 @@ function renderChartBalanceEstructura(datos){
   });
 }
 
-// Los <input type="month"> de la comparación arrancan en 2025-01 hasta el
-// mes actual -- el usuario los puede cambiar a gusto. Solo se pisan si
-// están vacíos, para no resetear un filtro que ya se haya tocado a mano
-// mientras se navega entre estructuras en la misma sesión.
+// Los <input type="month"> de la comparación arrancan en un rango amplio
+// (desde 2020-01) hasta el mes actual -- es solo para DESCUBRIR desde
+// cuándo hay dato real de Pérdidas Técnicas; verComparacionEstructura()
+// recorta el "Desde" al primer mes con dato apenas lo detecta, así no se ve
+// un tramo largo vacío antes de que el circuito empezara a reportar. Si el
+// usuario toca el campo a mano (data-manual), ya no se vuelve a mover solo.
 function _beInicializarFiltroComparacion(){
   const desdeInput = document.getElementById('be-comp-desde');
   const hastaInput = document.getElementById('be-comp-hasta');
-  if(!desdeInput.value) desdeInput.value = '2025-01';
+  if(!desdeInput.value) desdeInput.value = '2020-01';
   if(!hastaInput.value){
     const hoy = new Date();
     hastaInput.value = `${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}`;
@@ -2221,7 +2230,8 @@ function _beInicializarFiltroComparacion(){
 // circuito vinculado, se muestra un aviso en vez del gráfico.
 async function verComparacionEstructura(){
   if(!BE_ACTIVA_ID) return;
-  const desdeMes = document.getElementById('be-comp-desde').value;  // 'YYYY-MM'
+  const desdeInput = document.getElementById('be-comp-desde');
+  const desdeMes = desdeInput.value;  // 'YYYY-MM'
   const hastaMes = document.getElementById('be-comp-hasta').value;
   const vacio = document.getElementById('be-comparacion-vacio');
   const wrap = document.getElementById('be-comparacion-wrap');
@@ -2236,10 +2246,30 @@ async function verComparacionEstructura(){
   if(!datos.vinculado || !datos.meses.length){
     vacio.classList.remove('hidden'); wrap.classList.add('hidden');
     if(chBeComparacion){ chBeComparacion.destroy(); chBeComparacion = null; }
+    BE_COMPARACION_DATOS = null;
+    renderResumenEstructura();
     return;
   }
+
+  // Recorte automático al primer mes con dato real de Pérdidas Técnicas
+  // -- solo si el usuario no tocó el campo "Desde" a mano todavía.
+  if(desdeInput.dataset.manual !== '1'){
+    const idx = datos.perdida_tecnica_kwh.findIndex(v => v != null);
+    if(idx > 0){
+      desdeInput.value = datos.meses[idx];
+      datos = {
+        ...datos,
+        meses: datos.meses.slice(idx),
+        perdida_tecnica_kwh: datos.perdida_tecnica_kwh.slice(idx),
+        perdida_balance_kwh: datos.perdida_balance_kwh.slice(idx),
+      };
+    }
+  }
+
   vacio.classList.add('hidden'); wrap.classList.remove('hidden');
+  BE_COMPARACION_DATOS = datos;
   renderChartComparacionEstructura(datos);
+  renderResumenEstructura();
 }
 
 function renderChartComparacionEstructura(datos){
@@ -2279,6 +2309,70 @@ function renderChartComparacionEstructura(datos){
       },
     },
   });
+}
+
+// Tarjetas de resumen -- llenan el espacio que queda libre debajo del
+// gráfico de comparación (que casi siempre es más bajo que la tabla de al
+// lado). Pide un rango propio y chico (mes anterior + mes actual) en vez de
+// reusar el de la gráfica diaria, para no depender de qué filtro haya
+// elegido el usuario ahí -- estas tarjetas siempre miran "ahora".
+async function renderResumenEstructura(){
+  const cont = document.getElementById('be-resumen-cards');
+  if(!BE_ACTIVA_ID){ cont.innerHTML = ''; return; }
+  const estructura = BE_ESTRUCTURAS.find(e=>e.id===BE_ACTIVA_ID);
+
+  const hoy = new Date();
+  const mesActual = `${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}`;
+  const primerDiaAnterior = new Date(hoy.getFullYear(), hoy.getMonth()-1, 1);
+  const mesAnterior = `${primerDiaAnterior.getFullYear()}-${String(primerDiaAnterior.getMonth()+1).padStart(2,'0')}`;
+  const ultimoDiaActual = new Date(hoy.getFullYear(), hoy.getMonth()+1, 0);
+  const fmt = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+
+  let datos = {fechas:[], entrada_kwh:[], salida_kwh:[], perdida_kwh:[], perdida_pct:[]};
+  try{
+    datos = await apiGet(`/api/balances-estructura/${BE_ACTIVA_ID}/consumo?desde=${fmt(primerDiaAnterior)}&hasta=${fmt(ultimoDiaActual)}`);
+  }catch(e){ /* se muestra igual con lo que haya, aunque sea vacío */ }
+
+  const _resumenMes = mesTexto => {
+    let entrada=0, salida=0, diasEntrada=0, diasSalida=0;
+    datos.fechas.forEach((f,i)=>{
+      if(!f.startsWith(mesTexto)) return;
+      if(datos.entrada_kwh[i]!=null){ entrada += datos.entrada_kwh[i]; diasEntrada++; }
+      if(datos.salida_kwh[i]!=null){ salida += datos.salida_kwh[i]; diasSalida++; }
+    });
+    const perdida = entrada - salida;
+    const pct = entrada ? perdida/entrada*100 : null;
+    return {entrada, salida, perdida, pct, diasEntrada, diasSalida};
+  };
+  const rAnterior = _resumenMes(mesAnterior);
+  const rActual = _resumenMes(mesActual);
+
+  const fk = v => v.toLocaleString('es-CO',{maximumFractionDigits:0})+' kWh';
+  const tarjeta = (etiqueta, valor, sub) => `<div class="be-resumen-tile">
+    <div class="etiqueta">${_mselEsc(etiqueta)}</div>
+    <div class="valor">${valor}</div>
+    ${sub?`<div class="sub">${sub}</div>`:''}
+  </div>`;
+
+  let ultimaTecnica = 'Sin circuito vinculado';
+  if(BE_COMPARACION_DATOS && BE_COMPARACION_DATOS.perdida_tecnica_kwh){
+    const idx = BE_COMPARACION_DATOS.perdida_tecnica_kwh.length - 1 -
+      [...BE_COMPARACION_DATOS.perdida_tecnica_kwh].reverse().findIndex(v=>v!=null);
+    if(idx >= 0 && BE_COMPARACION_DATOS.perdida_tecnica_kwh[idx]!=null){
+      ultimaTecnica = `${fk(BE_COMPARACION_DATOS.perdida_tecnica_kwh[idx])} (${labelMes(BE_COMPARACION_DATOS.meses[idx])})`;
+    }else{
+      ultimaTecnica = 'Sin datos técnicos aún';
+    }
+  }
+
+  cont.innerHTML = [
+    tarjeta('Estructura', _mselEsc(estructura ? estructura.nombre : '--'), estructura?`Nivel ${estructura.nivel_tension}`:''),
+    tarjeta('Pérdida -- mes actual', rActual.diasEntrada ? `${fk(rActual.perdida)} (${rActual.pct.toFixed(2)}%)` : 'Sin datos aún', `${labelMes(mesActual)} · ${rActual.diasEntrada} día(s) con dato`),
+    tarjeta('Pérdida -- mes anterior', rAnterior.diasEntrada ? `${fk(rAnterior.perdida)} (${rAnterior.pct.toFixed(2)}%)` : 'Sin datos', `${labelMes(mesAnterior)} · ${rAnterior.diasEntrada} día(s) con dato`),
+    tarjeta('Última pérdida técnica', ultimaTecnica, 'Pérdidas Técnicas (CSV oficial)'),
+    tarjeta('Entrada -- mes anterior', rAnterior.diasEntrada ? fk(rAnterior.entrada) : '--', `${rAnterior.diasEntrada} día(s) con dato`),
+    tarjeta('Salida -- mes anterior', rAnterior.diasSalida ? fk(rAnterior.salida) : '--', `${rAnterior.diasSalida} día(s) con dato`),
+  ].join('');
 }
 
 function _bePuntoTieneBack(p){ return !!(p.usuario_id_back && p.canal_back); }
@@ -2393,13 +2487,22 @@ function renderTablaDetalleBalance(datos){
       footDetalle += `<td class="num dif be-col-detalle hidden" data-resp-grupo="${col._respIdx}">${contar(col.dif)}</td>`;
     }
   }));
+  // Las columnas amarillas (detalle por medidor) muestran días con dato,
+  // igual que antes -- pero las azules (resumen) muestran el TOTAL del
+  // rango completo (suma de toda la entrada/salida, pérdida y % resultante),
+  // no una cantidad de días, que es lo que pidió el usuario.
+  const sumar = arr => (arr||[]).reduce((acc,v)=> v!=null ? acc+v : acc, 0);
+  const totalEntrada = sumar(datos.entrada_kwh);
+  const totalSalida = sumar(datos.salida_kwh);
+  const totalPerdida = sumar(datos.perdida_kwh);
+  const totalPct = totalEntrada ? totalPerdida/totalEntrada*100 : null;
   foot.innerHTML = `<tr>
-    <td>Días con datos</td>
+    <td>Total del rango</td>
     ${footDetalle}
-    <td class="num suma">${contar(datos.entrada_kwh)}</td>
-    <td class="num suma">${contar(datos.salida_kwh)}</td>
-    <td class="num suma">${contar(datos.perdida_kwh)}</td>
-    <td class="num suma">${contar(datos.perdida_pct)}</td>
+    <td class="num suma">${f2(totalEntrada)}</td>
+    <td class="num suma">${f2(totalSalida)}</td>
+    <td class="num suma">${f2(totalPerdida)}</td>
+    <td class="num suma">${totalPct==null?'--':totalPct.toFixed(2)+'%'}</td>
   </tr>`;
 
   // Resumen fuera de la tabla -- una lectura rápida del total del rango,
