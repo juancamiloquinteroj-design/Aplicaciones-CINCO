@@ -923,6 +923,7 @@ tfoot td:first-child{text-align:left}
         <button type="button" class="be-modo-btn" data-modo="1" onclick="beCambiarModoGrafico(1)">📉 Pérdida diaria vs. técnica</button>
         <button type="button" class="be-modo-btn" data-modo="2" onclick="beCambiarModoGrafico(2)">🔀 Entrada / Salida diaria</button>
         <button type="button" class="be-modo-btn" data-modo="3" onclick="beCambiarModoGrafico(3)">📅 Histórico mensual</button>
+        <button type="button" class="be-modo-btn" data-modo="4" onclick="beCambiarModoGrafico(4)">📈 Indicador móvil anual</button>
       </div>
     </div>
     <div id="be-filtro-diario-nota" style="text-align:left;font-size:10px;color:var(--text3);margin:-2px 0 10px">Por defecto: el último mes disponible -- rueda del mouse o pellizco para hacer zoom, arrastrar para mover</div>
@@ -2139,21 +2140,25 @@ async function verBalanceEstructura(id){
 }
 
 function _beAplicarModoUI(modo){
-  document.querySelectorAll('.be-modo-btn').forEach(b=>b.classList.toggle('activo', Number(b.dataset.modo)===modo));
-  document.getElementById('be-filtro-diario').classList.toggle('hidden', modo===3);
-  document.getElementById('be-filtro-diario-nota').classList.toggle('hidden', modo===3);
-  document.getElementById('be-filtro-mensual').classList.toggle('hidden', modo!==3);
+  const esMensual = modo===3 || modo===4;
+  document.querySelectorAll('.be-modo-btn[data-modo]').forEach(b=>b.classList.toggle('activo', Number(b.dataset.modo)===modo));
+  document.getElementById('be-filtro-diario').classList.toggle('hidden', esMensual);
+  document.getElementById('be-filtro-diario-nota').classList.toggle('hidden', esMensual);
+  document.getElementById('be-filtro-mensual').classList.toggle('hidden', !esMensual);
 }
 
-// Los 3 "modos" comparten un solo canvas -- cambiar de modo solo cambia qué
+// Los 4 "modos" comparten un solo canvas -- cambiar de modo solo cambia qué
 // series se dibujan y qué fila de filtro (diario vs. mensual) se ve, nunca
 // hace falta volver a pedir /consumo si ya se tiene (modos 1 y 2 reusan
-// BE_CONSUMO_DATOS; el modo 3 pide su propio rango mensual aparte).
+// BE_CONSUMO_DATOS; los modos 3 y 4 comparten el filtro mensual pero cada
+// uno pide su propio endpoint -- mensual suelto vs. móvil anual).
 function beCambiarModoGrafico(modo){
   BE_MODO_GRAFICO = modo;
   _beAplicarModoUI(modo);
   if(modo===3){
     verComparacionEstructura();
+  }else if(modo===4){
+    verMovilAnualEstructura();
   }else if(BE_CONSUMO_DATOS){
     document.getElementById('be-comparacion-vacio').classList.add('hidden');
     document.getElementById('be-chart-wrap').classList.remove('hidden');
@@ -2422,7 +2427,9 @@ async function verComparacionEstructura(){
     // llamada es solo para refrescar la tarjeta de "última pérdida técnica"
     // y no debe tocar lo que se está mostrando arriba.
     if(BE_MODO_GRAFICO===3){
-      document.getElementById('be-comparacion-vacio').classList.remove('hidden');
+      const vacio = document.getElementById('be-comparacion-vacio');
+      vacio.textContent = 'Esta estructura no tiene un circuito de Pérdidas Técnicas vinculado -- entrá a "✎ Editar" para elegirlo y poder comparar.';
+      vacio.classList.remove('hidden');
       document.getElementById('be-chart-wrap').classList.add('hidden');
       if(chBalanceEstructura){ chBalanceEstructura.destroy(); chBalanceEstructura = null; }
     }
@@ -2521,6 +2528,121 @@ function renderChartComparacionEstructura(datos){
         // Tampoco arranca en cero -- entrada y salida difieren solo por la
         // pérdida (~2-3%), y en una escala desde 0 esa diferencia queda
         // como una franja de pocos píxeles, invisible aunque se sombree.
+        yVolumen:{type:'linear', position:'right',
+          grid:{drawOnChartArea:false, drawTicks:false}, ticks:{display:false}, border:{display:false}},
+      },
+    },
+  });
+}
+
+// Indicador móvil anual -- reusa el MISMO filtro de mes (be-comp-desde/
+// hasta) que Histórico mensual, pero contra otro endpoint: cada punto es la
+// ventana de los últimos 12 meses (no un mes suelto). A diferencia del modo
+// 3, se muestra AUNQUE la estructura no tenga circuito de Pérdidas Técnicas
+// vinculado -- ahí solo la línea de comparación con la técnica queda vacía.
+async function verMovilAnualEstructura(){
+  if(!BE_ACTIVA_ID) return;
+  const desdeInput = document.getElementById('be-comp-desde');
+  const desdeMes = desdeInput.value;
+  const hastaMes = document.getElementById('be-comp-hasta').value;
+  let datos = {meses:[]};
+  try{
+    const qs = new URLSearchParams();
+    if(desdeMes) qs.set('desde', `${desdeMes}-01`);
+    if(hastaMes) qs.set('hasta', `${hastaMes}-01`);
+    datos = DEMO ? {meses:[]} : await apiGet(`/api/balances-estructura/${BE_ACTIVA_ID}/movil-anual?${qs.toString()}`);
+  }catch(e){ datos = {meses:[]}; }
+
+  const vacio = document.getElementById('be-comparacion-vacio');
+  const mostrarVacio = () => {
+    vacio.textContent = 'Todavía no hay 12 meses seguidos de balance para calcular el indicador móvil anual.';
+    vacio.classList.remove('hidden');
+    document.getElementById('be-chart-wrap').classList.add('hidden');
+    if(chBalanceEstructura){ chBalanceEstructura.destroy(); chBalanceEstructura = null; }
+  };
+  if(!datos.meses || !datos.meses.length){ mostrarVacio(); return; }
+
+  // Recorte automático al primer mes donde YA hay ventana de 12 meses del
+  // BALANCE (la técnica puede tardar más en completar sus 12 propios) --
+  // solo si el usuario no tocó "Desde" a mano todavía.
+  if(desdeInput.dataset.manual !== '1'){
+    const idx = datos.perdida_balance_movil_kwh.findIndex(v => v != null);
+    if(idx > 0){
+      desdeInput.value = datos.meses[idx];
+      datos = {
+        ...datos,
+        meses: datos.meses.slice(idx),
+        perdida_tecnica_movil_kwh: datos.perdida_tecnica_movil_kwh.slice(idx),
+        perdida_tecnica_movil_pct: datos.perdida_tecnica_movil_pct.slice(idx),
+        perdida_balance_movil_kwh: datos.perdida_balance_movil_kwh.slice(idx),
+        perdida_balance_movil_pct: datos.perdida_balance_movil_pct.slice(idx),
+        entrada_movil_kwh: datos.entrada_movil_kwh.slice(idx),
+        salida_movil_kwh: datos.salida_movil_kwh.slice(idx),
+      };
+    }
+  }
+  if(!datos.meses.length){ mostrarVacio(); return; }
+
+  vacio.classList.add('hidden');
+  document.getElementById('be-chart-wrap').classList.remove('hidden');
+  renderChartMovilAnual(datos);
+}
+
+function renderChartMovilAnual(datos){
+  const ctx = document.getElementById('ch-balance-estructura');
+  const dark = document.documentElement.getAttribute('data-theme')==='dark';
+  const tickC = dark ? '#8899b5' : '#4b5e7a';
+  const gridC = dark ? 'rgba(255,255,255,.06)' : 'rgba(0,0,0,.06)';
+
+  document.getElementById('be-btn-entrada-comp').classList.remove('activo');
+  document.getElementById('be-btn-salida-comp').classList.remove('activo');
+
+  if(chBalanceEstructura) chBalanceEstructura.destroy();
+  chBalanceEstructura = new Chart(ctx, {
+    data:{
+      labels: datos.meses.map(labelMes),
+      datasets:[
+        {type:'line', label:'Pérdida técnica móvil anual (Pérdidas Técnicas)', data:datos.perdida_tecnica_movil_kwh,
+          borderColor:'#00b4d8', backgroundColor:'transparent', borderWidth:2.5, pointRadius:2,
+          tension:.15, spanGaps:true, yAxisID:'y'},
+        {type:'line', label:'Pérdida del balance móvil anual (esta estructura)', data:datos.perdida_balance_movil_kwh,
+          borderColor:'#ef476f', backgroundColor:'transparent', borderWidth:2.5, pointRadius:2,
+          tension:.15, spanGaps:true, yAxisID:'y'},
+        {type:'line', label:'Pérdida % móvil anual', data:datos.perdida_balance_movil_pct,
+          borderColor:'#f4a261', backgroundColor:'transparent', borderWidth:2, pointRadius:2,
+          tension:.15, spanGaps:true, borderDash:[6,3], yAxisID:'yPct'},
+        {type:'line', label:'Entrada móvil anual', data:datos.entrada_movil_kwh, _rol:'entrada',
+          borderColor:'#06d6a0', backgroundColor:'transparent', borderWidth:2, pointRadius:2,
+          tension:.15, spanGaps:true, yAxisID:'yVolumen', hidden:true},
+        {type:'line', label:'Salida móvil anual', data:datos.salida_movil_kwh, _rol:'salida',
+          borderColor:'#9d4edd', backgroundColor:'rgba(157,78,221,.18)', borderWidth:2, pointRadius:2,
+          tension:.15, spanGaps:true, yAxisID:'yVolumen', hidden:true, fill:3},
+      ],
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      interaction:{mode:'index', intersect:false},
+      plugins:{
+        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:10}, color:tickC}},
+        tooltip:{callbacks:{label:c=>{
+          const v = c.raw==null ? 0 : c.raw;
+          return c.dataset.label==='Pérdida % móvil anual' ? `Pérdida % móvil anual: ${v.toFixed(2)}%` : `${c.dataset.label}: ${v.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`;
+        }}},
+        zoom:{
+          pan:{enabled:true, mode:'x'},
+          zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'},
+          limits:{x:{minRange:3}},
+        },
+      },
+      scales:{
+        x:{ grid:{display:false}, ticks:{color:tickC, font:{size:10}, maxRotation:0, autoSkip:true, maxTicksLimit:14} },
+        y:{ beginAtZero:true, grid:{color:gridC},
+          ticks:{color:tickC, font:{size:11}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
+          title:{display:true, text:'Pérdida móvil anual (kWh/12 meses)', color:tickC, font:{size:11}} },
+        yPct:{type:'linear', position:'right', grid:{drawOnChartArea:false},
+          ticks:{color:'#f4a261', font:{size:11}, callback:v=>v.toFixed(1)+'%'},
+          afterFit:ax=>{ax.width=Math.max(ax.width,70)},
+          title:{display:true, text:'Pérdida % móvil anual', color:'#f4a261', font:{size:11}}, offset:true},
         yVolumen:{type:'linear', position:'right',
           grid:{drawOnChartArea:false, drawTicks:false}, ticks:{display:false}, border:{display:false}},
       },
