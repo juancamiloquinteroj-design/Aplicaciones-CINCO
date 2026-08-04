@@ -153,6 +153,10 @@ select{padding:6px 10px;border:1px solid var(--border);border-radius:7px;font-si
   border-radius:6px;font-size:11.5px;color:var(--text);background:var(--bg);outline:none}
 
 .chart-wrap{position:relative;height:320px}
+/* Se puede arrastrar (pan) el gráfico de Ver Balance -- mostrar una manito
+   como pista, y la manito "cerrada" mientras se sostiene el clic. */
+#ch-balance-estructura{cursor:grab}
+#ch-balance-estructura:active{cursor:grabbing}
 .split-wrap{display:flex;gap:18px;align-items:stretch;flex-wrap:wrap}
 .split-wrap>div{flex:1;min-width:280px}
 @media(max-width:800px){.split-wrap>div{flex:1 1 100%}}
@@ -339,7 +343,7 @@ tfoot td:first-child{text-align:left}
    especificidad al fondo sólido del sticky de arriba (1 clase+tipo) y
    dejaban ver las filas de abajo a través del encabezado al hacer scroll. */
 .be-tabla-creadas thead tr:first-child th,.be-tabla-creadas thead tr:first-child th.suma,.be-tabla-creadas thead tr:first-child th.pto{background:var(--bg3) !important}
-.be-tabla-creadas thead tr:nth-child(2) td,.be-tabla-creadas thead tr:nth-child(2) td.suma,.be-tabla-creadas thead tr:nth-child(2) td.pto,.be-tabla-creadas thead tr:nth-child(2) td.back,.be-tabla-creadas thead tr:nth-child(2) td.dif{padding:6px 10px;border-bottom:2px solid var(--border);font-weight:700;color:var(--text3);background:var(--bg2) !important}
+.be-tabla-creadas thead tr:nth-child(2) td,.be-tabla-creadas thead tr:nth-child(2) td.suma,.be-tabla-creadas thead tr:nth-child(2) td.pto,.be-tabla-creadas thead tr:nth-child(2) td.back,.be-tabla-creadas thead tr:nth-child(2) td.dif{padding:6px 10px;border-bottom:2px solid var(--text2);font-weight:700;color:var(--text3);background:var(--bg2) !important}
 .be-tabla-creadas thead tr:nth-child(2) td.suma{color:var(--text)}
 .be-editar-btn{padding:4px 10px;border:1px solid var(--border);border-radius:7px;background:transparent;color:var(--text2);font-size:11px;font-weight:700;cursor:pointer}
 .be-editar-btn:hover{border-color:var(--accent);color:var(--accent)}
@@ -938,11 +942,11 @@ tfoot td:first-child{text-align:left}
           <label style="font-size:10px;color:var(--text3)">Hasta</label>
           <input type="month" id="be-tabla-hasta" onchange="cargarTablaBalance()">
           <button type="button" class="be-editar-btn" onclick="beExportarCsv()" title="Exportar el balance de este rango a CSV">⬇ Exportar CSV</button>
-          <button type="button" class="be-btn-respaldo" id="be-btn-detalle-medidor" onclick="beToggleDetalleMedidor()">▸ Ver detalle por medidor (Principal/Respaldo)</button>
+          <button type="button" class="be-btn-respaldo" id="be-btn-detalle-medidor" onclick="beToggleDetalleMedidor()">▾ Ocultar detalle por medidor</button>
         </div>
       </div>
       <div class="be-tabla-scroll be-tabla-scroll-acotada">
-        <table class="be-tabla-creadas detalle-oculto" id="be-tabla-detalle">
+        <table class="be-tabla-creadas" id="be-tabla-detalle">
           <thead id="be-tabla-detalle-head"></thead>
           <tbody id="be-tabla-detalle-body"></tbody>
           <tfoot id="be-tabla-detalle-foot"></tfoot>
@@ -2286,8 +2290,12 @@ async function renderChartBalanceEstructura(datos, modo){
     datasets = [
       {type:'line', label:'Entrada', data:entradaKwh, borderColor:'#06d6a0', backgroundColor:'transparent',
         borderWidth:2, pointRadius:0, tension:.15, spanGaps:true, yAxisID:'yKwh', order:2},
-      {type:'line', label:'Salida', data:salidaKwh, borderColor:'#ef476f', backgroundColor:'transparent',
-        borderWidth:2, pointRadius:0, tension:.15, spanGaps:true, yAxisID:'yKwh', order:2},
+      // fill:0 sombrea el área entre esta línea y "Entrada" (dataset 0) --
+      // entrada y salida quedan tan pegadas en esta escala que la pérdida
+      // (la diferencia entre ambas) es casi invisible como dos líneas
+      // sueltas; como banda sombreada, se nota de inmediato.
+      {type:'line', label:'Salida', data:salidaKwh, borderColor:'#ef476f', backgroundColor:'rgba(239,71,111,.18)',
+        borderWidth:2, pointRadius:0, tension:.15, spanGaps:true, yAxisID:'yKwh', order:2, fill:0},
     ];
   }else{
     usaPct = true;
@@ -2353,7 +2361,13 @@ async function renderChartBalanceEstructura(datos, modo){
             },
           },
         },
-        yKwh:{type:'linear', position:'left', beginAtZero:true, grid:{color:gridC},
+        // Modo 2 (Entrada/Salida) NO arranca en cero a propósito -- entrada y
+        // salida difieren solo por la pérdida (~2-3%), y en una escala desde
+        // 0 esa diferencia queda como una franja de unos pocos píxeles,
+        // prácticamente invisible aunque se sombree el área entre ambas.
+        // Sin forzar el cero, el eje se ajusta a lo que realmente varían los
+        // datos y el hueco (=la pérdida) se nota de verdad.
+        yKwh:{type:'linear', position:'left', beginAtZero: modo!==2, grid:{color:gridC},
           ticks:{color:tickC, font:{size:11}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
           title:{display:true, text:yKwhTitulo, color:tickC, font:{size:11}}},
         ...(usaPct ? {
@@ -2462,12 +2476,16 @@ function renderChartComparacionEstructura(datos){
         {type:'line', label:'Pérdida %', data:datos.perdida_balance_pct,
           borderColor:'#f4a261', backgroundColor:'transparent', borderWidth:2, pointRadius:2,
           tension:.15, spanGaps:true, borderDash:[6,3], yAxisID:'yPct'},
-        {type:'line', label:'Entrada mensual', data:datos.entrada_kwh,
+        {type:'line', label:'Entrada mensual', data:datos.entrada_kwh, _rol:'entrada',
           borderColor:'#06d6a0', backgroundColor:'transparent', borderWidth:2, pointRadius:2,
           tension:.15, spanGaps:true, yAxisID:'yVolumen', hidden:true},
-        {type:'line', label:'Salida mensual', data:datos.salida_kwh,
-          borderColor:'#9d4edd', backgroundColor:'transparent', borderWidth:2, pointRadius:2,
-          tension:.15, spanGaps:true, yAxisID:'yVolumen', hidden:true},
+        // fill:3 sombrea el área hacia "Entrada mensual" (dataset 3) -- en
+        // esta escala compartida (millones de kWh) entrada y salida quedan
+        // casi pegadas, y la pérdida (la diferencia entre ambas) se pierde
+        // como dos líneas sueltas; como banda sombreada, se nota de inmediato.
+        {type:'line', label:'Salida mensual', data:datos.salida_kwh, _rol:'salida',
+          borderColor:'#9d4edd', backgroundColor:'rgba(157,78,221,.18)', borderWidth:2, pointRadius:2,
+          tension:.15, spanGaps:true, yAxisID:'yVolumen', hidden:true, fill:3},
       ],
     },
     options:{
@@ -2500,7 +2518,10 @@ function renderChartComparacionEstructura(datos){
         // activarlas. OJO: display:false (en vez de ocultar cada parte por
         // separado) le reduce a Chart.js el alto asignado al eje casi a 0,
         // y termina mapeando los puntos MUY afuera del área visible.
-        yVolumen:{type:'linear', position:'right', beginAtZero:true,
+        // Tampoco arranca en cero -- entrada y salida difieren solo por la
+        // pérdida (~2-3%), y en una escala desde 0 esa diferencia queda
+        // como una franja de pocos píxeles, invisible aunque se sombree.
+        yVolumen:{type:'linear', position:'right',
           grid:{drawOnChartArea:false, drawTicks:false}, ticks:{display:false}, border:{display:false}},
       },
     },
@@ -2510,17 +2531,17 @@ function renderChartComparacionEstructura(datos){
 // Los botones "Ver entrada"/"Ver salida" del histórico mensual solo agregan/
 // quitan esa UNA línea (reusa el toggle nativo de visibilidad de Chart.js)
 // -- no hace falta re-pedir datos ni redibujar todo el gráfico.
-function _beToggleDatasetComparacion(label, btnId){
-  if(!chBalanceEstructura || BE_MODO_GRAFICO!==3) return;
-  const idx = chBalanceEstructura.data.datasets.findIndex(d=>d.label===label);
+function _beToggleDatasetComparacion(rol, btnId){
+  if(!chBalanceEstructura || (BE_MODO_GRAFICO!==3 && BE_MODO_GRAFICO!==4)) return;
+  const idx = chBalanceEstructura.data.datasets.findIndex(d=>d._rol===rol);
   if(idx<0) return;
   const visible = chBalanceEstructura.isDatasetVisible(idx);
   chBalanceEstructura.setDatasetVisibility(idx, !visible);
   chBalanceEstructura.update();
   document.getElementById(btnId).classList.toggle('activo', !visible);
 }
-function beToggleEntradaComparacion(){ _beToggleDatasetComparacion('Entrada mensual', 'be-btn-entrada-comp'); }
-function beToggleSalidaComparacion(){ _beToggleDatasetComparacion('Salida mensual', 'be-btn-salida-comp'); }
+function beToggleEntradaComparacion(){ _beToggleDatasetComparacion('entrada', 'be-btn-entrada-comp'); }
+function beToggleSalidaComparacion(){ _beToggleDatasetComparacion('salida', 'be-btn-salida-comp'); }
 
 // Tarjetas de resumen -- llenan el espacio que queda libre debajo del
 // gráfico de comparación (que casi siempre es más bajo que la tabla de al
