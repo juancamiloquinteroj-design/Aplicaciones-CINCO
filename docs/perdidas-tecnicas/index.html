@@ -873,8 +873,11 @@ tfoot td:first-child{text-align:left}
         <option value="PB">Barra (PB)</option>
         <option value="L">Línea (L)</option>
       </select>
+      <label>Estructura</label>
+      <select id="be-selector-estructura" style="min-width:420px" onchange="verBalanceEstructura(parseInt(this.value))">
+        <option value="">Elegí una estructura...</option>
+      </select>
     </div>
-    <div id="be-lista-estructuras" class="be-lista-estructuras" style="margin-top:14px"></div>
   </div>
 
   <div id="be-chart-card" class="card hidden">
@@ -900,6 +903,7 @@ tfoot td:first-child{text-align:left}
         <label>Hasta</label>
         <input type="month" id="be-comp-hasta" onchange="verComparacionEstructura()">
         <button type="button" class="be-modo-btn" id="be-btn-entrada-comp" onclick="beToggleEntradaComparacion()">⊕ Ver entrada</button>
+        <button type="button" class="be-modo-btn" id="be-btn-salida-comp" onclick="beToggleSalidaComparacion()">⊖ Ver salida</button>
       </div>
       <div class="fbar" style="margin:0">
         <button type="button" class="be-modo-btn" data-modo="1" onclick="beCambiarModoGrafico(1)">📉 Pérdida diaria vs. técnica</button>
@@ -1963,23 +1967,18 @@ function _beResumenLado(medidores){
 }
 
 function renderListaEstructuras(){
-  const cont = document.getElementById('be-lista-estructuras');
+  const sel = document.getElementById('be-selector-estructura');
   if(DEMO){
-    cont.innerHTML = '<div class="tm-alarma-vacio">No disponible en modo demo (sin conexión al servidor).</div>';
+    sel.innerHTML = '<option value="">No disponible en modo demo (sin conexión al servidor)</option>';
     return;
   }
   if(!BE_ESTRUCTURAS.length){
-    cont.innerHTML = '<div class="tm-alarma-vacio">No hay estructuras para este filtro -- usá "Crear Estructura" arriba.</div>';
+    sel.innerHTML = '<option value="">No hay estructuras para este filtro -- usá "Crear Estructura"</option>';
     return;
   }
-  cont.innerHTML = BE_ESTRUCTURAS.map(e => `
-    <div class="be-estructura-item ${e.id===BE_ACTIVA_ID?'activa':''}" onclick="verBalanceEstructura(${e.id})">
-      <div class="nom">${_mselEsc(e.nombre)}</div>
-      <div class="niv">Nivel ${e.nivel_tension}${e.tipo ? ' · '+_mselEsc(BE_NOMBRES_TIPO[e.tipo]||e.tipo) : ''}</div>
-      <div class="rutas">${_mselEsc(_beResumenLado(e.entradas))} → ${_mselEsc(_beResumenLado(e.salidas))}</div>
-    </div>`).join('');
-  const activa = cont.querySelector('.be-estructura-item.activa');
-  if(activa) activa.scrollIntoView({block:'nearest'});
+  sel.innerHTML = '<option value="">Elegí una estructura...</option>' + BE_ESTRUCTURAS.map(e => `
+    <option value="${e.id}">${_mselEsc(e.nombre)} -- Nivel ${e.nivel_tension}${e.tipo ? ' · '+_mselEsc(BE_NOMBRES_TIPO[e.tipo]||e.tipo) : ''}</option>`).join('');
+  sel.value = BE_ACTIVA_ID != null ? String(BE_ACTIVA_ID) : '';
 }
 
 // Flecha arriba/abajo cambia de estructura sin tocar el mouse -- útil para
@@ -2292,8 +2291,8 @@ async function renderChartBalanceEstructura(datos, modo){
       {type:'line', label:'Pérdida %', data:perdidaPct, borderColor:'#f4a261', backgroundColor:'transparent',
         borderWidth:2, pointRadius:0, tension:.15, spanGaps:true, yAxisID:'yPct', order:1, borderDash:[6,3],
         datalabels:{display: mesUnico, anchor:'end', align:'top', offset:6,
-          formatter:v=>v==null ? '' : v.toFixed(2)+'%', font:{size:9, weight:'700'}, color:'#f4a261',
-          backgroundColor:'rgba(255,255,255,.85)', borderRadius:3, padding:{left:3,right:3,top:1,bottom:1}}},
+          formatter:v=>v==null ? '' : v.toFixed(2)+'%', font:{size:13, weight:'800'}, color:'#f4a261',
+          backgroundColor:'rgba(255,255,255,.9)', borderRadius:4, padding:{left:5,right:5,top:2,bottom:2}}},
     ];
   }
 
@@ -2437,6 +2436,7 @@ function renderChartComparacionEstructura(datos){
   const gridC = dark ? 'rgba(255,255,255,.06)' : 'rgba(0,0,0,.06)';
 
   document.getElementById('be-btn-entrada-comp').classList.remove('activo');
+  document.getElementById('be-btn-salida-comp').classList.remove('activo');
 
   if(chBalanceEstructura) chBalanceEstructura.destroy();
   chBalanceEstructura = new Chart(ctx, {
@@ -2454,7 +2454,10 @@ function renderChartComparacionEstructura(datos){
           tension:.15, spanGaps:true, borderDash:[6,3], yAxisID:'yPct'},
         {type:'line', label:'Entrada mensual', data:datos.entrada_kwh,
           borderColor:'#06d6a0', backgroundColor:'transparent', borderWidth:2, pointRadius:2,
-          tension:.15, spanGaps:true, yAxisID:'yEntrada', hidden:true},
+          tension:.15, spanGaps:true, yAxisID:'yVolumen', hidden:true},
+        {type:'line', label:'Salida mensual', data:datos.salida_kwh,
+          borderColor:'#9d4edd', backgroundColor:'transparent', borderWidth:2, pointRadius:2,
+          tension:.15, spanGaps:true, yAxisID:'yVolumen', hidden:true},
       ],
     },
     options:{
@@ -2476,31 +2479,33 @@ function renderChartComparacionEstructura(datos){
           ticks:{color:'#f4a261', font:{size:11}, callback:v=>v.toFixed(1)+'%'},
           afterFit:ax=>{ax.width=Math.max(ax.width,70)},
           title:{display:true, text:'Pérdida %', color:'#f4a261', font:{size:11}}, offset:true},
-        // Eje propio SIN mostrar ticks/grid/título -- la Entrada (millones
-        // de kWh) es de otra escala que la Pérdida, así que necesita su
-        // propio rango para no aplastar las demás líneas al activarla. OJO:
-        // display:false (en vez de ocultar cada parte por separado) le
-        // reduce a Chart.js el alto asignado al eje casi a 0, y termina
-        // mapeando los puntos MUY afuera del área visible del gráfico.
-        yEntrada:{type:'linear', position:'right', beginAtZero:true,
+        // Eje propio (compartido por Entrada y Salida) SIN mostrar ticks/
+        // grid/título -- son de otra escala que la Pérdida, así que
+        // necesitan su propio rango para no aplastar las demás líneas al
+        // activarlas. OJO: display:false (en vez de ocultar cada parte por
+        // separado) le reduce a Chart.js el alto asignado al eje casi a 0,
+        // y termina mapeando los puntos MUY afuera del área visible.
+        yVolumen:{type:'linear', position:'right', beginAtZero:true,
           grid:{drawOnChartArea:false, drawTicks:false}, ticks:{display:false}, border:{display:false}},
       },
     },
   });
 }
 
-// El botón "Ver entrada" del histórico mensual solo agrega/quita esa UNA
-// línea (reusa el toggle nativo de visibilidad de Chart.js) -- no hace falta
-// re-pedir datos ni redibujar todo el gráfico.
-function beToggleEntradaComparacion(){
+// Los botones "Ver entrada"/"Ver salida" del histórico mensual solo agregan/
+// quitan esa UNA línea (reusa el toggle nativo de visibilidad de Chart.js)
+// -- no hace falta re-pedir datos ni redibujar todo el gráfico.
+function _beToggleDatasetComparacion(label, btnId){
   if(!chBalanceEstructura || BE_MODO_GRAFICO!==3) return;
-  const idx = chBalanceEstructura.data.datasets.findIndex(d=>d.label==='Entrada mensual');
+  const idx = chBalanceEstructura.data.datasets.findIndex(d=>d.label===label);
   if(idx<0) return;
   const visible = chBalanceEstructura.isDatasetVisible(idx);
   chBalanceEstructura.setDatasetVisibility(idx, !visible);
   chBalanceEstructura.update();
-  document.getElementById('be-btn-entrada-comp').classList.toggle('activo', !visible);
+  document.getElementById(btnId).classList.toggle('activo', !visible);
 }
+function beToggleEntradaComparacion(){ _beToggleDatasetComparacion('Entrada mensual', 'be-btn-entrada-comp'); }
+function beToggleSalidaComparacion(){ _beToggleDatasetComparacion('Salida mensual', 'be-btn-salida-comp'); }
 
 // Tarjetas de resumen -- llenan el espacio que queda libre debajo del
 // gráfico de comparación (que casi siempre es más bajo que la tabla de al
