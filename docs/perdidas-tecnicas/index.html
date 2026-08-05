@@ -2428,18 +2428,24 @@ async function renderChartBalanceEstructura(datos, modo){
   // con varios meses a la vez se solaparían y ensucian el gráfico.
   const mesUnico = fechas.length>0 && fechas.every(f => f.slice(0,7)===fechas[0].slice(0,7));
 
-  // Días con ajuste manual (en entrada O salida) -- se marcan en rojo sobre
-  // la línea para que salte a la vista que ese punto no es 100% dato crudo
-  // del medidor. Ver _beMarcarPuntosAjustados: arma pointRadius/color por
-  // índice, en el mismo largo recortado (n-1) que el resto del gráfico.
+  // Días con ajuste manual (en entrada O salida) -- se marcan sobre la línea
+  // para que salte a la vista que ese punto no es 100% dato crudo del
+  // medidor. En vez de un punto sólido rojo (se ve como una mancha encima
+  // de la línea), es un anillo fino: relleno del color de fondo de la
+  // tarjeta + borde rojo -- se lee como "marcado", no tapa el color de la
+  // serie ni ensucia el trazo. diasAjustados va en el mismo largo recortado
+  // (n-1) que el resto del gráfico.
   const diasAjustadosFull = (datos.fechas||[]).map((f,i)=>
     (datos.entradas||[]).some(col=>col.ajustes && col.ajustes[i]) ||
     (datos.salidas||[]).some(col=>col.ajustes && col.ajustes[i]));
   const diasAjustados = recortar(diasAjustadosFull);
+  const fondoAnillo = dark ? '#161b27' : '#ffffff';
   const _puntosAjuste = colorNormal => ({
-    pointRadius: diasAjustados.map(a=>a?4:0),
-    pointBackgroundColor: diasAjustados.map(a=>a?'#e63946':colorNormal),
+    pointRadius: diasAjustados.map(a=>a?3.5:0),
+    pointHoverRadius: diasAjustados.map(a=>a?5.5:3),
+    pointBackgroundColor: diasAjustados.map(a=>a?fondoAnillo:colorNormal),
     pointBorderColor: diasAjustados.map(a=>a?'#e63946':colorNormal),
+    pointBorderWidth: diasAjustados.map(a=>a?1.8:0),
   });
 
   let datasets, yKwhTitulo, usaPct;
@@ -2483,12 +2489,14 @@ async function renderChartBalanceEstructura(datos, modo){
     plugins:[tmPluginSeparadores, tmPluginCrosshair],
     options:{
       responsive:true, maintainAspectRatio:false,
-      // Chart.js por defecto NO reenvía mousedown/mouseup a sus plugins
-      // (solo mousemove/mouseout/click/touch) -- sin agregarlos acá,
-      // chartjs-plugin-zoom nunca detecta cuándo arranca/termina el
-      // arrastre y el pan (mover con el clic sostenido) queda mudo aunque
-      // el cursor cambie a "manito" con normalidad.
-      events:['mousemove','mouseout','click','touchstart','touchmove','mousedown','mouseup'],
+      // OJO: NO agregar 'mousedown'/'mouseup' acá -- el pan (arrastrar con
+      // el clic sostenido) lo maneja Hammer.js escuchando directo sobre el
+      // canvas, sin depender de esta lista. Si se agregan, el plugin de
+      // leyenda de Chart.js dispara su propio onClick UNA vez por 'mouseup'
+      // y OTRA por el 'click' nativo que le sigue -- dos toggles por click
+      // real, que se cancelan entre sí y hacen ver que "no anda" mostrar/
+      // ocultar series desde la leyenda.
+      events:['mousemove','mouseout','click','touchstart','touchmove'],
       layout:{padding:{top:22}},
       interaction:{mode:'index', intersect:false},
       plugins:{
@@ -2657,7 +2665,7 @@ function renderChartComparacionEstructura(datos){
     },
     options:{
       responsive:true, maintainAspectRatio:false,
-      events:['mousemove','mouseout','click','touchstart','touchmove','mousedown','mouseup'],
+      events:['mousemove','mouseout','click','touchstart','touchmove'],
       interaction:{mode:'index', intersect:false},
       plugins:{
         legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:10}, color:tickC}},
@@ -2792,7 +2800,7 @@ function renderChartMovilAnual(datos){
     },
     options:{
       responsive:true, maintainAspectRatio:false,
-      events:['mousemove','mouseout','click','touchstart','touchmove','mousedown','mouseup'],
+      events:['mousemove','mouseout','click','touchstart','touchmove'],
       interaction:{mode:'index', intersect:false},
       plugins:{
         legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:10}, color:tickC}},
@@ -2948,11 +2956,23 @@ function renderTablaDetalleBalance(datos){
   // orden izquierda-a-derecha en que se ve la tabla ahora mismo. Se guarda
   // en BE_COLUMNAS_ACTUALES para mandarlo junto con cada ajuste que se
   // guarde (así el backend sabe a qué punto real corresponde cada letra).
+  // Los puntos CON respaldo reciben una SEGUNDA letra (justo después de la
+  // del principal) que apunta al dato CRUDO del medidor de respaldo -- así
+  // una fórmula puede hacer "=B" para traer lo que marcó el respaldo ese
+  // día, exista o no dato del principal (a diferencia de la letra del
+  // principal, que ya viene con el respaldo tapando huecos por detrás).
   BE_COLUMNAS_ACTUALES = [];
   let _letraIdx = 0;
   gruposPorMedidor.forEach(grupo => grupo.forEach(col=>{
     col._letra = _beLetraColumna(_letraIdx++);
     BE_COLUMNAS_ACTUALES.push({letra: col._letra, tipo: col.tipo, orden: col.orden, etiqueta: etiquetaMedidor(col)});
+    if(_bePuntoTieneBack(col)){
+      col._letraRespaldo = _beLetraColumna(_letraIdx++);
+      BE_COLUMNAS_ACTUALES.push({
+        letra: col._letraRespaldo, tipo: col.tipo, orden: col.orden, fuente: 'respaldo',
+        etiqueta: `${etiquetaMedidor(col)} (respaldo: ${col.usuario_id_back} · ${BE_NOMBRES_CANAL_CORTO[col.canal_back]||col.canal_back})`,
+      });
+    }
   }));
 
   const thPunto = (col, esInicioDeGrupo) => {
@@ -2960,9 +2980,10 @@ function renderTablaDetalleBalance(datos){
     const etiquetaLetra = `<span class="be-letra-col" title="Usá esta letra en las fórmulas de ajuste, ej. =${col._letra}*1.05">${col._letra}</span> `;
     if(!_bePuntoTieneBack(col)) return `<th class="pto be-col-detalle${claseGrupo}">${etiquetaLetra}${_mselEsc(etiquetaMedidor(col))}</th>`;
     const titulo = `Respaldo: ${col.usuario_id_back} · ${BE_NOMBRES_CANAL_CORTO[col.canal_back]||col.canal_back}`;
+    const etiquetaLetraResp = `<span class="be-letra-col" title="Usá esta letra para referenciar el dato CRUDO del respaldo, ej. =${col._letraRespaldo}*1.05">${col._letraRespaldo}</span> `;
     return `<th class="pto be-col-detalle${claseGrupo}" title="${_mselEsc(titulo)}">${etiquetaLetra}${_mselEsc(etiquetaMedidor(col))}
         <button type="button" class="be-resp-toggle" onclick="beToggleRespaldoColumna(${col._respIdx},this)" title="Ver respaldo/diferencia">▸</button></th>`
-      + `<th class="pto back be-col-detalle hidden" data-resp-grupo="${col._respIdx}">Respaldo</th>`
+      + `<th class="pto back be-col-detalle hidden" data-resp-grupo="${col._respIdx}">${etiquetaLetraResp}Respaldo</th>`
       + `<th class="pto dif be-col-detalle hidden" data-resp-grupo="${col._respIdx}">Dif.</th>`;
   };
 
