@@ -1107,6 +1107,12 @@ tfoot td:first-child{text-align:left}
     </div>
     <div id="be-chart-nota" class="tm-modal-msg" style="text-align:center"></div>
 
+    <div class="fbar" style="justify-content:center;margin-bottom:10px">
+      <button type="button" class="be-modo-btn" data-granularidad="diario" onclick="beSeleccionarGranularidad('diario')">Diario</button>
+      <button type="button" class="be-modo-btn" data-granularidad="mensual" onclick="beSeleccionarGranularidad('mensual')">Mensual</button>
+      <button type="button" class="be-modo-btn" data-granularidad="anual" onclick="beSeleccionarGranularidad('anual')">Anual</button>
+    </div>
+
     <div class="fbar" style="justify-content:space-between;margin-bottom:6px">
       <div id="be-filtro-diario" class="fbar" style="margin:0">
         <button type="button" class="be-editar-btn" onclick="beMoverMes(-1)" title="Mes anterior">◄ Mes anterior</button>
@@ -1127,10 +1133,8 @@ tfoot td:first-child{text-align:left}
         <button type="button" class="be-editar-btn" onclick="if(chBalanceEstructura) chBalanceEstructura.resetZoom()" title="Volver al zoom original">⤢ Restablecer zoom</button>
       </div>
       <div class="fbar" style="margin:0">
-        <button type="button" class="be-modo-btn" data-modo="1" onclick="beCambiarModoGrafico(1)">📉 Pérdida diaria vs. técnica</button>
-        <button type="button" class="be-modo-btn" data-modo="2" onclick="beCambiarModoGrafico(2)">🔀 Entrada / Salida diaria</button>
-        <button type="button" class="be-modo-btn" data-modo="3" onclick="beCambiarModoGrafico(3)">📅 Histórico mensual</button>
-        <button type="button" class="be-modo-btn" data-modo="4" onclick="beCambiarModoGrafico(4)">📈 Indicador móvil anual</button>
+        <button type="button" class="be-modo-btn" data-tipo="perdida" onclick="beSeleccionarTipoGrafico('perdida')">📉 Pérdida vs. técnica</button>
+        <button type="button" class="be-modo-btn" data-tipo="entrada_salida" onclick="beSeleccionarTipoGrafico('entrada_salida')">🔀 Entrada / Salida</button>
       </div>
     </div>
     <div id="be-filtro-diario-nota" style="text-align:left;font-size:10px;color:var(--text3);margin:-2px 0 10px">Por defecto: el último mes disponible -- rueda del mouse o pellizco para hacer zoom, arrastrar para mover</div>
@@ -1422,6 +1426,12 @@ let BE_TIPICOS_ACTIVA = null; // {promedio,maximo,minimo,desde,hasta} de la estr
 let BE_COMPARACION_DATOS = null;  // última comparación cargada -- para la tarjeta de "última pérdida técnica"
 let BE_CONSUMO_DATOS = null;  // último /consumo cargado (rango del gráfico) -- lo reusan los modos 1 y 2 sin refetch
 let BE_MODO_GRAFICO = 1;  // 1=pérdida diaria vs técnica, 2=entrada/salida diaria, 3=histórico mensual
+// Los botones de arriba (Diario/Mensual/Anual) y los de abajo (Pérdida vs.
+// técnica/Entrada-Salida) son dos elecciones INDEPENDIENTES -- se combinan
+// en _beModoDesdeSelectores() para obtener el mismo BE_MODO_GRAFICO (1-4)
+// de siempre, así el resto del código (fetch, render, toggles) no cambia.
+let BE_GRANULARIDAD = 'diario';   // 'diario' | 'mensual' | 'anual'
+let BE_TIPO_GRAFICO = 'perdida';  // 'perdida' | 'entrada_salida'
 let BE_ESTRUCTURAS = [];
 let BE_ACTIVA_ID = null;
 let BE_EDITAR_ID = null;
@@ -2914,10 +2924,30 @@ async function verBalanceEstructura(id){
 
 function _beAplicarModoUI(modo){
   const esMensual = modo===3 || modo===4;
-  document.querySelectorAll('.be-modo-btn[data-modo]').forEach(b=>b.classList.toggle('activo', Number(b.dataset.modo)===modo));
+  document.querySelectorAll('.be-modo-btn[data-tipo]').forEach(b=>b.classList.toggle('activo', b.dataset.tipo===BE_TIPO_GRAFICO));
+  document.querySelectorAll('.be-modo-btn[data-granularidad]').forEach(b=>b.classList.toggle('activo', b.dataset.granularidad===BE_GRANULARIDAD));
   document.getElementById('be-filtro-diario').classList.toggle('hidden', esMensual);
   document.getElementById('be-filtro-diario-nota').classList.toggle('hidden', esMensual);
   document.getElementById('be-filtro-mensual').classList.toggle('hidden', !esMensual);
+}
+
+// Combina las dos elecciones independientes (arriba: granularidad: Diario/
+// Mensual/Anual -- abajo: tipo: Pérdida vs. técnica/Entrada-Salida) en el
+// mismo BE_MODO_GRAFICO (1-4) de siempre. En Mensual/Anual, "tipo" no elige
+// un gráfico DISTINTO -- ambos ya traen las 5 series en un solo pedido--
+// solo decide cuáles vienen visibles por defecto (ver renderChartComparacionEstructura/renderChartMovilAnual).
+function _beModoDesdeSelectores(){
+  if(BE_GRANULARIDAD==='mensual') return 3;
+  if(BE_GRANULARIDAD==='anual') return 4;
+  return BE_TIPO_GRAFICO==='entrada_salida' ? 2 : 1;
+}
+function beSeleccionarGranularidad(g){
+  BE_GRANULARIDAD = g;
+  beCambiarModoGrafico(_beModoDesdeSelectores());
+}
+function beSeleccionarTipoGrafico(t){
+  BE_TIPO_GRAFICO = t;
+  beCambiarModoGrafico(_beModoDesdeSelectores());
 }
 
 // Los 4 "modos" comparten un solo canvas -- cambiar de modo solo cambia qué
@@ -3440,33 +3470,38 @@ function renderChartComparacionEstructura(datos){
   const tickC = dark ? '#8899b5' : '#4b5e7a';
   const gridC = dark ? 'rgba(255,255,255,.06)' : 'rgba(0,0,0,.06)';
 
-  document.getElementById('be-btn-entrada-comp').classList.remove('activo');
-  document.getElementById('be-btn-salida-comp').classList.remove('activo');
+  // El botón de abajo (Pérdida vs. técnica/Entrada-Salida) decide cuál de
+  // las dos familias de series arranca visible -- "Ver entrada"/"Ver
+  // salida" siguen sirviendo para prender/apagar cada una suelta encima de
+  // esa base.
+  const mostrarEntradaSalida = BE_TIPO_GRAFICO === 'entrada_salida';
+  document.getElementById('be-btn-entrada-comp').classList.toggle('activo', mostrarEntradaSalida);
+  document.getElementById('be-btn-salida-comp').classList.toggle('activo', mostrarEntradaSalida);
 
   if(chBalanceEstructura) chBalanceEstructura.destroy();
   chBalanceEstructura = new Chart(ctx, {
     data:{
       labels: datos.meses.map(labelMes),
       datasets:[
-        {type:'line', label:'Pérdida técnica (Pérdidas Técnicas)', data:datos.perdida_tecnica_kwh,
+        {type:'line', label:'Pérdida técnica (Pérdidas Técnicas)', data:datos.perdida_tecnica_kwh, hidden:mostrarEntradaSalida,
           borderColor:'#00b4d8', backgroundColor:'transparent', borderWidth:2.5, pointRadius:2,
           tension:.15, spanGaps:true, yAxisID:'y'},
-        {type:'line', label:'Pérdida del balance (esta estructura)', data:datos.perdida_balance_kwh,
+        {type:'line', label:'Pérdida del balance (esta estructura)', data:datos.perdida_balance_kwh, hidden:mostrarEntradaSalida,
           borderColor:'#ef476f', backgroundColor:'transparent', borderWidth:2.5, pointRadius:2,
           tension:.15, spanGaps:true, yAxisID:'y'},
-        {type:'line', label:'Pérdida %', data:datos.perdida_balance_pct,
+        {type:'line', label:'Pérdida %', data:datos.perdida_balance_pct, hidden:mostrarEntradaSalida,
           borderColor:'#f4a261', backgroundColor:'transparent', borderWidth:2, pointRadius:2,
           tension:.15, spanGaps:true, borderDash:[6,3], yAxisID:'yPct'},
-        {type:'line', label:'Entrada mensual', data:datos.entrada_kwh, _rol:'entrada',
+        {type:'line', label:'Entrada mensual', data:datos.entrada_kwh, _rol:'entrada', hidden:!mostrarEntradaSalida,
           borderColor:'#06d6a0', backgroundColor:'transparent', borderWidth:2, pointRadius:2,
-          tension:.15, spanGaps:true, yAxisID:'yVolumen', hidden:true},
+          tension:.15, spanGaps:true, yAxisID:'yVolumen'},
         // fill:3 sombrea el área hacia "Entrada mensual" (dataset 3) -- en
         // esta escala compartida (millones de kWh) entrada y salida quedan
         // casi pegadas, y la pérdida (la diferencia entre ambas) se pierde
         // como dos líneas sueltas; como banda sombreada, se nota de inmediato.
-        {type:'line', label:'Salida mensual', data:datos.salida_kwh, _rol:'salida',
+        {type:'line', label:'Salida mensual', data:datos.salida_kwh, _rol:'salida', hidden:!mostrarEntradaSalida,
           borderColor:'#9d4edd', backgroundColor:'rgba(157,78,221,.18)', borderWidth:2, pointRadius:2,
-          tension:.15, spanGaps:true, yAxisID:'yVolumen', hidden:true, fill:3},
+          tension:.15, spanGaps:true, yAxisID:'yVolumen', fill:3},
       ],
     },
     options:{
@@ -3569,18 +3604,19 @@ function renderChartMovilAnual(datos){
   const tickC = dark ? '#8899b5' : '#4b5e7a';
   const gridC = dark ? 'rgba(255,255,255,.06)' : 'rgba(0,0,0,.06)';
 
-  document.getElementById('be-btn-entrada-comp').classList.remove('activo');
-  document.getElementById('be-btn-salida-comp').classList.remove('activo');
+  const mostrarEntradaSalida = BE_TIPO_GRAFICO === 'entrada_salida';
+  document.getElementById('be-btn-entrada-comp').classList.toggle('activo', mostrarEntradaSalida);
+  document.getElementById('be-btn-salida-comp').classList.toggle('activo', mostrarEntradaSalida);
 
   if(chBalanceEstructura) chBalanceEstructura.destroy();
   chBalanceEstructura = new Chart(ctx, {
     data:{
       labels: datos.meses.map(labelMes),
       datasets:[
-        {type:'line', label:'Pérdida técnica móvil anual (Pérdidas Técnicas)', data:datos.perdida_tecnica_movil_kwh,
+        {type:'line', label:'Pérdida técnica móvil anual (Pérdidas Técnicas)', data:datos.perdida_tecnica_movil_kwh, hidden:mostrarEntradaSalida,
           borderColor:'#00b4d8', backgroundColor:'transparent', borderWidth:2.5, pointRadius:2,
           tension:.15, spanGaps:true, yAxisID:'y'},
-        {type:'line', label:'Pérdida del balance móvil anual (esta estructura)', data:datos.perdida_balance_movil_kwh,
+        {type:'line', label:'Pérdida del balance móvil anual (esta estructura)', data:datos.perdida_balance_movil_kwh, hidden:mostrarEntradaSalida,
           borderColor:'#ef476f', backgroundColor:'transparent', borderWidth:2.5, pointRadius:2,
           tension:.15, spanGaps:true, yAxisID:'y',
           // Como máximo 12-13 puntos en este modo (uno por mes) -- a
@@ -3590,18 +3626,18 @@ function renderChartMovilAnual(datos){
             formatter:v=>v==null ? '' : v.toLocaleString('es-CO',{maximumFractionDigits:0}),
             font:{size:10, weight:'700'}, color:'#ef476f',
             backgroundColor:'rgba(255,255,255,.85)', borderRadius:3, padding:{left:4,right:4,top:1,bottom:1}}},
-        {type:'line', label:'Pérdida % móvil anual', data:datos.perdida_balance_movil_pct,
+        {type:'line', label:'Pérdida % móvil anual', data:datos.perdida_balance_movil_pct, hidden:mostrarEntradaSalida,
           borderColor:'#f4a261', backgroundColor:'transparent', borderWidth:2, pointRadius:2,
           tension:.15, spanGaps:true, borderDash:[6,3], yAxisID:'yPct',
           datalabels:{display:true, anchor:'end', align:'bottom', offset:6,
             formatter:v=>v==null ? '' : v.toFixed(2)+'%', font:{size:11, weight:'800'}, color:'#f4a261',
             backgroundColor:'rgba(255,255,255,.9)', borderRadius:4, padding:{left:5,right:5,top:2,bottom:2}}},
-        {type:'line', label:'Entrada móvil anual', data:datos.entrada_movil_kwh, _rol:'entrada',
+        {type:'line', label:'Entrada móvil anual', data:datos.entrada_movil_kwh, _rol:'entrada', hidden:!mostrarEntradaSalida,
           borderColor:'#06d6a0', backgroundColor:'transparent', borderWidth:2, pointRadius:2,
-          tension:.15, spanGaps:true, yAxisID:'yVolumen', hidden:true},
-        {type:'line', label:'Salida móvil anual', data:datos.salida_movil_kwh, _rol:'salida',
+          tension:.15, spanGaps:true, yAxisID:'yVolumen'},
+        {type:'line', label:'Salida móvil anual', data:datos.salida_movil_kwh, _rol:'salida', hidden:!mostrarEntradaSalida,
           borderColor:'#9d4edd', backgroundColor:'rgba(157,78,221,.18)', borderWidth:2, pointRadius:2,
-          tension:.15, spanGaps:true, yAxisID:'yVolumen', hidden:true, fill:3},
+          tension:.15, spanGaps:true, yAxisID:'yVolumen', fill:3},
       ],
     },
     options:{
