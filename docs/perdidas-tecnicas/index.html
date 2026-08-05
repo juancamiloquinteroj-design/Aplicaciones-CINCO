@@ -736,6 +736,16 @@ tfoot td:first-child{text-align:left}
     <div class="param-confianza-nota" id="param-confianza-nota"></div>
   </div>
 
+  <div class="card">
+    <div class="card-title">Atraso en Alertas de Balance</div>
+    <div class="card-sub">A partir de cuántos días sin reportar dato, un medidor de "Balances por Estructura" aparece como atrasado en la lista de Alertas.</div>
+    <div class="param-confianza-row">
+      <input type="number" id="param-dias-atraso" min="1" step="1" style="max-width:90px" oninput="onCambiaDiasAtraso(this.value)">
+      <span>día(s) sin reportar</span>
+      <span class="creg-st" id="param-dias-atraso-st"></span>
+    </div>
+  </div>
+
 </div>
 <!-- fin vista-parametrizacion -->
 
@@ -986,7 +996,7 @@ tfoot td:first-child{text-align:left}
 
   <div class="sec-hdr">
     <div class="sec-title">Alertas de Balance</div>
-    <div class="sec-sub">Puntos con medidor de respaldo: atraso del principal o uso reciente del respaldo</div>
+    <div class="sec-sub">Medidores atrasados, con anomalías respecto a su consumo habitual, o donde tuvo que usarse el respaldo</div>
   </div>
 
   <div class="card">
@@ -1476,6 +1486,36 @@ async function cargarParametrizacion(){
   }
   renderParametrizacionZonas(datos);
   await cargarConfianzaEstadistica();
+  await cargarDiasAtrasoBalance();
+}
+
+async function cargarDiasAtrasoBalance(){
+  let dias = 2;
+  try{
+    const cfg = DEMO ? {dias_atraso:2} : await apiGet('/api/balances-estructura/configuracion');
+    dias = cfg.dias_atraso;
+  }catch(e){ dias = 2; }
+  document.getElementById('param-dias-atraso').value = dias;
+}
+
+let _debounceDiasAtraso = null;
+function onCambiaDiasAtraso(v){
+  clearTimeout(_debounceDiasAtraso);
+  _debounceDiasAtraso = setTimeout(()=>guardarDiasAtrasoBalance(parseInt(v)), 500);
+}
+
+async function guardarDiasAtrasoBalance(v){
+  const st = document.getElementById('param-dias-atraso-st');
+  if(DEMO){ st.textContent = '⚠'; st.title = 'No disponible en modo demo'; return; }
+  if(isNaN(v) || v<1){ st.textContent = '⚠'; st.title = 'Debe ser 1 o más días'; return; }
+  st.textContent = '…';
+  try{
+    await apiPost('/api/balances-estructura/configuracion', {dias_atraso: v});
+    st.textContent = '✓';
+    setTimeout(()=>{ if(st.textContent==='✓') st.textContent=''; }, 2000);
+  }catch(e){
+    st.textContent = '⚠'; st.title = e.message || 'Error al guardar';
+  }
 }
 
 async function cargarConfianzaEstadistica(){
@@ -2067,9 +2107,11 @@ async function cargarListaEstructuras(){
   cargarAlertasBalance();
 }
 
-// Alertas de Balance: solo aplica a puntos con medidor de respaldo
-// configurado -- avisa si el principal lleva atraso (aunque el respaldo lo
-// tape) o si el respaldo tuvo que usarse de verdad en los últimos días.
+// Alertas de Balance: 'atraso' y 'promedio' aplican a CUALQUIER punto;
+// 'respaldo_en_uso' solo a los que tienen un medidor de respaldo
+// configurado (avisa si el principal lleva atraso -- aunque el respaldo lo
+// tape --, si el respaldo tuvo que usarse de verdad, o si el último dato
+// del medidor se sale de su propio consumo habitual).
 async function cargarAlertasBalance(){
   const cont = document.getElementById('be-alertas-lista');
   if(DEMO){
@@ -2082,17 +2124,22 @@ async function cargarAlertasBalance(){
 
   const alertas = datos.alertas || [];
   if(!alertas.length){
-    cont.innerHTML = '<div class="tm-alarma-vacio">Sin alertas -- los medidores con respaldo están reportando con normalidad.</div>';
+    cont.innerHTML = '<div class="tm-alarma-vacio">Sin alertas -- todos los medidores están reportando con normalidad.</div>';
     return;
   }
+  const f2Alerta = v => v==null ? '--' : v.toLocaleString('es-CO',{maximumFractionDigits:0});
+  const BE_ALERTA_COLOR = {atraso:'#ef476f', respaldo_en_uso:'#f4a261', promedio:'#9d4edd'};
   cont.innerHTML = alertas.map(a => {
     const etiqueta = `${a.usuario_id}/${a.canal.replace('canal','C')}`;
     const msg = a.tipo_alerta === 'atraso'
-      ? (a.ultima_fecha ? `Principal sin reportar hace ${a.atraso_dias} días (último dato: ${a.ultima_fecha})` : 'Principal nunca reportó datos')
+      ? (a.ultima_fecha ? `Sin reportar hace ${a.atraso_dias} días (último dato: ${a.ultima_fecha})` : 'Nunca reportó datos')
+      : a.tipo_alerta === 'promedio'
+      ? `Se salió del promedio el ${a.fecha}: ${f2Alerta(a.valor)} kWh (habitual: ${f2Alerta(a.media)} ± ${f2Alerta(a.desviacion)}, ${a.confianza_pct}% de confianza)`
       : `Usó el respaldo ${a.dias_usados} día(s) en el último mes (el más reciente: ${a.ultimo_dia_usado})`;
+    const color = BE_ALERTA_COLOR[a.tipo_alerta] || '#f4a261';
     return `<div class="tm-alarma-item" onclick="mostrarVista('be-ver'); verBalanceEstructura(${a.estructura_id})">
       <div class="nom">${_mselEsc(a.estructura_nombre)} <span style="color:var(--text3);font-weight:400">-- ${a.tipo} · ${_mselEsc(etiqueta)}</span></div>
-      <div class="dias" style="background:${a.tipo_alerta==='atraso'?'rgba(239,71,111,.12)':'rgba(244,162,97,.15)'};color:${a.tipo_alerta==='atraso'?'#ef476f':'#f4a261'}">${_mselEsc(msg)}</div>
+      <div class="dias" style="background:${color}22;color:${color}">${_mselEsc(msg)}</div>
     </div>`;
   }).join('');
 }
