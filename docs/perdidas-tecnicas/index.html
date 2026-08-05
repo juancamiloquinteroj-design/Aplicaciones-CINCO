@@ -345,9 +345,6 @@ tfoot td:first-child{text-align:left}
    rojo, distinto del ámbar de .ajustado (esto es "dato raro", no "dato
    corregido a mano") -- convención simple para poder distinguirlos de un vistazo. */
 .be-tabla-creadas td.suma.fuera-tipico{background:rgba(239,71,111,.18) !important;color:#ef476f !important;font-weight:800}
-.be-tipicos-tabla{border-collapse:collapse;font-size:12px;margin-bottom:8px}
-.be-tipicos-tabla th{text-align:left;padding:3px 16px 3px 0;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:var(--text3);border-bottom:1px solid var(--border)}
-.be-tipicos-tabla td{padding:4px 16px 4px 0;font-weight:700;color:var(--text)}
 .be-tipicos-leyenda{display:flex;gap:16px;flex-wrap:wrap;font-size:11px;color:var(--text3)}
 .be-tipicos-leyenda .sw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:middle}
 .be-tipicos-leyenda .sw-ajuste{background:#ffc107}
@@ -547,6 +544,7 @@ tfoot td:first-child{text-align:left}
   </button>
   <div class="sidebar-submenu hidden" id="sidebar-submenu-be">
     <button class="sidebar-sublink" data-vista="be-crear" onclick="mostrarVista('be-crear')">➕ Crear Estructura</button>
+    <button class="sidebar-sublink" data-vista="be-nivel" onclick="mostrarVista('be-nivel')">🌐 Balance por Nivel de Tensión</button>
     <button class="sidebar-sublink" data-vista="be-ver" onclick="mostrarVista('be-ver')">📊 Ver Balance</button>
     <button class="sidebar-sublink" data-vista="be-alertas" onclick="mostrarVista('be-alertas')">🔔 Alertas de Balance</button>
   </div>
@@ -954,6 +952,90 @@ tfoot td:first-child{text-align:left}
 </div>
 <!-- fin vista-be-crear -->
 
+<!-- ---------------- BALANCES POR ESTRUCTURA · BALANCE POR NIVEL DE TENSIÓN ---------------- -->
+<div id="vista-be-nivel" class="vista-modulo hidden">
+
+  <div class="sec-hdr">
+    <div class="sec-title">Balance por Nivel de Tensión</div>
+    <div class="sec-sub">Igual que una estructura, pero agregando entrada/salida de TODA una zona en un nivel -- Nivel 2 y 3 llevan zona, Nivel 4 no</div>
+  </div>
+
+  <div class="card">
+    <div class="be-form-grid">
+      <div class="be-field">
+        <label>Nombre</label>
+        <input type="text" id="bn-nombre" placeholder="Ej. Balance Nivel 2 Zona Centro">
+      </div>
+      <div class="be-field">
+        <label>Nivel de tensión</label>
+        <select id="bn-nivel" onchange="_beActualizarVisibilidadZona('bn-nivel','bn-campo-zona','bn-zona')">
+          <option value="1">Nivel 1</option>
+          <option value="2">Nivel 2</option>
+          <option value="3">Nivel 3</option>
+          <option value="4">Nivel 4</option>
+        </select>
+      </div>
+      <div class="be-field" id="bn-campo-zona">
+        <label>Zona</label>
+        <select id="bn-zona">
+          <option value="">Elegí una zona...</option>
+        </select>
+      </div>
+      <div class="be-field">
+        <label>Circuito de Pérdidas Técnicas (opcional)</label>
+        <div class="be-buscador">
+          <input type="text" id="bn-circuito-buscar" placeholder="Buscar por nombre o código..." autocomplete="off"
+            oninput="beBuscarCircuito(this)" onfocus="beBuscarCircuito(this)"
+            onkeydown="beBuscadorCircuitoTecla(event,this)" onblur="beCircuitoBlur(this)">
+          <div class="be-buscador-lista hidden"></div>
+        </div>
+        <input type="hidden" id="bn-circuito">
+      </div>
+      <div class="be-field">
+        <label>Nota (opcional)</label>
+        <input type="text" id="bn-nota" placeholder="Ej. detalle del agregado, aclaración de canales...">
+      </div>
+    </div>
+
+    <div class="be-entrada-salida-grid">
+      <div class="be-medidores-bloque">
+        <div class="be-medidores-hdr">
+          <span>Entrada(s) -- se suman entre sí</span>
+          <button type="button" class="be-btn-agregar" onclick="beAgregarFila('entrada','bn')">+ Agregar entrada</button>
+        </div>
+        <div id="bn-filas-entrada"></div>
+      </div>
+
+      <div class="be-medidores-bloque">
+        <div class="be-medidores-hdr">
+          <span>Salida(s) -- se suman entre sí</span>
+          <button type="button" class="be-btn-agregar" onclick="beAgregarFila('salida','bn')">+ Agregar salida</button>
+        </div>
+        <div id="bn-filas-salida"></div>
+      </div>
+    </div>
+
+    <div id="bn-crear-msg" class="tm-modal-msg"></div>
+    <button class="btn-theme" style="width:auto;padding:9px 20px;background:var(--accent);color:#fff;border-color:var(--accent)" onclick="crearBalanceNivel()">Crear balance por nivel</button>
+
+    <div class="be-tabla-creadas-wrap">
+      <div class="be-tabla-creadas-titulo">
+        Balances por nivel ya creados
+        <span id="bn-tabla-creados-conteo" style="font-weight:400;color:var(--text3);font-size:11px;margin-left:6px"></span>
+      </div>
+      <input type="text" id="bn-tabla-creados-buscar" placeholder="Buscar por nombre..." style="width:100%;box-sizing:border-box;margin-bottom:8px;padding:8px 10px;border:1px solid var(--border);border-radius:7px;font-size:12.5px;color:var(--text);background:var(--bg)" oninput="renderTablaBalanceNivelCreados()">
+      <div class="be-tabla-scroll">
+        <table class="be-tabla-creadas">
+          <thead><tr><th>Nombre</th><th>Nivel</th><th>Zona</th><th>Entrada(s)</th><th>Salida(s)</th><th></th></tr></thead>
+          <tbody id="bn-tabla-creados-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div>
+<!-- fin vista-be-nivel -->
+
 <!-- ---------------- BALANCES POR ESTRUCTURA · VER BALANCE ---------------- -->
 <div id="vista-be-ver" class="vista-modulo hidden">
 
@@ -978,11 +1060,13 @@ tfoot td:first-child{text-align:left}
         <option value="PT">Transformador (PT)</option>
         <option value="PB">Barra (PB)</option>
         <option value="L">Línea (L)</option>
+        <option value="Z">Balance por Nivel de Tensión</option>
       </select>
       <label>Estructura</label>
       <select id="be-selector-estructura" style="min-width:420px" onchange="verBalanceEstructura(parseInt(this.value))">
         <option value="">Elegí una estructura...</option>
       </select>
+      <button type="button" class="be-editar-btn" style="margin-left:auto" onclick="beBorrarFiltrosVer()" title="Volver el filtro de Nivel/Tipo/Estructura a 'Todos'">✕ Borrar filtros</button>
     </div>
     <div id="be-medidor-afecta-busqueda" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);max-width:460px;position:relative">
       <label style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text3);display:block;margin-bottom:5px">
@@ -1060,27 +1144,29 @@ tfoot td:first-child{text-align:left}
     <div id="be-resumen-cards" class="be-resumen-cards"></div>
 
     <div class="be-tabla-creadas-wrap">
-      <div id="be-tipicos-estructura-wrap" style="margin-bottom:12px;padding-bottom:12px;border-bottom:1px dashed var(--border)">
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
-          <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text3)">Datos típicos de esta estructura</span>
-          <label style="font-size:10px;color:var(--text3)">Desde</label>
-          <input type="month" id="be-tipicos-desde">
-          <label style="font-size:10px;color:var(--text3)">Hasta</label>
-          <input type="month" id="be-tipicos-hasta">
-          <button type="button" class="be-editar-btn" onclick="calcularTipicosEstructuraActiva()">Calcular</button>
-          <span id="be-tipicos-msg" style="font-size:11px;color:var(--text2)"></span>
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:20px;flex-wrap:wrap;margin-bottom:12px;padding-bottom:12px;border-bottom:1px dashed var(--border)">
+        <div id="be-tipicos-estructura-wrap" style="flex:1;min-width:280px">
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:6px">
+            <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text3)">Datos típicos</span>
+            <label style="font-size:10px;color:var(--text3)">Desde</label>
+            <input type="month" id="be-tipicos-desde">
+            <label style="font-size:10px;color:var(--text3)">Hasta</label>
+            <input type="month" id="be-tipicos-hasta">
+            <button type="button" class="be-editar-btn" onclick="calcularTipicosEstructuraActiva()">Calcular</button>
+            <span id="be-tipicos-msg" style="font-size:11px;color:var(--text2)"></span>
+          </div>
+          <div id="be-tipicos-resultado"></div>
         </div>
-        <div id="be-tipicos-resultado"></div>
-      </div>
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
-        <div class="be-tabla-creadas-titulo" style="margin-bottom:0">Balance diario</div>
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-          <label style="font-size:10px;color:var(--text3)">Desde</label>
-          <input type="month" id="be-tabla-desde" onchange="cargarTablaBalance()">
-          <label style="font-size:10px;color:var(--text3)">Hasta</label>
-          <input type="month" id="be-tabla-hasta" onchange="cargarTablaBalance()">
-          <button type="button" class="be-editar-btn" onclick="beExportarCsv()" title="Exportar el balance de este rango a CSV">⬇ Exportar CSV</button>
-          <button type="button" class="be-btn-respaldo" id="be-btn-detalle-medidor" onclick="beToggleDetalleMedidor()">▾ Ocultar detalle por medidor</button>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
+          <div class="be-tabla-creadas-titulo" style="margin-bottom:0">Balance diario</div>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <label style="font-size:10px;color:var(--text3)">Desde</label>
+            <input type="month" id="be-tabla-desde" onchange="cargarTablaBalance()">
+            <label style="font-size:10px;color:var(--text3)">Hasta</label>
+            <input type="month" id="be-tabla-hasta" onchange="cargarTablaBalance()">
+            <button type="button" class="be-editar-btn" onclick="beExportarCsv()" title="Exportar el balance de este rango a CSV">⬇ Exportar CSV</button>
+            <button type="button" class="be-btn-respaldo" id="be-btn-detalle-medidor" onclick="beToggleDetalleMedidor()">▾ Ocultar detalle por medidor</button>
+          </div>
         </div>
       </div>
       <div class="be-tabla-scroll be-tabla-scroll-acotada">
@@ -1124,7 +1210,7 @@ tfoot td:first-child{text-align:left}
       </div>
       <div class="be-field">
         <label>Nivel de tensión</label>
-        <select id="beed-nivel">
+        <select id="beed-nivel" onchange="_beActualizarVisibilidadZona('beed-nivel','beed-campo-zona','beed-zona')">
           <option value="1">Nivel 1</option>
           <option value="2">Nivel 2</option>
           <option value="3">Nivel 3</option>
@@ -1138,6 +1224,13 @@ tfoot td:first-child{text-align:left}
           <option value="PT">Transformador (PT)</option>
           <option value="PB">Barra (PB)</option>
           <option value="L">Línea (L)</option>
+          <option value="Z">Balance por Nivel de Tensión</option>
+        </select>
+      </div>
+      <div class="be-field" id="beed-campo-zona">
+        <label>Zona</label>
+        <select id="beed-zona">
+          <option value="">Elegí una zona...</option>
         </select>
       </div>
       <div class="be-field">
@@ -1507,7 +1600,7 @@ async function mostrarVista(nombre){
   // cualquiera de las tres, se resalta el padre y se despliega el submenú
   // (si no, entrar por la tarjeta de Inicio dejaría el submenú cerrado
   // aunque ya estés adentro de una de sus vistas).
-  const esBalancesEstructura = nombre==='be-crear' || nombre==='be-ver' || nombre==='be-alertas';
+  const esBalancesEstructura = nombre==='be-crear' || nombre==='be-nivel' || nombre==='be-ver' || nombre==='be-alertas';
   document.getElementById('sidebar-be-padre').classList.toggle('activa', esBalancesEstructura);
   if(esBalancesEstructura) abrirSubmenuBE();
 
@@ -1992,7 +2085,7 @@ function irAUsuarioDesdeAlarma(usuarioId){
 
 /* ---- Balances por Estructura ---- */
 const BE_NOMBRES_CANAL_CORTO = {canal1:'C1 kWhD', canal2:'C2 kVarhD', canal3:'C3 kWhR', canal4:'C4 kVarhR'};
-const BE_NOMBRES_TIPO = {PT:'Transformador', PB:'Barra', L:'Línea'};
+const BE_NOMBRES_TIPO = {PT:'Transformador', PB:'Barra', L:'Línea', Z:'Balance por Nivel de Tensión'};
 
 let BE_CIRCUITOS = [];  // TODOS los circuitos del operador -- sin filtrar por nivel de tensión, ver nota abajo
 
@@ -2186,12 +2279,16 @@ function _beMedidorAfectaSeleccionar(valor){
   _beMostrarEstructurasAfectadas(usuarioId, 'be-medidor-afecta-resultado-dd', BE_ACTIVA_ID);
 }
 
+let BE_ZONAS = [];  // valores de zona del operador (ver Parametrización · Color por zona) -- para el select de Balance por Nivel de Tensión
+
 async function cargarBalancesEstructura(){
   // El mismo padrón de usuarios/medidores de Usuarios Telemedidos -- ahí
   // están los datos de entrada/salida, no hace falta duplicarlos.
   try{ BE_USUARIOS = DEMO ? [] : await apiGet('/api/telemedida/usuarios'); }catch(e){ BE_USUARIOS = []; }
   BE_PUNTOS = _beAgruparPorCustomerId(BE_USUARIOS);
   await _beCargarTodosCircuitos();
+
+  try{ BE_ZONAS = DEMO ? [] : (await apiGet('/api/zona-colores')).map(z=>z.zona); }catch(e){ BE_ZONAS = []; }
 
   try{
     const meta = DEMO ? {meses:[]} : await apiGet('/api/telemedida/meta');
@@ -2207,7 +2304,30 @@ async function cargarBalancesEstructura(){
   document.getElementById('be-circuito-buscar').value = '';
   document.getElementById('be-circuito').value = '';
 
+  // Mismo arranque para el formulario de Balance por Nivel de Tensión.
+  document.getElementById('bn-filas-entrada').innerHTML = '';
+  document.getElementById('bn-filas-salida').innerHTML = '';
+  beAgregarFila('entrada', 'bn');
+  beAgregarFila('salida', 'bn');
+  document.getElementById('bn-nota').value = '';
+  document.getElementById('bn-circuito-buscar').value = '';
+  document.getElementById('bn-circuito').value = '';
+  const zonaSel = document.getElementById('bn-zona');
+  zonaSel.innerHTML = '<option value="">Elegí una zona...</option>' + BE_ZONAS.map(z=>`<option value="${_mselEsc(z)}">${_mselEsc(z)}</option>`).join('');
+  _beActualizarVisibilidadZona();
+
   await cargarListaEstructuras();
+}
+
+// La zona solo aplica en Nivel 2 y 3 -- en Nivel 4 (y 1) no hay zonas, así
+// que el campo se oculta y se limpia (no manda un valor que no corresponde).
+// Reusado tanto en "Balance por Nivel de Tensión" (bn-*) como en el modal
+// de Editar (beed-*), por eso los 3 ids son parámetros.
+function _beActualizarVisibilidadZona(nivelId='bn-nivel', campoId='bn-campo-zona', zonaId='bn-zona'){
+  const nivel = document.getElementById(nivelId).value;
+  const aplica = nivel === '2' || nivel === '3';
+  document.getElementById(campoId).classList.toggle('hidden', !aplica);
+  if(!aplica) document.getElementById(zonaId).value = '';
 }
 
 // Agrupa los medidores por customer_id -- Principal y Respaldo del MISMO
@@ -2361,8 +2481,11 @@ function _beFilaMedidorHtml(tipo){
   </div>`;
 }
 
-function beAgregarFila(tipo){
-  document.getElementById(`be-filas-${tipo}`).insertAdjacentHTML('beforeend', _beFilaMedidorHtml(tipo));
+// prefijo permite reusar exactamente este mecanismo en OTRO formulario con
+// sus propios contenedores (ej. "bn-filas-entrada" en Balance por Nivel de
+// Tensión) sin duplicar toda la lógica de filas/buscador/respaldo.
+function beAgregarFila(tipo, prefijo='be'){
+  document.getElementById(`${prefijo}-filas-${tipo}`).insertAdjacentHTML('beforeend', _beFilaMedidorHtml(tipo));
 }
 
 // Resuelve una fila de buscador al usuario/medidor real -- prioriza lo que
@@ -2387,8 +2510,8 @@ function _beLeerMedidor(input){
 // Lee todas las filas de un bloque (entrada/salida) -- null en la lista si
 // la fila principal no coincide con ningún usuario/medidor real. El
 // respaldo es opcional: vacío no bloquea la fila, escrito-pero-inválido sí.
-function _beRecolectarFilas(tipo){
-  return [...document.querySelectorAll(`#be-filas-${tipo} .be-fila-medidor`)].map(fila=>{
+function _beRecolectarFilas(tipo, prefijo='be'){
+  return [...document.querySelectorAll(`#${prefijo}-filas-${tipo} .be-fila-medidor`)].map(fila=>{
     const principal = _beLeerMedidor(fila.querySelector('.be-fila-usuario'));
     if(!principal) return null;
     const canal = fila.querySelector('.be-fila-canal').value;
@@ -2435,7 +2558,18 @@ async function cargarListaEstructuras(){
   BE_ESTRUCTURAS_TODAS = todas;
   renderListaEstructuras();
   renderTablaEstructurasCreadas();
+  renderTablaBalanceNivelCreados();
   cargarAlertasBalance();
+}
+
+// Vuelve Nivel/Tipo/Estructura a "Todos" de una -- sin esto había que
+// limpiar los 3 desplegables a mano, uno por uno.
+async function beBorrarFiltrosVer(){
+  document.getElementById('be-filtro-nivel').value = '';
+  document.getElementById('be-filtro-tipo').value = '';
+  BE_ACTIVA_ID = null;
+  document.getElementById('be-chart-card').classList.add('hidden');
+  await cargarListaEstructuras();
 }
 
 // Alertas de Balance: 'atraso' y 'promedio' aplican a CUALQUIER punto;
@@ -2520,14 +2654,18 @@ document.addEventListener('keydown', (ev)=>{
 function renderTablaEstructurasCreadas(){
   const body = document.getElementById('be-tabla-creadas-body');
   const conteo = document.getElementById('be-tabla-creadas-conteo');
-  if(!BE_ESTRUCTURAS_TODAS.length){
+  // 'Z' (Balance por Nivel de Tensión) tiene su PROPIA tabla en la pestaña
+  // de al lado -- ver renderTablaBalanceNivelCreados -- para no mezclar
+  // activos físicos con agregados de zona en la misma lista.
+  const todasSinZona = BE_ESTRUCTURAS_TODAS.filter(e => e.tipo !== 'Z');
+  if(!todasSinZona.length){
     body.innerHTML = `<tr><td colspan="6" class="be-tabla-vacio">Todavía no creaste ninguna estructura.</td></tr>`;
     if(conteo) conteo.textContent = '';
     return;
   }
   const texto = (document.getElementById('be-tabla-creadas-buscar')?.value || '').trim().toLowerCase();
-  const filas = texto ? BE_ESTRUCTURAS_TODAS.filter(e => e.nombre.toLowerCase().includes(texto)) : BE_ESTRUCTURAS_TODAS;
-  if(conteo) conteo.textContent = `(${filas.length} de ${BE_ESTRUCTURAS_TODAS.length})`;
+  const filas = texto ? todasSinZona.filter(e => e.nombre.toLowerCase().includes(texto)) : todasSinZona;
+  if(conteo) conteo.textContent = `(${filas.length} de ${todasSinZona.length})`;
   if(!filas.length){
     body.innerHTML = `<tr><td colspan="6" class="be-tabla-vacio">Ninguna estructura coincide con "${_mselEsc(texto)}".</td></tr>`;
     return;
@@ -2544,6 +2682,78 @@ function renderTablaEstructurasCreadas(){
         <span class="borrar" onclick="borrarEstructuraBalance(event, ${e.id}, '${e.nombre.replace(/'/g,"\\'")}')" title="Borrar">✕</span>
       </td>
     </tr>`).join('');
+}
+
+// Misma idea que renderTablaEstructurasCreadas, pero SOLO tipo='Z' -- la
+// tabla de "Balance por Nivel de Tensión".
+function renderTablaBalanceNivelCreados(){
+  const body = document.getElementById('bn-tabla-creados-body');
+  const conteo = document.getElementById('bn-tabla-creados-conteo');
+  const todasZ = (BE_ESTRUCTURAS_TODAS||[]).filter(e => e.tipo === 'Z');
+  if(!todasZ.length){
+    body.innerHTML = `<tr><td colspan="6" class="be-tabla-vacio">Todavía no creaste ningún balance por nivel de tensión.</td></tr>`;
+    if(conteo) conteo.textContent = '';
+    return;
+  }
+  const texto = (document.getElementById('bn-tabla-creados-buscar')?.value || '').trim().toLowerCase();
+  const filas = texto ? todasZ.filter(e => e.nombre.toLowerCase().includes(texto)) : todasZ;
+  if(conteo) conteo.textContent = `(${filas.length} de ${todasZ.length})`;
+  if(!filas.length){
+    body.innerHTML = `<tr><td colspan="6" class="be-tabla-vacio">Ninguno coincide con "${_mselEsc(texto)}".</td></tr>`;
+    return;
+  }
+  body.innerHTML = filas.map(e => `
+    <tr>
+      <td>${_mselEsc(e.nombre)}</td>
+      <td>Nivel ${e.nivel_tension}</td>
+      <td>${e.zona ? _mselEsc(e.zona) : '--'}</td>
+      <td>${_mselEsc(_beResumenLado(e.entradas))}</td>
+      <td>${_mselEsc(_beResumenLado(e.salidas))}</td>
+      <td style="white-space:nowrap">
+        <button type="button" class="be-editar-btn" onclick="event.stopPropagation(); abrirModalEditarEstructura(${e.id})" title="Editar">✎</button>
+        <span class="borrar" onclick="borrarEstructuraBalance(event, ${e.id}, '${e.nombre.replace(/'/g,"\\'")}')" title="Borrar">✕</span>
+      </td>
+    </tr>`).join('');
+}
+
+async function crearBalanceNivel(){
+  const msg = document.getElementById('bn-crear-msg');
+  msg.className = 'tm-modal-msg'; msg.textContent = '';
+
+  const nombre = document.getElementById('bn-nombre').value.trim();
+  const nivel_tension = parseInt(document.getElementById('bn-nivel').value);
+  const zonaVal = document.getElementById('bn-zona').value;
+  const zona = (nivel_tension===2 || nivel_tension===3) ? (zonaVal || null) : null;
+  const circuitoVal = document.getElementById('bn-circuito').value;
+  const circuito_id = circuitoVal ? parseInt(circuitoVal) : null;
+  const nota = document.getElementById('bn-nota').value.trim() || null;
+  const entradas = _beRecolectarFilas('entrada', 'bn');
+  const salidas = _beRecolectarFilas('salida', 'bn');
+
+  if(!nombre){ msg.className='tm-modal-msg err'; msg.textContent='Ponele un nombre.'; return; }
+  if(!entradas.length || entradas.some(m=>!m)){ msg.className='tm-modal-msg err'; msg.textContent='Alguna fila de Entrada no coincide con ningún usuario/medidor real -- elegilo del buscador.'; return; }
+  if(!salidas.length || salidas.some(m=>!m)){ msg.className='tm-modal-msg err'; msg.textContent='Alguna fila de Salida no coincide con ningún usuario/medidor real -- elegilo del buscador.'; return; }
+
+  if(DEMO){ msg.className='tm-modal-msg err'; msg.textContent='No disponible en modo demo (sin conexión al servidor).'; return; }
+
+  try{
+    await apiPost('/api/balances-estructura', {nombre, nivel_tension, tipo:'Z', zona, circuito_id, nota, entradas, salidas});
+    document.getElementById('bn-nombre').value = '';
+    document.getElementById('bn-nota').value = '';
+    document.getElementById('bn-circuito-buscar').value = '';
+    document.getElementById('bn-circuito').value = '';
+    document.getElementById('bn-zona').value = '';
+    document.getElementById('bn-filas-entrada').innerHTML = '';
+    document.getElementById('bn-filas-salida').innerHTML = '';
+    beAgregarFila('entrada', 'bn');
+    beAgregarFila('salida', 'bn');
+    msg.className = 'tm-modal-msg';
+    msg.textContent = `Listo: "${nombre}" creado.`;
+    await cargarListaEstructuras();
+  }catch(e){
+    msg.className = 'tm-modal-msg err';
+    msg.textContent = e.message || 'No se pudo crear el balance por nivel.';
+  }
 }
 
 async function crearEstructuraBalance(){
@@ -2723,14 +2933,11 @@ function _beInicializarFiltroTabla(datosChart){
 // rango y habilita el checkbox de límites en el gráfico.
 function _beRenderTipicosTablita(t){
   document.getElementById('be-tipicos-resultado').innerHTML = `
-    <table class="be-tipicos-tabla">
-      <tr><th>Promedio</th><th>Máximo</th><th>Mínimo</th><th>Días usados</th><th>Rango de referencia</th></tr>
-      <tr>
-        <td>${t.promedio.toFixed(2)}%</td><td>${t.maximo.toFixed(2)}%</td><td>${t.minimo.toFixed(2)}%</td>
-        <td>${t.dias_usados}/${t.dias_totales}</td><td>${labelMes(t.desde.slice(0,7))} a ${labelMes(t.hasta.slice(0,7))}</td>
-      </tr>
-    </table>
-    <div class="be-tipicos-leyenda">
+    <div style="font-size:11.5px;color:var(--text);line-height:1.5">
+      <b>${t.promedio.toFixed(2)}%</b> prom · <b>${t.maximo.toFixed(2)}%</b> máx · <b>${t.minimo.toFixed(2)}%</b> mín
+      <span style="color:var(--text3)">(${t.dias_usados}/${t.dias_totales} días -- ${labelMes(t.desde.slice(0,7))} a ${labelMes(t.hasta.slice(0,7))})</span>
+    </div>
+    <div class="be-tipicos-leyenda" style="margin-top:3px">
       <span><i class="sw sw-ajuste"></i>Ajuste manual</span>
       <span><i class="sw sw-atipico"></i>Fuera del rango típico</span>
     </div>`;
@@ -3909,6 +4116,9 @@ async function recargarModalEditarEstructura(){
   document.getElementById('beed-nota').value = datos.nota || '';
   _beCircuitoMostrarSeleccion('beed-circuito-buscar', 'beed-circuito', datos.circuito_id);
   _beActualizarEtiquetasEntradaSalida('beed-tipo', 'beed-etiqueta-entrada', 'beed-etiqueta-salida');
+  document.getElementById('beed-zona').innerHTML = '<option value="">Elegí una zona...</option>' + BE_ZONAS.map(z=>`<option value="${_mselEsc(z)}">${_mselEsc(z)}</option>`).join('');
+  document.getElementById('beed-zona').value = datos.zona || '';
+  _beActualizarVisibilidadZona('beed-nivel', 'beed-campo-zona', 'beed-zona');
 
   renderPuntosEditor('entrada', datos.entradas);
   renderPuntosEditor('salida', datos.salidas);
@@ -3926,8 +4136,9 @@ async function guardarMetadatosEstructura(){
   const circuitoVal = document.getElementById('beed-circuito').value;
   const circuito_id = circuitoVal ? parseInt(circuitoVal) : 0;  // 0 = desvincular
   const nota = document.getElementById('beed-nota').value.trim();
+  const zona = document.getElementById('beed-zona').value;
   try{
-    await apiPut(`/api/balances-estructura/${BE_EDITAR_ID}`, {nombre, nivel_tension, tipo, circuito_id, nota});
+    await apiPut(`/api/balances-estructura/${BE_EDITAR_ID}`, {nombre, nivel_tension, tipo, zona, circuito_id, nota});
     msg.textContent = 'Cambios guardados.';
     await cargarListaEstructuras();
     if(BE_ACTIVA_ID === BE_EDITAR_ID) verBalanceEstructura(BE_ACTIVA_ID);
