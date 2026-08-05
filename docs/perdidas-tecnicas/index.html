@@ -338,7 +338,7 @@ tfoot td:first-child{text-align:left}
 .be-tabla-creadas th.pto,.be-tabla-creadas td.pto{background:rgba(244,162,97,.12)}
 .be-tabla-creadas td.pto[data-editable]{cursor:cell;position:relative}
 .be-tabla-creadas td.pto[data-editable]:hover{outline:1px dashed var(--accent2)}
-.be-tabla-creadas td.pto.ajustado{background:rgba(255,193,7,.4) !important}
+.be-tabla-creadas td.pto.ajustado{background:rgba(255,193,7,.4) !important;color:#c62828 !important;font-weight:700}
 .be-tabla-creadas td.pto.ajustado::after{content:'';position:absolute;top:0;right:0;border-width:0 7px 7px 0;border-style:solid;border-color:transparent #c77700 transparent transparent}
 .be-tabla-creadas td.pto.celda-editando{padding:0;outline:2px solid var(--accent2)}
 .be-tabla-creadas td.pto.celda-editando input{width:100%;box-sizing:border-box;border:none;background:var(--bg2);color:var(--text);font:inherit;text-align:right;padding:7px 10px;font-family:ui-monospace,"Cascadia Code","SF Mono",Consolas,monospace}
@@ -817,7 +817,7 @@ tfoot td:first-child{text-align:left}
       </div>
       <div class="be-field">
         <label>Nivel de tensión</label>
-        <select id="be-nivel" onchange="beCargarCircuitos(this.value, document.getElementById('be-circuito'))">
+        <select id="be-nivel">
           <option value="1">Nivel 1</option>
           <option value="2">Nivel 2</option>
           <option value="3">Nivel 3</option>
@@ -835,7 +835,13 @@ tfoot td:first-child{text-align:left}
       </div>
       <div class="be-field">
         <label>Circuito de Pérdidas Técnicas (opcional)</label>
-        <select id="be-circuito"><option value="">Sin vincular</option></select>
+        <div class="be-buscador">
+          <input type="text" id="be-circuito-buscar" placeholder="Buscar por nombre o código..." autocomplete="off"
+            oninput="beBuscarCircuito(this)" onfocus="beBuscarCircuito(this)"
+            onkeydown="beBuscadorCircuitoTecla(event,this)" onblur="beCircuitoBlur(this)">
+          <div class="be-buscador-lista hidden"></div>
+        </div>
+        <input type="hidden" id="be-circuito">
       </div>
       <div class="be-field">
         <label>Nota (opcional)</label>
@@ -1002,7 +1008,7 @@ tfoot td:first-child{text-align:left}
       </div>
       <div class="be-field">
         <label>Nivel de tensión</label>
-        <select id="beed-nivel" onchange="beCargarCircuitos(this.value, document.getElementById('beed-circuito'))">
+        <select id="beed-nivel">
           <option value="1">Nivel 1</option>
           <option value="2">Nivel 2</option>
           <option value="3">Nivel 3</option>
@@ -1020,7 +1026,13 @@ tfoot td:first-child{text-align:left}
       </div>
       <div class="be-field">
         <label>Circuito de Pérdidas Técnicas (opcional)</label>
-        <select id="beed-circuito"><option value="">Sin vincular</option></select>
+        <div class="be-buscador">
+          <input type="text" id="beed-circuito-buscar" placeholder="Buscar por nombre o código..." autocomplete="off"
+            oninput="beBuscarCircuito(this)" onfocus="beBuscarCircuito(this)"
+            onkeydown="beBuscadorCircuitoTecla(event,this)" onblur="beCircuitoBlur(this)">
+          <div class="be-buscador-lista hidden"></div>
+        </div>
+        <input type="hidden" id="beed-circuito">
       </div>
       <div class="be-field">
         <label>Nota (opcional)</label>
@@ -1068,6 +1080,23 @@ tfoot td:first-child{text-align:left}
     <div class="tm-modal-botones">
       <button class="btn-theme" style="width:auto;padding:8px 16px;background:transparent;color:var(--text2);border:1px solid var(--border)" onclick="beCancelarAjuste()">Cancelar</button>
       <button class="btn-theme" style="width:auto;padding:8px 16px" onclick="beConfirmarAjuste()">Guardar ajuste</button>
+    </div>
+  </div>
+</div>
+
+<!-- ---------------- BALANCE DIARIO · QUITAR AJUSTE (rango acotado) ---------------- -->
+<div id="modal-be-borrar-ajuste" class="tm-modal-overlay hidden" onclick="if(event.target===this) beCancelarBorrarAjuste()">
+  <div class="tm-modal">
+    <div class="tm-modal-title">Quitar ajuste manual</div>
+    <div class="tm-modal-sub" id="beborrar-resumen"></div>
+    <div class="be-field" style="margin-top:12px">
+      <label>Quitar hasta (opcional -- vacío = hasta el final de los ajustes de esta columna)</label>
+      <input type="date" id="beborrar-hasta">
+    </div>
+    <div id="beborrar-msg" class="tm-modal-msg"></div>
+    <div class="tm-modal-botones">
+      <button class="btn-theme" style="width:auto;padding:8px 16px;background:transparent;color:var(--text2);border:1px solid var(--border)" onclick="beCancelarBorrarAjuste()">Cancelar</button>
+      <button class="btn-theme" style="width:auto;padding:8px 16px" onclick="beConfirmarBorrarAjuste()">Quitar ajuste</button>
     </div>
   </div>
 </div>
@@ -1729,15 +1758,71 @@ function irAUsuarioDesdeAlarma(usuarioId){
 const BE_NOMBRES_CANAL_CORTO = {canal1:'C1 kWhD', canal2:'C2 kVarhD', canal3:'C3 kWhR', canal4:'C4 kVarhR'};
 const BE_NOMBRES_TIPO = {PT:'Transformador', PB:'Barra', L:'Línea'};
 
-async function beCargarCircuitos(nivel, selectEl, seleccionActual){
-  const actual = seleccionActual!=null ? String(seleccionActual) : selectEl.value;
-  selectEl.innerHTML = '<option value="">Sin vincular</option>';
-  if(!nivel || DEMO) return;
-  let circuitos = [];
-  try{ circuitos = await apiGet(`/api/circuitos?nivel=${nivel}`); }catch(e){ circuitos = []; }
-  selectEl.innerHTML += circuitos.map(c=>
-    `<option value="${c.id}" ${String(c.id)===actual?'selected':''}>${_mselEsc(c.nombre || c.nemonico)}</option>`
-  ).join('');
+let BE_CIRCUITOS = [];  // TODOS los circuitos del operador -- sin filtrar por nivel de tensión, ver nota abajo
+
+// El circuito de Pérdidas Técnicas que se vincula a una estructura puede
+// vivir en un nivel de tensión DISTINTO al de la estructura (son bases de
+// datos separadas, cargadas de fuentes distintas) -- filtrar por nivel acá
+// ocultaba circuitos válidos. Se traen TODOS una sola vez y se buscan por
+// nombre/código, igual que el buscador de medidores de más abajo.
+async function _beCargarTodosCircuitos(){
+  try{ BE_CIRCUITOS = DEMO ? [] : await apiGet('/api/circuitos'); }catch(e){ BE_CIRCUITOS = []; }
+}
+
+function beBuscarCircuito(input){
+  const texto = input.value.trim().toLowerCase();
+  const lista = input.nextElementSibling;
+  if(!texto){ lista.classList.add('hidden'); lista.innerHTML=''; return; }
+  const coincidencias = BE_CIRCUITOS.filter(c =>
+    (c.nombre||'').toLowerCase().includes(texto) || (c.nemonico||'').toLowerCase().includes(texto)
+  ).slice(0,20);
+  lista.innerHTML = coincidencias.length
+    ? coincidencias.map((c,i)=>
+        `<div class="be-buscador-opt${i===0?' activa':''}" data-id="${c.id}" data-etiqueta="${_mselEsc(c.nombre||c.nemonico)}" onmousedown="beElegirCircuito(event,this)">${_mselEsc(c.nombre||c.nemonico)} <span style="color:var(--text3)">(Nivel ${c.nivel_tension})</span></div>`
+      ).join('')
+    : '<div class="be-buscador-vacio">Sin resultados</div>';
+  lista.classList.remove('hidden');
+}
+
+function beElegirCircuito(ev, opt){
+  ev.preventDefault();
+  const lista = opt.parentElement;
+  const input = lista.previousElementSibling;
+  input.value = opt.dataset.etiqueta;
+  const hidden = input.closest('.be-field').querySelector('input[type=hidden]');
+  if(hidden) hidden.value = opt.dataset.id;
+  lista.classList.add('hidden');
+}
+
+function beBuscadorCircuitoTecla(ev, input){
+  const lista = input.nextElementSibling;
+  if(lista.classList.contains('hidden')) return;
+  const opts = [...lista.querySelectorAll('.be-buscador-opt')];
+  if(!opts.length) return;
+  let idx = opts.findIndex(o=>o.classList.contains('activa'));
+  if(ev.key==='ArrowDown'){ ev.preventDefault(); idx=(idx+1+opts.length)%opts.length; }
+  else if(ev.key==='ArrowUp'){ ev.preventDefault(); idx=(idx-1+opts.length)%opts.length; }
+  else if(ev.key==='Enter'){ ev.preventDefault(); if(idx>=0) beElegirCircuito(ev, opts[idx]); return; }
+  else if(ev.key==='Escape'){ lista.classList.add('hidden'); return; }
+  else return;
+  opts.forEach(o=>o.classList.remove('activa'));
+  opts[idx].classList.add('activa');
+}
+
+// Si el usuario borra el texto a mano (sin elegir otra opción), se
+// interpreta como "desvincular" -- limpia también el id guardado.
+function beCircuitoBlur(input){
+  beBuscadorCerrarDiferido(input);
+  if(!input.value.trim()){
+    const hidden = input.closest('.be-field').querySelector('input[type=hidden]');
+    if(hidden) hidden.value = '';
+  }
+}
+
+function _beCircuitoMostrarSeleccion(inputId, hiddenId, circuitoId){
+  const circuito = circuitoId ? BE_CIRCUITOS.find(c=>String(c.id)===String(circuitoId)) : null;
+  document.getElementById(inputId).value = circuito ? (circuito.nombre || circuito.nemonico) : '';
+  document.getElementById(hiddenId).value = circuito ? circuito.id : '';
 }
 
 async function cargarBalancesEstructura(){
@@ -1745,6 +1830,7 @@ async function cargarBalancesEstructura(){
   // están los datos de entrada/salida, no hace falta duplicarlos.
   try{ BE_USUARIOS = DEMO ? [] : await apiGet('/api/telemedida/usuarios'); }catch(e){ BE_USUARIOS = []; }
   BE_PUNTOS = _beAgruparPorCustomerId(BE_USUARIOS);
+  await _beCargarTodosCircuitos();
 
   try{
     const meta = DEMO ? {meses:[]} : await apiGet('/api/telemedida/meta');
@@ -1757,7 +1843,8 @@ async function cargarBalancesEstructura(){
   beAgregarFila('entrada');
   beAgregarFila('salida');
   document.getElementById('be-nota').value = '';
-  await beCargarCircuitos(document.getElementById('be-nivel').value, document.getElementById('be-circuito'));
+  document.getElementById('be-circuito-buscar').value = '';
+  document.getElementById('be-circuito').value = '';
 
   await cargarListaEstructuras();
 }
@@ -2095,6 +2182,7 @@ async function crearEstructuraBalance(){
     document.getElementById('be-nombre').value = '';
     document.getElementById('be-nota').value = '';
     document.getElementById('be-tipo').value = '';
+    document.getElementById('be-circuito-buscar').value = '';
     document.getElementById('be-circuito').value = '';
     document.getElementById('be-filas-entrada').innerHTML = '';
     document.getElementById('be-filas-salida').innerHTML = '';
@@ -2340,19 +2428,33 @@ async function renderChartBalanceEstructura(datos, modo){
   // con varios meses a la vez se solaparían y ensucian el gráfico.
   const mesUnico = fechas.length>0 && fechas.every(f => f.slice(0,7)===fechas[0].slice(0,7));
 
+  // Días con ajuste manual (en entrada O salida) -- se marcan en rojo sobre
+  // la línea para que salte a la vista que ese punto no es 100% dato crudo
+  // del medidor. Ver _beMarcarPuntosAjustados: arma pointRadius/color por
+  // índice, en el mismo largo recortado (n-1) que el resto del gráfico.
+  const diasAjustadosFull = (datos.fechas||[]).map((f,i)=>
+    (datos.entradas||[]).some(col=>col.ajustes && col.ajustes[i]) ||
+    (datos.salidas||[]).some(col=>col.ajustes && col.ajustes[i]));
+  const diasAjustados = recortar(diasAjustadosFull);
+  const _puntosAjuste = colorNormal => ({
+    pointRadius: diasAjustados.map(a=>a?4:0),
+    pointBackgroundColor: diasAjustados.map(a=>a?'#e63946':colorNormal),
+    pointBorderColor: diasAjustados.map(a=>a?'#e63946':colorNormal),
+  });
+
   let datasets, yKwhTitulo, usaPct;
   if(modo===2){
     usaPct = false;
     yKwhTitulo = 'Entrada / Salida (kWh)';
     datasets = [
       {type:'line', label:'Entrada', data:entradaKwh, borderColor:'#06d6a0', backgroundColor:'transparent',
-        borderWidth:2, pointRadius:0, tension:.15, spanGaps:true, yAxisID:'yKwh', order:2},
+        borderWidth:2, tension:.15, spanGaps:true, yAxisID:'yKwh', order:2, ..._puntosAjuste('#06d6a0')},
       // fill:0 sombrea el área entre esta línea y "Entrada" (dataset 0) --
       // entrada y salida quedan tan pegadas en esta escala que la pérdida
       // (la diferencia entre ambas) es casi invisible como dos líneas
       // sueltas; como banda sombreada, se nota de inmediato.
       {type:'line', label:'Salida', data:salidaKwh, borderColor:'#ef476f', backgroundColor:'rgba(239,71,111,.18)',
-        borderWidth:2, pointRadius:0, tension:.15, spanGaps:true, yAxisID:'yKwh', order:2, fill:0},
+        borderWidth:2, tension:.15, spanGaps:true, yAxisID:'yKwh', order:2, fill:0, ..._puntosAjuste('#ef476f')},
     ];
   }else{
     usaPct = true;
@@ -2360,11 +2462,11 @@ async function renderChartBalanceEstructura(datos, modo){
     const tecnicaKwh = await _beTecnicaDiariaProrateada(fechas);
     datasets = [
       {type:'line', label:'Pérdida kWh', data:perdidaKwh, borderColor:'#3454d1', backgroundColor:'transparent',
-        borderWidth:2.5, pointRadius:0, tension:.15, spanGaps:true, yAxisID:'yKwh', order:1},
+        borderWidth:2.5, tension:.15, spanGaps:true, yAxisID:'yKwh', order:1, ..._puntosAjuste('#3454d1')},
       {type:'line', label:'Pérdida técnica (prorrateada)', data:tecnicaKwh, borderColor:'#00b4d8', backgroundColor:'transparent',
         borderWidth:2, pointRadius:0, tension:.15, spanGaps:true, yAxisID:'yKwh', order:1, borderDash:[2,2]},
       {type:'line', label:'Pérdida %', data:perdidaPct, borderColor:'#f4a261', backgroundColor:'transparent',
-        borderWidth:2, pointRadius:0, tension:.15, spanGaps:true, yAxisID:'yPct', order:1, borderDash:[6,3],
+        borderWidth:2, tension:.15, spanGaps:true, yAxisID:'yPct', order:1, borderDash:[6,3], ..._puntosAjuste('#f4a261'),
         datalabels:{display: mesUnico, anchor:'end', align:'top', offset:6,
           formatter:v=>v==null ? '' : v.toFixed(2)+'%', font:{size:11, weight:'800'}, color:'#f4a261',
           backgroundColor:'rgba(255,255,255,.9)', borderRadius:4, padding:{left:5,right:5,top:2,bottom:2}}},
@@ -2873,9 +2975,10 @@ function renderTablaDetalleBalance(datos){
     const usoBack = col.fuentes && col.fuentes[i] === 'back';
     const comentarioAjuste = col.ajustes ? col.ajustes[i] : null;
     const formulaAjuste = col.formulas ? col.formulas[i] : null;
+    const autorAjuste = col.autores ? col.autores[i] : null;
     const claseAjustado = comentarioAjuste ? ' ajustado' : '';
     const titulo = comentarioAjuste
-      ? `Ajuste manual (${formulaAjuste}): ${comentarioAjuste} -- doble clic, borrar y Enter para quitarlo desde acá.`
+      ? `Ajuste manual (${formulaAjuste})${autorAjuste ? ' por ' + autorAjuste : ''}: ${comentarioAjuste} -- doble clic, borrar y Enter para quitarlo desde acá.`
       : (usoBack ? 'Este día se usó el medidor de respaldo -- el principal no reportó.' : '');
     const manija = formulaAjuste ? '<div class="be-fill-handle" title="Arrastrar para repetir este ajuste en otros días"></div>' : '';
     let td = `<td class="num pto be-col-detalle${claseGrupo}${usoBack?' usoback':''}${claseAjustado}" data-editable="1" data-tipo="${col.tipo}" data-orden="${col.orden}" data-fecha="${fechas[i]}" data-letra="${col._letra}" data-formula="${formulaAjuste ? _mselEsc(formulaAjuste) : ''}"${titulo?` title="${_mselEsc(titulo)}"`:''}>${f2(col.valores[i])}${manija}</td>`;
@@ -3040,16 +3143,41 @@ function _beConfirmarEdicionInput(input){
   _beAbrirModalAjuste(`${td.dataset.tipo==='entrada'?'Entrada':'Salida'} -- ${td.dataset.fecha}: nuevo valor "${nuevo}"`);
 }
 
-async function beQuitarAjusteDesde(tipo, orden, desde){
-  if(!confirm(`¿Quitar el ajuste manual de esta columna desde el ${desde} en adelante? Esos días vuelven a mostrar el dato crudo del medidor (o del respaldo, si aplica).`)){
-    cargarTablaBalance();
+let BE_BORRAR_PENDIENTE = null;  // {tipo, orden, desde} -- esperando que se confirme el modal de borrado
+
+function beQuitarAjusteDesde(tipo, orden, desde){
+  BE_BORRAR_PENDIENTE = {tipo, orden, desde};
+  document.getElementById('beborrar-resumen').textContent =
+    `${tipo==='entrada'?'Entrada':'Salida'} -- quitar el ajuste manual desde el ${desde} en adelante. Esos días vuelven a mostrar el dato crudo del medidor (o del respaldo, si aplica).`;
+  document.getElementById('beborrar-hasta').value = '';
+  document.getElementById('beborrar-hasta').min = desde;
+  document.getElementById('beborrar-msg').className = 'tm-modal-msg';
+  document.getElementById('beborrar-msg').textContent = '';
+  document.getElementById('modal-be-borrar-ajuste').classList.remove('hidden');
+}
+
+function beCancelarBorrarAjuste(){
+  BE_BORRAR_PENDIENTE = null;
+  document.getElementById('modal-be-borrar-ajuste').classList.add('hidden');
+  cargarTablaBalance();
+}
+
+async function beConfirmarBorrarAjuste(){
+  if(!BE_BORRAR_PENDIENTE) return;
+  const {tipo, orden, desde} = BE_BORRAR_PENDIENTE;
+  const hasta = document.getElementById('beborrar-hasta').value;
+  const msg = document.getElementById('beborrar-msg');
+  try{
+    let url = `/api/balances-estructura/${BE_ACTIVA_ID}/ajustes?tipo=${tipo}&orden=${orden}&desde=${desde}`;
+    if(hasta) url += `&hasta=${hasta}`;
+    await apiDelete(url);
+  }catch(e){
+    msg.className = 'tm-modal-msg err';
+    msg.textContent = e.message || 'No se pudo quitar el ajuste.';
     return;
   }
-  try{
-    await apiDelete(`/api/balances-estructura/${BE_ACTIVA_ID}/ajustes?tipo=${tipo}&orden=${orden}&desde=${desde}`);
-  }catch(e){
-    alert(e.message || 'No se pudo quitar el ajuste.');
-  }
+  BE_BORRAR_PENDIENTE = null;
+  document.getElementById('modal-be-borrar-ajuste').classList.add('hidden');
   await verBalanceEstructura(BE_ACTIVA_ID);
 }
 
@@ -3201,7 +3329,7 @@ async function recargarModalEditarEstructura(){
   document.getElementById('beed-nivel').value = datos.nivel_tension;
   document.getElementById('beed-tipo').value = datos.tipo || '';
   document.getElementById('beed-nota').value = datos.nota || '';
-  await beCargarCircuitos(datos.nivel_tension, document.getElementById('beed-circuito'), datos.circuito_id);
+  _beCircuitoMostrarSeleccion('beed-circuito-buscar', 'beed-circuito', datos.circuito_id);
 
   renderPuntosEditor('entrada', datos.entradas);
   renderPuntosEditor('salida', datos.salidas);
