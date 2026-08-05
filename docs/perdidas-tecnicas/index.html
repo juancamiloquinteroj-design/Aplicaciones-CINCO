@@ -358,6 +358,13 @@ tfoot td:first-child{text-align:left}
 .be-tabla-creadas td.pto[data-editable]:hover{outline:1px dashed var(--accent2)}
 .be-tabla-creadas td.pto.ajustado{background:rgba(255,193,7,.4) !important;color:#c62828 !important;font-weight:700}
 .be-tabla-creadas td.pto.ajustado::after{content:'';position:absolute;top:0;right:0;border-width:0 7px 7px 0;border-style:solid;border-color:transparent #c77700 transparent transparent}
+/* El rojo oscuro (#c62828) se pensó para el amarillo pálido que queda al
+   mezclar el fondo ámbar semitransparente con un fondo de tarjeta BLANCO --
+   contra el fondo casi negro del tema oscuro, esa mezcla da un marrón muy
+   oscuro y el mismo rojo oscuro se vuelve casi invisible (texto oscuro
+   sobre fondo oscuro). En oscuro va un ámbar claro en vez de rojo oscuro. */
+[data-theme="dark"] .be-tabla-creadas td.pto.ajustado{color:#ffc107 !important}
+[data-theme="dark"] .be-tabla-creadas td.pto.ajustado::after{border-color:transparent #ffc107 transparent transparent}
 .be-tabla-creadas td.pto.celda-editando{padding:0;outline:2px solid var(--accent2)}
 .be-tabla-creadas td.pto.celda-editando input{width:100%;box-sizing:border-box;border:none;background:var(--bg2);color:var(--text);font:inherit;text-align:right;padding:7px 10px;font-family:ui-monospace,"Cascadia Code","SF Mono",Consolas,monospace}
 .be-fill-handle{position:absolute;bottom:-1px;right:-1px;width:8px;height:8px;background:var(--accent2);border:1px solid var(--bg2);cursor:crosshair;z-index:3}
@@ -1070,14 +1077,13 @@ tfoot td:first-child{text-align:left}
       <select id="be-selector-estructura" style="min-width:420px" onchange="verBalanceEstructura(parseInt(this.value))">
         <option value="">Elegí una estructura...</option>
       </select>
-      <div style="display:flex;align-items:center;gap:10px;margin-left:auto">
-        <div id="be-granularidad-bar" class="fbar hidden" style="margin:0">
-          <button type="button" class="be-modo-btn" data-granularidad="diario" onclick="beSeleccionarGranularidad('diario')">Diario</button>
-          <button type="button" class="be-modo-btn" data-granularidad="mensual" onclick="beSeleccionarGranularidad('mensual')">Mensual</button>
-          <button type="button" class="be-modo-btn" data-granularidad="anual" onclick="beSeleccionarGranularidad('anual')">Anual</button>
-        </div>
-        <button type="button" class="be-editar-btn" onclick="beBorrarFiltrosVer()" title="Volver el filtro de Nivel/Tipo/Estructura a 'Todos'">✕ Borrar filtros</button>
+      <span id="be-contador-estructuras" style="font-size:11px;font-weight:700;color:var(--text3);white-space:nowrap"></span>
+      <div id="be-granularidad-bar" class="fbar hidden" style="margin:0">
+        <button type="button" class="be-modo-btn" data-granularidad="diario" onclick="beSeleccionarGranularidad('diario')">Diario</button>
+        <button type="button" class="be-modo-btn" data-granularidad="mensual" onclick="beSeleccionarGranularidad('mensual')">Mensual</button>
+        <button type="button" class="be-modo-btn" data-granularidad="anual" onclick="beSeleccionarGranularidad('anual')">Anual</button>
       </div>
+      <button type="button" class="be-editar-btn" style="margin-left:auto" onclick="beBorrarFiltrosVer()" title="Volver el filtro de Nivel/Tipo/Estructura a 'Todos'">✕ Borrar filtros</button>
     </div>
     <div id="be-medidor-afecta-busqueda" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);max-width:460px;position:relative">
       <label style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text3);display:block;margin-bottom:5px">
@@ -2131,6 +2137,7 @@ function irAUsuarioDesdeAlarma(usuarioId){
 /* ---- Balances por Estructura ---- */
 const BE_NOMBRES_CANAL_CORTO = {canal1:'C1 kWhD', canal2:'C2 kVarhD', canal3:'C3 kWhR', canal4:'C4 kVarhR'};
 const BE_NOMBRES_TIPO = {PT:'Transformador', PB:'Barra', L:'Línea', Z:'Balance por Nivel de Tensión'};
+const BE_NOMBRES_TIPO_PLURAL = {PT:'Transformadores', PB:'Barras', L:'Líneas', Z:'Balances por Nivel de Tensión'};
 
 let BE_CIRCUITOS = [];  // TODOS los circuitos del operador -- sin filtrar por nivel de tensión, ver nota abajo
 
@@ -2602,6 +2609,9 @@ async function cargarListaEstructuras(){
   BE_ESTRUCTURAS = datos;
   BE_ESTRUCTURAS_TODAS = todas;
   renderListaEstructuras();
+  document.getElementById('be-contador-estructuras').textContent = tipo
+    ? `${datos.length} ${BE_NOMBRES_TIPO_PLURAL[tipo] || 'estructuras'}`
+    : `${datos.length} estructura${datos.length===1?'':'s'}`;
   // Si filtrar por Nivel deja como ÚNICO resultado de tipo 'Z' el Balance
   // por Nivel de Tensión de ese nivel (siempre pasa en Nivel 4, que no tiene
   // zona -- en Nivel 2/3 puede haber varios, uno por zona, y ahí no hay
@@ -3232,8 +3242,8 @@ async function _beTecnicaDiariaProrateada(fechas){
 async function renderChartBalanceEstructura(datos, modo){
   const ctx = document.getElementById('ch-balance-estructura');
   const dark = document.documentElement.getAttribute('data-theme')==='dark';
-  const tickC = dark ? '#8899b5' : '#4b5e7a';
-  const gridC = dark ? 'rgba(255,255,255,.06)' : 'rgba(0,0,0,.06)';
+  const tickC = dark ? '#aab8d1' : '#4b5e7a';
+  const gridC = dark ? 'rgba(255,255,255,.10)' : 'rgba(0,0,0,.06)';
   // Se grafica n-1: el ÚLTIMO día del rango casi siempre está incompleto
   // (todavía no terminó de reportar todas las horas), y eso dibuja una caída
   // engañosa al final -- se recorta solo en el GRÁFICO, la tabla de abajo
@@ -3418,23 +3428,28 @@ async function verComparacionEstructura(){
   const desdeInput = document.getElementById('be-comp-desde');
   const desdeMes = desdeInput.value;  // 'YYYY-MM'
   const hastaMes = document.getElementById('be-comp-hasta').value;
-  let datos = {vinculado:false};
+  let datos = {vinculado:false, meses:[]};
   try{
     const qs = new URLSearchParams();
     if(desdeMes) qs.set('desde', `${desdeMes}-01`);
     if(hastaMes) qs.set('hasta', `${hastaMes}-01`);
-    datos = DEMO ? {vinculado:false} : await apiGet(`/api/balances-estructura/${BE_ACTIVA_ID}/comparacion?${qs.toString()}`);
-  }catch(e){ datos = {vinculado:false}; }
+    datos = DEMO ? {vinculado:false, meses:[]} : await apiGet(`/api/balances-estructura/${BE_ACTIVA_ID}/comparacion?${qs.toString()}`);
+  }catch(e){ datos = {vinculado:false, meses:[]}; }
 
-  if(!datos.vinculado || !datos.meses.length){
+  // Sin circuito vinculado igual hay que mostrar el balance de ESTA
+  // estructura (pérdida/entrada/salida) -- solo se bloquea el gráfico si
+  // de verdad no hay NADA que mostrar (ni balance ni técnica).
+  if(!datos.meses.length){
     BE_COMPARACION_DATOS = null;
-    // El aviso de "no vinculado" y el ocultar el canvas solo aplican cuando
-    // el modo activo ES el histórico mensual -- si estamos en modo 1/2, esta
-    // llamada es solo para refrescar la tarjeta de "última pérdida técnica"
-    // y no debe tocar lo que se está mostrando arriba.
+    // El aviso y el ocultar el canvas solo aplican cuando el modo activo ES
+    // el histórico mensual -- si estamos en modo 1/2, esta llamada es solo
+    // para refrescar la tarjeta de "última pérdida técnica" y no debe tocar
+    // lo que se está mostrando arriba.
     if(BE_MODO_GRAFICO===3){
       const vacio = document.getElementById('be-comparacion-vacio');
-      vacio.textContent = 'Esta estructura no tiene un circuito de Pérdidas Técnicas vinculado -- entrá a "✎ Editar" para elegirlo y poder comparar.';
+      vacio.textContent = datos.vinculado
+        ? 'Todavía no hay datos de balance en este rango.'
+        : 'Esta estructura no tiene un circuito de Pérdidas Técnicas vinculado y tampoco hay datos de balance en este rango -- entrá a "✎ Editar" para elegir un circuito y poder comparar.';
       vacio.classList.remove('hidden');
       document.getElementById('be-chart-wrap').classList.add('hidden');
       if(chBalanceEstructura){ chBalanceEstructura.destroy(); chBalanceEstructura = null; }
@@ -3469,8 +3484,8 @@ async function verComparacionEstructura(){
 function renderChartComparacionEstructura(datos){
   const ctx = document.getElementById('ch-balance-estructura');
   const dark = document.documentElement.getAttribute('data-theme')==='dark';
-  const tickC = dark ? '#8899b5' : '#4b5e7a';
-  const gridC = dark ? 'rgba(255,255,255,.06)' : 'rgba(0,0,0,.06)';
+  const tickC = dark ? '#aab8d1' : '#4b5e7a';
+  const gridC = dark ? 'rgba(255,255,255,.10)' : 'rgba(0,0,0,.06)';
 
   // El botón de abajo (Pérdida vs. técnica/Entrada-Salida) decide cuál de
   // las dos familias de series arranca visible -- "Ver entrada"/"Ver
@@ -3613,8 +3628,8 @@ async function verMovilAnualEstructura(){
 function renderChartMovilAnual(datos){
   const ctx = document.getElementById('ch-balance-estructura');
   const dark = document.documentElement.getAttribute('data-theme')==='dark';
-  const tickC = dark ? '#8899b5' : '#4b5e7a';
-  const gridC = dark ? 'rgba(255,255,255,.06)' : 'rgba(0,0,0,.06)';
+  const tickC = dark ? '#aab8d1' : '#4b5e7a';
+  const gridC = dark ? 'rgba(255,255,255,.10)' : 'rgba(0,0,0,.06)';
 
   const mostrarEntradaSalida = BE_TIPO_GRAFICO === 'entrada_salida';
   document.getElementById('be-btn-entrada-comp').classList.toggle('activo', mostrarEntradaSalida);
@@ -4615,8 +4630,8 @@ const tmPluginCrosshair = {
 function renderTelemedida(datos, canales){
   const ctx = document.getElementById('ch-telemedida');
   const dark = document.documentElement.getAttribute('data-theme')==='dark';
-  const tickC = dark ? '#8899b5' : '#4b5e7a';
-  const gridC = dark ? 'rgba(255,255,255,.06)' : 'rgba(0,0,0,.06)';
+  const tickC = dark ? '#aab8d1' : '#4b5e7a';
+  const gridC = dark ? 'rgba(255,255,255,.10)' : 'rgba(0,0,0,.06)';
   const fechas = datos.fechas || [];
   const series = datos.series || [];
   const multiUsuario = series.length > 1;
@@ -5442,8 +5457,8 @@ function hexA(hex, alpha){
 function renderPrincipalUnNivel(){
   const ctx = document.getElementById('ch-principal');
   const dark = document.documentElement.getAttribute('data-theme')==='dark';
-  const tickC = dark ? '#8899b5' : '#4b5e7a';
-  const gridC = dark ? 'rgba(255,255,255,.06)' : 'rgba(0,0,0,.06)';
+  const tickC = dark ? '#aab8d1' : '#4b5e7a';
+  const gridC = dark ? 'rgba(255,255,255,.10)' : 'rgba(0,0,0,.06)';
 
   // Si hay UNA sola zona filtrada, la gráfica adopta SU color (el mismo
   // que se le asignó en Parametrización) -- así se confirma de un vistazo
@@ -5559,8 +5574,8 @@ function renderPrincipalUnNivel(){
 function renderPrincipalMultiNivel(){
   const ctx = document.getElementById('ch-principal');
   const dark = document.documentElement.getAttribute('data-theme')==='dark';
-  const tickC = dark ? '#8899b5' : '#4b5e7a';
-  const gridC = dark ? 'rgba(255,255,255,.06)' : 'rgba(0,0,0,.06)';
+  const tickC = dark ? '#aab8d1' : '#4b5e7a';
+  const gridC = dark ? 'rgba(255,255,255,.10)' : 'rgba(0,0,0,.06)';
 
   const datos = RESUMEN_POR_NIVEL || {meses:[], series:[]};
   const labels = datos.meses.map(labelMes);
@@ -5694,8 +5709,8 @@ async function cargarGraficasApiladas(){
 function renderApilado(key, canvasId, datos, formatEtiqueta, getColor){
   const ctx = document.getElementById(canvasId);
   const dark = document.documentElement.getAttribute('data-theme')==='dark';
-  const tickC = dark ? '#8899b5' : '#4b5e7a';
-  const gridC = dark ? 'rgba(255,255,255,.06)' : 'rgba(0,0,0,.06)';
+  const tickC = dark ? '#aab8d1' : '#4b5e7a';
+  const gridC = dark ? 'rgba(255,255,255,.10)' : 'rgba(0,0,0,.06)';
   const series = datos.series || [];
   const claves = series.map(s=>s.clave);
   const labels = (datos.meses || []).map(labelMes);
