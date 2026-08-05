@@ -952,7 +952,7 @@ tfoot td:first-child{text-align:left}
         <option value="">Elegí una estructura...</option>
       </select>
     </div>
-    <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);max-width:460px;position:relative">
+    <div id="be-medidor-afecta-busqueda" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);max-width:460px;position:relative">
       <label style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text3);display:block;margin-bottom:5px">
         ¿A qué estructura(s) afecta un medidor? -- el mismo punto puede estar en varias
       </label>
@@ -963,6 +963,20 @@ tfoot td:first-child{text-align:left}
         <div class="be-buscador-lista hidden"></div>
       </div>
       <div id="be-medidor-afecta-resultado"></div>
+    </div>
+    <!-- Con una estructura activa, buscar en TODO el operador sobra -- alcanza
+         con elegir de las medidas de ESTA estructura (lista corta) y ver a la
+         derecha, sin desperdiciar el ancho de la tarjeta. -->
+    <div id="be-medidor-afecta-dropdown" class="hidden" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);display:grid;grid-template-columns:minmax(220px,320px) 1fr;gap:18px;align-items:start">
+      <div>
+        <label style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text3);display:block;margin-bottom:5px">
+          ¿A qué otra(s) estructura(s) afecta esta medida?
+        </label>
+        <select id="be-medidor-afecta-select" onchange="_beMedidorAfectaSeleccionar(this.value)" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:7px;font-size:12.5px;color:var(--text);background:var(--bg)">
+          <option value="">Elegí una medida de esta estructura...</option>
+        </select>
+      </div>
+      <div id="be-medidor-afecta-resultado-dd"></div>
     </div>
   </div>
 
@@ -1038,7 +1052,7 @@ tfoot td:first-child{text-align:left}
 
   <div class="sec-hdr">
     <div class="sec-title">Alertas de Balance</div>
-    <div class="sec-sub">Medidores atrasados, con anomalías respecto a su consumo habitual, o donde tuvo que usarse el respaldo</div>
+    <div class="sec-sub">Medidores atrasados, con anomalías respecto a su consumo habitual, con ajustes manuales activos, o donde tuvo que usarse el respaldo</div>
   </div>
 
   <div class="card">
@@ -1149,6 +1163,29 @@ tfoot td:first-child{text-align:left}
     <div class="tm-modal-botones">
       <button class="btn-theme" style="width:auto;padding:8px 16px;background:transparent;color:var(--text2);border:1px solid var(--border)" onclick="beCancelarBorrarAjuste()">Cancelar</button>
       <button class="btn-theme" style="width:auto;padding:8px 16px" onclick="beConfirmarBorrarAjuste()">Quitar ajuste</button>
+    </div>
+  </div>
+</div>
+
+<!-- ---------------- BALANCE DIARIO · EXPORTAR CSV (rango a elegir) ---------------- -->
+<div id="modal-be-exportar" class="tm-modal-overlay hidden" onclick="if(event.target===this) beCancelarExportarCsv()">
+  <div class="tm-modal">
+    <div class="tm-modal-title">Exportar balance a CSV</div>
+    <div class="tm-modal-sub">Elegí el rango de meses a exportar -- no tiene que ser el mismo que estás viendo en la tabla.</div>
+    <div class="be-form-grid" style="margin-top:12px">
+      <div class="be-field">
+        <label>Desde</label>
+        <input type="month" id="beexp-desde">
+      </div>
+      <div class="be-field">
+        <label>Hasta</label>
+        <input type="month" id="beexp-hasta">
+      </div>
+    </div>
+    <div id="beexp-msg" class="tm-modal-msg"></div>
+    <div class="tm-modal-botones">
+      <button class="btn-theme" style="width:auto;padding:8px 16px;background:transparent;color:var(--text2);border:1px solid var(--border)" onclick="beCancelarExportarCsv()">Cancelar</button>
+      <button class="btn-theme" style="width:auto;padding:8px 16px" onclick="beConfirmarExportarCsv()">⬇ Exportar</button>
     </div>
   </div>
 </div>
@@ -1976,21 +2013,60 @@ function beBuscadorMedidorAfectaTecla(ev, input){
   opts[idx].classList.add('activa');
 }
 
-function _beMostrarEstructurasAfectadas(usuarioId){
-  const cont = document.getElementById('be-medidor-afecta-resultado');
+function _beMostrarEstructurasAfectadas(usuarioId, contenedorId, excluirEstructuraId){
+  const cont = document.getElementById(contenedorId || 'be-medidor-afecta-resultado');
   const filas = [];
   (BE_ESTRUCTURAS_TODAS||[]).forEach(e=>{
+    if(excluirEstructuraId!=null && e.id===excluirEstructuraId) return;
     (e.entradas||[]).forEach(m=>{ if(m.usuario_id===usuarioId) filas.push({estructura:e, tipo:'entrada', canal:m.canal}); });
     (e.salidas||[]).forEach(m=>{ if(m.usuario_id===usuarioId) filas.push({estructura:e, tipo:'salida', canal:m.canal}); });
   });
   if(!filas.length){
-    cont.innerHTML = `<div class="tm-alarma-vacio" style="padding:8px 0">"${_mselEsc(usuarioId)}" no está usado en ninguna estructura.</div>`;
+    cont.innerHTML = `<div class="tm-alarma-vacio" style="padding:8px 0">${excluirEstructuraId!=null ? 'No se usa en ninguna otra estructura.' : `"${_mselEsc(usuarioId)}" no está usado en ninguna estructura.`}</div>`;
     return;
   }
   cont.innerHTML = `<div style="font-size:11px;color:var(--text3);margin:8px 0 4px">Afecta ${filas.length} estructura(s):</div>`
     + filas.map(f=>`<div class="tm-alarma-item" style="margin-bottom:6px" onclick="verBalanceEstructura(${f.estructura.id})">
         <div class="nom">${_mselEsc(f.estructura.nombre)} <span style="color:var(--text3);font-weight:400">-- ${f.tipo} · ${_mselEsc(BE_NOMBRES_CANAL_CORTO[f.canal]||f.canal)}</span></div>
       </div>`).join('');
+}
+
+// Cuando hay una estructura activa, el buscador libre (para TODO el
+// operador) sobra -- se cambia a un <select> con las medidas de ESA
+// estructura nomás, y el resultado va al lado (ver HTML) para no
+// desperdiciar el ancho de la tarjeta.
+function _beMedidorAfectaOpciones(){
+  if(!BE_CONSUMO_DATOS) return [];
+  const vistos = new Set();
+  const opciones = [];
+  [['entradas','entrada'],['salidas','salida']].forEach(([campo,tipo])=>{
+    (BE_CONSUMO_DATOS[campo]||[]).forEach(p=>{
+      const key = p.usuario_id+'|'+p.canal;
+      if(vistos.has(key)) return;
+      vistos.add(key);
+      opciones.push({usuario_id:p.usuario_id, canal:p.canal, tipo});
+    });
+  });
+  return opciones;
+}
+
+function _beActualizarWidgetMedidorAfecta(){
+  const hayActiva = BE_ACTIVA_ID != null;
+  document.getElementById('be-medidor-afecta-busqueda').classList.toggle('hidden', hayActiva);
+  document.getElementById('be-medidor-afecta-dropdown').classList.toggle('hidden', !hayActiva);
+  if(!hayActiva) return;
+  const sel = document.getElementById('be-medidor-afecta-select');
+  const opciones = _beMedidorAfectaOpciones();
+  sel.innerHTML = '<option value="">Elegí una medida de esta estructura...</option>'
+    + opciones.map(o=>`<option value="${_mselEsc(o.usuario_id)}|${_mselEsc(o.canal)}">${_mselEsc(o.usuario_id)} · ${_mselEsc(BE_NOMBRES_CANAL_CORTO[o.canal]||o.canal)} (${o.tipo})</option>`).join('');
+  document.getElementById('be-medidor-afecta-resultado-dd').innerHTML = '';
+}
+
+function _beMedidorAfectaSeleccionar(valor){
+  const cont = document.getElementById('be-medidor-afecta-resultado-dd');
+  if(!valor){ cont.innerHTML = ''; return; }
+  const [usuarioId] = valor.split('|');
+  _beMostrarEstructurasAfectadas(usuarioId, 'be-medidor-afecta-resultado-dd', BE_ACTIVA_ID);
 }
 
 async function cargarBalancesEstructura(){
@@ -2266,13 +2342,15 @@ async function cargarAlertasBalance(){
     return;
   }
   const f2Alerta = v => v==null ? '--' : v.toLocaleString('es-CO',{maximumFractionDigits:0});
-  const BE_ALERTA_COLOR = {atraso:'#ef476f', respaldo_en_uso:'#f4a261', promedio:'#9d4edd'};
+  const BE_ALERTA_COLOR = {atraso:'#ef476f', respaldo_en_uso:'#f4a261', promedio:'#9d4edd', ajuste_manual:'#ffc107'};
   cont.innerHTML = alertas.map(a => {
     const etiqueta = `${a.usuario_id}/${a.canal.replace('canal','C')}`;
     const msg = a.tipo_alerta === 'atraso'
       ? (a.ultima_fecha ? `Sin reportar hace ${a.atraso_dias} días (último dato: ${a.ultima_fecha})` : 'Nunca reportó datos')
       : a.tipo_alerta === 'promedio'
       ? `Se salió del promedio el ${a.fecha}: ${f2Alerta(a.valor)} kWh (habitual: ${f2Alerta(a.media)} ± ${f2Alerta(a.desviacion)}, ${a.confianza_pct}% de confianza)`
+      : a.tipo_alerta === 'ajuste_manual'
+      ? `Ajuste manual en ${a.dias_ajustados} día(s) (el más reciente: ${a.ultima_fecha}${a.autor?', por '+a.autor:''}) -- ${a.comentario}`
       : `Usó el respaldo ${a.dias_usados} día(s) en el último mes (el más reciente: ${a.ultimo_dia_usado})`;
     const color = BE_ALERTA_COLOR[a.tipo_alerta] || '#f4a261';
     return `<div class="tm-alarma-item" onclick="mostrarVista('be-ver'); verBalanceEstructura(${a.estructura_id})">
@@ -2439,6 +2517,7 @@ async function verBalanceEstructura(id){
   if(!hasta && datos.fechas.length) document.getElementById('be-hasta').value = datos.fechas[datos.fechas.length-1];
 
   BE_CONSUMO_DATOS = datos;
+  _beActualizarWidgetMedidorAfecta();
   _beInicializarFiltroComparacion();
   // Se pide SIEMPRE (sin importar el modo activo) porque la tarjeta "última
   // pérdida técnica" depende de BE_COMPARACION_DATOS -- si el modo activo es
@@ -2525,13 +2604,50 @@ async function cargarTablaBalance(){
   renderTablaDetalleBalance(datos);
 }
 
-// Exporta a CSV exactamente lo que hay cargado en "Balance diario" en este
-// momento (respeta el rango de la tabla, no el del gráfico) -- incluye
-// siempre el detalle completo por medidor (con Respaldo/Dif si aplica),
-// esté o no desplegado en pantalla.
+// El botón "Exportar CSV" ya NO exporta directo lo que se ve en pantalla --
+// abre un modal para elegir el rango a mano, prefill con el de la tabla
+// pero editable, porque el rango que interesa exportar no siempre es el
+// mismo que se está mirando (ej. querés un CSV de todo el año aunque la
+// tabla esté mostrando solo el último mes).
 function beExportarCsv(){
-  const datos = BE_TABLA_DATOS;
-  if(!datos || !(datos.fechas||[]).length){ alert('Todavía no hay datos cargados en la tabla para exportar.'); return; }
+  if(!BE_ACTIVA_ID){ alert('Elegí una estructura primero.'); return; }
+  document.getElementById('beexp-desde').value = document.getElementById('be-tabla-desde').value;
+  document.getElementById('beexp-hasta').value = document.getElementById('be-tabla-hasta').value;
+  document.getElementById('beexp-msg').className = 'tm-modal-msg';
+  document.getElementById('beexp-msg').textContent = '';
+  document.getElementById('modal-be-exportar').classList.remove('hidden');
+}
+
+function beCancelarExportarCsv(){
+  document.getElementById('modal-be-exportar').classList.add('hidden');
+}
+
+async function beConfirmarExportarCsv(){
+  const msg = document.getElementById('beexp-msg');
+  const desdeMes = document.getElementById('beexp-desde').value;
+  const hastaMes = document.getElementById('beexp-hasta').value;
+  if(!desdeMes || !hastaMes){ msg.className='tm-modal-msg err'; msg.textContent='Elegí desde y hasta qué mes exportar.'; return; }
+  if(desdeMes > hastaMes){ msg.className='tm-modal-msg err'; msg.textContent='"Desde" no puede ser posterior a "Hasta".'; return; }
+
+  const qs = new URLSearchParams();
+  qs.set('desde', `${desdeMes}-01`);
+  const [y,m] = hastaMes.split('-').map(Number);
+  qs.set('hasta', `${hastaMes}-${String(new Date(y,m,0).getDate()).padStart(2,'0')}`);
+
+  msg.className = 'tm-modal-msg';
+  msg.textContent = 'Generando...';
+  let datos;
+  try{ datos = await apiGet(`/api/balances-estructura/${BE_ACTIVA_ID}/consumo?${qs.toString()}`); }
+  catch(e){ msg.className='tm-modal-msg err'; msg.textContent = e.message || 'No se pudo traer el balance de ese rango.'; return; }
+  if(!(datos.fechas||[]).length){ msg.className='tm-modal-msg err'; msg.textContent='No hay datos en ese rango.'; return; }
+
+  _beGenerarYDescargarCsv(datos);
+  document.getElementById('modal-be-exportar').classList.add('hidden');
+}
+
+// Arma el CSV e inicia la descarga -- incluye siempre el detalle completo
+// por medidor (con Respaldo/Dif si aplica), esté o no desplegado en pantalla.
+function _beGenerarYDescargarCsv(datos){
   const columnas = [
     ...(datos.entradas||[]).map(p=>({...p, tipo:'Entrada'})),
     ...(datos.salidas||[]).map(p=>({...p, tipo:'Salida'})),
