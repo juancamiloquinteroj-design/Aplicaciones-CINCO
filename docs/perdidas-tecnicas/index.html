@@ -770,6 +770,27 @@ tfoot td:first-child{text-align:left}
     </div>
   </div>
 
+  <div class="card">
+    <div class="card-title">Datos típicos de estructuras</div>
+    <div class="card-sub">Promedio, máximo y mínimo "típico" de Pérdida (%) de cada estructura en el rango elegido -- se depuran los días atípicos con Z-Score robusto (mediana + MAD) antes de calcular, para que un solo día rarísimo no distorsione el resultado.</div>
+    <div class="param-confianza-row" style="flex-wrap:wrap">
+      <label style="font-size:11px;color:var(--text3)">Desde</label>
+      <input type="month" id="param-tipicos-desde">
+      <label style="font-size:11px;color:var(--text3)">Hasta</label>
+      <input type="month" id="param-tipicos-hasta">
+      <label style="font-size:11px;color:var(--text3)">Umbral Z-Score</label>
+      <input type="number" id="param-tipicos-umbral" value="3.0" min="0.1" step="0.1" style="max-width:80px" title="Qué tan estricto es el filtro de días atípicos -- más alto = depura menos días">
+      <button class="btn-theme" style="width:auto;padding:7px 16px" onclick="calcularDatosTipicos()">Calcular</button>
+    </div>
+    <div id="param-tipicos-msg" class="tm-modal-msg"></div>
+    <div class="be-tabla-scroll" style="margin-top:10px">
+      <table class="be-tabla-creadas" id="param-tipicos-tabla" style="display:none">
+        <thead><tr><th>Estructura</th><th>Promedio (%)</th><th>Máximo (%)</th><th>Mínimo (%)</th><th>Días usados</th></tr></thead>
+        <tbody id="param-tipicos-body"></tbody>
+      </table>
+    </div>
+  </div>
+
 </div>
 <!-- fin vista-parametrizacion -->
 
@@ -1566,6 +1587,19 @@ async function cargarParametrizacion(){
   renderParametrizacionZonas(datos);
   await cargarConfianzaEstadistica();
   await cargarDiasAtrasoBalance();
+
+  // Datos típicos -- arranca con el último mes cerrado, el rango más común
+  // para "cómo se comportó normalmente esta estructura" (no se recalcula
+  // solo, hace falta tocar "Calcular").
+  const desdeInput = document.getElementById('param-tipicos-desde');
+  const hastaInput = document.getElementById('param-tipicos-hasta');
+  if(!desdeInput.value || !hastaInput.value){
+    const hoy = new Date();
+    const mesPasado = new Date(hoy.getFullYear(), hoy.getMonth()-1, 1);
+    const valor = `${mesPasado.getFullYear()}-${String(mesPasado.getMonth()+1).padStart(2,'0')}`;
+    desdeInput.value = valor;
+    hastaInput.value = valor;
+  }
 }
 
 async function cargarDiasAtrasoBalance(){
@@ -1595,6 +1629,59 @@ async function guardarDiasAtrasoBalance(v){
   }catch(e){
     st.textContent = '⚠'; st.title = e.message || 'Error al guardar';
   }
+}
+
+// Datos típicos de estructuras -- Z-Score robusto (mediana + MAD), misma
+// metodología que el script de referencia en Python. Se pide explícito con
+// el botón "Calcular" (no al entrar a Parametrización): recorre TODAS las
+// estructuras del operador y puede tardar varios segundos, a diferencia
+// del resto de esta página que es instantáneo -- por eso el timeout más
+// largo (30s en vez de los 2.5s por defecto de apiGet).
+async function calcularDatosTipicos(){
+  const msg = document.getElementById('param-tipicos-msg');
+  const tabla = document.getElementById('param-tipicos-tabla');
+  const desdeMes = document.getElementById('param-tipicos-desde').value;
+  const hastaMes = document.getElementById('param-tipicos-hasta').value;
+  const umbral = parseFloat(document.getElementById('param-tipicos-umbral').value);
+
+  if(!desdeMes || !hastaMes){ msg.className='tm-modal-msg err'; msg.textContent='Elegí desde y hasta qué mes calcular.'; return; }
+  if(desdeMes > hastaMes){ msg.className='tm-modal-msg err'; msg.textContent='"Desde" no puede ser posterior a "Hasta".'; return; }
+  if(isNaN(umbral) || umbral<=0){ msg.className='tm-modal-msg err'; msg.textContent='El umbral debe ser un número mayor a 0.'; return; }
+  if(DEMO){ msg.className='tm-modal-msg err'; msg.textContent='No disponible en modo demo (sin conexión al servidor).'; return; }
+
+  const [hy,hm] = hastaMes.split('-').map(Number);
+  const desde = `${desdeMes}-01`;
+  const hasta = `${hastaMes}-${String(new Date(hy,hm,0).getDate()).padStart(2,'0')}`;
+
+  tabla.style.display = 'none';
+  msg.className = 'tm-modal-msg';
+  msg.textContent = 'Calculando... recorre todas las estructuras, puede tardar varios segundos.';
+
+  let datos;
+  try{
+    datos = await apiGet(`/api/balances-estructura/datos-tipicos?desde=${desde}&hasta=${hasta}&umbral=${umbral}`, 30000);
+  }catch(e){
+    msg.className = 'tm-modal-msg err';
+    msg.textContent = e.message || 'No se pudo calcular.';
+    return;
+  }
+
+  if(!datos.resultados.length){
+    msg.className = 'tm-modal-msg';
+    msg.textContent = 'Sin datos suficientes en ese rango.';
+    return;
+  }
+
+  msg.className = 'tm-modal-msg';
+  msg.textContent = `${datos.resultados.length} estructura(s) calculada(s).`;
+  document.getElementById('param-tipicos-body').innerHTML = datos.resultados.map(r => `<tr>
+    <td>${_mselEsc(r.nombre)}</td>
+    <td class="num">${r.promedio.toFixed(2)}%</td>
+    <td class="num">${r.maximo.toFixed(2)}%</td>
+    <td class="num">${r.minimo.toFixed(2)}%</td>
+    <td class="num">${r.dias_usados} / ${r.dias_totales}</td>
+  </tr>`).join('');
+  tabla.style.display = '';
 }
 
 async function cargarConfianzaEstadistica(){
@@ -4163,9 +4250,9 @@ function renderTelemedida(datos, canales){
 
 function authHeaders(){ return TOKEN ? {'Authorization':`Bearer ${TOKEN}`} : {}; }
 
-async function apiGet(path){
+async function apiGet(path, timeoutMs){
   if(DEMO) return demoGet(path);
-  const res = await fetchConTimeout(`${API_BASE_URL}${path}`, {headers: authHeaders()});
+  const res = await fetchConTimeout(`${API_BASE_URL}${path}`, {headers: authHeaders()}, timeoutMs);
   if(!res.ok) throw new Error('Error consultando la API');
   return res.json();
 }
