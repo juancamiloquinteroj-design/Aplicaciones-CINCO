@@ -402,6 +402,18 @@ tfoot td:first-child{text-align:left}
 .be-modo-btn{padding:7px 16px;border:1px solid var(--border);border-radius:8px;background:transparent;color:var(--text2);font-size:12px;font-weight:700;cursor:pointer}
 .be-modo-btn:hover{border-color:var(--accent);color:var(--accent)}
 .be-modo-btn.activo{background:var(--accent);border-color:var(--accent);color:#fff}
+/* Diagrama Unifilar -- símbolos SVG (currentColor toma el color de estas
+   clases, así los íconos ya son theme-aware sin nada extra). */
+.bd-elemento{color:var(--text2);cursor:move}
+.bd-elemento:hover{color:var(--accent)}
+.bd-elemento.seleccionada{color:var(--accent)}
+.bd-elemento.conectando{color:var(--purple)}
+.bd-conexion{stroke:var(--text3);stroke-width:2;cursor:pointer}
+.bd-conexion:hover{stroke:var(--accent2)}
+.bd-conexion.seleccionada{stroke:var(--accent);stroke-width:3}
+.bd-etiqueta{font-size:10px;fill:var(--text2);font-weight:600;user-select:none}
+.bd-badge{font-size:10px;fill:var(--green);font-weight:700;user-select:none}
+.bd-badge-vacio{fill:var(--text3);font-weight:400;font-style:italic}
 .be-comparacion-vacio{padding:20px;text-align:center;color:var(--text3);font-size:12px;border:1px dashed var(--border);border-radius:8px}
 .be-resumen-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin:16px 0}
 .be-resumen-tile{border:1px solid var(--border);border-radius:8px;padding:10px 12px;background:var(--bg)}
@@ -561,6 +573,7 @@ tfoot td:first-child{text-align:left}
     <button class="sidebar-sublink" data-vista="be-crear" onclick="mostrarVista('be-crear')">➕ Crear Estructura</button>
     <button class="sidebar-sublink" data-vista="be-ver" onclick="mostrarVista('be-ver')">📊 Ver Balance</button>
     <button class="sidebar-sublink" data-vista="be-alertas" onclick="mostrarVista('be-alertas')">🔔 Alertas de Balance</button>
+    <button class="sidebar-sublink" data-vista="be-diagramas" onclick="mostrarVista('be-diagramas')">🗺️ Diagrama Unifilar</button>
   </div>
   <div class="sidebar-proximamente">Más módulos próximamente</div>
   <div class="sidebar-acceso" id="sidebar-acceso"></div>
@@ -1214,6 +1227,129 @@ tfoot td:first-child{text-align:left}
 </div>
 <!-- fin vista-be-alertas -->
 
+<!-- ---------------- BALANCES POR ESTRUCTURA · DIAGRAMA UNIFILAR (lista) ---------------- -->
+<div id="vista-be-diagramas" class="vista-modulo hidden">
+
+  <div class="sec-hdr">
+    <div class="sec-title">Diagrama Unifilar</div>
+    <div class="sec-sub">Dibujá la topología (transformadores, líneas, barras, nodos, cargas, generadores) y vinculá cada símbolo con su balance -- estilo unifilar</div>
+  </div>
+
+  <div class="card">
+    <div class="fbar" style="margin-bottom:14px">
+      <input type="text" id="bd-nombre-nuevo" placeholder="Nombre del nuevo diagrama, ej. Subestación Pitalito" style="flex:1;min-width:260px;padding:8px 10px;border:1px solid var(--border);border-radius:7px;font-size:12.5px;color:var(--text);background:var(--bg)">
+      <button class="btn-theme" style="width:auto;padding:9px 20px;background:var(--accent);color:#fff;border-color:var(--accent)" onclick="crearDiagramaUnifilar()">+ Nuevo diagrama</button>
+    </div>
+    <div id="bd-msg" class="tm-modal-msg"></div>
+    <div class="be-tabla-scroll">
+      <table class="be-tabla-creadas">
+        <thead><tr><th>Nombre</th><th>Elementos</th><th></th></tr></thead>
+        <tbody id="bd-lista-body"><tr><td colspan="3" class="be-tabla-vacio">Todavía no creaste ningún diagrama.</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+<!-- fin vista-be-diagramas -->
+
+<!-- ---------------- BALANCES POR ESTRUCTURA · DIAGRAMA UNIFILAR (editor) ---------------- -->
+<div id="vista-be-diagrama-editor" class="vista-modulo hidden">
+
+  <div class="sec-hdr">
+    <div class="sec-title" id="bd-editor-titulo">Diagrama</div>
+    <div class="sec-sub"><button type="button" class="be-editar-btn" onclick="mostrarVista('be-diagramas')">← Volver a Diagramas</button></div>
+  </div>
+
+  <div class="card">
+    <div class="fbar" style="justify-content:space-between;margin-bottom:10px;flex-wrap:wrap">
+      <div class="fbar" style="margin:0">
+        <button type="button" class="be-modo-btn" data-granularidad="diario" onclick="bdSeleccionarGranularidad('diario')">Diario</button>
+        <button type="button" class="be-modo-btn" data-granularidad="mensual" onclick="bdSeleccionarGranularidad('mensual')">Mensual</button>
+        <button type="button" class="be-modo-btn" data-granularidad="anual" onclick="bdSeleccionarGranularidad('anual')">Anual</button>
+      </div>
+      <div class="fbar" style="margin:0">
+        <button type="button" class="be-editar-btn" id="bd-btn-editar-sel" disabled onclick="bdEditarSeleccion()">✎ Vincular/Editar</button>
+        <button type="button" class="be-editar-btn" id="bd-btn-borrar-sel" disabled onclick="bdBorrarSeleccion()">🗑 Borrar</button>
+        <button type="button" class="be-editar-btn" id="bd-btn-conectar" onclick="bdToggleModoConectar()">🔌 Conectar</button>
+      </div>
+    </div>
+    <div class="fbar" style="margin-bottom:10px">
+      <button type="button" class="be-modo-btn" onclick="bdAgregarElemento('transformador2')" title="Transformador bidevanado">Trafo 2</button>
+      <button type="button" class="be-modo-btn" onclick="bdAgregarElemento('transformador3')" title="Transformador tridevanado">Trafo 3</button>
+      <button type="button" class="be-modo-btn" onclick="bdAgregarElemento('linea')">Línea</button>
+      <button type="button" class="be-modo-btn" onclick="bdAgregarElemento('barra')">Barra</button>
+      <button type="button" class="be-modo-btn" onclick="bdAgregarElemento('nodo')">Nodo</button>
+      <button type="button" class="be-modo-btn" onclick="bdAgregarElemento('carga')">Carga</button>
+      <button type="button" class="be-modo-btn" onclick="bdAgregarElemento('generador')">Generador</button>
+    </div>
+    <div id="bd-editor-msg" class="tm-modal-msg" style="margin-bottom:8px"></div>
+    <div id="bd-lienzo-wrap" style="position:relative;border:1px solid var(--border);border-radius:8px;overflow:auto;background:var(--bg2);height:620px">
+      <svg id="bd-svg" width="2200" height="1500" style="display:block" onmousedown="bdClickFondo()"></svg>
+    </div>
+  </div>
+
+</div>
+<!-- fin vista-be-diagrama-editor -->
+
+<!-- ---------------- MODAL · Vincular/crear estructura desde el diagrama ---------------- -->
+<div id="modal-bd-vincular" class="tm-modal-overlay hidden" onclick="if(event.target===this) bdCerrarModalVincular()">
+  <div class="tm-modal">
+    <div class="tm-modal-title">Vincular medida</div>
+    <div class="tm-modal-sub">Elegí una estructura que ya exista o creá una nueva -- ahí es donde se van a asignar los puntos de entrada/salida de este símbolo.</div>
+
+    <div style="margin-top:14px">
+      <label style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text3);display:block;margin-bottom:5px">Vincular una estructura existente</label>
+      <div class="be-buscador">
+        <input type="text" id="bd-vincular-buscar" placeholder="Buscar por nombre..." autocomplete="off"
+          oninput="bdBuscarEstructuraVincular(this)" onfocus="bdBuscarEstructuraVincular(this)"
+          onkeydown="bdBuscadorVincularTecla(event,this)" onblur="beBuscadorCerrarDiferido(this)">
+        <div class="be-buscador-lista hidden"></div>
+      </div>
+    </div>
+
+    <div class="be-editar-sec">
+      <div class="be-editar-sec-titulo">...o creá una estructura nueva</div>
+      <div class="be-form-grid" style="margin-top:10px">
+        <div class="be-field">
+          <label>Nombre</label>
+          <input type="text" id="bde-nombre" placeholder="Ej. PT 115/34.5 kV Trafo 1">
+        </div>
+        <div class="be-field">
+          <label>Nivel de tensión</label>
+          <select id="bde-nivel">
+            <option value="1">Nivel 1</option>
+            <option value="2">Nivel 2</option>
+            <option value="3">Nivel 3</option>
+            <option value="4">Nivel 4</option>
+          </select>
+        </div>
+      </div>
+      <div class="be-entrada-salida-grid">
+        <div class="be-medidores-bloque" id="bde-bloque-entrada">
+          <div class="be-medidores-hdr">
+            <span>Entrada(s) -- se suman entre sí</span>
+            <button type="button" class="be-btn-agregar" onclick="beAgregarFila('entrada','bde')">+ Agregar entrada</button>
+          </div>
+          <div id="bde-filas-entrada"></div>
+        </div>
+        <div class="be-medidores-bloque" id="bde-bloque-salida">
+          <div class="be-medidores-hdr">
+            <span>Salida(s) -- se suman entre sí</span>
+            <button type="button" class="be-btn-agregar" onclick="beAgregarFila('salida','bde')">+ Agregar salida</button>
+          </div>
+          <div id="bde-filas-salida"></div>
+        </div>
+      </div>
+      <div id="bde-msg" class="tm-modal-msg"></div>
+      <button class="btn-theme" style="width:auto;padding:9px 20px;background:var(--accent);color:#fff;border-color:var(--accent);margin-top:10px" onclick="bdCrearYVincular()">Crear y vincular</button>
+    </div>
+
+    <div class="tm-modal-botones">
+      <button class="btn-theme" style="width:auto;padding:8px 16px" onclick="bdCerrarModalVincular()">Cerrar</button>
+    </div>
+  </div>
+</div>
+
 <div id="modal-be-editar" class="tm-modal-overlay hidden" onclick="if(event.target===this) cerrarModalEditarEstructura()">
   <div class="tm-modal be-editar-modal">
     <div class="tm-modal-title">Editar estructura</div>
@@ -1622,7 +1758,7 @@ async function mostrarVista(nombre){
   // cualquiera de las tres, se resalta el padre y se despliega el submenú
   // (si no, entrar por la tarjeta de Inicio dejaría el submenú cerrado
   // aunque ya estés adentro de una de sus vistas).
-  const esBalancesEstructura = nombre==='be-crear' || nombre==='be-ver' || nombre==='be-alertas';
+  const esBalancesEstructura = nombre==='be-crear' || nombre==='be-ver' || nombre==='be-alertas' || nombre==='be-diagramas' || nombre==='be-diagrama-editor';
   document.getElementById('sidebar-be-padre').classList.toggle('activa', esBalancesEstructura);
   if(esBalancesEstructura) abrirSubmenuBE();
 
@@ -1653,6 +1789,9 @@ async function mostrarVista(nombre){
   // día), a diferencia del resto de Balances por Estructura.
   if(nombre==='be-alertas'){
     await cargarAlertasBalance();
+  }
+  if(nombre==='be-diagramas'){
+    await cargarListaDiagramas();
   }
 }
 
@@ -2581,6 +2720,422 @@ function _beRecolectarFilas(tipo, prefijo='be'){
   });
 }
 
+/* ==================== DIAGRAMA UNIFILAR ====================
+   Capa VISUAL sobre estructuras_balance que ya existen -- cada símbolo
+   dibujado apunta (opcionalmente) a una EstructuraBalance real, el balance
+   que se muestra es el MISMO cálculo de siempre (/api/diagramas/.../balances
+   en el backend reusa _consumo_interno). Asignar los puntos de entrada/
+   salida de un símbolo se hace con el modal de Editar que ya existe -- el
+   lienzo solo dibuja y conecta. */
+let BD_DIAGRAMAS = [];
+let BD_DIAGRAMA_ACTIVO = null;
+let BD_ELEMENTOS = [];
+let BD_CONEXIONES = [];
+let BD_BALANCES = {};        // elemento_id -> {entrada,salida,perdida_pct,valor_principal}
+let BD_GRANULARIDAD = 'diario';
+let BD_MODO_CONECTAR = false;
+let BD_CONECTAR_ORIGEN = null;
+let BD_SELECCION = null;     // {tipo:'elemento'|'conexion', id}
+let BD_ELEMENTO_VINCULANDO = null;
+let _bdArrastre = null;
+let _bdMovio = false;
+
+const BD_TIPO_A_ESTRUCTURA = {
+  transformador2:'PT', transformador3:'PT3', linea:'L', barra:'PB', nodo:'PB', carga:'CARGA', generador:'GEN',
+};
+// Ancho/alto de cada símbolo -- para dibujarlo y para calcular dónde
+// "toca" un cable el borde (ver _bdPuntoBorde). "Nodo" es a propósito un
+// círculo chico y "Barra" un rectángulo angosto -- son lo mismo por detrás
+// (tipo='PB'), solo cambia el dibujo.
+const BD_TAMANO = {
+  transformador2:{w:70,h:44}, transformador3:{w:80,h:56}, linea:{w:26,h:20},
+  barra:{w:110,h:16}, nodo:{w:22,h:22}, carga:{w:34,h:34}, generador:{w:44,h:44},
+};
+
+async function cargarListaDiagramas(){
+  const body = document.getElementById('bd-lista-body');
+  try{ BD_DIAGRAMAS = DEMO ? [] : await apiGet('/api/diagramas'); }
+  catch(e){ BD_DIAGRAMAS = []; }
+  if(!BD_DIAGRAMAS.length){
+    body.innerHTML = '<tr><td colspan="3" class="be-tabla-vacio">Todavía no creaste ningún diagrama.</td></tr>';
+    return;
+  }
+  body.innerHTML = BD_DIAGRAMAS.map(d => `
+    <tr style="cursor:pointer" onclick="bdAbrirEditor(${d.id})">
+      <td>${_mselEsc(d.nombre)}</td>
+      <td>${d.cantidad_elementos}</td>
+      <td onclick="event.stopPropagation()">
+        <button type="button" class="be-editar-btn" onclick='bdRenombrarDiagrama(${d.id}, ${JSON.stringify(d.nombre)})'>✎</button>
+        <span class="borrar" onclick='bdBorrarDiagrama(${d.id}, ${JSON.stringify(d.nombre)})'>🗑</span>
+      </td>
+    </tr>`).join('');
+}
+
+async function crearDiagramaUnifilar(){
+  const input = document.getElementById('bd-nombre-nuevo');
+  const msg = document.getElementById('bd-msg');
+  const nombre = input.value.trim();
+  msg.className = 'tm-modal-msg';
+  if(!nombre){ msg.className='tm-modal-msg err'; msg.textContent='Elegí un nombre para el diagrama.'; return; }
+  try{
+    const d = await apiPost('/api/diagramas', {nombre});
+    input.value = '';
+    await cargarListaDiagramas();
+    bdAbrirEditor(d.id);
+  }catch(e){
+    msg.className = 'tm-modal-msg err'; msg.textContent = e.message || 'No se pudo crear el diagrama.';
+  }
+}
+
+async function bdRenombrarDiagrama(id, nombreActual){
+  const nuevo = prompt('Nuevo nombre del diagrama:', nombreActual);
+  if(nuevo === null) return;
+  const nombre = nuevo.trim();
+  if(!nombre || nombre === nombreActual) return;
+  try{ await apiPut(`/api/diagramas/${id}`, {nombre}); await cargarListaDiagramas(); }
+  catch(e){ alert(e.message || 'No se pudo renombrar el diagrama.'); }
+}
+
+async function bdBorrarDiagrama(id, nombre){
+  if(!confirm(`¿Borrar el diagrama "${nombre}"? Esto no borra las estructuras/medidas vinculadas, solo el dibujo.`)) return;
+  try{ await apiDelete(`/api/diagramas/${id}`); await cargarListaDiagramas(); }
+  catch(e){ alert(e.message || 'No se pudo borrar el diagrama.'); }
+}
+
+async function bdAbrirEditor(id){
+  BD_DIAGRAMA_ACTIVO = id;
+  BD_SELECCION = null;
+  BD_MODO_CONECTAR = false;
+  BD_CONECTAR_ORIGEN = null;
+  await mostrarVista('be-diagrama-editor');
+  await bdCargarDiagrama();
+}
+
+async function bdCargarDiagrama(){
+  if(!BD_DIAGRAMA_ACTIVO) return;
+  let datos;
+  try{ datos = await apiGet(`/api/diagramas/${BD_DIAGRAMA_ACTIVO}`); }
+  catch(e){ document.getElementById('bd-editor-msg').textContent = 'No se pudo cargar el diagrama.'; return; }
+  document.getElementById('bd-editor-titulo').textContent = datos.nombre;
+  BD_ELEMENTOS = datos.elementos;
+  BD_CONEXIONES = datos.conexiones;
+  await bdCargarBalances();
+  bdActualizarBotonesSeleccion();
+  bdRenderLienzo();
+}
+
+async function bdCargarBalances(){
+  if(!BD_DIAGRAMA_ACTIVO) return;
+  try{
+    const r = await apiGet(`/api/diagramas/${BD_DIAGRAMA_ACTIVO}/balances?granularidad=${BD_GRANULARIDAD}`);
+    BD_BALANCES = {};
+    (r.elementos||[]).forEach(e => { BD_BALANCES[e.elemento_id] = e; });
+  }catch(e){ BD_BALANCES = {}; }
+}
+
+function bdSeleccionarGranularidad(g){
+  BD_GRANULARIDAD = g;
+  document.querySelectorAll('#vista-be-diagrama-editor .be-modo-btn[data-granularidad]').forEach(b=>b.classList.toggle('activo', b.dataset.granularidad===g));
+  bdCargarBalances().then(bdRenderLienzo);
+}
+
+async function bdAgregarElemento(tipo){
+  if(!BD_DIAGRAMA_ACTIVO) return;
+  const n = BD_ELEMENTOS.length;
+  const x = 120 + (n % 8) * 150;
+  const y = 100 + Math.floor(n / 8) * 140;
+  try{
+    const el = await apiPost(`/api/diagramas/${BD_DIAGRAMA_ACTIVO}/elementos`, {tipo, x, y});
+    BD_ELEMENTOS.push(el);
+    bdRenderLienzo();
+  }catch(e){
+    document.getElementById('bd-editor-msg').textContent = e.message || 'No se pudo agregar el elemento.';
+  }
+}
+
+function bdToggleModoConectar(){
+  BD_MODO_CONECTAR = !BD_MODO_CONECTAR;
+  BD_CONECTAR_ORIGEN = null;
+  document.getElementById('bd-btn-conectar').classList.toggle('activo', BD_MODO_CONECTAR);
+  document.getElementById('bd-editor-msg').textContent = BD_MODO_CONECTAR ? 'Modo conectar: click en el primer elemento y despué en el segundo.' : '';
+  bdRenderLienzo();
+}
+
+async function bdCrearConexion(origenId, destinoId){
+  try{
+    const c = await apiPost(`/api/diagramas/${BD_DIAGRAMA_ACTIVO}/conexiones`, {elemento_origen_id: origenId, elemento_destino_id: destinoId});
+    BD_CONEXIONES.push(c);
+    bdRenderLienzo();
+  }catch(e){
+    document.getElementById('bd-editor-msg').textContent = e.message || 'No se pudo crear la conexión.';
+  }
+}
+
+function bdActualizarBotonesSeleccion(){
+  const esElemento = BD_SELECCION && BD_SELECCION.tipo === 'elemento';
+  document.getElementById('bd-btn-borrar-sel').disabled = !BD_SELECCION;
+  document.getElementById('bd-btn-editar-sel').disabled = !esElemento;
+}
+
+function bdSeleccionarElemento(id){
+  BD_SELECCION = {tipo:'elemento', id};
+  bdActualizarBotonesSeleccion();
+  bdRenderLienzo();
+}
+
+function bdClickConexion(ev, id){
+  ev.stopPropagation();
+  if(BD_MODO_CONECTAR) return;
+  BD_SELECCION = {tipo:'conexion', id};
+  bdActualizarBotonesSeleccion();
+  bdRenderLienzo();
+}
+
+function bdClickFondo(){
+  if(!BD_SELECCION) return;
+  BD_SELECCION = null;
+  bdActualizarBotonesSeleccion();
+  bdRenderLienzo();
+}
+
+async function bdBorrarSeleccion(){
+  if(!BD_SELECCION) return;
+  if(BD_SELECCION.tipo === 'elemento'){
+    if(!confirm('¿Borrar este símbolo del diagrama? La estructura/medida vinculada NO se borra, solo el dibujo.')) return;
+    try{ await apiDelete(`/api/diagramas/${BD_DIAGRAMA_ACTIVO}/elementos/${BD_SELECCION.id}`); }
+    catch(e){ alert(e.message || 'No se pudo borrar.'); return; }
+    BD_ELEMENTOS = BD_ELEMENTOS.filter(e=>e.id!==BD_SELECCION.id);
+    BD_CONEXIONES = BD_CONEXIONES.filter(c=>c.elemento_origen_id!==BD_SELECCION.id && c.elemento_destino_id!==BD_SELECCION.id);
+  }else{
+    try{ await apiDelete(`/api/diagramas/${BD_DIAGRAMA_ACTIVO}/conexiones/${BD_SELECCION.id}`); }
+    catch(e){ alert(e.message || 'No se pudo borrar.'); return; }
+    BD_CONEXIONES = BD_CONEXIONES.filter(c=>c.id!==BD_SELECCION.id);
+  }
+  BD_SELECCION = null;
+  bdActualizarBotonesSeleccion();
+  bdRenderLienzo();
+}
+
+function bdEditarSeleccion(){
+  if(!BD_SELECCION || BD_SELECCION.tipo !== 'elemento') return;
+  const el = BD_ELEMENTOS.find(e=>e.id===BD_SELECCION.id);
+  if(!el) return;
+  if(el.estructura) abrirModalEditarEstructura(el.estructura.id);
+  else bdAbrirModalVincular(el);
+}
+
+function _bdPuntoSvg(ev, svg){
+  const rect = svg.getBoundingClientRect();
+  return {x: ev.clientX - rect.left, y: ev.clientY - rect.top};
+}
+
+// Punto donde un cable "toca" el borde de un elemento -- intersección de la
+// línea centro-a-centro con su caja (rectángulo axis-aligned), así el cable
+// no atraviesa el símbolo por el medio.
+function _bdPuntoBorde(el, haciaX, haciaY){
+  const {w,h} = BD_TAMANO[el.tipo] || {w:30,h:30};
+  const dx = haciaX - el.x, dy = haciaY - el.y;
+  if(!dx && !dy) return {x:el.x, y:el.y};
+  const sx = (w/2) / (Math.abs(dx) || 1e-6);
+  const sy = (h/2) / (Math.abs(dy) || 1e-6);
+  const s = Math.min(sx, sy, 1e6);
+  return {x: el.x + dx*s, y: el.y + dy*s};
+}
+
+function _bdFormaSvg(tipo){
+  switch(tipo){
+    case 'transformador2':
+      return '<circle cx="-10" cy="0" r="16" fill="none" stroke="currentColor" stroke-width="2.5"/>'
+           + '<circle cx="10" cy="0" r="16" fill="none" stroke="currentColor" stroke-width="2.5"/>';
+    case 'transformador3':
+      return '<circle cx="-14" cy="-6" r="14" fill="none" stroke="currentColor" stroke-width="2.5"/>'
+           + '<circle cx="14" cy="-6" r="14" fill="none" stroke="currentColor" stroke-width="2.5"/>'
+           + '<circle cx="0" cy="16" r="14" fill="none" stroke="currentColor" stroke-width="2.5"/>';
+    case 'linea':
+      return '<rect x="-8" y="-6" width="16" height="12" fill="none" stroke="currentColor" stroke-width="2"/>';
+    case 'barra':
+      return '<rect x="-50" y="-5" width="100" height="10" fill="currentColor"/>';
+    case 'nodo':
+      return '<circle cx="0" cy="0" r="9" fill="currentColor"/>';
+    case 'carga':
+      return '<polygon points="-14,-14 14,-14 0,14" fill="none" stroke="currentColor" stroke-width="2.5"/>';
+    case 'generador':
+      return '<circle cx="0" cy="0" r="20" fill="none" stroke="currentColor" stroke-width="2.5"/>'
+           + '<text x="0" y="6" text-anchor="middle" font-size="16" font-weight="700" fill="currentColor">G</text>';
+    default:
+      return '';
+  }
+}
+
+function bdRenderLienzo(){
+  const svg = document.getElementById('bd-svg');
+  const porId = {};
+  BD_ELEMENTOS.forEach(e => { porId[e.id] = e; });
+
+  let piezas = '';
+  BD_CONEXIONES.forEach(c => {
+    const a = porId[c.elemento_origen_id], b = porId[c.elemento_destino_id];
+    if(!a || !b) return;
+    const p1 = _bdPuntoBorde(a, b.x, b.y);
+    const p2 = _bdPuntoBorde(b, a.x, a.y);
+    const sel = BD_SELECCION && BD_SELECCION.tipo==='conexion' && BD_SELECCION.id===c.id;
+    piezas += `<line x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}" class="bd-conexion${sel?' seleccionada':''}" onmousedown="bdClickConexion(event,${c.id})"></line>`;
+  });
+
+  BD_ELEMENTOS.forEach(el => {
+    const {w,h} = BD_TAMANO[el.tipo] || {w:30,h:30};
+    const sel = BD_SELECCION && BD_SELECCION.tipo==='elemento' && BD_SELECCION.id===el.id;
+    const conectando = BD_CONECTAR_ORIGEN === el.id;
+    const nombre = el.etiqueta || (el.estructura ? el.estructura.nombre : '(sin vincular)');
+    const balance = BD_BALANCES[el.id];
+    let textoBadge;
+    if(!el.estructura) textoBadge = 'sin vincular';
+    else if(!balance) textoBadge = '...';
+    else if(balance.perdida_pct != null) textoBadge = `${balance.perdida_pct.toFixed(2)}%`;
+    else if(balance.valor_principal != null) textoBadge = `${balance.valor_principal.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`;
+    else textoBadge = 'sin datos';
+
+    piezas += `<g class="bd-elemento${sel?' seleccionada':''}${conectando?' conectando':''}" data-elemento-id="${el.id}"
+        transform="translate(${el.x},${el.y}) rotate(${el.rotacion||0})"
+        onmousedown="bdPointerDownElemento(event,${el.id})">
+        <rect x="${-w/2}" y="${-h/2}" width="${w}" height="${h}" fill="transparent"/>
+        ${_bdFormaSvg(el.tipo)}
+      </g>
+      <text x="${el.x}" y="${el.y + h/2 + 14}" text-anchor="middle" class="bd-etiqueta">${_mselEsc(nombre)}</text>
+      <text x="${el.x}" y="${el.y + h/2 + 27}" text-anchor="middle" class="bd-badge${!el.estructura?' bd-badge-vacio':''}">${_mselEsc(textoBadge)}</text>`;
+  });
+
+  svg.innerHTML = piezas;
+}
+
+function bdPointerDownElemento(ev, id){
+  ev.stopPropagation();
+  ev.preventDefault();
+  const svg = document.getElementById('bd-svg');
+  const el = BD_ELEMENTOS.find(e=>e.id===id);
+  if(!el) return;
+
+  if(BD_MODO_CONECTAR){
+    if(BD_CONECTAR_ORIGEN === null) BD_CONECTAR_ORIGEN = id;
+    else if(BD_CONECTAR_ORIGEN === id) BD_CONECTAR_ORIGEN = null;
+    else{ const origen = BD_CONECTAR_ORIGEN; BD_CONECTAR_ORIGEN = null; bdCrearConexion(origen, id); }
+    bdRenderLienzo();
+    return;
+  }
+
+  const inicio = _bdPuntoSvg(ev, svg);
+  _bdArrastre = {id, offX: inicio.x - el.x, offY: inicio.y - el.y};
+  _bdMovio = false;
+
+  const mover = (mv) => {
+    const p = _bdPuntoSvg(mv, svg);
+    const nx = p.x - _bdArrastre.offX, ny = p.y - _bdArrastre.offY;
+    if(Math.abs(nx-el.x) > 3 || Math.abs(ny-el.y) > 3) _bdMovio = true;
+    el.x = nx; el.y = ny;
+    bdRenderLienzo();
+  };
+  const soltar = async () => {
+    document.removeEventListener('mousemove', mover);
+    document.removeEventListener('mouseup', soltar);
+    _bdArrastre = null;
+    if(_bdMovio){
+      try{ await apiPut(`/api/diagramas/${BD_DIAGRAMA_ACTIVO}/elementos/${id}`, {x: el.x, y: el.y}); }
+      catch(e){ /* no bloqueante -- se corrige sola en la próxima carga */ }
+    }else{
+      bdSeleccionarElemento(id);
+    }
+  };
+  document.addEventListener('mousemove', mover);
+  document.addEventListener('mouseup', soltar);
+}
+
+/* ---- Vincular/crear estructura desde un elemento del diagrama ---- */
+function bdAbrirModalVincular(el){
+  BD_ELEMENTO_VINCULANDO = el;
+  document.getElementById('bd-vincular-buscar').value = '';
+  document.getElementById('bd-vincular-buscar').nextElementSibling.classList.add('hidden');
+  document.getElementById('bde-nombre').value = '';
+  document.getElementById('bde-nivel').value = '1';
+  document.getElementById('bde-filas-entrada').innerHTML = '';
+  document.getElementById('bde-filas-salida').innerHTML = '';
+  const tipoEstructura = BD_TIPO_A_ESTRUCTURA[el.tipo];
+  document.getElementById('bde-bloque-entrada').classList.toggle('hidden', tipoEstructura === 'GEN');
+  document.getElementById('bde-bloque-salida').classList.toggle('hidden', tipoEstructura === 'CARGA');
+  if(tipoEstructura !== 'GEN') beAgregarFila('entrada', 'bde');
+  if(tipoEstructura !== 'CARGA') beAgregarFila('salida', 'bde');
+  document.getElementById('bde-msg').textContent = '';
+  document.getElementById('modal-bd-vincular').classList.remove('hidden');
+}
+
+function bdCerrarModalVincular(){
+  document.getElementById('modal-bd-vincular').classList.add('hidden');
+  BD_ELEMENTO_VINCULANDO = null;
+}
+
+function bdBuscarEstructuraVincular(input){
+  const texto = input.value.trim().toLowerCase();
+  const lista = input.nextElementSibling;
+  if(!texto){ lista.classList.add('hidden'); lista.innerHTML=''; return; }
+  const coincidencias = (BE_ESTRUCTURAS_TODAS||[]).filter(e => (e.nombre||'').toLowerCase().includes(texto)).slice(0,20);
+  lista.innerHTML = coincidencias.length
+    ? coincidencias.map((e,i)=>
+        `<div class="be-buscador-opt${i===0?' activa':''}" data-id="${e.id}" onmousedown="bdElegirEstructuraVincular(event,${e.id})">${_mselEsc(e.nombre)} <span style="color:var(--text3)">(Nivel ${e.nivel_tension}${e.tipo?' · '+_mselEsc(BE_NOMBRES_TIPO[e.tipo]||e.tipo):''})</span></div>`
+      ).join('')
+    : '<div class="be-buscador-vacio">Sin resultados</div>';
+  lista.classList.remove('hidden');
+}
+
+function bdBuscadorVincularTecla(ev, input){
+  const lista = input.nextElementSibling;
+  if(lista.classList.contains('hidden')) return;
+  const opts = [...lista.querySelectorAll('.be-buscador-opt')];
+  if(!opts.length) return;
+  let idx = opts.findIndex(o=>o.classList.contains('activa'));
+  if(ev.key==='ArrowDown'){ ev.preventDefault(); idx=(idx+1+opts.length)%opts.length; }
+  else if(ev.key==='ArrowUp'){ ev.preventDefault(); idx=(idx-1+opts.length)%opts.length; }
+  else if(ev.key==='Enter'){ ev.preventDefault(); if(idx>=0) bdElegirEstructuraVincular(ev, parseInt(opts[idx].dataset.id)); return; }
+  else if(ev.key==='Escape'){ lista.classList.add('hidden'); return; }
+  else return;
+  opts.forEach(o=>o.classList.remove('activa'));
+  opts[idx].classList.add('activa');
+}
+
+async function bdElegirEstructuraVincular(ev, estructuraId){
+  if(ev && ev.preventDefault) ev.preventDefault();
+  if(!BD_ELEMENTO_VINCULANDO) return;
+  try{
+    const el = await apiPut(`/api/diagramas/${BD_DIAGRAMA_ACTIVO}/elementos/${BD_ELEMENTO_VINCULANDO.id}`, {estructura_id: estructuraId});
+    const idx = BD_ELEMENTOS.findIndex(e=>e.id===el.id);
+    if(idx>=0) BD_ELEMENTOS[idx] = el;
+    bdCerrarModalVincular();
+    await bdCargarBalances();
+    bdRenderLienzo();
+  }catch(e){
+    document.getElementById('bde-msg').textContent = e.message || 'No se pudo vincular.';
+  }
+}
+
+async function bdCrearYVincular(){
+  const msg = document.getElementById('bde-msg');
+  msg.className = 'tm-modal-msg';
+  if(!BD_ELEMENTO_VINCULANDO) return;
+  const nombre = document.getElementById('bde-nombre').value.trim();
+  const nivel_tension = parseInt(document.getElementById('bde-nivel').value);
+  const tipo = BD_TIPO_A_ESTRUCTURA[BD_ELEMENTO_VINCULANDO.tipo];
+  if(!nombre){ msg.className='tm-modal-msg err'; msg.textContent='Elegí un nombre.'; return; }
+  const entradas = tipo === 'GEN' ? [] : _beRecolectarFilas('entrada','bde');
+  const salidas = tipo === 'CARGA' ? [] : _beRecolectarFilas('salida','bde');
+  if(tipo !== 'GEN' && (!entradas.length || entradas.some(m=>!m))){ msg.className='tm-modal-msg err'; msg.textContent='Agregá al menos un medidor de Entrada (elegilo del buscador).'; return; }
+  if(tipo !== 'CARGA' && (!salidas.length || salidas.some(m=>!m))){ msg.className='tm-modal-msg err'; msg.textContent='Agregá al menos un medidor de Salida (elegilo del buscador).'; return; }
+  try{
+    const nueva = await apiPost('/api/balances-estructura', {nombre, nivel_tension, tipo, entradas, salidas});
+    await bdElegirEstructuraVincular(null, nueva.id);
+    cargarListaEstructuras();  // refresca BE_ESTRUCTURAS_TODAS en segundo plano para que aparezca en futuras búsquedas
+  }catch(e){
+    msg.className = 'tm-modal-msg err'; msg.textContent = e.message || 'No se pudo crear la estructura.';
+  }
+}
+
 // Si el usuario cambia los filtros rápido (nivel y/o tipo casi a la vez),
 // puede haber 2+ fetches en vuelo -- sin este control, uno más VIEJO podría
 // resolver DESPUÉS que uno más nuevo y pisar la lista con el filtro que ya
@@ -2937,8 +3492,12 @@ async function verBalanceEstructura(id){
 
 function _beAplicarModoUI(modo){
   const esMensual = modo===3 || modo===4;
-  document.querySelectorAll('.be-modo-btn[data-tipo]').forEach(b=>b.classList.toggle('activo', b.dataset.tipo===BE_TIPO_GRAFICO));
-  document.querySelectorAll('.be-modo-btn[data-granularidad]').forEach(b=>b.classList.toggle('activo', b.dataset.granularidad===BE_GRANULARIDAD));
+  // Acotado a "Ver Balance" -- el Diagrama Unifilar tiene sus PROPIOS
+  // botones Diario/Mensual/Anual (misma clase .be-modo-btn, otra vista) con
+  // su propio estado (BD_GRANULARIDAD); sin este scope, tocar uno resaltaba
+  // por error el mismo botón del otro.
+  document.querySelectorAll('#vista-be-ver .be-modo-btn[data-tipo]').forEach(b=>b.classList.toggle('activo', b.dataset.tipo===BE_TIPO_GRAFICO));
+  document.querySelectorAll('#vista-be-ver .be-modo-btn[data-granularidad]').forEach(b=>b.classList.toggle('activo', b.dataset.granularidad===BE_GRANULARIDAD));
   document.getElementById('be-filtro-diario').classList.toggle('hidden', esMensual);
   document.getElementById('be-filtro-mensual').classList.toggle('hidden', !esMensual);
 }
