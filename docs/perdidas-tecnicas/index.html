@@ -341,6 +341,10 @@ tfoot td:first-child{text-align:left}
 .be-tabla-creadas .borrar:hover{opacity:.7}
 .be-tabla-vacio{padding:14px;text-align:center;color:var(--text3);font-size:12px}
 .be-tabla-creadas th.suma,.be-tabla-creadas td.suma{background:rgba(0,180,216,.08);font-weight:700;color:var(--text)}
+/* PÉRDIDA (%) fuera del rango típico (ver "Datos típicos" en Ver Balance) --
+   rojo, distinto del ámbar de .ajustado (esto es "dato raro", no "dato
+   corregido a mano") -- convención simple para poder distinguirlos de un vistazo. */
+.be-tabla-creadas td.suma.fuera-tipico{background:rgba(239,71,111,.18) !important;color:#ef476f !important;font-weight:800}
 .be-tabla-creadas th.pto,.be-tabla-creadas td.pto{background:rgba(244,162,97,.12)}
 .be-tabla-creadas td.pto[data-editable]{cursor:cell;position:relative}
 .be-tabla-creadas td.pto[data-editable]:hover{outline:1px dashed var(--accent2)}
@@ -1043,6 +1047,19 @@ tfoot td:first-child{text-align:left}
     <div id="be-resumen-cards" class="be-resumen-cards"></div>
 
     <div class="be-tabla-creadas-wrap">
+      <div id="be-tipicos-estructura-wrap" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px;padding-bottom:12px;border-bottom:1px dashed var(--border)">
+        <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text3)">Datos típicos de esta estructura</span>
+        <label style="font-size:10px;color:var(--text3)">Desde</label>
+        <input type="month" id="be-tipicos-desde">
+        <label style="font-size:10px;color:var(--text3)">Hasta</label>
+        <input type="month" id="be-tipicos-hasta">
+        <button type="button" class="be-editar-btn" onclick="calcularTipicosEstructuraActiva()">Calcular</button>
+        <span id="be-tipicos-resultado" style="font-size:11px;color:var(--text2)"></span>
+        <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text3);cursor:pointer;margin-left:auto">
+          <input type="checkbox" id="be-tipicos-en-grafico" disabled onchange="if(BE_MODO_GRAFICO!==3) renderChartBalanceEstructura(BE_CONSUMO_DATOS, BE_MODO_GRAFICO)">
+          Mostrar límites en el gráfico
+        </label>
+      </div>
       <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
         <div class="be-tabla-creadas-titulo" style="margin-bottom:0">Balance diario</div>
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
@@ -1290,6 +1307,7 @@ let BE_USUARIOS = [];
 let BE_PUNTOS = [];      // BE_USUARIOS agrupado por customer_id (Principal+Respaldo del mismo punto)
 let BE_FECHA_MINIMA = null;  // primera fecha con datos -- default de "vigente desde" al crear un punto
 let BE_TABLA_DATOS = null;   // últimos datos cargados en "Balance diario" (rango propio) -- para exportar a CSV
+let BE_TIPICOS_ACTIVA = null; // {promedio,maximo,minimo,desde,hasta} de la estructura activa -- null hasta que se calcule (ver calcularTipicosEstructuraActiva)
 let BE_COMPARACION_DATOS = null;  // última comparación cargada -- para la tarjeta de "última pérdida técnica"
 let BE_CONSUMO_DATOS = null;  // último /consumo cargado (rango del gráfico) -- lo reusan los modos 1 y 2 sin refetch
 let BE_MODO_GRAFICO = 1;  // 1=pérdida diaria vs técnica, 2=entrada/salida diaria, 3=histórico mensual
@@ -2573,11 +2591,30 @@ async function borrarEstructuraBalance(ev, id, nombre){
 }
 
 async function verBalanceEstructura(id){
+  const cambioDeEstructura = BE_ACTIVA_ID !== id;
   BE_ACTIVA_ID = id;
   renderListaEstructuras();
   document.getElementById('be-chart-card').classList.remove('hidden');
   document.getElementById('be-chart-titulo').textContent = 'Cargando…';
   document.getElementById('be-chart-nota').textContent = '';
+
+  // Los "datos típicos" son de OTRA estructura hasta que se vuelva a
+  // calcular -- no tiene sentido resaltar filas o dibujar límites con el
+  // rango típico de la estructura anterior.
+  if(cambioDeEstructura){
+    BE_TIPICOS_ACTIVA = null;
+    document.getElementById('be-tipicos-resultado').textContent = '';
+    document.getElementById('be-tipicos-en-grafico').disabled = true;
+    document.getElementById('be-tipicos-en-grafico').checked = false;
+    const tipicosDesde = document.getElementById('be-tipicos-desde');
+    const tipicosHasta = document.getElementById('be-tipicos-hasta');
+    if(!tipicosDesde.value || !tipicosHasta.value){
+      const hoy = new Date();
+      const haceUnAnio = new Date(hoy.getFullYear(), hoy.getMonth()-11, 1);
+      tipicosDesde.value = `${haceUnAnio.getFullYear()}-${String(haceUnAnio.getMonth()+1).padStart(2,'0')}`;
+      tipicosHasta.value = `${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}`;
+    }
+  }
 
   const qs = new URLSearchParams();
   const desde = document.getElementById('be-desde').value;
@@ -2671,6 +2708,50 @@ function _beInicializarFiltroTabla(datosChart){
   const hastaInput = document.getElementById('be-tabla-hasta');
   if(!desdeInput.value && datosChart.fechas.length) desdeInput.value = datosChart.fechas[0].slice(0,7);
   if(!hastaInput.value && datosChart.fechas.length) hastaInput.value = datosChart.fechas[datosChart.fechas.length-1].slice(0,7);
+}
+
+// "Datos típicos" de la estructura activa -- misma cuenta (Z-Score robusto,
+// mediana+MAD) que "Datos típicos de estructuras" en Parametrización, pero
+// UNA sola estructura y con su PROPIO rango de referencia (normal, uno más
+// largo que el mes que se está mirando en la tabla, para que la comparación
+// tenga sentido -- si comparás un mes contra sí mismo, es casi trivial).
+// Una vez calculado, resalta en rojo la columna PÉRDIDA (%) que se sale del
+// rango y habilita el checkbox de límites en el gráfico.
+async function calcularTipicosEstructuraActiva(){
+  if(!BE_ACTIVA_ID) return;
+  const msg = document.getElementById('be-tipicos-resultado');
+  const chk = document.getElementById('be-tipicos-en-grafico');
+  const desdeMes = document.getElementById('be-tipicos-desde').value;
+  const hastaMes = document.getElementById('be-tipicos-hasta').value;
+  if(!desdeMes || !hastaMes){ msg.style.color='#ef476f'; msg.textContent='Elegí desde y hasta qué mes calcular.'; return; }
+  if(desdeMes > hastaMes){ msg.style.color='#ef476f'; msg.textContent='"Desde" no puede ser posterior a "Hasta".'; return; }
+  if(DEMO){ msg.style.color='#ef476f'; msg.textContent='No disponible en modo demo.'; return; }
+
+  const [hy,hm] = hastaMes.split('-').map(Number);
+  const desde = `${desdeMes}-01`;
+  const hasta = `${hastaMes}-${String(new Date(hy,hm,0).getDate()).padStart(2,'0')}`;
+
+  msg.style.color = 'var(--text2)';
+  msg.textContent = 'Calculando...';
+  let datos;
+  try{ datos = await apiGet(`/api/balances-estructura/datos-tipicos?desde=${desde}&hasta=${hasta}&estructura_id=${BE_ACTIVA_ID}`); }
+  catch(e){ msg.style.color='#ef476f'; msg.textContent = e.message || 'No se pudo calcular.'; return; }
+
+  const r = (datos.resultados||[])[0];
+  if(!r){
+    BE_TIPICOS_ACTIVA = null;
+    chk.disabled = true; chk.checked = false;
+    msg.style.color = 'var(--text3)';
+    msg.textContent = 'Sin datos suficientes en ese rango.';
+    cargarTablaBalance();
+    return;
+  }
+  BE_TIPICOS_ACTIVA = {promedio:r.promedio, maximo:r.maximo, minimo:r.minimo, desde, hasta};
+  msg.style.color = 'var(--text2)';
+  msg.innerHTML = `Promedio <b>${r.promedio.toFixed(2)}%</b> · Máximo <b>${r.maximo.toFixed(2)}%</b> · Mínimo <b>${r.minimo.toFixed(2)}%</b> (${r.dias_usados}/${r.dias_totales} días) -- <span style="color:#ef476f">se resalta en rojo lo que se sale de ese rango</span>`;
+  chk.disabled = false;
+  cargarTablaBalance();
+  if(BE_MODO_GRAFICO!==3) renderChartBalanceEstructura(BE_CONSUMO_DATOS, BE_MODO_GRAFICO);
 }
 
 async function cargarTablaBalance(){
@@ -2874,6 +2955,25 @@ async function renderChartBalanceEstructura(datos, modo){
           formatter:v=>v==null ? '' : v.toFixed(2)+'%', font:{size:11, weight:'800'}, color:'#f4a261',
           backgroundColor:'rgba(255,255,255,.9)', borderRadius:4, padding:{left:5,right:5,top:2,bottom:2}}},
     ];
+    // Límites "típicos" (ver "Datos típicos de esta estructura", arriba de
+    // Balance diario) -- opcionales, solo si ya se calcularon Y el checklist
+    // está marcado, para no ensuciar el gráfico por defecto. Van en líneas
+    // planas sobre el mismo eje yPct que "Pérdida %".
+    const chkTipicos = document.getElementById('be-tipicos-en-grafico');
+    if(chkTipicos && chkTipicos.checked && BE_TIPICOS_ACTIVA){
+      const t = BE_TIPICOS_ACTIVA;
+      datasets.push(
+        {type:'line', label:`Máximo típico (${t.maximo.toFixed(2)}%)`, data:fechas.map(()=>t.maximo),
+          borderColor:'#ef476f', backgroundColor:'transparent', borderWidth:1.3, borderDash:[2,3],
+          pointRadius:0, tension:0, yAxisID:'yPct', order:3},
+        {type:'line', label:`Mínimo típico (${t.minimo.toFixed(2)}%)`, data:fechas.map(()=>t.minimo),
+          borderColor:'#ef476f', backgroundColor:'transparent', borderWidth:1.3, borderDash:[2,3],
+          pointRadius:0, tension:0, yAxisID:'yPct', order:3},
+        {type:'line', label:`Promedio típico (${t.promedio.toFixed(2)}%)`, data:fechas.map(()=>t.promedio),
+          borderColor:'#8899b5', backgroundColor:'transparent', borderWidth:1.3, borderDash:[6,3],
+          pointRadius:0, tension:0, yAxisID:'yPct', order:3},
+      );
+    }
   }
 
   // El fetch de la técnica prorrateada es async -- si mientras se esperaba
@@ -3417,13 +3517,15 @@ function renderTablaDetalleBalance(datos){
     const p = datos.perdida_kwh[i], pct = datos.perdida_pct[i];
     let detalle = '';
     gruposPorMedidor.forEach(grupo => grupo.forEach((col,j) => detalle += tdPunto(col, i, j===0)));
+    const fueraTipico = BE_TIPICOS_ACTIVA && pct != null && (pct > BE_TIPICOS_ACTIVA.maximo || pct < BE_TIPICOS_ACTIVA.minimo);
+    const tituloTipico = fueraTipico ? ` title="Fuera del rango típico de esta estructura (${BE_TIPICOS_ACTIVA.minimo.toFixed(2)}% a ${BE_TIPICOS_ACTIVA.maximo.toFixed(2)}%, calculado ${BE_TIPICOS_ACTIVA.desde} a ${BE_TIPICOS_ACTIVA.hasta})"` : '';
     return `<tr>
       <td>${f}</td>
       ${detalle}
       <td class="num suma">${f2(e)}</td>
       <td class="num suma">${f2(s)}</td>
       <td class="num suma">${f2(p)}</td>
-      <td class="num suma">${pct==null?'--':pct.toFixed(2)+'%'}</td>
+      <td class="num suma${fueraTipico?' fuera-tipico':''}"${tituloTipico}>${pct==null?'--':pct.toFixed(2)+'%'}</td>
     </tr>`;
   }).join('');
 
