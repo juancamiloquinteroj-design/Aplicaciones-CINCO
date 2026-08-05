@@ -22,7 +22,7 @@
   --nav-bg:rgba(255,255,255,0.95);--card-bg:#ffffff;--shadow:0 4px 24px rgba(0,0,0,0.08);--shadow-sm:0 2px 8px rgba(0,0,0,0.05);
 }
 [data-theme="dark"]{
-  --bg:#0d1117;--bg2:#161b27;--bg3:#1c2333;--border:#2a3448;--text:#e2e8f0;--text2:#8899b5;--text3:#4a5e7a;
+  --bg:#0d1117;--bg2:#161b27;--bg3:#1c2333;--border:#2a3448;--text:#e2e8f0;--text2:#8899b5;--text3:#6d82a3;
   --nav-bg:rgba(13,17,23,0.96);--card-bg:#161b27;--shadow:0 4px 24px rgba(0,0,0,0.35);--shadow-sm:0 2px 8px rgba(0,0,0,0.25);
 }
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -1070,7 +1070,14 @@ tfoot td:first-child{text-align:left}
       <select id="be-selector-estructura" style="min-width:420px" onchange="verBalanceEstructura(parseInt(this.value))">
         <option value="">Elegí una estructura...</option>
       </select>
-      <button type="button" class="be-editar-btn" style="margin-left:auto" onclick="beBorrarFiltrosVer()" title="Volver el filtro de Nivel/Tipo/Estructura a 'Todos'">✕ Borrar filtros</button>
+      <div style="display:flex;align-items:center;gap:10px;margin-left:auto">
+        <div id="be-granularidad-bar" class="fbar hidden" style="margin:0">
+          <button type="button" class="be-modo-btn" data-granularidad="diario" onclick="beSeleccionarGranularidad('diario')">Diario</button>
+          <button type="button" class="be-modo-btn" data-granularidad="mensual" onclick="beSeleccionarGranularidad('mensual')">Mensual</button>
+          <button type="button" class="be-modo-btn" data-granularidad="anual" onclick="beSeleccionarGranularidad('anual')">Anual</button>
+        </div>
+        <button type="button" class="be-editar-btn" onclick="beBorrarFiltrosVer()" title="Volver el filtro de Nivel/Tipo/Estructura a 'Todos'">✕ Borrar filtros</button>
+      </div>
     </div>
     <div id="be-medidor-afecta-busqueda" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);max-width:460px;position:relative">
       <label style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text3);display:block;margin-bottom:5px">
@@ -1107,12 +1114,6 @@ tfoot td:first-child{text-align:left}
     </div>
     <div id="be-chart-nota" class="tm-modal-msg" style="text-align:center"></div>
 
-    <div class="fbar" style="justify-content:center;margin-bottom:10px">
-      <button type="button" class="be-modo-btn" data-granularidad="diario" onclick="beSeleccionarGranularidad('diario')">Diario</button>
-      <button type="button" class="be-modo-btn" data-granularidad="mensual" onclick="beSeleccionarGranularidad('mensual')">Mensual</button>
-      <button type="button" class="be-modo-btn" data-granularidad="anual" onclick="beSeleccionarGranularidad('anual')">Anual</button>
-    </div>
-
     <div class="fbar" style="justify-content:space-between;margin-bottom:6px">
       <div id="be-filtro-diario" class="fbar" style="margin:0">
         <button type="button" class="be-editar-btn" onclick="beMoverMes(-1)" title="Mes anterior">◄ Mes anterior</button>
@@ -1137,7 +1138,6 @@ tfoot td:first-child{text-align:left}
         <button type="button" class="be-modo-btn" data-tipo="entrada_salida" onclick="beSeleccionarTipoGrafico('entrada_salida')">🔀 Entrada / Salida</button>
       </div>
     </div>
-    <div id="be-filtro-diario-nota" style="text-align:left;font-size:10px;color:var(--text3);margin:-2px 0 10px">Por defecto: el último mes disponible -- rueda del mouse o pellizco para hacer zoom, arrastrar para mover</div>
     <div id="be-tipicos-toggle-grafico-wrap" style="text-align:right;margin:-4px 0 10px">
       <label style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--text3);cursor:pointer">
         <input type="checkbox" id="be-tipicos-en-grafico" disabled onchange="if(BE_MODO_GRAFICO!==3) renderChartBalanceEstructura(BE_CONSUMO_DATOS, BE_MODO_GRAFICO)">
@@ -2623,6 +2623,7 @@ async function beBorrarFiltrosVer(){
   document.getElementById('be-filtro-tipo').value = '';
   BE_ACTIVA_ID = null;
   document.getElementById('be-chart-card').classList.add('hidden');
+  document.getElementById('be-granularidad-bar').classList.add('hidden');
   await cargarListaEstructuras();
 }
 
@@ -2858,6 +2859,7 @@ async function borrarEstructuraBalance(ev, id, nombre){
     if(BE_ACTIVA_ID === id){
       BE_ACTIVA_ID = null;
       document.getElementById('be-chart-card').classList.add('hidden');
+      document.getElementById('be-granularidad-bar').classList.add('hidden');
     }
     if(BE_EDITAR_ID === id) cerrarModalEditarEstructura();
     await cargarListaEstructuras();
@@ -2871,6 +2873,7 @@ async function verBalanceEstructura(id){
   BE_ACTIVA_ID = id;
   renderListaEstructuras();
   document.getElementById('be-chart-card').classList.remove('hidden');
+  document.getElementById('be-granularidad-bar').classList.remove('hidden');
   document.getElementById('be-chart-titulo').textContent = 'Cargando…';
   document.getElementById('be-chart-nota').textContent = '';
 
@@ -2927,7 +2930,6 @@ function _beAplicarModoUI(modo){
   document.querySelectorAll('.be-modo-btn[data-tipo]').forEach(b=>b.classList.toggle('activo', b.dataset.tipo===BE_TIPO_GRAFICO));
   document.querySelectorAll('.be-modo-btn[data-granularidad]').forEach(b=>b.classList.toggle('activo', b.dataset.granularidad===BE_GRANULARIDAD));
   document.getElementById('be-filtro-diario').classList.toggle('hidden', esMensual);
-  document.getElementById('be-filtro-diario-nota').classList.toggle('hidden', esMensual);
   document.getElementById('be-filtro-mensual').classList.toggle('hidden', !esMensual);
 }
 
@@ -3488,10 +3490,20 @@ function renderChartComparacionEstructura(datos){
           tension:.15, spanGaps:true, yAxisID:'y'},
         {type:'line', label:'Pérdida del balance (esta estructura)', data:datos.perdida_balance_kwh, hidden:mostrarEntradaSalida,
           borderColor:'#ef476f', backgroundColor:'transparent', borderWidth:2.5, pointRadius:2,
-          tension:.15, spanGaps:true, yAxisID:'y'},
+          tension:.15, spanGaps:true, yAxisID:'y',
+          // Igual que en "Anual" -- con como máximo unas pocas decenas de
+          // puntos (uno por mes) el valor se puede etiquetar sin que se
+          // amontonen las etiquetas.
+          datalabels:{display:!mostrarEntradaSalida, anchor:'end', align:'top', offset:6,
+            formatter:v=>v==null ? '' : v.toLocaleString('es-CO',{maximumFractionDigits:0}),
+            font:{size:10, weight:'700'}, color:'#ef476f',
+            backgroundColor:'rgba(255,255,255,.85)', borderRadius:3, padding:{left:4,right:4,top:1,bottom:1}}},
         {type:'line', label:'Pérdida %', data:datos.perdida_balance_pct, hidden:mostrarEntradaSalida,
           borderColor:'#f4a261', backgroundColor:'transparent', borderWidth:2, pointRadius:2,
-          tension:.15, spanGaps:true, borderDash:[6,3], yAxisID:'yPct'},
+          tension:.15, spanGaps:true, borderDash:[6,3], yAxisID:'yPct',
+          datalabels:{display:!mostrarEntradaSalida, anchor:'end', align:'bottom', offset:6,
+            formatter:v=>v==null ? '' : v.toFixed(2)+'%', font:{size:11, weight:'800'}, color:'#f4a261',
+            backgroundColor:'rgba(255,255,255,.9)', borderRadius:4, padding:{left:5,right:5,top:2,bottom:2}}},
         {type:'line', label:'Entrada mensual', data:datos.entrada_kwh, _rol:'entrada', hidden:!mostrarEntradaSalida,
           borderColor:'#06d6a0', backgroundColor:'transparent', borderWidth:2, pointRadius:2,
           tension:.15, spanGaps:true, yAxisID:'yVolumen'},
