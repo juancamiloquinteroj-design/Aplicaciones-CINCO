@@ -39,6 +39,8 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(
 .nav-right{margin-left:auto;display:flex;align-items:center;gap:10px}
 .badge-demo{font-size:10px;font-weight:800;letter-spacing:.5px;padding:3px 10px;border-radius:20px;background:rgba(244,162,97,.15);color:#c47a2a;border:1px solid rgba(244,162,97,.3)}
 .badge-op{font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:rgba(0,180,216,.12);color:var(--accent);border:1px solid rgba(0,180,216,.25)}
+.badge-recarga{font-size:10.5px;font-weight:600;color:var(--text3);white-space:nowrap}
+.badge-recarga b{color:var(--text2)}
 .btn-theme,.btn-logout{height:34px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:13px;color:var(--text);padding:0 12px}
 .btn-theme{width:34px;padding:0}
 .btn-theme:hover,.btn-logout:hover{border-color:var(--accent)}
@@ -456,6 +458,7 @@ tfoot td:first-child{text-align:left}
   </div>
   <div class="nav-right">
     <span id="badge-demo" class="badge-demo hidden">MODO DEMO · sin conexión al servidor</span>
+    <span id="badge-recarga" class="badge-recarga hidden" title="El servidor revisa los archivos y actualiza los datos solo, cada pocos minutos"></span>
     <span id="badge-op" class="badge-op hidden"></span>
     <button class="btn-logout hidden" id="btn-logout" onclick="cerrarSesion()">Salir</button>
     <button class="btn-theme" onclick="toggleTheme()" title="Cambiar tema">🌓</button>
@@ -1638,6 +1641,8 @@ function cerrarSesion(){
   document.getElementById('login-screen').classList.remove('hidden');
   document.getElementById('badge-op').classList.add('hidden');
   document.getElementById('badge-demo').classList.add('hidden');
+  document.getElementById('badge-recarga').classList.add('hidden');
+  if(_badgeRecargaInterval){ clearInterval(_badgeRecargaInterval); _badgeRecargaInterval = null; }
   document.getElementById('btn-logout').classList.add('hidden');
   document.getElementById('btn-menu').classList.add('hidden');
   document.getElementById('login-form').reset();
@@ -1681,7 +1686,34 @@ async function entrarDashboard(){
   // visitar Parametrización.
   await cargarZonaColoresPersonalizados();
 
+  actualizarBadgeRecarga();
+  if(_badgeRecargaInterval) clearInterval(_badgeRecargaInterval);
+  _badgeRecargaInterval = setInterval(actualizarBadgeRecarga, 60000);
+
   await mostrarVista('inicio');
+}
+
+let _badgeRecargaInterval = null;
+
+// El servidor resincroniza TODOS los archivos (Pérdidas Técnicas y Usuarios
+// Telemedidos) solo, cada RECARGA_CSV_MINUTOS -- esta hora es la última vez
+// que ese ciclo automático terminó bien, para que quede claro que los datos
+// no dependen de que alguien entre a tocar nada a mano.
+async function actualizarBadgeRecarga(){
+  const el = document.getElementById('badge-recarga');
+  if(DEMO){ el.classList.add('hidden'); return; }
+  try{
+    const datos = await apiGet('/api/estado-recarga', 8000);
+    if(!datos.ultima_actualizacion){
+      el.innerHTML = 'Datos: <b>esperando la primera actualización automática…</b>';
+    }else{
+      const hora = new Date(datos.ultima_actualizacion).toLocaleTimeString('es-CO', {hour:'2-digit', minute:'2-digit'});
+      el.innerHTML = `Datos actualizados: <b>${hora}</b> <span style="opacity:.75">(cada ${datos.intervalo_minutos} min)</span>`;
+    }
+    el.classList.remove('hidden');
+  }catch(e){
+    el.classList.add('hidden');
+  }
 }
 
 async function cargarZonaColoresPersonalizados(){
@@ -2554,6 +2586,15 @@ async function cargarListaEstructuras(){
   BE_ESTRUCTURAS = datos;
   BE_ESTRUCTURAS_TODAS = todas;
   renderListaEstructuras();
+  // Si filtrar por Nivel deja como ÚNICO resultado de tipo 'Z' el Balance
+  // por Nivel de Tensión de ese nivel (siempre pasa en Nivel 4, que no tiene
+  // zona -- en Nivel 2/3 puede haber varios, uno por zona, y ahí no hay
+  // forma de saber cuál sin que el usuario elija), se muestra directo -- no
+  // hace falta ir a elegirlo TAMBIÉN en "Estructura".
+  if(BE_ACTIVA_ID == null && nivel){
+    const soloZ = datos.filter(e => e.tipo === 'Z');
+    if(soloZ.length === 1) verBalanceEstructura(soloZ[0].id);
+  }
   renderTablaEstructurasCreadas();
   renderTablaBalanceNivelCreados();
   cargarAlertasBalance();
