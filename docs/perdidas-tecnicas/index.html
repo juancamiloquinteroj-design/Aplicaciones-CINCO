@@ -1124,6 +1124,24 @@ tfoot td:first-child{text-align:left}
         <button type="button" class="be-modo-btn" data-granularidad="mensual" onclick="beSeleccionarGranularidad('mensual')">Mensual</button>
         <button type="button" class="be-modo-btn" data-granularidad="anual" onclick="beSeleccionarGranularidad('anual')">Anual</button>
       </div>
+      <div id="be-filtro-cliente" class="fbar hidden" style="margin:0">
+        <label>Sobreponer cliente</label>
+        <select id="be-cliente-select" style="max-width:260px" onchange="beSeleccionarClienteOverlay(this.value)">
+          <option value="">Ninguno</option>
+        </select>
+        <span id="be-cliente-polaridad" class="hidden" style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text3)">
+          <label style="margin:0">Salida=</label>
+          <select id="be-cliente-canal-salida" onchange="beGuardarPolaridadCliente()">
+            <option value="canal1">Canal 1</option><option value="canal2">Canal 2</option>
+            <option value="canal3">Canal 3</option><option value="canal4">Canal 4</option>
+          </select>
+          <label style="margin:0">Entrada=</label>
+          <select id="be-cliente-canal-entrada" onchange="beGuardarPolaridadCliente()">
+            <option value="canal1">Canal 1</option><option value="canal2">Canal 2</option>
+            <option value="canal3">Canal 3</option><option value="canal4">Canal 4</option>
+          </select>
+        </span>
+      </div>
       <button type="button" class="be-editar-btn" style="margin-left:auto" onclick="beBorrarFiltrosVer()" title="Volver el filtro de Nivel/Tipo/Estructura a 'Todos'">✕ Borrar filtros</button>
     </div>
     <div id="be-medidor-afecta-busqueda" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);max-width:460px;position:relative">
@@ -1632,6 +1650,9 @@ let BE_GRANULARIDAD = 'diario';   // 'diario' | 'mensual' | 'anual'
 let BE_TIPO_GRAFICO = 'perdida';  // 'perdida' | 'entrada_salida'
 let BE_ESTRUCTURAS = [];
 let BE_ACTIVA_ID = null;
+let BE_CLIENTES = [];        // clientes (medidores de entrada/salida) de la Línea activa -- para sobreponer su consumo
+let BE_CLIENTE_ACTIVO = null;  // {usuario_id, nombre, canal_salida, canal_entrada} del cliente elegido en el desplegable, o null
+let BE_CLIENTE_DATOS = null;   // último /telemedida/consumo cargado del cliente activo (fechas + canal1..4)
 let BE_EDITAR_ID = null;
 let chBalanceEstructura = null;  // un solo chart/canvas para los 3 modos de "Ver Balance" -- se destruye y recrea al cambiar de modo
 let META = {zonas:[], niveles:[], meses:[]};
@@ -2505,6 +2526,72 @@ function _beMedidorAfectaOpciones(){
     });
   });
   return opciones;
+}
+
+// "Sobreponer cliente" (ver filtro arriba de "Ver Balance") -- los
+// medidores de entrada/salida de la estructura activa SON, en la
+// práctica, sus clientes (mismo criterio que ya usa
+// _beActualizarEtiquetasEntradaSalida para llamarlos "Cliente(s)" cuando
+// tipo='L'). El desplegable aparece cuando hay al menos uno.
+async function _beActualizarWidgetCliente(id){
+  const wrap = document.getElementById('be-filtro-cliente');
+  const sel = document.getElementById('be-cliente-select');
+  BE_CLIENTE_ACTIVO = null; BE_CLIENTE_DATOS = null;
+  document.getElementById('be-cliente-polaridad').classList.add('hidden');
+  try{ BE_CLIENTES = DEMO ? [] : await apiGet(`/api/balances-estructura/${id}/clientes`); }
+  catch(e){ BE_CLIENTES = []; }
+  if(!BE_CLIENTES.length){
+    wrap.classList.add('hidden');
+    sel.innerHTML = '<option value="">Ninguno</option>';
+    return;
+  }
+  wrap.classList.remove('hidden');
+  sel.innerHTML = '<option value="">Ninguno</option>'
+    + BE_CLIENTES.map(c=>`<option value="${_mselEsc(c.usuario_id)}">${_mselEsc(c.nombre||c.usuario_id)}</option>`).join('');
+  sel.value = '';
+}
+
+async function beSeleccionarClienteOverlay(usuarioId){
+  const polWrap = document.getElementById('be-cliente-polaridad');
+  if(!usuarioId){
+    BE_CLIENTE_ACTIVO = null; BE_CLIENTE_DATOS = null;
+    polWrap.classList.add('hidden');
+    if(BE_MODO_GRAFICO!==3 && BE_CONSUMO_DATOS) renderChartBalanceEstructura(BE_CONSUMO_DATOS, BE_MODO_GRAFICO);
+    return;
+  }
+  const c = BE_CLIENTES.find(x=>x.usuario_id===usuarioId);
+  if(!c) return;
+  BE_CLIENTE_ACTIVO = c;
+  document.getElementById('be-cliente-canal-salida').value = c.canal_salida;
+  document.getElementById('be-cliente-canal-entrada').value = c.canal_entrada;
+  polWrap.classList.remove('hidden');
+  await _beCargarConsumoClienteActivo();
+}
+
+async function _beCargarConsumoClienteActivo(){
+  if(!BE_CLIENTE_ACTIVO) return;
+  const desde = document.getElementById('be-desde').value;
+  const hasta = document.getElementById('be-hasta').value;
+  const qs = new URLSearchParams({usuario_id: BE_CLIENTE_ACTIVO.usuario_id});
+  if(desde) qs.set('desde', desde);
+  if(hasta) qs.set('hasta', hasta);
+  try{ BE_CLIENTE_DATOS = await apiGet(`/api/telemedida/consumo?${qs.toString()}`); }
+  catch(e){ BE_CLIENTE_DATOS = null; }
+  if(BE_MODO_GRAFICO!==3 && BE_CONSUMO_DATOS) renderChartBalanceEstructura(BE_CONSUMO_DATOS, BE_MODO_GRAFICO);
+}
+
+// La polaridad (qué canal del cliente es "salida"/"entrada" al comparar
+// contra la línea) se guarda por (estructura, cliente) -- ver
+// LineaClientePolaridad en el backend -- para no reconfirmarla cada vez.
+async function beGuardarPolaridadCliente(){
+  if(!BE_CLIENTE_ACTIVO) return;
+  const canal_salida = document.getElementById('be-cliente-canal-salida').value;
+  const canal_entrada = document.getElementById('be-cliente-canal-entrada').value;
+  BE_CLIENTE_ACTIVO.canal_salida = canal_salida;
+  BE_CLIENTE_ACTIVO.canal_entrada = canal_entrada;
+  try{ await apiPut(`/api/balances-estructura/${BE_ACTIVA_ID}/clientes/${encodeURIComponent(BE_CLIENTE_ACTIVO.usuario_id)}/polaridad`, {canal_salida, canal_entrada}); }
+  catch(e){ /* no bloqueante -- la vista ya refleja el cambio igual */ }
+  if(BE_MODO_GRAFICO!==3 && BE_CONSUMO_DATOS) renderChartBalanceEstructura(BE_CONSUMO_DATOS, BE_MODO_GRAFICO);
 }
 
 function _beActualizarWidgetMedidorAfecta(){
@@ -3868,6 +3955,8 @@ async function verBalanceEstructura(id){
 
   BE_CONSUMO_DATOS = datos;
   _beActualizarWidgetMedidorAfecta();
+  if(cambioDeEstructura) await _beActualizarWidgetCliente(id);
+  else if(BE_CLIENTE_ACTIVO) await _beCargarConsumoClienteActivo();
   _beAplicarModoUI(BE_MODO_GRAFICO);
   if(BE_MODO_GRAFICO!==3) renderChartBalanceEstructura(BE_CONSUMO_DATOS, BE_MODO_GRAFICO);
   renderResumenEstructura();
@@ -4254,6 +4343,29 @@ async function renderChartBalanceEstructura(datos, modo){
       {type:'line', label:'Salida', data:salidaKwh, borderColor:'#ef476f', backgroundColor:'rgba(239,71,111,.18)',
         borderWidth:2, tension:.15, spanGaps:true, yAxisID:'yKwh', order:2, fill:0, ..._puntosAjuste('#ef476f')},
     ];
+    // Cliente sobrepuesto (ver "Sobreponer cliente" en el filtro de arriba)
+    // -- solo tiene sentido comparar magnitudes (kWh) en este modo, no en
+    // el de Pérdida %. Se realinean sus fechas contra las del gráfico
+    // principal (pueden no coincidir 1 a 1) antes de graficar.
+    if(BE_CLIENTE_ACTIVO && BE_CLIENTE_DATOS){
+      const serieCliente = BE_CLIENTE_DATOS.series && BE_CLIENTE_DATOS.series[0];
+      if(serieCliente){
+        const idxPorFecha = {};
+        BE_CLIENTE_DATOS.fechas.forEach((f,i)=>{ idxPorFecha[f]=i; });
+        const _alinear = canal => fechas.map(f => {
+          const i = idxPorFecha[f];
+          return i==null ? null : serieCliente[canal][i];
+        });
+        datasets.push(
+          {type:'line', label:`${serieCliente.nombre} -- salida`, data:_alinear(BE_CLIENTE_ACTIVO.canal_salida),
+            borderColor:'#7b2fff', backgroundColor:'transparent', borderWidth:2, borderDash:[4,3],
+            pointRadius:0, tension:.15, spanGaps:true, yAxisID:'yKwh', order:2},
+          {type:'line', label:`${serieCliente.nombre} -- entrada`, data:_alinear(BE_CLIENTE_ACTIVO.canal_entrada),
+            borderColor:'#f4a261', backgroundColor:'transparent', borderWidth:2, borderDash:[4,3],
+            pointRadius:0, tension:.15, spanGaps:true, yAxisID:'yKwh', order:2},
+        );
+      }
+    }
   }else{
     usaPct = true;
     yKwhTitulo = 'Pérdida / Pérdida técnica (kWh)';
