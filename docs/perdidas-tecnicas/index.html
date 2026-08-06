@@ -2983,6 +2983,7 @@ function _beCanalSelectHtml(cls, tipo){
 }
 
 function _beFilaMedidorHtml(tipo){
+  const opuesto = tipo === 'salida' ? 'Entrada' : 'Salida';
   return `<div class="be-fila-medidor">
     <div class="be-fila-grid con-fecha">
       ${_beMedidorInputHtml('be-fila-usuario', 'Buscar por nombre o código...')}
@@ -2991,6 +2992,9 @@ function _beFilaMedidorHtml(tipo){
       <input type="date" class="be-fila-vigente-desde" value="${BE_FECHA_MINIMA||''}" title="Vigente desde -- por defecto la fecha más vieja con datos, cambiala si este punto empezó después">
       <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text3);white-space:nowrap;cursor:pointer" title="Marcá esto si el medidor es un CLIENTE conectado (no un punto de red) -- así aparece en 'Sobreponer cliente' de Ver Balance">
         <input type="checkbox" class="be-fila-es-cliente"> Cliente
+      </label>
+      <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text3);white-space:nowrap;cursor:pointer" title="Marcá esto si este punto NO debe sumarse a su propio lado -- en cambio, se RESTA de ${opuesto}. Para topologías donde una lectura de este lado en realidad corrige/anula parte del otro (ej. Balance por Nivel de Tensión/Zona)">
+        <input type="checkbox" class="be-fila-resta"> Restar de ${opuesto}
       </label>
       <button type="button" class="be-fila-quitar" onclick="this.closest('.be-fila-medidor').remove()" title="Quitar esta fila">✕</button>
     </div>
@@ -3052,7 +3056,9 @@ function _beRecolectarFilas(tipo, prefijo='be'){
     }
     const esClienteInput = fila.querySelector('.be-fila-es-cliente');
     const es_cliente = !!(esClienteInput && esClienteInput.checked);
-    return {usuario_id: principal.usuario_id, canal, usuario_id_back, canal_back, vigente_desde, es_cliente};
+    const restaInput = fila.querySelector('.be-fila-resta');
+    const resta = !!(restaInput && restaInput.checked);
+    return {usuario_id: principal.usuario_id, canal, usuario_id_back, canal_back, vigente_desde, es_cliente, resta};
   });
 }
 
@@ -5327,7 +5333,8 @@ function renderTablaDetalleBalance(datos){
   // los puntos de red comunes.
   const filaTipoCelda = (col, esInicioDeGrupo) => {
     const claseGrupo = (esInicioDeGrupo ? ' grupo-inicio' : '') + (col.es_cliente ? ' cliente' : '');
-    const etiqueta = (col.es_cliente ? 'Cliente ' : '') + (col.tipo === 'salida' ? 'Salida' : 'Entrada');
+    const etiqueta = (col.es_cliente ? 'Cliente ' : '') + (col.tipo === 'salida' ? 'Salida' : 'Entrada')
+      + (col.resta ? ` (resta de ${col.tipo === 'salida' ? 'Entrada' : 'Salida'})` : '');
     if(!_bePuntoTieneBack(col)) return `<td class="be-col-detalle be-fila-tipo-celda${claseGrupo}">${etiqueta}</td>`;
     return `<td class="be-col-detalle be-fila-tipo-celda${claseGrupo}">${etiqueta}</td>`
       + `<td class="be-col-detalle be-fila-tipo-celda hidden" data-resp-grupo="${col._respIdx}">${etiqueta}</td>`
@@ -5807,6 +5814,18 @@ async function beedFijarEsCliente(vigenciaId, esCliente){
   catch(e){ alert(e.message || 'No se pudo guardar.'); }
 }
 
+// "Restar del otro lado" -- igual que "Es cliente", es solo una etiqueta
+// que se prende/apaga en cualquier momento. Ver comentario en el modelo y
+// en _consumo_interno (backend): este punto deja de sumar a su propio lado
+// y en cambio resta del OPUESTO -- recarga el balance visible porque cambia
+// los totales de Entrada/Salida.
+async function beedFijarResta(vigenciaId, resta){
+  try{
+    await apiPut(`/api/balances-estructura/${BE_EDITAR_ID}/medidores/${vigenciaId}/resta`, {resta});
+    if(BE_ACTIVA_ID === BE_EDITAR_ID) verBalanceEstructura(BE_ACTIVA_ID);
+  }catch(e){ alert(e.message || 'No se pudo guardar.'); }
+}
+
 function renderPuntosEditor(tipo, puntos){
   const cont = document.getElementById(`beed-puntos-${tipo}`);
   if(!puntos.length){
@@ -5833,6 +5852,9 @@ function renderPuntosEditor(tipo, puntos){
           ${respaldo}
           <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text3);cursor:pointer;margin-top:4px" title="Marcá esto si este medidor es un CLIENTE conectado (no un punto de red) -- así aparece en 'Sobreponer cliente' de Ver Balance">
             <input type="checkbox" ${actual.es_cliente?'checked':''} onchange="beedFijarEsCliente(${actual.id}, this.checked)"> Es cliente
+          </label>
+          <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text3);cursor:pointer;margin-top:4px" title="Marcá esto si este punto NO debe sumarse a su propio lado -- en cambio, se RESTA de ${tipo==='salida'?'Entrada':'Salida'}. Para topologías donde una lectura de este lado en realidad corrige/anula parte del otro (ej. Balance por Nivel de Tensión/Zona)">
+            <input type="checkbox" ${actual.resta?'checked':''} onchange="beedFijarResta(${actual.id}, this.checked)"> Restar de ${tipo==='salida'?'Entrada':'Salida'}
           </label>
         </div>
         <div class="be-punto-acciones">
