@@ -294,7 +294,7 @@ tfoot td:first-child{text-align:left}
 .be-fila-medidor{margin-bottom:10px;padding-bottom:8px;border-bottom:1px dashed var(--border)}
 .be-fila-medidor:last-child{border-bottom:none}
 .be-fila-grid{display:grid;grid-template-columns:minmax(140px,1fr) 90px 150px 26px;gap:6px;align-items:center}
-.be-fila-grid.con-fecha{grid-template-columns:minmax(140px,1fr) 90px 150px 125px 26px}
+.be-fila-grid.con-fecha{grid-template-columns:minmax(140px,1fr) 90px 150px 125px 60px 26px}
 @media (max-width:640px){ .be-fila-grid,.be-fila-grid.con-fecha{grid-template-columns:1fr} }
 .be-fila-grid input,.be-fila-grid select{padding:7px 8px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg)}
 .be-fila-grid select:disabled{opacity:.65;cursor:default}
@@ -2803,6 +2803,9 @@ function _beFilaMedidorHtml(tipo){
       ${_beFuenteSelectHtml('be-fila-fuente')}
       ${_beCanalSelectHtml('be-fila-canal', tipo)}
       <input type="date" class="be-fila-vigente-desde" value="${BE_FECHA_MINIMA||''}" title="Vigente desde -- por defecto la fecha más vieja con datos, cambiala si este punto empezó después">
+      <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text3);white-space:nowrap;cursor:pointer" title="Marcá esto si el medidor es un CLIENTE conectado (no un punto de red) -- así aparece en 'Sobreponer cliente' de Ver Balance">
+        <input type="checkbox" class="be-fila-es-cliente"> Cliente
+      </label>
       <button type="button" class="be-fila-quitar" onclick="this.closest('.be-fila-medidor').remove()" title="Quitar esta fila">✕</button>
     </div>
     <button type="button" class="be-btn-respaldo" onclick="beToggleRespaldo(this)">+ Medidor de respaldo</button>
@@ -2861,7 +2864,9 @@ function _beRecolectarFilas(tipo, prefijo='be'){
       usuario_id_back = back.usuario_id;
       canal_back = fila.querySelector('.be-fila-respaldo-canal').value;
     }
-    return {usuario_id: principal.usuario_id, canal, usuario_id_back, canal_back, vigente_desde};
+    const esClienteInput = fila.querySelector('.be-fila-es-cliente');
+    const es_cliente = !!(esClienteInput && esClienteInput.checked);
+    return {usuario_id: principal.usuario_id, canal, usuario_id_back, canal_back, vigente_desde, es_cliente};
   });
 }
 
@@ -5418,6 +5423,14 @@ function _beFechaFmt(iso){
   return iso ? new Date(iso+'T00:00:00').toLocaleDateString('es-CO',{day:'numeric',month:'short',year:'numeric'}) : null;
 }
 
+// "Es cliente" es solo una etiqueta (no un cambio de medidor con fecha) --
+// se puede prender/apagar en cualquier momento sin abrir una vigencia
+// nueva. Ver LineaClientePolaridad / "Sobreponer cliente" en Ver Balance.
+async function beedFijarEsCliente(vigenciaId, esCliente){
+  try{ await apiPut(`/api/balances-estructura/${BE_EDITAR_ID}/medidores/${vigenciaId}/es-cliente`, {es_cliente: esCliente}); }
+  catch(e){ alert(e.message || 'No se pudo guardar.'); }
+}
+
 function renderPuntosEditor(tipo, puntos){
   const cont = document.getElementById(`beed-puntos-${tipo}`);
   if(!puntos.length){
@@ -5442,6 +5455,9 @@ function renderPuntosEditor(tipo, puntos){
         <div>
           <div class="id">${_mselEsc(etiqueta)}</div>
           ${respaldo}
+          <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text3);cursor:pointer;margin-top:4px" title="Marcá esto si este medidor es un CLIENTE conectado (no un punto de red) -- así aparece en 'Sobreponer cliente' de Ver Balance">
+            <input type="checkbox" ${actual.es_cliente?'checked':''} onchange="beedFijarEsCliente(${actual.id}, this.checked)"> Es cliente
+          </label>
         </div>
         <div class="be-punto-acciones">
           <button type="button" class="be-editar-btn" onclick="beedMostrarVigenciaForm(this,'${tipo}',${p.orden})">Nueva vigencia</button>
