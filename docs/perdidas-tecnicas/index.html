@@ -3614,12 +3614,36 @@ function _beAlertaClaveFirma(a){
   return {clave, firma};
 }
 
+// La lista completa de /alertas puede tardar varios segundos (recorre
+// TODAS las estructuras contra su típico -- ver categoría 'perdida_alta').
+// Click en "Está bien"/"Está mal" NO debe repetir ese pedido entero solo
+// para mostrar el efecto de UNA revisión -- se actualiza BE_ALERTAS_CACHE
+// en memoria y se re-renderizan las 3 listas desde ahí, al toque.
+let BE_ALERTAS_CACHE = [];
+
 async function beRevisarAlerta(ev, tipoAlerta, clave, firma, estado){
   ev.stopPropagation();
+  const boton = ev.currentTarget;
+  boton.disabled = true;
   try{
     await apiPost('/api/balances-estructura/alertas/revisar', {tipo_alerta:tipoAlerta, clave, firma, estado});
-  }catch(e){ alert(e.message || 'No se pudo guardar la revisión.'); return; }
-  cargarAlertasBalance();
+  }catch(e){
+    alert(e.message || 'No se pudo guardar la revisión.');
+    boton.disabled = false;
+    return;
+  }
+  if(estado === 'bien'){
+    BE_ALERTAS_CACHE = BE_ALERTAS_CACHE.filter(a => {
+      const cf = _beAlertaClaveFirma(a);
+      return !(a.tipo_alerta===tipoAlerta && cf.clave===clave && cf.firma===firma);
+    });
+  }else{
+    BE_ALERTAS_CACHE.forEach(a => {
+      const cf = _beAlertaClaveFirma(a);
+      if(a.tipo_alerta===tipoAlerta && cf.clave===clave && cf.firma===firma) a.revisado = 'mal';
+    });
+  }
+  _beRenderAlertasDesdeCache();
 }
 
 function _beRenderAlertaItem(a){
@@ -3683,10 +3707,17 @@ async function cargarAlertasBalance(){
   if(anioUsado) anioSel.value = anioUsado;
   if(mesUsado) mesSel.value = String(parseInt(mesUsado,10));
 
-  const alertas = datos.alertas || [];
-  const principales = alertas.filter(a => a.tipo_alerta==='atraso' || a.tipo_alerta==='promedio' || a.tipo_alerta==='respaldo_en_uso');
-  const perdidaAlta = alertas.filter(a => a.tipo_alerta==='perdida_alta');
-  const ajustes = alertas.filter(a => a.tipo_alerta==='ajuste_manual');
+  BE_ALERTAS_CACHE = datos.alertas || [];
+  _beRenderAlertasDesdeCache();
+}
+
+function _beRenderAlertasDesdeCache(){
+  const contPrincipales = document.getElementById('be-alertas-lista');
+  const contPerdida = document.getElementById('be-alertas-perdida-lista');
+  const contAjustes = document.getElementById('be-alertas-ajustes-lista');
+  const principales = BE_ALERTAS_CACHE.filter(a => a.tipo_alerta==='atraso' || a.tipo_alerta==='promedio' || a.tipo_alerta==='respaldo_en_uso');
+  const perdidaAlta = BE_ALERTAS_CACHE.filter(a => a.tipo_alerta==='perdida_alta');
+  const ajustes = BE_ALERTAS_CACHE.filter(a => a.tipo_alerta==='ajuste_manual');
 
   contPrincipales.innerHTML = principales.length ? principales.map(_beRenderAlertaItem).join('')
     : '<div class="tm-alarma-vacio">Sin alertas -- todos los medidores están reportando con normalidad.</div>';
