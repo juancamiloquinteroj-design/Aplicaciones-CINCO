@@ -1248,11 +1248,35 @@ tfoot td:first-child{text-align:left}
 
   <div class="sec-hdr">
     <div class="sec-title">Alertas de Balance</div>
-    <div class="sec-sub">Medidores atrasados, con anomalías respecto a su consumo habitual, con ajustes manuales activos, o donde tuvo que usarse el respaldo</div>
+    <div class="sec-sub">Medidores atrasados, con anomalías respecto a su consumo habitual, con ajustes manuales activos, o donde tuvo que usarse el respaldo -- más las estructuras con pérdida alta del mes elegido</div>
   </div>
 
   <div class="card">
+    <div class="sec-title" style="font-size:13px;margin-bottom:8px">⚠️ Alertas principales</div>
+    <div class="sec-sub" style="margin-bottom:10px">Atraso, anomalías de consumo, ajustes manuales y respaldo en uso -- siempre sobre el estado ACTUAL (hoy)</div>
     <div id="be-alertas-lista" class="tm-alarma-lista"></div>
+  </div>
+
+  <div class="card">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:10px">
+      <div>
+        <div class="sec-title" style="font-size:13px;margin-bottom:2px">📉 Estructuras con pérdida alta</div>
+        <div class="sec-sub">Superaron su máximo típico calculado en el mes elegido</div>
+      </div>
+      <div class="fbar" style="margin:0">
+        <label>Mes</label>
+        <select id="be-alertas-mes" onchange="this.dataset.manual='1'"></select>
+        <label>Año</label>
+        <select id="be-alertas-anio" onchange="this.dataset.manual='1'"></select>
+        <button type="button" class="btn-theme" style="width:auto;padding:6px 14px;background:var(--accent);color:#fff;border-color:var(--accent)" onclick="cargarAlertasBalance()">▶ Ver</button>
+      </div>
+    </div>
+    <div id="be-alertas-perdida-lista" class="tm-alarma-lista"></div>
+  </div>
+
+  <div class="card">
+    <div class="sec-title" style="font-size:13px;margin-bottom:8px">🛠️ Medidas arregladas manualmente</div>
+    <div id="be-alertas-ajustes-lista" class="tm-alarma-lista"></div>
   </div>
 
 </div>
@@ -3476,38 +3500,113 @@ async function beBorrarFiltrosVer(){
 // configurado (avisa si el principal lleva atraso -- aunque el respaldo lo
 // tape --, si el respaldo tuvo que usarse de verdad, o si el último dato
 // del medidor se sale de su propio consumo habitual).
+const BE_ALERTA_COLOR = {atraso:'#ef476f', respaldo_en_uso:'#f4a261', promedio:'#9d4edd', ajuste_manual:'#ffc107', perdida_alta:'#ef476f'};
+const BE_MESES_NOMBRE = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+function _beAlertasPoblarFiltroMes(){
+  const selMes = document.getElementById('be-alertas-mes');
+  const selAnio = document.getElementById('be-alertas-anio');
+  if(selMes.options.length) return;  // ya poblado -- no reiniciar la elección del usuario
+  selMes.innerHTML = BE_MESES_NOMBRE.map((n,i)=>`<option value="${i+1}">${n}</option>`).join('');
+  const hoy = new Date();
+  const anios = [];
+  for(let a=hoy.getFullYear(); a>=2020; a--) anios.push(a);
+  selAnio.innerHTML = anios.map(a=>`<option value="${a}">${a}</option>`).join('');
+}
+
+// Clave+firma con la que el backend identifica "la misma alerta" (ver
+// AlertaBalanceRevision) -- tiene que coincidir EXACTO con como se armó en
+// alertas_balance() del backend para que "está bien" la oculte de verdad.
+function _beAlertaClaveFirma(a){
+  if(a.tipo_alerta === 'perdida_alta') return {clave: String(a.estructura_id), firma: a.mes};
+  const clave = `${a.usuario_id}|${a.canal}`;
+  const firma = a.tipo_alerta==='atraso' ? (a.ultima_fecha || 'sin_dato')
+    : a.tipo_alerta==='promedio' ? a.fecha
+    : a.tipo_alerta==='ajuste_manual' ? a.ultima_fecha
+    : a.ultimo_dia_usado;
+  return {clave, firma};
+}
+
+async function beRevisarAlerta(ev, tipoAlerta, clave, firma, estado){
+  ev.stopPropagation();
+  try{
+    await apiPost('/api/balances-estructura/alertas/revisar', {tipo_alerta:tipoAlerta, clave, firma, estado});
+  }catch(e){ alert(e.message || 'No se pudo guardar la revisión.'); return; }
+  cargarAlertasBalance();
+}
+
+function _beRenderAlertaItem(a){
+  const f2Alerta = v => v==null ? '--' : v.toLocaleString('es-CO',{maximumFractionDigits:0});
+  const etiqueta = a.usuario_id ? `${a.usuario_id}/${a.canal.replace('canal','C')}` : '';
+  const msg = a.tipo_alerta === 'atraso'
+    ? (a.ultima_fecha ? `Sin reportar hace ${a.atraso_dias} días (último dato: ${a.ultima_fecha})` : 'Nunca reportó datos')
+    : a.tipo_alerta === 'promedio'
+    ? `Se salió del promedio el ${a.fecha}: ${f2Alerta(a.valor)} kWh (habitual: ${f2Alerta(a.media)} ± ${f2Alerta(a.desviacion)}, ${a.confianza_pct}% de confianza)`
+    : a.tipo_alerta === 'ajuste_manual'
+    ? `Ajuste manual en ${a.dias_ajustados} día(s) (el más reciente: ${a.ultima_fecha}${a.autor?', por '+a.autor:''}) -- ${a.comentario}`
+    : a.tipo_alerta === 'perdida_alta'
+    ? `Pérdida de ${a.perdida_pct}% en ${a.mes} -- por encima de su ${a.tiene_tipico?'máximo típico':'umbral de referencia'} (${a.maximo_tipico}%)`
+    : `Usó el respaldo ${a.dias_usados} día(s) en el último mes (el más reciente: ${a.ultimo_dia_usado})`;
+  const color = BE_ALERTA_COLOR[a.tipo_alerta] || '#f4a261';
+  const {clave, firma} = _beAlertaClaveFirma(a);
+  const marcaMal = a.revisado === 'mal' ? `<span style="background:#ef476f22;color:#ef476f;font-weight:700;font-size:10px;border-radius:5px;padding:2px 6px;margin-left:6px">🚩 en seguimiento</span>` : '';
+  return `<div class="tm-alarma-item" onclick="mostrarVista('be-ver'); verBalanceEstructura(${a.estructura_id})">
+    <div class="nom">${_mselEsc(a.estructura_nombre)} ${etiqueta?`<span style="color:var(--text3);font-weight:400">-- ${a.tipo} · ${_mselEsc(etiqueta)}</span>`:''}${marcaMal}</div>
+    <div class="dias" style="background:${color}22;color:${color};display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+      <span>${_mselEsc(msg)}</span>
+      <span style="white-space:nowrap">
+        <button type="button" class="be-editar-btn" style="padding:3px 8px;font-size:11px" onclick="beRevisarAlerta(event,'${a.tipo_alerta}','${clave.replace(/'/g,"\\'")}','${firma}','bien')" title="Está bien -- ocultar hasta que cambie">✓ Está bien</button>
+        <button type="button" class="be-editar-btn" style="padding:3px 8px;font-size:11px" onclick="beRevisarAlerta(event,'${a.tipo_alerta}','${clave.replace(/'/g,"\\'")}','${firma}','mal')" title="Está mal -- marcar para seguimiento">✕ Está mal</button>
+      </span>
+    </div>
+  </div>`;
+}
+
 async function cargarAlertasBalance(){
-  const cont = document.getElementById('be-alertas-lista');
+  const contPrincipales = document.getElementById('be-alertas-lista');
+  const contPerdida = document.getElementById('be-alertas-perdida-lista');
+  const contAjustes = document.getElementById('be-alertas-ajustes-lista');
+  _beAlertasPoblarFiltroMes();
   if(DEMO){
-    cont.innerHTML = '<div class="tm-alarma-vacio">No disponible en modo demo (sin conexión al servidor).</div>';
+    contPrincipales.innerHTML = contPerdida.innerHTML = contAjustes.innerHTML = '<div class="tm-alarma-vacio">No disponible en modo demo (sin conexión al servidor).</div>';
     return;
   }
+  const mesSel = document.getElementById('be-alertas-mes');
+  const anioSel = document.getElementById('be-alertas-anio');
+  // Solo se manda mes/año si el usuario los tocó a mano -- el <select>
+  // recién poblado YA trae un valor (el de la primera opción, "Enero"),
+  // pero eso no es una elección real: si se mandara igual, el backend
+  // nunca podría aplicar SU default (el último mes cerrado) en la
+  // primera carga.
+  const qs = new URLSearchParams();
+  if(mesSel.dataset.manual === '1') qs.set('mes', mesSel.value);
+  if(anioSel.dataset.manual === '1') qs.set('anio', anioSel.value);
   let datos;
-  try{ datos = await apiGet('/api/balances-estructura/alertas'); }
-  catch(e){ cont.innerHTML = '<div class="tm-alarma-vacio">No se pudieron cargar las alertas.</div>'; return; }
+  // Timeout mas generoso que el default (2.5s) -- este endpoint cruza
+  // TODAS las estructuras del operador contra su "máximo típico" del mes
+  // elegido (categoría 'perdida_alta'), es normal que tarde unos segundos.
+  try{ datos = await apiGet(`/api/balances-estructura/alertas?${qs.toString()}`, 15000); }
+  catch(e){
+    contPrincipales.innerHTML = contPerdida.innerHTML = contAjustes.innerHTML = '<div class="tm-alarma-vacio">No se pudieron cargar las alertas.</div>';
+    return;
+  }
+  // Refleja el mes/año que realmente se usó -- el elegido a mano, o el
+  // default del backend (último mes cerrado) si no se tocó nada todavía.
+  const [anioUsado, mesUsado] = (datos.perdida_alta_mes || '').split('-');
+  if(anioUsado) anioSel.value = anioUsado;
+  if(mesUsado) mesSel.value = String(parseInt(mesUsado,10));
 
   const alertas = datos.alertas || [];
-  if(!alertas.length){
-    cont.innerHTML = '<div class="tm-alarma-vacio">Sin alertas -- todos los medidores están reportando con normalidad.</div>';
-    return;
-  }
-  const f2Alerta = v => v==null ? '--' : v.toLocaleString('es-CO',{maximumFractionDigits:0});
-  const BE_ALERTA_COLOR = {atraso:'#ef476f', respaldo_en_uso:'#f4a261', promedio:'#9d4edd', ajuste_manual:'#ffc107'};
-  cont.innerHTML = alertas.map(a => {
-    const etiqueta = `${a.usuario_id}/${a.canal.replace('canal','C')}`;
-    const msg = a.tipo_alerta === 'atraso'
-      ? (a.ultima_fecha ? `Sin reportar hace ${a.atraso_dias} días (último dato: ${a.ultima_fecha})` : 'Nunca reportó datos')
-      : a.tipo_alerta === 'promedio'
-      ? `Se salió del promedio el ${a.fecha}: ${f2Alerta(a.valor)} kWh (habitual: ${f2Alerta(a.media)} ± ${f2Alerta(a.desviacion)}, ${a.confianza_pct}% de confianza)`
-      : a.tipo_alerta === 'ajuste_manual'
-      ? `Ajuste manual en ${a.dias_ajustados} día(s) (el más reciente: ${a.ultima_fecha}${a.autor?', por '+a.autor:''}) -- ${a.comentario}`
-      : `Usó el respaldo ${a.dias_usados} día(s) en el último mes (el más reciente: ${a.ultimo_dia_usado})`;
-    const color = BE_ALERTA_COLOR[a.tipo_alerta] || '#f4a261';
-    return `<div class="tm-alarma-item" onclick="mostrarVista('be-ver'); verBalanceEstructura(${a.estructura_id})">
-      <div class="nom">${_mselEsc(a.estructura_nombre)} <span style="color:var(--text3);font-weight:400">-- ${a.tipo} · ${_mselEsc(etiqueta)}</span></div>
-      <div class="dias" style="background:${color}22;color:${color}">${_mselEsc(msg)}</div>
-    </div>`;
-  }).join('');
+  const principales = alertas.filter(a => a.tipo_alerta==='atraso' || a.tipo_alerta==='promedio' || a.tipo_alerta==='respaldo_en_uso');
+  const perdidaAlta = alertas.filter(a => a.tipo_alerta==='perdida_alta');
+  const ajustes = alertas.filter(a => a.tipo_alerta==='ajuste_manual');
+
+  contPrincipales.innerHTML = principales.length ? principales.map(_beRenderAlertaItem).join('')
+    : '<div class="tm-alarma-vacio">Sin alertas -- todos los medidores están reportando con normalidad.</div>';
+  contPerdida.innerHTML = perdidaAlta.length ? perdidaAlta.map(_beRenderAlertaItem).join('')
+    : '<div class="tm-alarma-vacio">Ninguna estructura superó su máximo típico en este mes.</div>';
+  contAjustes.innerHTML = ajustes.length ? ajustes.map(_beRenderAlertaItem).join('')
+    : '<div class="tm-alarma-vacio">No hay ajustes manuales vigentes.</div>';
 }
 
 function _beResumenLado(medidores){
