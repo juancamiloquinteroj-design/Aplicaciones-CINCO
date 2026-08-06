@@ -1650,6 +1650,10 @@ tfoot td:first-child{text-align:left}
 const API_BASE_URL = 'https://murkiness-dairy-anagram.ngrok-free.dev';
 const FETCH_TIMEOUT_MS = 2500;      // datos: si no responde rápido, mejor caer a modo demo
 const AUTH_TIMEOUT_MS = 15000;      // login/cambio de clave: pasan por Centro de Mando (Supabase), más lento
+const BALANCE_TIMEOUT_MS = 15000;   // consumo/comparacion/movil-anual de Balances por Estructura: recalculan
+                                     // dia por dia con TODOS los puntos de la estructura (ajustes, respaldo,
+                                     // etc.) -- con rangos de varios años y estructuras de muchos puntos (ej.
+                                     // Balance por Nivel de Tension con 14+) 2.5s no siempre alcanza.
 // ngrok (plan gratis) muestra una página de aviso antes de dejar pasar el tráfico
 // salvo que venga este header -- sin esto, todas las llamadas a la API fallarían.
 const NGROK_HEADERS = {'ngrok-skip-browser-warning':'true'};
@@ -1971,9 +1975,9 @@ async function cargarDashboardInicio(){
   let comp, movil, consumo;
   try{
     [comp, movil, consumo] = await Promise.all([
-      apiGet(`/api/balances-estructura/${estructuraId}/comparacion?desde=${desdeStr}&hasta=${hastaStr}`),
-      apiGet(`/api/balances-estructura/${estructuraId}/movil-anual?desde=${desdeStr}&hasta=${hastaStr}`),
-      apiGet(`/api/balances-estructura/${estructuraId}/consumo?desde=${mesAnterior}-01&hasta=${hoyStr}`),
+      apiGet(`/api/balances-estructura/${estructuraId}/comparacion?desde=${desdeStr}&hasta=${hastaStr}`, BALANCE_TIMEOUT_MS),
+      apiGet(`/api/balances-estructura/${estructuraId}/movil-anual?desde=${desdeStr}&hasta=${hastaStr}`, BALANCE_TIMEOUT_MS),
+      apiGet(`/api/balances-estructura/${estructuraId}/consumo?desde=${mesAnterior}-01&hasta=${hoyStr}`, BALANCE_TIMEOUT_MS),
     ]);
   }catch(e){
     msg.className = 'tm-modal-msg err';
@@ -4164,12 +4168,15 @@ async function verBalanceEstructura(id){
   let datos;
   try{
     [datos] = await Promise.all([
-      apiGet(`/api/balances-estructura/${id}/consumo?${qs.toString()}`),
+      apiGet(`/api/balances-estructura/${id}/consumo?${qs.toString()}`, BALANCE_TIMEOUT_MS),
       cambioDeEstructura ? _beCargarTipicosGuardados(id) : Promise.resolve(),
       verComparacionEstructura(),
     ]);
   }catch(e){
     document.getElementById('be-chart-titulo').textContent = 'No se pudo cargar el balance.';
+    // Si quedó un mensaje de "sin datos de balance" de un modo/estructura
+    // anterior, no puede seguir pegado tapando este error real.
+    document.getElementById('be-comparacion-vacio').classList.add('hidden');
     return;
   }
   // Si mientras esperábamos estos 3 pedidos el usuario ya disparó OTRO
@@ -4193,6 +4200,16 @@ async function verBalanceEstructura(id){
   if(cambioDeEstructura) await _beActualizarWidgetCliente(id);
   else if(BE_CLIENTE_ACTIVO) await _beCargarConsumoClienteActivo();
   _beAplicarModoUI(BE_MODO_GRAFICO);
+  if(BE_MODO_GRAFICO===1 || BE_MODO_GRAFICO===2){
+    // El gráfico diario SIEMPRE tiene algo para mostrar mientras haya
+    // BE_CONSUMO_DATOS (aunque Salida/Pérdida vengan vacías, ej. una zona
+    // donde TODAS las salidas se restan de la entrada -- ver "resta") --
+    // el mensaje de "sin datos de balance" es solo para Mensual/Anual (ver
+    // verComparacionEstructura/verMovilAnualEstructura), pero si quedó
+    // visible de una estructura/modo anterior hay que ocultarlo acá.
+    document.getElementById('be-comparacion-vacio').classList.add('hidden');
+    document.getElementById('be-chart-wrap').classList.remove('hidden');
+  }
   if(BE_MODO_GRAFICO!==3) renderChartBalanceEstructura(BE_CONSUMO_DATOS, BE_MODO_GRAFICO);
   renderResumenEstructura();
   // La tabla de "Balance diario" tiene su PROPIO rango (independiente del
@@ -4464,7 +4481,7 @@ async function cargarTablaBalance(){
     qs.set('hasta', `${hastaMes}-${String(ultimoDia).padStart(2,'0')}`);
   }
   let datos;
-  try{ datos = await apiGet(`/api/balances-estructura/${BE_ACTIVA_ID}/consumo?${qs.toString()}`); }
+  try{ datos = await apiGet(`/api/balances-estructura/${BE_ACTIVA_ID}/consumo?${qs.toString()}`, BALANCE_TIMEOUT_MS); }
   catch(e){ return; }
   BE_TABLA_DATOS = datos;
   renderTablaDetalleBalance(datos);
@@ -4503,7 +4520,7 @@ async function beConfirmarExportarCsv(){
   msg.className = 'tm-modal-msg';
   msg.textContent = 'Generando...';
   let datos;
-  try{ datos = await apiGet(`/api/balances-estructura/${BE_ACTIVA_ID}/consumo?${qs.toString()}`); }
+  try{ datos = await apiGet(`/api/balances-estructura/${BE_ACTIVA_ID}/consumo?${qs.toString()}`, BALANCE_TIMEOUT_MS); }
   catch(e){ msg.className='tm-modal-msg err'; msg.textContent = e.message || 'No se pudo traer el balance de ese rango.'; return; }
   if(!(datos.fechas||[]).length){ msg.className='tm-modal-msg err'; msg.textContent='No hay datos en ese rango.'; return; }
 
@@ -4569,7 +4586,7 @@ async function _beTecnicaDiariaProrateada(fechas){
   if(!fechas.length || !BE_ACTIVA_ID) return fechas.map(()=>null);
   let datos = {vinculado:false};
   try{
-    datos = await apiGet(`/api/balances-estructura/${BE_ACTIVA_ID}/comparacion?desde=${fechas[0]}&hasta=${fechas[fechas.length-1]}`);
+    datos = await apiGet(`/api/balances-estructura/${BE_ACTIVA_ID}/comparacion?desde=${fechas[0]}&hasta=${fechas[fechas.length-1]}`, BALANCE_TIMEOUT_MS);
   }catch(e){ /* se grafica igual, la serie queda vacía */ }
   if(!datos.vinculado) return fechas.map(()=>null);
   const porMes = {};
@@ -4830,7 +4847,7 @@ async function verComparacionEstructura(){
     const qs = new URLSearchParams();
     if(desdeMes) qs.set('desde', `${desdeMes}-01`);
     if(hastaMes) qs.set('hasta', `${hastaMes}-01`);
-    datos = DEMO ? {vinculado:false, meses:[]} : await apiGet(`/api/balances-estructura/${BE_ACTIVA_ID}/comparacion?${qs.toString()}`);
+    datos = DEMO ? {vinculado:false, meses:[]} : await apiGet(`/api/balances-estructura/${BE_ACTIVA_ID}/comparacion?${qs.toString()}`, BALANCE_TIMEOUT_MS);
   }catch(e){ datos = {vinculado:false, meses:[]}; }
 
   // Sin circuito vinculado igual hay que mostrar el balance de ESTA
@@ -5014,7 +5031,7 @@ async function verMovilAnualEstructura(){
     const qs = new URLSearchParams();
     if(desdeMes) qs.set('desde', `${desdeMes}-01`);
     if(hastaMes) qs.set('hasta', `${hastaMes}-01`);
-    datos = DEMO ? {meses:[]} : await apiGet(`/api/balances-estructura/${BE_ACTIVA_ID}/movil-anual?${qs.toString()}`);
+    datos = DEMO ? {meses:[]} : await apiGet(`/api/balances-estructura/${BE_ACTIVA_ID}/movil-anual?${qs.toString()}`, BALANCE_TIMEOUT_MS);
   }catch(e){ datos = {meses:[]}; }
 
   const vacio = document.getElementById('be-comparacion-vacio');
@@ -5188,7 +5205,7 @@ async function renderResumenEstructura(){
 
   let datos = {fechas:[], entrada_kwh:[], salida_kwh:[], perdida_kwh:[], perdida_pct:[]};
   try{
-    datos = await apiGet(`/api/balances-estructura/${BE_ACTIVA_ID}/consumo?desde=${fmt(primerDiaAnterior)}&hasta=${fmt(ultimoDiaActual)}`);
+    datos = await apiGet(`/api/balances-estructura/${BE_ACTIVA_ID}/consumo?desde=${fmt(primerDiaAnterior)}&hasta=${fmt(ultimoDiaActual)}`, BALANCE_TIMEOUT_MS);
   }catch(e){ /* se muestra igual con lo que haya, aunque sea vacío */ }
 
   const _resumenMes = mesTexto => {
