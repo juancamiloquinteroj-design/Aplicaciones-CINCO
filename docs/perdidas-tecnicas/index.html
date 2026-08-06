@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>CINCO Vision · Visualizador de Datos</title>
+<title>Balances y Análisis Energéticos (BAE)</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
 <!-- chartjs-plugin-zoom implementa el arrastre (pan) con la librería Hammer.js
@@ -383,6 +383,7 @@ tfoot td:first-child{text-align:left}
    sobre fondo oscuro). En oscuro va un ámbar claro en vez de rojo oscuro. */
 [data-theme="dark"] .be-tabla-creadas td.pto.ajustado{color:#ffc107 !important}
 [data-theme="dark"] .be-tabla-creadas td.pto.ajustado::after{border-color:transparent #ffc107 transparent transparent}
+.be-tabla-creadas td.pto.celda-seleccionada{outline:2px solid var(--accent);z-index:2}
 .be-tabla-creadas td.pto.celda-editando{padding:0;outline:2px solid var(--accent2)}
 .be-tabla-creadas td.pto.celda-editando input{width:100%;box-sizing:border-box;border:none;background:var(--bg2);color:var(--text);font:inherit;text-align:right;padding:7px 10px;font-family:ui-monospace,"Cascadia Code","SF Mono",Consolas,monospace}
 .be-fill-handle{position:absolute;bottom:-1px;right:-1px;width:8px;height:8px;background:var(--accent2);border:1px solid var(--bg2);cursor:crosshair;z-index:3}
@@ -1172,12 +1173,16 @@ tfoot td:first-child{text-align:left}
           <option value="">Ninguno</option>
         </select>
         <span id="be-cliente-polaridad" class="hidden" style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text3)">
-          <label style="margin:0">Salida=</label>
+          <label style="margin:0;display:flex;align-items:center;gap:3px">
+            <input type="checkbox" id="be-cliente-mostrar-salida" checked onchange="_beActualizarClienteChart()" title="Mostrar/ocultar esta serie en el gráfico">Salida=
+          </label>
           <select id="be-cliente-canal-salida" onchange="beGuardarPolaridadCliente()">
             <option value="canal1">Canal 1</option><option value="canal2">Canal 2</option>
             <option value="canal3">Canal 3</option><option value="canal4">Canal 4</option>
           </select>
-          <label style="margin:0">Entrada=</label>
+          <label style="margin:0;display:flex;align-items:center;gap:3px">
+            <input type="checkbox" id="be-cliente-mostrar-entrada" checked onchange="_beActualizarClienteChart()" title="Mostrar/ocultar esta serie en el gráfico">Entrada=
+          </label>
           <select id="be-cliente-canal-entrada" onchange="beGuardarPolaridadCliente()">
             <option value="canal1">Canal 1</option><option value="canal2">Canal 2</option>
             <option value="canal3">Canal 3</option><option value="canal4">Canal 4</option>
@@ -1220,6 +1225,16 @@ tfoot td:first-child{text-align:left}
       <button type="button" class="be-editar-btn" style="position:absolute;right:0" onclick="abrirModalEditarEstructura(BE_ACTIVA_ID)">✎ Editar</button>
     </div>
     <div id="be-chart-nota" class="tm-modal-msg" style="text-align:center"></div>
+
+    <div id="be-tipicos-calc-bar" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:11px;color:var(--text3);margin-bottom:8px">
+      <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px">Calcular datos típicos</span>
+      <label style="font-size:10px;color:var(--text3)">Desde</label>
+      <input type="month" id="be-tipicos-desde">
+      <label style="font-size:10px;color:var(--text3)">Hasta</label>
+      <input type="month" id="be-tipicos-hasta">
+      <button type="button" class="be-editar-btn" onclick="calcularTipicosEstructuraActiva()">Calcular</button>
+      <span id="be-tipicos-msg"></span>
+    </div>
 
     <div class="fbar" style="justify-content:space-between;margin-bottom:6px">
       <div id="be-filtro-diario" class="fbar" style="margin:0">
@@ -1269,15 +1284,6 @@ tfoot td:first-child{text-align:left}
       <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:12px;padding-bottom:12px;border-bottom:1px dashed var(--border)">
         <div class="be-tabla-creadas-titulo" style="margin-bottom:0">Balance diario</div>
         <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;justify-content:flex-end">
-          <div id="be-tipicos-calc-bar" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:11px;color:var(--text3);border-right:1px solid var(--border);padding-right:16px">
-            <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px">Calcular datos típicos</span>
-            <label style="font-size:10px;color:var(--text3)">Desde</label>
-            <input type="month" id="be-tipicos-desde">
-            <label style="font-size:10px;color:var(--text3)">Hasta</label>
-            <input type="month" id="be-tipicos-hasta">
-            <button type="button" class="be-editar-btn" onclick="calcularTipicosEstructuraActiva()">Calcular</button>
-            <span id="be-tipicos-msg"></span>
-          </div>
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
             <label style="font-size:10px;color:var(--text3)">Desde</label>
             <input type="month" id="be-tabla-desde">
@@ -1629,7 +1635,7 @@ tfoot td:first-child{text-align:left}
   </div>
 </div>
 
-  <div class="footer">CINCO Vision · Visualizador de Datos · CINCO S.A.S. · Construcción, Ingeniería y Consultoría</div>
+  <div class="footer">Balances y Análisis Energéticos (BAE) · CINCO S.A.S. · Construcción, Ingeniería y Consultoría</div>
 </div>
 </div>
 <!-- fin app-shell -->
@@ -2704,7 +2710,7 @@ async function beSeleccionarClienteOverlay(usuarioId){
   if(!usuarioId){
     BE_CLIENTE_ACTIVO = null; BE_CLIENTE_DATOS = null;
     polWrap.classList.add('hidden');
-    if(BE_MODO_GRAFICO!==3 && BE_CONSUMO_DATOS) renderChartBalanceEstructura(BE_CONSUMO_DATOS, BE_MODO_GRAFICO);
+    _beActualizarClienteChart();
     return;
   }
   const c = BE_CLIENTES.find(x=>x.usuario_id===usuarioId);
@@ -2718,14 +2724,46 @@ async function beSeleccionarClienteOverlay(usuarioId){
 
 async function _beCargarConsumoClienteActivo(){
   if(!BE_CLIENTE_ACTIVO) return;
-  const desde = document.getElementById('be-desde').value;
-  const hasta = document.getElementById('be-hasta').value;
-  const qs = new URLSearchParams({usuario_id: BE_CLIENTE_ACTIVO.usuario_id});
-  if(desde) qs.set('desde', desde);
-  if(hasta) qs.set('hasta', hasta);
+  // Se pide TODO el histórico disponible (no solo el rango del filtro
+  // diario) -- así un solo pedido sirve para los 3 modos (Diario/Mensual/
+  // Anual) sin tener que re-pedir al cambiar de uno a otro; es un solo
+  // medidor, el volumen de filas es chico de cualquier forma.
+  const hoy = new Date();
+  const hoyStr = `${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}-${String(hoy.getDate()).padStart(2,'0')}`;
+  const qs = new URLSearchParams({usuario_id: BE_CLIENTE_ACTIVO.usuario_id, desde: BE_FECHA_MINIMA || '2020-01-01', hasta: hoyStr});
   try{ BE_CLIENTE_DATOS = await apiGet(`/api/telemedida/consumo?${qs.toString()}`); }
   catch(e){ BE_CLIENTE_DATOS = null; }
-  if(BE_MODO_GRAFICO!==3 && BE_CONSUMO_DATOS) renderChartBalanceEstructura(BE_CONSUMO_DATOS, BE_MODO_GRAFICO);
+  _beActualizarClienteChart();
+}
+
+// Suma diaria del cliente -> total por mes, alineado al mismo arreglo
+// "meses" que ya usa el gráfico de Mensual/Anual (para poder sobreponerlo
+// tal cual, sin desalinear el eje X). null en los meses sin NINGÚN día
+// con dato (no 0 -- un 0 real sería "consumió cero ese mes", distinto).
+function _beClienteMesesAlineado(meses, canal){
+  if(!BE_CLIENTE_ACTIVO || !BE_CLIENTE_DATOS) return meses.map(()=>null);
+  const serie = BE_CLIENTE_DATOS.series && BE_CLIENTE_DATOS.series[0];
+  if(!serie) return meses.map(()=>null);
+  const sumaPorMes = {};
+  BE_CLIENTE_DATOS.fechas.forEach((f,i) => {
+    const v = serie[canal] ? serie[canal][i] : null;
+    if(v!=null){ const m = f.slice(0,7); sumaPorMes[m] = (sumaPorMes[m]||0) + v; }
+  });
+  return meses.map(m => m in sumaPorMes ? sumaPorMes[m] : null);
+}
+
+function _beClienteVisible(lado){
+  const chk = document.getElementById(`be-cliente-mostrar-${lado}`);
+  return !chk || chk.checked;
+}
+
+// Cualquier cambio en los checkboxes/canales de "Sobreponer cliente" tiene
+// que re-dibujar el gráfico que esté activo en ESE momento -- Diario
+// (modo 1/2), Mensual (3) o Anual (4) -- no solo el diario.
+function _beActualizarClienteChart(){
+  if(BE_MODO_GRAFICO===3){ if(BE_COMPARACION_DATOS) renderChartComparacionEstructura(BE_COMPARACION_DATOS); }
+  else if(BE_MODO_GRAFICO===4){ if(BE_MOVIL_ANUAL_DATOS) renderChartMovilAnual(BE_MOVIL_ANUAL_DATOS); }
+  else if(BE_CONSUMO_DATOS){ renderChartBalanceEstructura(BE_CONSUMO_DATOS, BE_MODO_GRAFICO); }
 }
 
 // La polaridad (qué canal del cliente es "salida"/"entrada" al comparar
@@ -2739,7 +2777,7 @@ async function beGuardarPolaridadCliente(){
   BE_CLIENTE_ACTIVO.canal_entrada = canal_entrada;
   try{ await apiPut(`/api/balances-estructura/${BE_ACTIVA_ID}/clientes/${encodeURIComponent(BE_CLIENTE_ACTIVO.usuario_id)}/polaridad`, {canal_salida, canal_entrada}); }
   catch(e){ /* no bloqueante -- la vista ya refleja el cambio igual */ }
-  if(BE_MODO_GRAFICO!==3 && BE_CONSUMO_DATOS) renderChartBalanceEstructura(BE_CONSUMO_DATOS, BE_MODO_GRAFICO);
+  _beActualizarClienteChart();
 }
 
 function _beActualizarWidgetMedidorAfecta(){
@@ -4091,7 +4129,9 @@ async function borrarEstructuraBalance(ev, id, nombre){
   }
 }
 
+let _beVerBalanceSeq = 0;
 async function verBalanceEstructura(id){
+  const miSeq = ++_beVerBalanceSeq;
   const cambioDeEstructura = BE_ACTIVA_ID !== id;
   BE_ACTIVA_ID = id;
   renderListaEstructuras();
@@ -4126,6 +4166,11 @@ async function verBalanceEstructura(id){
     document.getElementById('be-chart-titulo').textContent = 'No se pudo cargar el balance.';
     return;
   }
+  // Si mientras esperábamos estos 3 pedidos el usuario ya disparó OTRO
+  // verBalanceEstructura (ej. cambió las fechas y volvió a apretar
+  // "Graficar" antes de que el pedido viejo terminara), esta respuesta ya
+  // está vieja -- no pisar lo que la llamada más nueva ya esté mostrando.
+  if(miSeq !== _beVerBalanceSeq) return;
   const estructura = BE_ESTRUCTURAS.find(e=>e.id===id);
   const tipoTxt = estructura && estructura.tipo ? ` · ${BE_NOMBRES_TIPO[estructura.tipo]||estructura.tipo}` : '';
   document.getElementById('be-chart-titulo').textContent = `${datos.nombre} -- Nivel ${datos.nivel_tension}${tipoTxt}`;
@@ -4190,6 +4235,14 @@ function beSeleccionarTipoGrafico(t){
 function beCambiarModoGrafico(modo){
   const modoAnterior = BE_MODO_GRAFICO;
   BE_MODO_GRAFICO = modo;
+  // Diario (1/2) y Mensual/Anual (3/4) tienen cada uno su PROPIO par de
+  // fechas (be-desde/hasta vs. be-comp-desde/hasta) -- al cruzar de un
+  // GRUPO al otro (no al alternar "tipo" dentro del mismo grupo), se
+  // convierte el rango de uno al otro para que se vea el MISMO período,
+  // en vez de que cada uno recuerde un rango viejo distinto.
+  const grupo = m => (m===3||m===4) ? 'mensual' : 'diario';
+  let seSincronizo = false;
+  if(grupo(modoAnterior) !== grupo(modo)){ seSincronizo = _beSincronizarFiltrosFecha(grupo(modo)==='mensual'); }
   _beAplicarModoUI(modo);
   if(modo===3){
     // Si ya estábamos en Mensual y solo cambió "tipo" (pérdida vs.
@@ -4212,20 +4265,72 @@ function beCambiarModoGrafico(modo){
       // ya en Anual) arranca mostrando el último año -- ver todo el
       // histórico de golpe no aporta tanto en un indicador que ya de por sí
       // resume 12 meses en cada punto, y "el último año" es lo más consultado.
-      const desdeInput = document.getElementById('be-comp-desde');
-      const hastaInput = document.getElementById('be-comp-hasta');
-      const hoy = new Date();
-      const haceUnAnio = new Date(hoy.getFullYear(), hoy.getMonth()-11, 1);
-      desdeInput.value = `${haceUnAnio.getFullYear()}-${String(haceUnAnio.getMonth()+1).padStart(2,'0')}`;
-      hastaInput.value = `${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}`;
-      delete desdeInput.dataset.manual;
+      // EXCEPTO si se acaba de sincronizar desde el filtro diario (ver
+      // _beSincronizarFiltrosFecha arriba) -- ahí se respeta ESE rango.
+      if(!seSincronizo){
+        const desdeInput = document.getElementById('be-comp-desde');
+        const hastaInput = document.getElementById('be-comp-hasta');
+        const hoy = new Date();
+        const haceUnAnio = new Date(hoy.getFullYear(), hoy.getMonth()-11, 1);
+        desdeInput.value = `${haceUnAnio.getFullYear()}-${String(haceUnAnio.getMonth()+1).padStart(2,'0')}`;
+        hastaInput.value = `${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}`;
+        delete desdeInput.dataset.manual;
+      }
       verMovilAnualEstructura();
     }
+  }else if(seSincronizo){
+    // Se acaba de traer el rango desde Mensual/Anual -- BE_CONSUMO_DATOS
+    // sigue siendo el de la fecha VIEJA, hay que volver a pedir /consumo
+    // con las fechas nuevas (no alcanza con re-dibujar lo que ya había).
+    verBalanceEstructura(BE_ACTIVA_ID);
   }else if(BE_CONSUMO_DATOS){
     document.getElementById('be-comparacion-vacio').classList.add('hidden');
     document.getElementById('be-chart-wrap').classList.remove('hidden');
     renderChartBalanceEstructura(BE_CONSUMO_DATOS, modo);
   }
+}
+
+// Convierte el rango del filtro Diario (día a día) al de Mensual/Anual
+// (mes a mes) o viceversa, para que al cruzar de un grupo al otro se siga
+// viendo el MISMO período en vez de que cada uno arranque con lo que
+// tenía guardado de antes. Devuelve true si de verdad copió algo (para
+// que quien llama sepa si debe seguir aplicando SUS propios defaults).
+function _beSincronizarFiltrosFecha(entrandoAMensualAnual){
+  if(entrandoAMensualAnual){
+    const desde = document.getElementById('be-desde').value;
+    const hasta = document.getElementById('be-hasta').value;
+    if(!desde && !hasta) return false;
+    const compDesde = document.getElementById('be-comp-desde');
+    const compHasta = document.getElementById('be-comp-hasta');
+    if(desde){ compDesde.value = desde.slice(0,7); compDesde.dataset.manual = '1'; }
+    if(hasta) compHasta.value = hasta.slice(0,7);
+    return true;
+  }
+  const compDesde = document.getElementById('be-comp-desde').value;
+  const compHasta = document.getElementById('be-comp-hasta').value;
+  if(!compDesde && !compHasta) return false;
+  if(compDesde) document.getElementById('be-desde').value = `${compDesde}-01`;
+  if(compHasta){
+    const [a,m] = compHasta.split('-').map(Number);
+    const ultimoDia = new Date(a, m, 0).getDate();
+    document.getElementById('be-hasta').value = `${compHasta}-${String(ultimoDia).padStart(2,'0')}`;
+  }
+  return true;
+}
+
+// Click en un punto del gráfico Mensual/Anual -> Diario de ESE mes puntual
+// (no del rango completo del filtro mensual/anual -- por eso NO pasa por
+// beCambiarModoGrafico/_beSincronizarFiltrosFecha, que sincronizarían con
+// el rango ANCHO del filtro mensual en vez del mes exacto que se clickeó).
+function beIrADiarioDelMes(mes){
+  const [anio, mesNum] = mes.split('-').map(Number);
+  const ultimoDia = new Date(anio, mesNum, 0).getDate();
+  document.getElementById('be-desde').value = `${mes}-01`;
+  document.getElementById('be-hasta').value = `${mes}-${String(ultimoDia).padStart(2,'0')}`;
+  BE_GRANULARIDAD = 'diario';
+  BE_MODO_GRAFICO = _beModoDesdeSelectores();
+  _beAplicarModoUI(BE_MODO_GRAFICO);
+  verBalanceEstructura(BE_ACTIVA_ID);
 }
 
 // Los inputs de mes (be-comp-desde/hasta) son la MISMA fila para Histórico
@@ -4480,11 +4585,16 @@ async function renderChartBalanceEstructura(datos, modo){
   const dark = document.documentElement.getAttribute('data-theme')==='dark';
   const tickC = dark ? '#aab8d1' : '#4b5e7a';
   const gridC = dark ? 'rgba(255,255,255,.10)' : 'rgba(0,0,0,.06)';
-  // Se grafica n-1: el ÚLTIMO día del rango casi siempre está incompleto
-  // (todavía no terminó de reportar todas las horas), y eso dibuja una caída
-  // engañosa al final -- se recorta solo en el GRÁFICO, la tabla de abajo
-  // sigue mostrando el día completo tal cual llegó.
-  const recortar = arr => (arr||[]).length > 1 ? arr.slice(0,-1) : (arr||[]);
+  // Se grafica n-1 SOLO cuando el último día del rango es HOY -- ahí sí
+  // está casi siempre incompleto (todavía no terminó de reportar todas las
+  // horas) y dibuja una caída engañosa al final. Antes se recortaba
+  // SIEMPRE el último día, sin importar la fecha -- eso hacía que un mes
+  // YA CERRADO (ej. ver julio completo) perdiera su día 31 en el gráfico,
+  // aunque ese dato sí estuviera completo. Se recorta solo en el GRÁFICO,
+  // la tabla de abajo sigue mostrando el día completo tal cual llegó.
+  const hoyIso = new Date().toISOString().slice(0,10);
+  const ultimoEsHoy = (datos.fechas||[]).length > 0 && datos.fechas[datos.fechas.length-1] === hoyIso;
+  const recortar = arr => (ultimoEsHoy && (arr||[]).length > 1) ? arr.slice(0,-1) : (arr||[]);
   const fechas = recortar(datos.fechas);
   const entradaKwh = recortar(datos.entrada_kwh), salidaKwh = recortar(datos.salida_kwh);
   const perdidaKwh = recortar(datos.perdida_kwh), perdidaPct = recortar(datos.perdida_pct);
@@ -4582,14 +4692,16 @@ async function renderChartBalanceEstructura(datos, modo){
         const i = idxPorFecha[f];
         return i==null ? null : serieCliente[canal][i];
       });
-      datasets.push(
+      // Cada serie se puede ocultar por separado con su propio checkbox
+      // (ver "Sobreponer cliente" arriba) -- por si solo interesa ver una.
+      if(_beClienteVisible('salida')) datasets.push(
         {type:'line', label:`${serieCliente.nombre} -- salida`, data:_alinear(BE_CLIENTE_ACTIVO.canal_salida),
           borderColor:'#7b2fff', backgroundColor:'transparent', borderWidth:2, borderDash:[4,3],
-          pointRadius:0, tension:.15, spanGaps:true, yAxisID:'yCliente', order:2},
+          pointRadius:0, tension:.15, spanGaps:true, yAxisID:'yCliente', order:2});
+      if(_beClienteVisible('entrada')) datasets.push(
         {type:'line', label:`${serieCliente.nombre} -- entrada`, data:_alinear(BE_CLIENTE_ACTIVO.canal_entrada),
           borderColor:'#f4a261', backgroundColor:'transparent', borderWidth:2, borderDash:[4,3],
-          pointRadius:0, tension:.15, spanGaps:true, yAxisID:'yCliente', order:2},
-      );
+          pointRadius:0, tension:.15, spanGaps:true, yAxisID:'yCliente', order:2});
     }
   }
 
@@ -4774,46 +4886,70 @@ function renderChartComparacionEstructura(datos){
   document.getElementById('be-btn-entrada-comp').classList.toggle('activo', mostrarEntradaSalida);
   document.getElementById('be-btn-salida-comp').classList.toggle('activo', mostrarEntradaSalida);
 
+  const datasets = [
+    {type:'line', label:'Pérdida técnica (Pérdidas Técnicas)', data:datos.perdida_tecnica_kwh, hidden:mostrarEntradaSalida,
+      borderColor:'#00b4d8', backgroundColor:'transparent', borderWidth:2.5, pointRadius:2,
+      tension:.15, spanGaps:true, yAxisID:'y'},
+    {type:'line', label:'Pérdida del balance (esta estructura)', data:datos.perdida_balance_kwh, hidden:mostrarEntradaSalida,
+      borderColor:'#ef476f', backgroundColor:'transparent', borderWidth:2.5, pointRadius:2,
+      tension:.15, spanGaps:true, yAxisID:'y',
+      // Igual que en "Anual" -- con como máximo unas pocas decenas de
+      // puntos (uno por mes) el valor se puede etiquetar sin que se
+      // amontonen las etiquetas.
+      datalabels:{display:!mostrarEntradaSalida, anchor:'end', align:'top', offset:6,
+        formatter:v=>v==null ? '' : v.toLocaleString('es-CO',{maximumFractionDigits:0}),
+        font:{size:10, weight:'700'}, color:'#ef476f',
+        backgroundColor:'rgba(255,255,255,.85)', borderRadius:3, padding:{left:4,right:4,top:1,bottom:1}}},
+    {type:'line', label:'Pérdida %', data:datos.perdida_balance_pct, hidden:mostrarEntradaSalida,
+      borderColor:'#f4a261', backgroundColor:'transparent', borderWidth:2, pointRadius:2,
+      tension:.15, spanGaps:true, borderDash:[6,3], yAxisID:'yPct',
+      datalabels:{display:!mostrarEntradaSalida, anchor:'end', align:'bottom', offset:6,
+        formatter:v=>v==null ? '' : v.toFixed(2)+'%', font:{size:11, weight:'800'}, color:'#f4a261',
+        backgroundColor:'rgba(255,255,255,.9)', borderRadius:4, padding:{left:5,right:5,top:2,bottom:2}}},
+    {type:'line', label:'Entrada mensual', data:datos.entrada_kwh, _rol:'entrada', hidden:!mostrarEntradaSalida,
+      borderColor:'#06d6a0', backgroundColor:'transparent', borderWidth:2, pointRadius:2,
+      tension:.15, spanGaps:true, yAxisID:'yVolumen'},
+    // fill:3 sombrea el área hacia "Entrada mensual" (dataset 3) -- en
+    // esta escala compartida (millones de kWh) entrada y salida quedan
+    // casi pegadas, y la pérdida (la diferencia entre ambas) se pierde
+    // como dos líneas sueltas; como banda sombreada, se nota de inmediato.
+    {type:'line', label:'Salida mensual', data:datos.salida_kwh, _rol:'salida', hidden:!mostrarEntradaSalida,
+      borderColor:'#9d4edd', backgroundColor:'rgba(157,78,221,.18)', borderWidth:2, pointRadius:2,
+      tension:.15, spanGaps:true, yAxisID:'yVolumen', fill:3},
+  ];
+  // Cliente sobrepuesto (ver "Sobreponer cliente" arriba) -- se suma el
+  // consumo diario del cliente por MES para que sus puntos coincidan con
+  // los meses de este gráfico (uno por mes, no por día).
+  let hayCliente = false;
+  if(BE_CLIENTE_ACTIVO && BE_CLIENTE_DATOS && (BE_CLIENTE_DATOS.series||[])[0]){
+    hayCliente = true;
+    const nombreCliente = BE_CLIENTE_DATOS.series[0].nombre;
+    if(_beClienteVisible('salida')) datasets.push(
+      {type:'line', label:`${nombreCliente} -- salida`, data:_beClienteMesesAlineado(datos.meses, BE_CLIENTE_ACTIVO.canal_salida),
+        borderColor:'#7b2fff', backgroundColor:'transparent', borderWidth:2, pointRadius:2, borderDash:[4,3],
+        tension:.15, spanGaps:true, yAxisID:'yCliente'});
+    if(_beClienteVisible('entrada')) datasets.push(
+      {type:'line', label:`${nombreCliente} -- entrada`, data:_beClienteMesesAlineado(datos.meses, BE_CLIENTE_ACTIVO.canal_entrada),
+        borderColor:'#f4a261', backgroundColor:'transparent', borderWidth:2, pointRadius:2, borderDash:[4,3],
+        tension:.15, spanGaps:true, yAxisID:'yCliente'});
+  }
+
   if(chBalanceEstructura) chBalanceEstructura.destroy();
   chBalanceEstructura = new Chart(ctx, {
     data:{
       labels: datos.meses.map(labelMes),
-      datasets:[
-        {type:'line', label:'Pérdida técnica (Pérdidas Técnicas)', data:datos.perdida_tecnica_kwh, hidden:mostrarEntradaSalida,
-          borderColor:'#00b4d8', backgroundColor:'transparent', borderWidth:2.5, pointRadius:2,
-          tension:.15, spanGaps:true, yAxisID:'y'},
-        {type:'line', label:'Pérdida del balance (esta estructura)', data:datos.perdida_balance_kwh, hidden:mostrarEntradaSalida,
-          borderColor:'#ef476f', backgroundColor:'transparent', borderWidth:2.5, pointRadius:2,
-          tension:.15, spanGaps:true, yAxisID:'y',
-          // Igual que en "Anual" -- con como máximo unas pocas decenas de
-          // puntos (uno por mes) el valor se puede etiquetar sin que se
-          // amontonen las etiquetas.
-          datalabels:{display:!mostrarEntradaSalida, anchor:'end', align:'top', offset:6,
-            formatter:v=>v==null ? '' : v.toLocaleString('es-CO',{maximumFractionDigits:0}),
-            font:{size:10, weight:'700'}, color:'#ef476f',
-            backgroundColor:'rgba(255,255,255,.85)', borderRadius:3, padding:{left:4,right:4,top:1,bottom:1}}},
-        {type:'line', label:'Pérdida %', data:datos.perdida_balance_pct, hidden:mostrarEntradaSalida,
-          borderColor:'#f4a261', backgroundColor:'transparent', borderWidth:2, pointRadius:2,
-          tension:.15, spanGaps:true, borderDash:[6,3], yAxisID:'yPct',
-          datalabels:{display:!mostrarEntradaSalida, anchor:'end', align:'bottom', offset:6,
-            formatter:v=>v==null ? '' : v.toFixed(2)+'%', font:{size:11, weight:'800'}, color:'#f4a261',
-            backgroundColor:'rgba(255,255,255,.9)', borderRadius:4, padding:{left:5,right:5,top:2,bottom:2}}},
-        {type:'line', label:'Entrada mensual', data:datos.entrada_kwh, _rol:'entrada', hidden:!mostrarEntradaSalida,
-          borderColor:'#06d6a0', backgroundColor:'transparent', borderWidth:2, pointRadius:2,
-          tension:.15, spanGaps:true, yAxisID:'yVolumen'},
-        // fill:3 sombrea el área hacia "Entrada mensual" (dataset 3) -- en
-        // esta escala compartida (millones de kWh) entrada y salida quedan
-        // casi pegadas, y la pérdida (la diferencia entre ambas) se pierde
-        // como dos líneas sueltas; como banda sombreada, se nota de inmediato.
-        {type:'line', label:'Salida mensual', data:datos.salida_kwh, _rol:'salida', hidden:!mostrarEntradaSalida,
-          borderColor:'#9d4edd', backgroundColor:'rgba(157,78,221,.18)', borderWidth:2, pointRadius:2,
-          tension:.15, spanGaps:true, yAxisID:'yVolumen', fill:3},
-      ],
+      datasets,
     },
     options:{
       responsive:true, maintainAspectRatio:false,
       events:['mousemove','mouseout','click','touchstart','touchmove'],
       interaction:{mode:'index', intersect:false},
+      // Click en cualquier punto del mes -> Diario de ESE mes (ver
+      // beIrADiarioDelMes) -- más rápido que cambiar el filtro a mano.
+      onClick:(evt, els, chart) => {
+        const puntos = chart.getElementsAtEventForMode(evt, 'index', {intersect:false}, true);
+        if(puntos.length) beIrADiarioDelMes(datos.meses[puntos[0].index]);
+      },
       plugins:{
         legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:10}, color:tickC}},
         tooltip:{callbacks:{label:c=>{
@@ -4846,6 +4982,12 @@ function renderChartComparacionEstructura(datos){
         // como una franja de pocos píxeles, invisible aunque se sombree.
         yVolumen:{type:'linear', position:'right',
           grid:{drawOnChartArea:false, drawTicks:false}, ticks:{display:false}, border:{display:false}},
+        ...(hayCliente ? {
+          yCliente:{type:'linear', position:'right', grid:{drawOnChartArea:false},
+            ticks:{color:'#7b2fff', font:{size:11}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
+            afterFit:ax=>{ax.width=Math.max(ax.width,70)},
+            title:{display:true, text:'Cliente (kWh)', color:'#7b2fff', font:{size:11}}, offset:true},
+        } : {}),
       },
     },
   });
@@ -4916,42 +5058,62 @@ function renderChartMovilAnual(datos){
   document.getElementById('be-btn-entrada-comp').classList.toggle('activo', mostrarEntradaSalida);
   document.getElementById('be-btn-salida-comp').classList.toggle('activo', mostrarEntradaSalida);
 
+  const datasets = [
+    {type:'line', label:'Pérdida técnica móvil anual (Pérdidas Técnicas)', data:datos.perdida_tecnica_movil_kwh, hidden:mostrarEntradaSalida,
+      borderColor:'#00b4d8', backgroundColor:'transparent', borderWidth:2.5, pointRadius:2,
+      tension:.15, spanGaps:true, yAxisID:'y'},
+    {type:'line', label:'Pérdida del balance móvil anual (esta estructura)', data:datos.perdida_balance_movil_kwh, hidden:mostrarEntradaSalida,
+      borderColor:'#ef476f', backgroundColor:'transparent', borderWidth:2.5, pointRadius:2,
+      tension:.15, spanGaps:true, yAxisID:'y',
+      // Como máximo 12-13 puntos en este modo (uno por mes) -- a
+      // diferencia del gráfico diario, aquí el valor siempre se puede
+      // etiquetar sin que se amontonen las etiquetas.
+      datalabels:{display:true, anchor:'end', align:'top', offset:6,
+        formatter:v=>v==null ? '' : v.toLocaleString('es-CO',{maximumFractionDigits:0}),
+        font:{size:10, weight:'700'}, color:'#ef476f',
+        backgroundColor:'rgba(255,255,255,.85)', borderRadius:3, padding:{left:4,right:4,top:1,bottom:1}}},
+    {type:'line', label:'Pérdida % móvil anual', data:datos.perdida_balance_movil_pct, hidden:mostrarEntradaSalida,
+      borderColor:'#f4a261', backgroundColor:'transparent', borderWidth:2, pointRadius:2,
+      tension:.15, spanGaps:true, borderDash:[6,3], yAxisID:'yPct',
+      datalabels:{display:true, anchor:'end', align:'bottom', offset:6,
+        formatter:v=>v==null ? '' : v.toFixed(2)+'%', font:{size:11, weight:'800'}, color:'#f4a261',
+        backgroundColor:'rgba(255,255,255,.9)', borderRadius:4, padding:{left:5,right:5,top:2,bottom:2}}},
+    {type:'line', label:'Entrada móvil anual', data:datos.entrada_movil_kwh, _rol:'entrada', hidden:!mostrarEntradaSalida,
+      borderColor:'#06d6a0', backgroundColor:'transparent', borderWidth:2, pointRadius:2,
+      tension:.15, spanGaps:true, yAxisID:'yVolumen'},
+    {type:'line', label:'Salida móvil anual', data:datos.salida_movil_kwh, _rol:'salida', hidden:!mostrarEntradaSalida,
+      borderColor:'#9d4edd', backgroundColor:'rgba(157,78,221,.18)', borderWidth:2, pointRadius:2,
+      tension:.15, spanGaps:true, yAxisID:'yVolumen', fill:3},
+  ];
+  let hayCliente = false;
+  if(BE_CLIENTE_ACTIVO && BE_CLIENTE_DATOS && (BE_CLIENTE_DATOS.series||[])[0]){
+    hayCliente = true;
+    const nombreCliente = BE_CLIENTE_DATOS.series[0].nombre;
+    if(_beClienteVisible('salida')) datasets.push(
+      {type:'line', label:`${nombreCliente} -- salida`, data:_beClienteMesesAlineado(datos.meses, BE_CLIENTE_ACTIVO.canal_salida),
+        borderColor:'#7b2fff', backgroundColor:'transparent', borderWidth:2, pointRadius:2, borderDash:[4,3],
+        tension:.15, spanGaps:true, yAxisID:'yCliente'});
+    if(_beClienteVisible('entrada')) datasets.push(
+      {type:'line', label:`${nombreCliente} -- entrada`, data:_beClienteMesesAlineado(datos.meses, BE_CLIENTE_ACTIVO.canal_entrada),
+        borderColor:'#f4a261', backgroundColor:'transparent', borderWidth:2, pointRadius:2, borderDash:[4,3],
+        tension:.15, spanGaps:true, yAxisID:'yCliente'});
+  }
+
   if(chBalanceEstructura) chBalanceEstructura.destroy();
   chBalanceEstructura = new Chart(ctx, {
     data:{
       labels: datos.meses.map(labelMes),
-      datasets:[
-        {type:'line', label:'Pérdida técnica móvil anual (Pérdidas Técnicas)', data:datos.perdida_tecnica_movil_kwh, hidden:mostrarEntradaSalida,
-          borderColor:'#00b4d8', backgroundColor:'transparent', borderWidth:2.5, pointRadius:2,
-          tension:.15, spanGaps:true, yAxisID:'y'},
-        {type:'line', label:'Pérdida del balance móvil anual (esta estructura)', data:datos.perdida_balance_movil_kwh, hidden:mostrarEntradaSalida,
-          borderColor:'#ef476f', backgroundColor:'transparent', borderWidth:2.5, pointRadius:2,
-          tension:.15, spanGaps:true, yAxisID:'y',
-          // Como máximo 12-13 puntos en este modo (uno por mes) -- a
-          // diferencia del gráfico diario, aquí el valor siempre se puede
-          // etiquetar sin que se amontonen las etiquetas.
-          datalabels:{display:true, anchor:'end', align:'top', offset:6,
-            formatter:v=>v==null ? '' : v.toLocaleString('es-CO',{maximumFractionDigits:0}),
-            font:{size:10, weight:'700'}, color:'#ef476f',
-            backgroundColor:'rgba(255,255,255,.85)', borderRadius:3, padding:{left:4,right:4,top:1,bottom:1}}},
-        {type:'line', label:'Pérdida % móvil anual', data:datos.perdida_balance_movil_pct, hidden:mostrarEntradaSalida,
-          borderColor:'#f4a261', backgroundColor:'transparent', borderWidth:2, pointRadius:2,
-          tension:.15, spanGaps:true, borderDash:[6,3], yAxisID:'yPct',
-          datalabels:{display:true, anchor:'end', align:'bottom', offset:6,
-            formatter:v=>v==null ? '' : v.toFixed(2)+'%', font:{size:11, weight:'800'}, color:'#f4a261',
-            backgroundColor:'rgba(255,255,255,.9)', borderRadius:4, padding:{left:5,right:5,top:2,bottom:2}}},
-        {type:'line', label:'Entrada móvil anual', data:datos.entrada_movil_kwh, _rol:'entrada', hidden:!mostrarEntradaSalida,
-          borderColor:'#06d6a0', backgroundColor:'transparent', borderWidth:2, pointRadius:2,
-          tension:.15, spanGaps:true, yAxisID:'yVolumen'},
-        {type:'line', label:'Salida móvil anual', data:datos.salida_movil_kwh, _rol:'salida', hidden:!mostrarEntradaSalida,
-          borderColor:'#9d4edd', backgroundColor:'rgba(157,78,221,.18)', borderWidth:2, pointRadius:2,
-          tension:.15, spanGaps:true, yAxisID:'yVolumen', fill:3},
-      ],
+      datasets,
     },
     options:{
       responsive:true, maintainAspectRatio:false,
       events:['mousemove','mouseout','click','touchstart','touchmove'],
       interaction:{mode:'index', intersect:false},
+      // Click en cualquier punto del mes -> Diario de ESE mes.
+      onClick:(evt, els, chart) => {
+        const puntos = chart.getElementsAtEventForMode(evt, 'index', {intersect:false}, true);
+        if(puntos.length) beIrADiarioDelMes(datos.meses[puntos[0].index]);
+      },
       plugins:{
         legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:10}, color:tickC}},
         tooltip:{callbacks:{label:c=>{
@@ -4975,6 +5137,12 @@ function renderChartMovilAnual(datos){
           title:{display:true, text:'Pérdida % móvil anual', color:'#f4a261', font:{size:11}}, offset:true},
         yVolumen:{type:'linear', position:'right',
           grid:{drawOnChartArea:false, drawTicks:false}, ticks:{display:false}, border:{display:false}},
+        ...(hayCliente ? {
+          yCliente:{type:'linear', position:'right', grid:{drawOnChartArea:false},
+            ticks:{color:'#7b2fff', font:{size:11}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
+            afterFit:ax=>{ax.width=Math.max(ax.width,70)},
+            title:{display:true, text:'Cliente (kWh)', color:'#7b2fff', font:{size:11}}, offset:true},
+        } : {}),
       },
     },
   });
@@ -5070,6 +5238,9 @@ function _bePuntoTieneBack(p){ return !!(p.usuario_id_back && p.canal_back); }
 // (si tiene) queda oculto un nivel más adentro, como un desplegable lateral
 // propio -- el botón ▸ junto al medidor lo despliega sin afectar a los demás.
 function renderTablaDetalleBalance(datos){
+  // Se va a reconstruir todo el <tbody> -- la celda que estuviera
+  // "seleccionada" (ver Ctrl+C/Ctrl+V) queda huérfana, ya no sirve.
+  BE_CELDA_SELECCIONADA = null;
   const head = document.getElementById('be-tabla-detalle-head');
   const foot = document.getElementById('be-tabla-detalle-foot');
   const body = document.getElementById('be-tabla-detalle-body');
@@ -5290,11 +5461,26 @@ function _beLetraColumna(indice){
   return letra;
 }
 
+// Copiar/pegar un ajuste manual entre celdas (Ctrl+C/Ctrl+V) -- clic simple
+// "selecciona" una celda (sin entrar a editarla, eso sigue siendo doble
+// clic); Ctrl+C copia su fórmula (si tiene un ajuste) y Ctrl+V la aplica
+// sobre la celda seleccionada en ese momento (puede ser otra fila/columna).
+let BE_CELDA_SELECCIONADA = null;
+let BE_CLIPBOARD_FORMULA = null;
+
 function _beInicializarEdicionTabla(){
   const body = document.getElementById('be-tabla-detalle-body');
   if(!body || body.dataset.edicionLista) return;
   body.dataset.edicionLista = '1';
 
+  body.addEventListener('click', (ev)=>{
+    if(ev.target.classList.contains('be-fill-handle')) return;  // eso lo maneja el mousedown de abajo (arrastrar)
+    const td = ev.target.closest('td.pto[data-editable]');
+    if(!td || td.classList.contains('celda-editando')) return;
+    if(BE_CELDA_SELECCIONADA) BE_CELDA_SELECCIONADA.classList.remove('celda-seleccionada');
+    BE_CELDA_SELECCIONADA = td;
+    td.classList.add('celda-seleccionada');
+  });
   body.addEventListener('dblclick', (ev)=>{
     const td = ev.target.closest('td.pto[data-editable]');
     if(td) _beIniciarEdicionCelda(td);
@@ -5312,6 +5498,27 @@ function _beInicializarEdicionTabla(){
   });
 }
 _beInicializarEdicionTabla();
+
+document.addEventListener('keydown', (ev)=>{
+  if(!BE_CELDA_SELECCIONADA || !document.body.contains(BE_CELDA_SELECCIONADA)) return;
+  const enCampoDeTexto = ev.target.tagName === 'INPUT' || ev.target.tagName === 'TEXTAREA';
+  if(enCampoDeTexto) return;  // no interferir con copiar/pegar texto normal (ej. el comentario del modal)
+  if(!(ev.ctrlKey || ev.metaKey)) return;
+  const tecla = ev.key.toLowerCase();
+  if(tecla === 'c'){
+    ev.preventDefault();
+    BE_CLIPBOARD_FORMULA = BE_CELDA_SELECCIONADA.dataset.formula || null;
+  }else if(tecla === 'v'){
+    if(!BE_CLIPBOARD_FORMULA) return;
+    ev.preventDefault();
+    const td = BE_CELDA_SELECCIONADA;
+    BE_AJUSTE_PENDIENTE = {
+      tipo: td.dataset.tipo, orden: Number(td.dataset.orden),
+      fechaDesde: td.dataset.fecha, fechaHasta: td.dataset.fecha, formula: BE_CLIPBOARD_FORMULA,
+    };
+    _beAbrirModalAjuste(`${td.dataset.tipo==='entrada'?'Entrada':'Salida'} -- ${td.dataset.fecha}: pegar ajuste "${BE_CLIPBOARD_FORMULA}"`);
+  }
+});
 
 function _beIniciarEdicionCelda(td){
   if(td.querySelector('input')) return;
