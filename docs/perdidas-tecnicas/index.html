@@ -1,5 +1,4 @@
 <!DOCTYPE html>
-<!-- redeploy-trigger -->
 <html lang="es" data-theme="light">
 <head>
 <meta charset="UTF-8">
@@ -367,6 +366,12 @@ tfoot td:first-child{text-align:left}
 .be-tipicos-leyenda .sw-ajuste{background:#ffc107}
 .be-tipicos-leyenda .sw-atipico{background:#ef476f}
 .be-tabla-creadas th.pto,.be-tabla-creadas td.pto{background:rgba(244,162,97,.12)}
+/* Puntos marcados "Es cliente" (ver checkbox en Crear/Editar Estructura) --
+   otro color (violeta), distinto del ámbar de siempre Y del amarillo de
+   "ajustado" (ver más abajo, que sigue ganando si un día se dan los dos). */
+.be-tabla-creadas th.pto.cliente,.be-tabla-creadas td.pto.cliente,.be-tabla-creadas td.be-fila-tipo-celda.cliente{background:rgba(123,47,255,.14) !important}
+[data-theme="dark"] .be-tabla-creadas th.pto.cliente,[data-theme="dark"] .be-tabla-creadas td.pto.cliente,[data-theme="dark"] .be-tabla-creadas td.be-fila-tipo-celda.cliente{background:rgba(123,47,255,.24) !important}
+.be-tag-telemedido{font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:var(--text3);background:var(--bg3);border-radius:3px;padding:1px 4px;vertical-align:middle;white-space:nowrap}
 .be-tabla-creadas td.pto[data-editable]{cursor:cell;position:relative}
 .be-tabla-creadas td.pto[data-editable]:hover{outline:1px dashed var(--accent2)}
 .be-tabla-creadas td.pto.ajustado{background:rgba(255,193,7,.4) !important;color:#c62828 !important;font-weight:700}
@@ -398,6 +403,11 @@ tfoot td:first-child{text-align:left}
    al fondo sólido del sticky de arriba (1 clase+tipo) y dejaban ver las
    filas de abajo a través del encabezado al hacer scroll. */
 .be-tabla-creadas thead tr:nth-child(2) th,.be-tabla-creadas thead tr:nth-child(2) th.suma,.be-tabla-creadas thead tr:nth-child(2) th.pto{background:var(--bg3) !important}
+/* Puntos "Es cliente" -- va DESPUÉS de la regla de arriba (misma
+   especificidad: thead tr:nth-child(2) th.pto) para ganar por orden en la
+   hoja; si va antes, el fondo violeta queda tapado por el gris de siempre. */
+.be-tabla-creadas thead tr:nth-child(2) th.pto.cliente{background:rgba(123,47,255,.18) !important}
+[data-theme="dark"] .be-tabla-creadas thead tr:nth-child(2) th.pto.cliente{background:rgba(123,47,255,.3) !important}
 .be-tabla-creadas thead tr:nth-child(3) td,.be-tabla-creadas thead tr:nth-child(3) td.suma,.be-tabla-creadas thead tr:nth-child(3) td.pto,.be-tabla-creadas thead tr:nth-child(3) td.back,.be-tabla-creadas thead tr:nth-child(3) td.dif{padding:6px 10px;border-bottom:2px solid var(--text2);font-weight:700;color:var(--text3);background:var(--bg2) !important}
 .be-tabla-creadas thead tr:nth-child(3) td.suma{color:var(--text)}
 /* Balance diario: más compacta que la tabla de "Estructuras ya creadas" --
@@ -4517,29 +4527,6 @@ async function renderChartBalanceEstructura(datos, modo){
       {type:'line', label:'Salida', data:salidaKwh, borderColor:'#ef476f', backgroundColor:'rgba(239,71,111,.18)',
         borderWidth:2, tension:.15, spanGaps:true, yAxisID:'yKwh', order:2, fill:0, ..._puntosAjuste('#ef476f')},
     ];
-    // Cliente sobrepuesto (ver "Sobreponer cliente" en el filtro de arriba)
-    // -- solo tiene sentido comparar magnitudes (kWh) en este modo, no en
-    // el de Pérdida %. Se realinean sus fechas contra las del gráfico
-    // principal (pueden no coincidir 1 a 1) antes de graficar.
-    if(BE_CLIENTE_ACTIVO && BE_CLIENTE_DATOS){
-      const serieCliente = BE_CLIENTE_DATOS.series && BE_CLIENTE_DATOS.series[0];
-      if(serieCliente){
-        const idxPorFecha = {};
-        BE_CLIENTE_DATOS.fechas.forEach((f,i)=>{ idxPorFecha[f]=i; });
-        const _alinear = canal => fechas.map(f => {
-          const i = idxPorFecha[f];
-          return i==null ? null : serieCliente[canal][i];
-        });
-        datasets.push(
-          {type:'line', label:`${serieCliente.nombre} -- salida`, data:_alinear(BE_CLIENTE_ACTIVO.canal_salida),
-            borderColor:'#7b2fff', backgroundColor:'transparent', borderWidth:2, borderDash:[4,3],
-            pointRadius:0, tension:.15, spanGaps:true, yAxisID:'yKwh', order:2},
-          {type:'line', label:`${serieCliente.nombre} -- entrada`, data:_alinear(BE_CLIENTE_ACTIVO.canal_entrada),
-            borderColor:'#f4a261', backgroundColor:'transparent', borderWidth:2, borderDash:[4,3],
-            pointRadius:0, tension:.15, spanGaps:true, yAxisID:'yKwh', order:2},
-        );
-      }
-    }
   }else{
     usaPct = true;
     yKwhTitulo = 'Pérdida / Pérdida técnica (kWh)';
@@ -4572,6 +4559,36 @@ async function renderChartBalanceEstructura(datos, modo){
         {type:'line', label:`Promedio típico (${t.promedio.toFixed(2)}%)`, data:fechas.map(()=>t.promedio),
           borderColor:'#8899b5', backgroundColor:'transparent', borderWidth:1.3, borderDash:[6,3],
           pointRadius:0, tension:0, yAxisID:'yPct', order:3},
+      );
+    }
+  }
+
+  // Cliente sobrepuesto (ver "Sobreponer cliente" en el filtro de arriba) --
+  // se agrega SIEMPRE, sea el modo activo Pérdida vs. técnica o Entrada/
+  // Salida (antes solo aparecía en este último). Va en su PROPIO eje
+  // ('yCliente'), no en yKwh -- en el modo de pérdida, yKwh mide una
+  // diferencia chica (la pérdida), y el consumo crudo del cliente es un
+  // número mucho más grande: comparten eje y la pérdida se ve como una
+  // línea plana pegada al cero. Se realinean sus fechas contra las del
+  // gráfico principal (pueden no coincidir 1 a 1) antes de graficar.
+  let hayCliente = false;
+  if(BE_CLIENTE_ACTIVO && BE_CLIENTE_DATOS){
+    const serieCliente = BE_CLIENTE_DATOS.series && BE_CLIENTE_DATOS.series[0];
+    if(serieCliente){
+      hayCliente = true;
+      const idxPorFecha = {};
+      BE_CLIENTE_DATOS.fechas.forEach((f,i)=>{ idxPorFecha[f]=i; });
+      const _alinear = canal => fechas.map(f => {
+        const i = idxPorFecha[f];
+        return i==null ? null : serieCliente[canal][i];
+      });
+      datasets.push(
+        {type:'line', label:`${serieCliente.nombre} -- salida`, data:_alinear(BE_CLIENTE_ACTIVO.canal_salida),
+          borderColor:'#7b2fff', backgroundColor:'transparent', borderWidth:2, borderDash:[4,3],
+          pointRadius:0, tension:.15, spanGaps:true, yAxisID:'yCliente', order:2},
+        {type:'line', label:`${serieCliente.nombre} -- entrada`, data:_alinear(BE_CLIENTE_ACTIVO.canal_entrada),
+          borderColor:'#f4a261', backgroundColor:'transparent', borderWidth:2, borderDash:[4,3],
+          pointRadius:0, tension:.15, spanGaps:true, yAxisID:'yCliente', order:2},
       );
     }
   }
@@ -4652,6 +4669,12 @@ async function renderChartBalanceEstructura(datos, modo){
             ticks:{color:'#f4a261', font:{size:11}, callback:v=>v.toFixed(1)+'%'},
             afterFit:ax=>{ax.width=Math.max(ax.width,70)},
             title:{display:true, text:'Pérdida %', color:'#f4a261', font:{size:11}}, offset:true},
+        } : {}),
+        ...(hayCliente ? {
+          yCliente:{type:'linear', position:'right', grid:{drawOnChartArea:false},
+            ticks:{color:'#7b2fff', font:{size:11}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
+            afterFit:ax=>{ax.width=Math.max(ax.width,70)},
+            title:{display:true, text:'Cliente (kWh)', color:'#7b2fff', font:{size:11}}, offset:true},
         } : {}),
       },
     },
@@ -5108,24 +5131,32 @@ function renderTablaDetalleBalance(datos){
     }
   }));
 
+  // "Telemedido" al lado de la letra -- solo para los puntos que NO son
+  // cliente (ver checkbox "Es cliente" en Crear/Editar Estructura), para
+  // que el contraste con "Cliente Entrada/Salida" (ver filaTipoCelda) sea
+  // explícito de un vistazo, no solo por el color de fondo.
+  const etiquetaTelemedido = col => col.es_cliente ? '' : ' <span class="be-tag-telemedido">Telemedido</span>';
   const thPunto = (col, esInicioDeGrupo) => {
-    const claseGrupo = esInicioDeGrupo ? ' grupo-inicio' : '';
+    const claseGrupo = (esInicioDeGrupo ? ' grupo-inicio' : '') + (col.es_cliente ? ' cliente' : '');
     const etiquetaLetra = `<span class="be-letra-col" title="Usá esta letra en las fórmulas de ajuste, ej. =${col._letra}*1.05">${col._letra}</span> `;
-    if(!_bePuntoTieneBack(col)) return `<th class="pto be-col-detalle${claseGrupo}">${etiquetaLetra}${_mselEsc(etiquetaMedidor(col))}</th>`;
+    if(!_bePuntoTieneBack(col)) return `<th class="pto be-col-detalle${claseGrupo}">${etiquetaLetra}${_mselEsc(etiquetaMedidor(col))}${etiquetaTelemedido(col)}</th>`;
     const titulo = `Respaldo: ${col.usuario_id_back} · ${BE_NOMBRES_CANAL_CORTO[col.canal_back]||col.canal_back}`;
     const etiquetaLetraResp = `<span class="be-letra-col" title="Usá esta letra para referenciar el dato CRUDO del respaldo, ej. =${col._letraRespaldo}*1.05">${col._letraRespaldo}</span> `;
-    return `<th class="pto be-col-detalle${claseGrupo}" title="${_mselEsc(titulo)}">${etiquetaLetra}${_mselEsc(etiquetaMedidor(col))}
+    return `<th class="pto be-col-detalle${claseGrupo}" title="${_mselEsc(titulo)}">${etiquetaLetra}${_mselEsc(etiquetaMedidor(col))}${etiquetaTelemedido(col)}
         <button type="button" class="be-resp-toggle" onclick="beToggleRespaldoColumna(${col._respIdx},this)" title="Ver respaldo/diferencia">▸</button></th>`
       + `<th class="pto back be-col-detalle hidden" data-resp-grupo="${col._respIdx}">${etiquetaLetraResp}Respaldo</th>`
       + `<th class="pto dif be-col-detalle hidden" data-resp-grupo="${col._respIdx}">Dif.</th>`;
   };
 
-  // Fila chica arriba de todo (sin color, solo texto) que dice si esa
-  // columna es de Entrada o de Salida -- antes esa distinción quedaba
-  // pegada al label del medidor (ver etiquetaMedidor más arriba).
+  // Fila chica arriba de todo que dice si esa columna es de Entrada o de
+  // Salida -- antes esa distinción quedaba pegada al label del medidor
+  // (ver etiquetaMedidor más arriba). Los puntos marcados "Es cliente" (ver
+  // checkbox en Crear/Editar Estructura) dicen "Cliente Entrada/Salida" y
+  // llevan la clase "cliente" (otro color, ver CSS) para distinguirlos de
+  // los puntos de red comunes.
   const filaTipoCelda = (col, esInicioDeGrupo) => {
-    const claseGrupo = esInicioDeGrupo ? ' grupo-inicio' : '';
-    const etiqueta = col.tipo === 'salida' ? 'Salida' : 'Entrada';
+    const claseGrupo = (esInicioDeGrupo ? ' grupo-inicio' : '') + (col.es_cliente ? ' cliente' : '');
+    const etiqueta = (col.es_cliente ? 'Cliente ' : '') + (col.tipo === 'salida' ? 'Salida' : 'Entrada');
     if(!_bePuntoTieneBack(col)) return `<td class="be-col-detalle be-fila-tipo-celda${claseGrupo}">${etiqueta}</td>`;
     return `<td class="be-col-detalle be-fila-tipo-celda${claseGrupo}">${etiqueta}</td>`
       + `<td class="be-col-detalle be-fila-tipo-celda hidden" data-resp-grupo="${col._respIdx}">${etiqueta}</td>`
@@ -5140,7 +5171,7 @@ function renderTablaDetalleBalance(datos){
 
   const f2 = v => v==null ? '--' : v.toLocaleString('es-CO',{maximumFractionDigits:0});
   const tdPunto = (col, i, esInicioDeGrupo) => {
-    const claseGrupo = esInicioDeGrupo ? ' grupo-inicio' : '';
+    const claseGrupo = (esInicioDeGrupo ? ' grupo-inicio' : '') + (col.es_cliente ? ' cliente' : '');
     const usoBack = col.fuentes && col.fuentes[i] === 'back';
     const comentarioAjuste = col.ajustes ? col.ajustes[i] : null;
     const formulaAjuste = col.formulas ? col.formulas[i] : null;
@@ -5189,7 +5220,7 @@ function renderTablaDetalleBalance(datos){
   const contar = arr => (arr||[]).filter(v=>v!=null).length;
   let footDetalle = '';
   gruposPorMedidor.forEach(grupo => grupo.forEach((col,j) => {
-    const claseGrupo = j===0 ? ' grupo-inicio' : '';
+    const claseGrupo = (j===0 ? ' grupo-inicio' : '') + (col.es_cliente ? ' cliente' : '');
     footDetalle += `<td class="num pto be-col-detalle${claseGrupo}">${contar(col.valores)}</td>`;
     if(_bePuntoTieneBack(col)){
       const backCount = col.valores.filter((v,i)=> (col.fuentes&&col.fuentes[i]==='back') || (col.dif&&col.dif[i]!=null)).length;
