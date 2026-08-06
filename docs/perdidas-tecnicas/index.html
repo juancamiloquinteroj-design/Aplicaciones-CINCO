@@ -4226,21 +4226,28 @@ async function renderChartBalanceEstructura(datos, modo){
       scales:{
         x:{
           grid:{display:false},
+          // OJO: la densidad de ticks se decide por lo VISIBLE (scale.min/
+          // max, que cambia al hacer zoom/pan), no por fechas.length (el
+          // total cargado) -- si se usa el total, al acercar el zoom sobre
+          // un rango de pocos días el eje seguía formateando "solo mes" (y
+          // filtrando a solo-inicio-de-mes, que puede no existir en la
+          // ventana visible) y el mismo mes se repetía en todos los ticks.
           afterBuildTicks: scale => {
-            if(fechas.length <= 45) return;
+            const visibles = scale.max - scale.min + 1;
+            const denso = visibles > 45;
+            scale.options.ticks.maxRotation = denso ? 0 : 60;
+            scale.options.ticks.minRotation = denso ? 0 : 60;
+            if(!denso) return;  // pocos días visibles -- se muestran todos los ticks (uno por día)
             const soloInicioDeMes = scale.ticks.filter(t => new Date(fechas[t.value]+'T00:00:00').getDate()===1);
             if(soloInicioDeMes.length) scale.ticks = soloInicioDeMes;
           },
           ticks:{
             color:tickC, font:{size:10},
-            // Con <=45 días se muestran TODOS (sin autoSkip) -- con más
-            // (varios meses), se vuelve a la reducción a 1 tick por mes de
-            // arriba, ahí sí autoSkip para no saturar.
-            autoSkip: fechas.length > 45, maxRotation: fechas.length<=45 ? 60 : 0, minRotation: fechas.length<=45 ? 60 : 0,
-            maxTicksLimit: fechas.length<=45 ? undefined : 14,
+            autoSkip:true, maxTicksLimit:60,
             callback:function(val){
               const d = new Date(fechas[val]+'T00:00:00');
-              return fechas.length<=45
+              const visibles = this.max - this.min + 1;
+              return visibles<=45
                 ? d.toLocaleDateString('es-CO',{day:'numeric', month:'short'})
                 : d.toLocaleDateString('es-CO',{month:'short'});
             },
