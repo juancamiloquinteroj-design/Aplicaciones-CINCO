@@ -404,19 +404,19 @@ tfoot td:first-child{text-align:left}
 .be-modo-btn.activo{background:var(--accent);border-color:var(--accent);color:#fff}
 /* Diagrama Unifilar -- símbolos SVG (currentColor toma el color de estas
    clases, así los íconos ya son theme-aware sin nada extra). */
-.bd-elemento{color:var(--text2);cursor:move}
+.bd-elemento{color:var(--text);cursor:move}
 .bd-elemento:hover{color:var(--accent)}
 .bd-elemento.seleccionada{color:var(--accent)}
 .bd-elemento.conectando{color:var(--purple)}
-.bd-conexion{stroke:var(--text3);stroke-width:2;cursor:pointer}
+.bd-conexion{stroke:var(--text);stroke-width:1.4;cursor:pointer}
 .bd-conexion:hover{stroke:var(--accent2)}
-.bd-conexion.seleccionada{stroke:var(--accent);stroke-width:3}
-.bd-conexion-preview{stroke:var(--purple);stroke-width:2;stroke-dasharray:5,4;pointer-events:none}
+.bd-conexion.seleccionada{stroke:var(--accent);stroke-width:2.4}
 .bd-barra{fill:currentColor}
 .bd-handle{fill:var(--bg2);stroke:var(--accent);stroke-width:2;cursor:grab}
-.bd-etiqueta{font-size:10px;fill:var(--text2);font-weight:600;user-select:none}
-.bd-badge{font-size:10px;fill:var(--green);font-weight:700;user-select:none}
+.bd-etiqueta{font-size:10px;fill:var(--text2);font-weight:600;user-select:none;cursor:move}
+.bd-badge{font-size:10px;fill:var(--text);font-weight:700;user-select:none;cursor:move}
 .bd-badge-vacio{fill:var(--text3);font-weight:400;font-style:italic}
+.bd-badge-alerta{fill:var(--red)}
 .be-comparacion-vacio{padding:20px;text-align:center;color:var(--text3);font-size:12px;border:1px dashed var(--border);border-radius:8px}
 .be-resumen-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin:16px 0}
 .be-resumen-tile{border:1px solid var(--border);border-radius:8px;padding:10px 12px;background:var(--bg)}
@@ -1273,18 +1273,17 @@ tfoot td:first-child{text-align:left}
       <div class="fbar" style="margin:0">
         <button type="button" class="be-editar-btn" id="bd-btn-editar-sel" disabled onclick="bdEditarSeleccion()">✎ Vincular/Editar</button>
         <button type="button" class="be-editar-btn" id="bd-btn-borrar-sel" disabled onclick="bdBorrarSeleccion()">🗑 Borrar</button>
-        <button type="button" class="be-editar-btn" id="bd-btn-conectar" onclick="bdToggleModoConectar()">🔌 Conectar</button>
+        <button type="button" class="be-editar-btn" id="bd-btn-medida" style="border-color:#ef476f;color:#ef476f" onclick="bdToggleModoMedida()" title="Click en el botón y despues click en un cable o un elemento para crear un Punto de Medida justo ahí">📍 Punto de Medida</button>
       </div>
     </div>
     <div class="fbar" style="margin-bottom:10px">
-      <button type="button" class="be-modo-btn" onclick="bdAgregarElemento('transformador2')" title="Transformador bidevanado">Trafo 2</button>
-      <button type="button" class="be-modo-btn" onclick="bdAgregarElemento('transformador3')" title="Transformador tridevanado">Trafo 3</button>
-      <button type="button" class="be-modo-btn" onclick="bdAgregarElemento('linea')">Línea</button>
-      <button type="button" class="be-modo-btn" onclick="bdAgregarElemento('barra')">Barra</button>
-      <button type="button" class="be-modo-btn" onclick="bdAgregarElemento('nodo')">Nodo</button>
-      <button type="button" class="be-modo-btn" onclick="bdAgregarElemento('carga')">Carga</button>
-      <button type="button" class="be-modo-btn" onclick="bdAgregarElemento('generador')">Generador</button>
-      <button type="button" class="be-modo-btn" style="border-color:#ef476f;color:#ef476f" onclick="bdAgregarElemento('medida')" title="Se genera solo al terminar un cable -- este botón es para agregar uno suelto a mano">● Punto de Medida</button>
+      <button type="button" class="be-modo-btn" onclick="bdIniciarElementoConectado('transformador2',2)" title="Click en la barra/nodo de origen y despues en la de destino">Trafo 2</button>
+      <button type="button" class="be-modo-btn" onclick="bdIniciarElementoConectado('transformador3',2)" title="Click en la barra/nodo de origen y despues en la de destino">Trafo 3</button>
+      <button type="button" class="be-modo-btn" onclick="bdIniciarElementoConectado('linea',2)" title="Click en la barra/nodo de origen y despues en la de destino">Línea</button>
+      <button type="button" class="be-modo-btn" onclick="bdAgregarElemento('barra')" title="Se agrega suelta -- despues arrastrala a su lugar">Barra</button>
+      <button type="button" class="be-modo-btn" onclick="bdAgregarElemento('nodo')" title="Se agrega suelto -- despues arrastralo a su lugar">Nodo</button>
+      <button type="button" class="be-modo-btn" onclick="bdIniciarElementoConectado('carga',1)" title="Click en la barra/nodo donde se conecta">Carga</button>
+      <button type="button" class="be-modo-btn" onclick="bdIniciarElementoConectado('generador',1)" title="Click en la barra/nodo donde se conecta">Generador</button>
     </div>
     <div id="bd-editor-msg" class="tm-modal-msg" style="margin-bottom:8px"></div>
     <div id="bd-lienzo-wrap" style="position:relative;border:1px solid var(--border);border-radius:8px;overflow:auto;background:var(--bg2);height:620px">
@@ -2737,8 +2736,8 @@ let BD_ELEMENTOS = [];
 let BD_CONEXIONES = [];
 let BD_BALANCES = {};        // elemento_id -> {entrada,salida,perdida_pct,valor_principal}
 let BD_GRANULARIDAD = 'diario';
-let BD_MODO_CONECTAR = false;
-let BD_DIBUJANDO_CABLE = null;  // {origenId, puntos:[{x,y},...]} -- mientras se dibuja un cable a mano, null si no hay nada en curso
+let BD_PENDIENTE = null;     // {tipo, requeridos:1|2, puntos:[elementoId,...]} -- creando un trafo/línea (2 puntos) o carga/generador (1 punto), esperando click(s) sobre barra(s)/nodo(s) existentes
+let BD_MODO_MEDIDA = false;  // true = el próximo click (cable, elemento o lienzo) crea un Punto de Medida ahí mismo
 let BD_SELECCION = null;     // {tipo:'elemento'|'conexion', id}
 let BD_ELEMENTO_VINCULANDO = null;
 let _bdArrastre = null;
@@ -2757,8 +2756,8 @@ const BD_TIPO_A_ESTRUCTURA = {
 // SEGMENTO de largo variable (x,y)-(x2,y2), no un símbolo de tamaño fijo
 // (ver bdRenderLienzo/_bdPuntoBorde, caso especial 'barra').
 const BD_TAMANO = {
-  transformador2:{w:70,h:44}, transformador3:{w:80,h:56}, linea:{w:26,h:20},
-  nodo:{w:22,h:22}, carga:{w:34,h:34}, generador:{w:44,h:44}, medida:{w:18,h:18},
+  transformador2:{w:56,h:34}, transformador3:{w:64,h:44}, linea:{w:22,h:16},
+  nodo:{w:16,h:16}, carga:{w:26,h:26}, generador:{w:34,h:34}, medida:{w:14,h:14},
 };
 
 async function cargarListaDiagramas(){
@@ -2814,8 +2813,8 @@ async function bdBorrarDiagrama(id, nombre){
 async function bdAbrirEditor(id){
   BD_DIAGRAMA_ACTIVO = id;
   BD_SELECCION = null;
-  BD_MODO_CONECTAR = false;
-  BD_DIBUJANDO_CABLE = null;
+  BD_PENDIENTE = null;
+  BD_MODO_MEDIDA = false;
   await mostrarVista('be-diagrama-editor');
   await bdCargarDiagrama();
 }
@@ -2866,55 +2865,104 @@ async function bdAgregarElemento(tipo, xForzado, yForzado){
   }
 }
 
-// "Conectar" ya no traza una línea recta automática -- se dibuja a mano:
-// click en el elemento de inicio, click en el lienzo tantas veces como
-// quiebres haga falta, click en el elemento de destino para terminar
-// (Escape cancela). Al terminar, se genera solo un "Punto de Medida" justo
-// donde el cable toca el elemento de destino -- ahí es donde en la vida
-// real habría un medidor, en la juntura entre los dos elementos.
-function bdToggleModoConectar(){
-  BD_MODO_CONECTAR = !BD_MODO_CONECTAR;
-  BD_DIBUJANDO_CABLE = null;
-  document.getElementById('bd-btn-conectar').classList.toggle('activo', BD_MODO_CONECTAR);
-  document.getElementById('bd-editor-msg').textContent = BD_MODO_CONECTAR
-    ? 'Modo conectar: click en el elemento de inicio · click en el lienzo para agregar quiebres · click en el elemento de destino para terminar (Escape cancela).'
-    : '';
+// Flujo estilo ETAP: los elementos de DOS puntos (transformador, línea) se
+// crean pidiendo primero un click en la barra/nodo de ORIGEN y despues en
+// la de DESTINO -- el elemento se ubica solo, entre las dos, y las dos
+// conexiones se crean automáticamente. Los de UN punto (carga, generador)
+// solo piden un click.
+function bdIniciarElementoConectado(tipo, requeridos){
+  BD_MODO_MEDIDA = false;
+  const btnMedida = document.getElementById('bd-btn-medida');
+  if(btnMedida) btnMedida.classList.remove('activo');
+  BD_PENDIENTE = {tipo, requeridos, puntos: []};
+  document.getElementById('bd-editor-msg').textContent = requeridos === 2
+    ? 'Click en la barra/nodo de ORIGEN, después en la barra/nodo de DESTINO (Escape cancela).'
+    : 'Click en la barra/nodo donde se conecta (Escape cancela).';
   bdRenderLienzo();
 }
 
-function bdManejarClickConectar(id){
-  if(!BD_DIBUJANDO_CABLE){
-    BD_DIBUJANDO_CABLE = {origenId: id, puntos: []};
-  }else if(BD_DIBUJANDO_CABLE.origenId === id){
-    BD_DIBUJANDO_CABLE = null;  // click de nuevo en el mismo origen -- cancela
-  }else{
-    const origen = BD_DIBUJANDO_CABLE.origenId, puntos = BD_DIBUJANDO_CABLE.puntos;
-    BD_DIBUJANDO_CABLE = null;
-    bdCrearConexion(origen, id, puntos);
+// true si el click fue consumido por el flujo de "elemento pendiente".
+function bdRecibirPuntoPendiente(id){
+  if(!BD_PENDIENTE) return false;
+  if(BD_PENDIENTE.puntos.includes(id)) return true;
+  BD_PENDIENTE.puntos.push(id);
+  if(BD_PENDIENTE.puntos.length < BD_PENDIENTE.requeridos){
+    document.getElementById('bd-editor-msg').textContent = 'Ahora click en la barra/nodo de DESTINO (Escape cancela).';
+    bdRenderLienzo();
+    return true;
   }
+  const pendiente = BD_PENDIENTE;
+  BD_PENDIENTE = null;
+  bdCrearElementoConectado(pendiente.tipo, pendiente.puntos);
+  return true;
+}
+
+// Si ya hay otro elemento muy cerca de (x,y), corre la posición hacia el
+// costado en pasos fijos -- sin esto, dos transformadores entre las mismas
+// dos barras (o dos cargas de la misma barra) quedan exactamente
+// amontonados uno encima del otro.
+function _bdPosicionLibre(x, y){
+  const MIN = 100;
+  let nx = x, paso = 0;
+  while(BD_ELEMENTOS.some(e => Math.hypot(e.x-nx, e.y-y) < MIN) && paso < 20){
+    paso++;
+    nx = x + paso * MIN;
+  }
+  return {x:nx, y};
+}
+
+async function bdCrearElementoConectado(tipo, puntoIds){
+  const puntos = puntoIds.map(id => BD_ELEMENTOS.find(e=>e.id===id)).filter(Boolean);
+  if(!puntos.length) return;
+  let x, y;
+  if(puntos.length === 2){
+    x = (puntos[0].x + puntos[1].x) / 2;
+    y = (puntos[0].y + puntos[1].y) / 2;
+  }else{
+    // 1 solo punto (carga/generador) -- se cuelga derecho hacia abajo, así
+    // el cable con la barra/nodo sale vertical y recto, sin diagonales.
+    x = puntos[0].x;
+    y = puntos[0].y + 100;
+  }
+  const libre = _bdPosicionLibre(x, y);
+  const nuevo = await bdAgregarElemento(tipo, libre.x, libre.y);
+  if(!nuevo) return;
+  await bdCrearConexion(puntos[0].id, nuevo.id);
+  if(puntos.length === 2) await bdCrearConexion(nuevo.id, puntos[1].id);
+  document.getElementById('bd-editor-msg').textContent = '';
   bdRenderLienzo();
 }
 
-async function bdCrearConexion(origenId, destinoId, puntos){
+async function bdCrearConexion(origenId, destinoId){
   try{
     const c = await apiPost(`/api/diagramas/${BD_DIAGRAMA_ACTIVO}/conexiones`, {
       elemento_origen_id: origenId, elemento_destino_id: destinoId,
-      puntos: (puntos && puntos.length) ? puntos : null,
     });
     BD_CONEXIONES.push(c);
-    // El punto donde el cable toca el destino es, en la vida real, donde
-    // habría un medidor -- se genera solo, no hace falta ir a la paleta a
-    // agregarlo a mano cada vez.
-    const destino = BD_ELEMENTOS.find(e => e.id === destinoId);
-    if(destino){
-      const haciaDestino = (puntos && puntos.length) ? puntos[puntos.length-1] : BD_ELEMENTOS.find(e=>e.id===origenId);
-      const toque = _bdPuntoBorde(destino, haciaDestino.x, haciaDestino.y);
-      await bdAgregarElemento('medida', toque.x, toque.y);
-    }
     bdRenderLienzo();
   }catch(e){
     document.getElementById('bd-editor-msg').textContent = e.message || 'No se pudo crear la conexión.';
   }
+}
+
+// Modo Punto de Medida: mientras está activo, UN SOLO click -- en un cable,
+// en un elemento o en el lienzo vacío -- crea el punto justo ahí, y el modo
+// se apaga solo (no hace falta un paso extra para "salir").
+function bdToggleModoMedida(){
+  BD_PENDIENTE = null;
+  BD_MODO_MEDIDA = !BD_MODO_MEDIDA;
+  document.getElementById('bd-btn-medida').classList.toggle('activo', BD_MODO_MEDIDA);
+  document.getElementById('bd-editor-msg').textContent = BD_MODO_MEDIDA
+    ? 'Punto de Medida: click en un cable, un elemento o el lienzo para agregarlo ahí.'
+    : '';
+  bdRenderLienzo();
+}
+
+async function bdColocarMedida(x, y){
+  BD_MODO_MEDIDA = false;
+  document.getElementById('bd-btn-medida').classList.remove('activo');
+  document.getElementById('bd-editor-msg').textContent = '';
+  await bdAgregarElemento('medida', x, y);
 }
 
 function bdActualizarBotonesSeleccion(){
@@ -2931,19 +2979,24 @@ function bdSeleccionarElemento(id){
 
 function bdClickConexion(ev, id){
   ev.stopPropagation();
-  if(BD_MODO_CONECTAR) return;
+  if(BD_MODO_MEDIDA){
+    const p = _bdPuntoSvg(ev, document.getElementById('bd-svg'));
+    bdColocarMedida(p.x, p.y);
+    return;
+  }
   BD_SELECCION = {tipo:'conexion', id};
   bdActualizarBotonesSeleccion();
   bdRenderLienzo();
 }
 
 function bdClickFondo(ev){
-  // Dibujando un cable: cada click en el lienzo (fuera de un elemento)
-  // agrega un quiebre -- así se traza a mano, no una línea recta.
-  if(BD_MODO_CONECTAR && BD_DIBUJANDO_CABLE){
-    const svg = document.getElementById('bd-svg');
-    BD_DIBUJANDO_CABLE.puntos.push(_bdPuntoSvg(ev, svg));
-    bdRenderLienzo();
+  if(BD_MODO_MEDIDA){
+    const p = _bdPuntoSvg(ev, document.getElementById('bd-svg'));
+    bdColocarMedida(p.x, p.y);
+    return;
+  }
+  if(BD_PENDIENTE){
+    document.getElementById('bd-editor-msg').textContent = 'Click sobre una barra o nodo existente (Escape cancela).';
     return;
   }
   if(!BD_SELECCION) return;
@@ -2953,8 +3006,12 @@ function bdClickFondo(ev){
 }
 
 document.addEventListener('keydown', (ev) => {
-  if(ev.key === 'Escape' && BD_DIBUJANDO_CABLE){
-    BD_DIBUJANDO_CABLE = null;
+  if(ev.key === 'Escape' && (BD_PENDIENTE || BD_MODO_MEDIDA)){
+    BD_PENDIENTE = null;
+    BD_MODO_MEDIDA = false;
+    const btnMedida = document.getElementById('bd-btn-medida');
+    if(btnMedida) btnMedida.classList.remove('activo');
+    document.getElementById('bd-editor-msg').textContent = '';
     bdRenderLienzo();
   }
 });
@@ -3017,30 +3074,36 @@ function _bdProyeccionSegmento(x1,y1,x2,y2, px,py){
 function _bdFormaSvg(tipo){
   switch(tipo){
     case 'transformador2':
-      return '<circle cx="-10" cy="0" r="16" fill="none" stroke="currentColor" stroke-width="2.5"/>'
-           + '<circle cx="10" cy="0" r="16" fill="none" stroke="currentColor" stroke-width="2.5"/>';
+      return '<circle cx="-9" cy="0" r="13" fill="none" stroke="currentColor" stroke-width="1.4"/>'
+           + '<circle cx="9" cy="0" r="13" fill="none" stroke="currentColor" stroke-width="1.4"/>';
     case 'transformador3':
-      return '<circle cx="-14" cy="-6" r="14" fill="none" stroke="currentColor" stroke-width="2.5"/>'
-           + '<circle cx="14" cy="-6" r="14" fill="none" stroke="currentColor" stroke-width="2.5"/>'
-           + '<circle cx="0" cy="16" r="14" fill="none" stroke="currentColor" stroke-width="2.5"/>';
+      return '<circle cx="-12" cy="-5" r="12" fill="none" stroke="currentColor" stroke-width="1.4"/>'
+           + '<circle cx="12" cy="-5" r="12" fill="none" stroke="currentColor" stroke-width="1.4"/>'
+           + '<circle cx="0" cy="13" r="12" fill="none" stroke="currentColor" stroke-width="1.4"/>';
     case 'linea':
-      return '<rect x="-8" y="-6" width="16" height="12" fill="none" stroke="currentColor" stroke-width="2"/>';
+      return '<rect x="-7" y="-5" width="14" height="10" fill="none" stroke="currentColor" stroke-width="1.4"/>';
     case 'nodo':
-      return '<circle cx="0" cy="0" r="9" fill="currentColor"/>';
+      return '<circle cx="0" cy="0" r="6" fill="currentColor"/>';
     case 'carga':
-      return '<polygon points="-14,-14 14,-14 0,14" fill="none" stroke="currentColor" stroke-width="2.5"/>';
+      return '<polygon points="-11,-11 11,-11 0,11" fill="none" stroke="currentColor" stroke-width="1.4"/>';
     case 'generador':
-      return '<circle cx="0" cy="0" r="20" fill="none" stroke="currentColor" stroke-width="2.5"/>'
-           + '<text x="0" y="6" text-anchor="middle" font-size="16" font-weight="700" fill="currentColor">G</text>';
+      return '<circle cx="0" cy="0" r="16" fill="none" stroke="currentColor" stroke-width="1.4"/>'
+           + '<text x="0" y="5" text-anchor="middle" font-size="13" font-weight="700" fill="currentColor">G</text>';
     case 'medida':
-      return '<circle cx="0" cy="0" r="7" fill="#ef476f" stroke="#ffffff" stroke-width="1.5"/>';
+      return '<circle cx="0" cy="0" r="5" fill="#ef476f" stroke="#ffffff" stroke-width="1.2"/>';
     default:
       return '';
   }
 }
 
-function _bdRutaSvg(puntos){
-  return puntos.map((p,i) => (i===0?'M':'L') + p.x.toFixed(1) + ' ' + p.y.toFixed(1)).join(' ');
+// Enrutamiento ortogonal: si los dos puntos ya están casi alineados
+// (misma fila/columna) se traza una recta; si no, un solo codo -- así el
+// dibujo queda prolijo y sin diagonales sueltas, como en ETAP.
+function _bdRutaConexion(p1, p2){
+  if(Math.abs(p1.x-p2.x) < 4 || Math.abs(p1.y-p2.y) < 4){
+    return `M${p1.x.toFixed(1)} ${p1.y.toFixed(1)} L${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
+  }
+  return `M${p1.x.toFixed(1)} ${p1.y.toFixed(1)} L${p1.x.toFixed(1)} ${p2.y.toFixed(1)} L${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
 }
 
 function bdRenderLienzo(){
@@ -3050,34 +3113,36 @@ function bdRenderLienzo(){
 
   let piezas = '';
 
-  // Cables ya creados -- ahora son un path con los quiebres que se
-  // dibujaron a mano (c.puntos), no una línea recta automática.
+  // Cables: rectos o con un solo codo (enrutamiento ortogonal), sin
+  // quiebres a mano.
   BD_CONEXIONES.forEach(c => {
     const a = porId[c.elemento_origen_id], b = porId[c.elemento_destino_id];
     if(!a || !b) return;
-    const inter = (c.puntos && c.puntos.length) ? c.puntos : [];
-    const haciaA = inter[0] || {x:b.x, y:b.y};
-    const haciaB = inter.length ? inter[inter.length-1] : {x:a.x, y:a.y};
-    const p1 = _bdPuntoBorde(a, haciaA.x, haciaA.y);
-    const p2 = _bdPuntoBorde(b, haciaB.x, haciaB.y);
+    const p1 = _bdPuntoBorde(a, b.x, b.y);
+    const p2 = _bdPuntoBorde(b, a.x, a.y);
     const sel = BD_SELECCION && BD_SELECCION.tipo==='conexion' && BD_SELECCION.id===c.id;
-    piezas += `<path d="${_bdRutaSvg([p1, ...inter, p2])}" fill="none" class="bd-conexion${sel?' seleccionada':''}" onmousedown="bdClickConexion(event,${c.id})"></path>`;
+    piezas += `<path d="${_bdRutaConexion(p1, p2)}" fill="none" class="bd-conexion${sel?' seleccionada':''}" onmousedown="bdClickConexion(event,${c.id})"></path>`;
   });
 
   BD_ELEMENTOS.forEach(el => {
     const sel = BD_SELECCION && BD_SELECCION.tipo==='elemento' && BD_SELECCION.id===el.id;
-    const conectando = BD_DIBUJANDO_CABLE && BD_DIBUJANDO_CABLE.origenId === el.id;
+    const conectando = BD_PENDIENTE && BD_PENDIENTE.puntos.includes(el.id);
     const nombre = el.etiqueta || (el.estructura ? el.estructura.nombre : '(sin vincular)');
     const balance = BD_BALANCES[el.id];
-    let textoBadge;
+    let textoBadge, badgeAlerta = false;
     if(!el.estructura) textoBadge = 'sin vincular';
     else if(!balance) textoBadge = '...';
-    else if(balance.perdida_pct != null) textoBadge = `${balance.perdida_pct.toFixed(2)}%`;
+    else if(balance.perdida_pct != null){
+      textoBadge = `${balance.perdida_pct.toFixed(2)}%`;
+      badgeAlerta = balance.perdida_pct < 0 || balance.perdida_pct > 10;
+    }
     else if(balance.valor_principal != null) textoBadge = `${balance.valor_principal.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`;
     else textoBadge = 'sin datos';
+    const claseBadge = !el.estructura ? ' bd-badge-vacio' : (badgeAlerta ? ' bd-badge-alerta' : '');
+    const edx = el.etq_dx||0, edy = el.etq_dy||0;
 
-    // Barra: SEGMENTO de largo variable -- se dibuja como línea gruesa, con
-    // dos manijas en las puntas (solo cuando está seleccionada) para
+    // Barra: SEGMENTO de largo variable -- se dibuja como línea delgada,
+    // con dos manijas en las puntas (solo cuando está seleccionada) para
     // estirarla o achicarla arrastrando cada extremo.
     if(el.tipo === 'barra' && el.x2 != null){
       const mx = (el.x+el.x2)/2, my = (el.y+el.y2)/2;
@@ -3088,13 +3153,14 @@ function bdRenderLienzo(){
       const dxSeg = el.x2 - el.x, dySeg = el.y2 - el.y;
       const largo = Math.hypot(dxSeg, dySeg);
       const angulo = Math.atan2(dySeg, dxSeg) * 180 / Math.PI;
-      piezas += `<rect x="0" y="-4" width="${largo}" height="8" rx="3" transform="translate(${el.x},${el.y}) rotate(${angulo})" data-elemento-id="${el.id}" class="bd-elemento bd-barra${sel?' seleccionada':''}${conectando?' conectando':''}" onmousedown="bdPointerDownBarra(event,${el.id},'cuerpo')"></rect>`;
+      const badgeX = Math.max(el.x, el.x2) + 14;
+      piezas += `<rect x="0" y="-3" width="${largo}" height="5" rx="1.5" transform="translate(${el.x},${el.y}) rotate(${angulo})" data-elemento-id="${el.id}" class="bd-elemento bd-barra${sel?' seleccionada':''}${conectando?' conectando':''}" onmousedown="bdPointerDownBarra(event,${el.id},'cuerpo')"></rect>`;
       if(sel){
-        piezas += `<circle cx="${el.x}" cy="${el.y}" r="7" class="bd-handle" onmousedown="bdPointerDownBarra(event,${el.id},'p1')"></circle>`;
-        piezas += `<circle cx="${el.x2}" cy="${el.y2}" r="7" class="bd-handle" onmousedown="bdPointerDownBarra(event,${el.id},'p2')"></circle>`;
+        piezas += `<circle cx="${el.x}" cy="${el.y}" r="6" class="bd-handle" onmousedown="bdPointerDownBarra(event,${el.id},'p1')"></circle>`;
+        piezas += `<circle cx="${el.x2}" cy="${el.y2}" r="6" class="bd-handle" onmousedown="bdPointerDownBarra(event,${el.id},'p2')"></circle>`;
       }
-      piezas += `<text x="${mx}" y="${my - 12}" text-anchor="middle" class="bd-etiqueta">${_mselEsc(nombre)}</text>
-        <text x="${mx}" y="${my + 20}" text-anchor="middle" class="bd-badge${!el.estructura?' bd-badge-vacio':''}">${_mselEsc(textoBadge)}</text>`;
+      piezas += `<text x="${mx+edx}" y="${my - 10 + edy}" text-anchor="middle" class="bd-etiqueta" data-etq-id="${el.id}" onmousedown="bdPointerDownEtiqueta(event,${el.id})">${_mselEsc(nombre)}</text>
+        <text x="${badgeX+edx}" y="${my + 4 + edy}" text-anchor="start" class="bd-badge${claseBadge}" data-etq-id="${el.id}" onmousedown="bdPointerDownEtiqueta(event,${el.id})">${_mselEsc(textoBadge)}</text>`;
       return;
     }
 
@@ -3105,45 +3171,11 @@ function bdRenderLienzo(){
         <rect x="${-w/2}" y="${-h/2}" width="${w}" height="${h}" fill="transparent"/>
         ${_bdFormaSvg(el.tipo)}
       </g>
-      <text x="${el.x}" y="${el.y + h/2 + 14}" text-anchor="middle" class="bd-etiqueta">${_mselEsc(nombre)}</text>
-      <text x="${el.x}" y="${el.y + h/2 + 27}" text-anchor="middle" class="bd-badge${!el.estructura?' bd-badge-vacio':''}">${_mselEsc(textoBadge)}</text>`;
+      <text x="${el.x+edx}" y="${el.y - h/2 - 6 + edy}" text-anchor="middle" class="bd-etiqueta" data-etq-id="${el.id}" onmousedown="bdPointerDownEtiqueta(event,${el.id})">${_mselEsc(nombre)}</text>
+      <text x="${el.x + w/2 + 8 + edx}" y="${el.y + 4 + edy}" text-anchor="start" class="bd-badge${claseBadge}" data-etq-id="${el.id}" onmousedown="bdPointerDownEtiqueta(event,${el.id})">${_mselEsc(textoBadge)}</text>`;
   });
 
   svg.innerHTML = piezas;
-  svg.onmousemove = bdMouseMoveLienzo;
-}
-
-// Actualiza SOLO el path de vista previa (sin volver a dibujar todo el
-// lienzo) -- reconstruir todo el SVG en cada pixel de movimiento del mouse
-// podía destruir y recrear el elemento justo debajo del cursor a mitad de
-// un click real, haciendo que Playwright (y en teoría un click muy rápido
-// de un usuario) lo perdiera.
-function bdMouseMoveLienzo(ev){
-  const svg = document.getElementById('bd-svg');
-  if(!BD_MODO_CONECTAR || !BD_DIBUJANDO_CABLE){
-    const viejo = document.getElementById('bd-preview-cable');
-    if(viejo) viejo.remove();
-    return;
-  }
-  const porId = {};
-  BD_ELEMENTOS.forEach(e => { porId[e.id] = e; });
-  const origen = porId[BD_DIBUJANDO_CABLE.origenId];
-  if(!origen) return;
-  const mousePos = _bdPuntoSvg(ev, svg);
-  const puntos = BD_DIBUJANDO_CABLE.puntos;
-  const primerDestino = puntos[0] || mousePos;
-  const p1 = _bdPuntoBorde(origen, primerDestino.x, primerDestino.y);
-
-  let preview = document.getElementById('bd-preview-cable');
-  if(!preview){
-    preview = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    preview.setAttribute('id', 'bd-preview-cable');
-    preview.setAttribute('fill', 'none');
-    preview.setAttribute('class', 'bd-conexion-preview');
-    preview.style.pointerEvents = 'none';
-    svg.appendChild(preview);
-  }
-  preview.setAttribute('d', _bdRutaSvg([p1, ...puntos, mousePos]));
 }
 
 function bdPointerDownElemento(ev, id){
@@ -3153,7 +3185,15 @@ function bdPointerDownElemento(ev, id){
   const el = BD_ELEMENTOS.find(e=>e.id===id);
   if(!el) return;
 
-  if(BD_MODO_CONECTAR){ bdManejarClickConectar(id); return; }
+  if(BD_MODO_MEDIDA){ const p = _bdPuntoSvg(ev, svg); bdColocarMedida(p.x, p.y); return; }
+  if(BD_PENDIENTE){
+    if(el.tipo !== 'barra' && el.tipo !== 'nodo'){
+      document.getElementById('bd-editor-msg').textContent = 'Elegí una barra o nodo (Escape cancela).';
+      return;
+    }
+    bdRecibirPuntoPendiente(id);
+    return;
+  }
 
   const inicio = _bdPuntoSvg(ev, svg);
   _bdArrastre = {id, offX: inicio.x - el.x, offY: inicio.y - el.y};
@@ -3190,7 +3230,8 @@ function bdPointerDownBarra(ev, id, parte){
   const el = BD_ELEMENTOS.find(e=>e.id===id);
   if(!el) return;
 
-  if(BD_MODO_CONECTAR){ bdManejarClickConectar(id); return; }
+  if(BD_MODO_MEDIDA){ const p = _bdPuntoSvg(ev, svg); bdColocarMedida(p.x, p.y); return; }
+  if(BD_PENDIENTE){ bdRecibirPuntoPendiente(id); return; }
 
   const inicio = _bdPuntoSvg(ev, svg);
   const origen = {x:el.x, y:el.y, x2:el.x2, y2:el.y2};
@@ -3215,6 +3256,41 @@ function bdPointerDownBarra(ev, id, parte){
       catch(e){ /* no bloqueante */ }
     }else{
       bdSeleccionarElemento(id);
+    }
+  };
+  document.addEventListener('mousemove', mover);
+  document.addEventListener('mouseup', soltar);
+}
+
+// El nombre y el balance de cada elemento se pueden arrastrar por separado
+// del símbolo -- para separarlos a mano cuando el acomodo automático los
+// deja pegados con los de un elemento vecino.
+function bdPointerDownEtiqueta(ev, id){
+  ev.stopPropagation();
+  ev.preventDefault();
+  if(BD_MODO_MEDIDA || BD_PENDIENTE) return;
+  const svg = document.getElementById('bd-svg');
+  const el = BD_ELEMENTOS.find(e=>e.id===id);
+  if(!el) return;
+
+  const inicio = _bdPuntoSvg(ev, svg);
+  const origen = {dx: el.etq_dx||0, dy: el.etq_dy||0};
+  let movio = false;
+
+  const mover = (mv) => {
+    const p = _bdPuntoSvg(mv, svg);
+    const dx = p.x - inicio.x, dy = p.y - inicio.y;
+    if(Math.abs(dx) > 3 || Math.abs(dy) > 3) movio = true;
+    el.etq_dx = origen.dx + dx;
+    el.etq_dy = origen.dy + dy;
+    bdRenderLienzo();
+  };
+  const soltar = async () => {
+    document.removeEventListener('mousemove', mover);
+    document.removeEventListener('mouseup', soltar);
+    if(movio){
+      try{ await apiPut(`/api/diagramas/${BD_DIAGRAMA_ACTIVO}/elementos/${id}`, {etq_dx: el.etq_dx, etq_dy: el.etq_dy}); }
+      catch(e){ /* no bloqueante */ }
     }
   };
   document.addEventListener('mousemove', mover);
