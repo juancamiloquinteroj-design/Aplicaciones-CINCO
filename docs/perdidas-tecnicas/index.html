@@ -84,6 +84,18 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(
 .inicio-eye{font-size:10px;font-weight:800;letter-spacing:2px;text-transform:uppercase;color:var(--accent);margin-bottom:6px}
 .inicio-titulo{font-size:26px;font-weight:900;margin-bottom:6px}
 .inicio-sub{font-size:13px;color:var(--text2)}
+.inicio-dash-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:10px}
+@media (max-width:640px){ .inicio-dash-grid{grid-template-columns:1fr} }
+.inicio-mes-panel{border:1px solid var(--border);border-radius:10px;padding:14px 16px;background:var(--bg2)}
+.inicio-mes-panel.actual{border-color:var(--accent);background:var(--accent-bg-soft, var(--bg2))}
+.inicio-mes-titulo{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--text3);margin-bottom:10px;padding-bottom:8px;border-bottom:1px dashed var(--border)}
+.inicio-mes-fila{display:flex;align-items:center;justify-content:space-between;font-size:13px;color:var(--text2);padding:5px 0}
+.inicio-mes-fila span:first-child{font-weight:600;color:var(--text3);font-size:11px;text-transform:uppercase;letter-spacing:.4px}
+.inicio-mes-fila span:last-child{font-weight:800;font-size:15px;color:var(--text)}
+.inicio-variacion{font-size:10.5px;font-weight:700;border-radius:5px;padding:2px 6px;white-space:nowrap}
+.inicio-variacion.mejora{background:#06d6a022;color:#06d6a0}
+.inicio-variacion.empeora{background:#ef476f22;color:#ef476f}
+.inicio-variacion.igual{background:var(--bg3);color:var(--text3)}
 .mod-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;margin-bottom:20px}
 .mod-card{background:var(--card-bg);border:1px solid var(--border);border-radius:14px;padding:20px 18px;cursor:pointer;transition:all .15s;position:relative;box-shadow:var(--shadow-sm)}
 .mod-card:hover{border-color:var(--accent);transform:translateY(-2px);box-shadow:var(--shadow)}
@@ -588,6 +600,25 @@ tfoot td:first-child{text-align:left}
   <div class="inicio-hero">
     <div class="inicio-titulo" id="inicio-saludo">Bienvenido/a 👋</div>
     <div class="inicio-sub" id="inicio-sub">Acá vas a encontrar todos los indicadores correspondientes al Sistema de Gestión de la Medida de tu operador.</div>
+  </div>
+
+  <div id="inicio-dash-nivel4" class="card hidden">
+    <div class="card-title">📉 Pérdida por Balance -- Nivel 4</div>
+    <div class="inicio-dash-grid">
+      <div class="inicio-mes-panel">
+        <div class="inicio-mes-titulo">Mes anterior · <span id="ini-n4-mes-ant"></span></div>
+        <div class="inicio-mes-fila"><span>Diario</span><span id="ini-n4-ant-diario">--</span></div>
+        <div class="inicio-mes-fila"><span>Mensual</span><span id="ini-n4-ant-mensual">--</span></div>
+        <div class="inicio-mes-fila"><span>Anual (móvil)</span><span id="ini-n4-ant-anual">--</span></div>
+      </div>
+      <div class="inicio-mes-panel actual">
+        <div class="inicio-mes-titulo">Mes actual · <span id="ini-n4-mes-act"></span></div>
+        <div class="inicio-mes-fila"><span>Diario</span><span id="ini-n4-act-diario">--</span></div>
+        <div class="inicio-mes-fila"><span>Mensual</span><span><span id="ini-n4-act-mensual">--</span> <span id="ini-n4-var-mensual" class="inicio-variacion"></span></span></div>
+        <div class="inicio-mes-fila"><span>Anual (móvil)</span><span><span id="ini-n4-act-anual">--</span> <span id="ini-n4-var-anual" class="inicio-variacion"></span></span></div>
+      </div>
+    </div>
+    <div id="ini-n4-msg" class="tm-modal-msg"></div>
   </div>
 
   <div class="mod-grid">
@@ -1870,6 +1901,112 @@ async function mostrarVista(nombre){
   if(nombre==='be-diagramas'){
     await cargarListaDiagramas();
   }
+  // Se recarga cada vez (no solo la primera vez) -- el mes actual va
+  // sumando datos día a día, así que "hoy" cambia con cada visita.
+  if(nombre==='inicio'){
+    await cargarDashboardInicio();
+  }
+}
+
+// Tarjeta de Inicio: pérdida de balance del ÚNICO "Balance por Nivel de
+// Tensión" de Nivel 4 (siempre hay a lo sumo uno -- Nivel 4 no tiene zona,
+// ver el comentario en cargarListaEstructuras). Reusa los MISMOS endpoints
+// que ya tiene "Ver Balance" (/consumo, /comparacion, /movil-anual) --
+// nada nuevo en el backend, solo se pide un rango que cubra mes actual +
+// mes anterior (+ 12 meses de contexto para que el móvil-anual no salga
+// null en esos dos puntos).
+async function cargarDashboardInicio(){
+  const card = document.getElementById('inicio-dash-nivel4');
+  const msg = document.getElementById('ini-n4-msg');
+  msg.textContent = '';
+  if(DEMO){ card.classList.add('hidden'); return; }
+  let nivel4;
+  try{ nivel4 = await apiGet('/api/balances-estructura?nivel_tension=4&tipo=Z'); }
+  catch(e){ card.classList.add('hidden'); return; }
+  if(!nivel4.length){ card.classList.add('hidden'); return; }
+  card.classList.remove('hidden');
+  const estructuraId = nivel4[0].id;
+
+  // "Mes actual" se ancla al último mes que YA tiene datos cargados (no al
+  // calendario real) -- mismo criterio que usa el resto de la app (ver
+  // "último mes cerrado" en Alertas/comparación): la carga de Usuarios
+  // Telemedidos siempre va con algo de rezago, así que anclar al día de
+  // HOY dejaría la tarjeta en "Sin datos" la mayoría del tiempo.
+  const hoy = new Date();
+  let meta;
+  try{ meta = await apiGet('/api/telemedida/meta'); }catch(e){ meta = {meses:[]}; }
+  const mesesConDatos = meta.meses || [];
+  const mesActual = mesesConDatos.length ? mesesConDatos[mesesConDatos.length-1] : `${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}`;
+  const [anioAct, numMesAct] = mesActual.split('-').map(Number);
+  const mesActualDate = new Date(anioAct, numMesAct-1, 1);
+  const mesAnteriorDate = new Date(anioAct, numMesAct-2, 1);
+  const fmtMes = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+  const mesAnterior = fmtMes(mesAnteriorDate);
+  const nombreMes = d => d.toLocaleDateString('es-CO',{month:'long',year:'numeric'});
+  document.getElementById('ini-n4-mes-ant').textContent = nombreMes(mesAnteriorDate);
+  document.getElementById('ini-n4-mes-act').textContent = nombreMes(mesActualDate);
+
+  const desdeCtx = new Date(anioAct, numMesAct-1-13, 1);
+  const desdeStr = `${fmtMes(desdeCtx)}-01`;
+  const hastaStr = `${mesActual}-01`;
+  const hoyStr = `${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}-${String(hoy.getDate()).padStart(2,'0')}`;
+
+  let comp, movil, consumo;
+  try{
+    [comp, movil, consumo] = await Promise.all([
+      apiGet(`/api/balances-estructura/${estructuraId}/comparacion?desde=${desdeStr}&hasta=${hastaStr}`),
+      apiGet(`/api/balances-estructura/${estructuraId}/movil-anual?desde=${desdeStr}&hasta=${hastaStr}`),
+      apiGet(`/api/balances-estructura/${estructuraId}/consumo?desde=${mesAnterior}-01&hasta=${hoyStr}`),
+    ]);
+  }catch(e){
+    msg.className = 'tm-modal-msg err';
+    msg.textContent = 'No se pudo cargar el balance de Nivel 4.';
+    return;
+  }
+
+  const fmtPct = v => v==null ? 'Sin datos' : `${v.toFixed(2)}%`;
+  const idx = (arr, mes) => (arr||[]).indexOf(mes);
+
+  const idxCompAnt = idx(comp.meses, mesAnterior), idxCompAct = idx(comp.meses, mesActual);
+  const idxMovilAnt = idx(movil.meses, mesAnterior), idxMovilAct = idx(movil.meses, mesActual);
+  const mensualAnt = idxCompAnt>=0 ? comp.perdida_balance_pct[idxCompAnt] : null;
+  const mensualAct = idxCompAct>=0 ? comp.perdida_balance_pct[idxCompAct] : null;
+  const anualAnt = idxMovilAnt>=0 ? movil.perdida_balance_movil_pct[idxMovilAnt] : null;
+  const anualAct = idxMovilAct>=0 ? movil.perdida_balance_movil_pct[idxMovilAct] : null;
+
+  // "Diario" = pérdida % del ÚLTIMO día con dato dentro de ese mes -- para
+  // el mes anterior, "cómo cerró"; para el actual, "cómo viene hoy".
+  const ultimoDiaDelMes = prefijoMes => {
+    const fechas = consumo.fechas||[];
+    for(let i=fechas.length-1;i>=0;i--){
+      if(fechas[i].startsWith(prefijoMes) && consumo.perdida_pct[i]!=null) return consumo.perdida_pct[i];
+    }
+    return null;
+  };
+  const diarioAnt = ultimoDiaDelMes(mesAnterior);
+  const diarioAct = ultimoDiaDelMes(mesActual);
+
+  document.getElementById('ini-n4-ant-diario').textContent = fmtPct(diarioAnt);
+  document.getElementById('ini-n4-ant-mensual').textContent = fmtPct(mensualAnt);
+  document.getElementById('ini-n4-ant-anual').textContent = fmtPct(anualAnt);
+  document.getElementById('ini-n4-act-diario').textContent = fmtPct(diarioAct);
+  document.getElementById('ini-n4-act-mensual').textContent = fmtPct(mensualAct);
+  document.getElementById('ini-n4-act-anual').textContent = fmtPct(anualAct);
+
+  _iniRenderVariacion('ini-n4-var-mensual', mensualAnt, mensualAct);
+  _iniRenderVariacion('ini-n4-var-anual', anualAnt, anualAct);
+}
+
+// Variación en puntos porcentuales (pp) entre mes anterior y mes actual --
+// una pérdida que SUBE es peor (rojo), que BAJA es mejor (verde).
+function _iniRenderVariacion(elId, valorAnt, valorAct){
+  const el = document.getElementById(elId);
+  if(valorAnt==null || valorAct==null){ el.textContent=''; el.className='inicio-variacion'; return; }
+  const diff = valorAct - valorAnt;
+  const signo = diff>0.005 ? '▲' : diff<-0.005 ? '▼' : '■';
+  const clase = Math.abs(diff)<0.005 ? 'igual' : (diff>0 ? 'empeora' : 'mejora');
+  el.textContent = `${signo} ${Math.abs(diff).toFixed(2)} pp`;
+  el.className = `inicio-variacion ${clase}`;
 }
 
 function cerrarSesion(){
