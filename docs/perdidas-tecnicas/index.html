@@ -411,6 +411,19 @@ tfoot td:first-child{text-align:left}
 [data-theme="dark"] .be-tabla-creadas thead tr:nth-child(2) th.pto.cliente{background:rgba(123,47,255,.3) !important}
 .be-tabla-creadas thead tr:nth-child(3) td,.be-tabla-creadas thead tr:nth-child(3) td.suma,.be-tabla-creadas thead tr:nth-child(3) td.pto,.be-tabla-creadas thead tr:nth-child(3) td.back,.be-tabla-creadas thead tr:nth-child(3) td.dif{padding:6px 10px;border-bottom:2px solid var(--text2);font-weight:700;color:var(--text3);background:var(--bg2) !important}
 .be-tabla-creadas thead tr:nth-child(3) td.suma{color:var(--text)}
+/* Columnas "SIEC" (clientes sin medidor propio, consumo mensual
+   prorrateado -- ver LineaClienteSiecMensual) -- mismo mecanismo de
+   especificidad que ".cliente" arriba, con un tono ámbar distinto para no
+   confundirse con el violeta de "Es cliente" (que sí es telemedido). Hace
+   falta repetir la regla con el mismo prefijo "thead tr:nth-child(N)" que
+   las de arriba porque esas ganan por especificidad (mismo motivo que el
+   comentario de ".cliente"): sin esto, el ámbar queda tapado por el gris. */
+.be-tabla-creadas th.suma.siec,.be-tabla-creadas td.suma.siec{background:rgba(244,162,97,.18) !important}
+[data-theme="dark"] .be-tabla-creadas th.suma.siec,[data-theme="dark"] .be-tabla-creadas td.suma.siec{background:rgba(244,162,97,.28) !important}
+.be-tabla-creadas thead tr:nth-child(2) th.suma.siec{background:rgba(244,162,97,.28) !important}
+.be-tabla-creadas thead tr:nth-child(3) td.suma.siec{background:rgba(244,162,97,.22) !important}
+[data-theme="dark"] .be-tabla-creadas thead tr:nth-child(2) th.suma.siec{background:rgba(244,162,97,.35) !important}
+[data-theme="dark"] .be-tabla-creadas thead tr:nth-child(3) td.suma.siec{background:rgba(244,162,97,.3) !important}
 /* Balance diario: más compacta que la tabla de "Estructuras ya creadas" --
    con muchas columnas de detalle por medidor, el tamaño normal hacía que la
    tabla ocupara media pantalla de alto. Encabezado a 2 renglones (como en
@@ -5389,6 +5402,18 @@ function renderTablaDetalleBalance(datos){
     return td;
   };
 
+  // Clientes SIEC/Telegestionados (ver LineaClienteSiecMensual, backend) --
+  // cuentas sin medidor propio, solo se conoce el total del MES (repartido
+  // en partes iguales entre sus días). Se muestran como 2 columnas extra
+  // por lado (SIEC y Telemedido) SOLO si esta estructura de verdad tiene
+  // algo cargado en el rango -- igual que el Excel de referencia de
+  // Electrohuila (columnas ENTRADA/SALIDA/SIEC/TELEMEDIDO/PÉRDIDAS/%), pero
+  // sin ensuciar la tabla de las estructuras que no tienen clientes SIEC.
+  const hayEntradaSiec = (datos.entrada_siec_kwh||[]).some(v=>v!=null);
+  const haySalidaSiec = (datos.salida_siec_kwh||[]).some(v=>v!=null);
+  const colsEntradaSiec = v => hayEntradaSiec ? `<td class="num suma siec">${f2(v)}</td>` : '';
+  const colsSalidaSiec = v => haySalidaSiec ? `<td class="num suma siec">${f2(v)}</td>` : '';
+
   body.innerHTML = fechas.map((f,i)=>{
     const e = datos.entrada_kwh[i], s = datos.salida_kwh[i];
     const p = datos.perdida_kwh[i], pct = datos.perdida_pct[i];
@@ -5400,7 +5425,9 @@ function renderTablaDetalleBalance(datos){
       <td>${f}</td>
       ${detalle}
       <td class="num suma">${f2(e)}</td>
+      ${hayEntradaSiec ? colsEntradaSiec(datos.entrada_siec_kwh[i]) + `<td class="num suma">${f2(datos.entrada_telemedido_kwh[i])}</td>` : ''}
       <td class="num suma">${f2(s)}</td>
+      ${haySalidaSiec ? colsSalidaSiec(datos.salida_siec_kwh[i]) + `<td class="num suma">${f2(datos.salida_telemedido_kwh[i])}</td>` : ''}
       <td class="num suma">${f2(p)}</td>
       <td class="num suma${fueraTipico?' fuera-tipico':''}"${tituloTipico}>${pct==null?'--':pct.toFixed(2)+'%'}</td>
     </tr>`;
@@ -5432,19 +5459,23 @@ function renderTablaDetalleBalance(datos){
   head.innerHTML = `<tr>
     <td></td>
     ${headTipo}
-    <td></td><td></td><td></td><td></td>
+    <td></td>${hayEntradaSiec?'<td></td><td></td>':''}<td></td>${haySalidaSiec?'<td></td><td></td>':''}<td></td><td></td>
   </tr><tr>
     <th>Fecha</th>
     ${headDetalle}
     <th class="suma">ENTRADA</th>
+    ${hayEntradaSiec ? '<th class="suma siec">Entrada SIEC</th><th class="suma">Entrada Telemedido</th>' : ''}
     <th class="suma">SALIDA</th>
+    ${haySalidaSiec ? '<th class="suma siec">Salida SIEC</th><th class="suma">Salida Telemedido</th>' : ''}
     <th class="suma">PÉRDIDA (kWh)</th>
     <th class="suma">PÉRDIDA (%)</th>
   </tr><tr>
     <td>Total del rango</td>
     ${footDetalle}
     <td class="num suma">${f2(totalEntrada)}</td>
+    ${hayEntradaSiec ? `<td class="num suma siec">${f2(sumar(datos.entrada_siec_kwh))}</td><td class="num suma">${f2(sumar(datos.entrada_telemedido_kwh))}</td>` : ''}
     <td class="num suma">${f2(totalSalida)}</td>
+    ${haySalidaSiec ? `<td class="num suma siec">${f2(sumar(datos.salida_siec_kwh))}</td><td class="num suma">${f2(sumar(datos.salida_telemedido_kwh))}</td>` : ''}
     <td class="num suma">${f2(totalPerdida)}</td>
     <td class="num suma">${totalPct==null?'--':totalPct.toFixed(2)+'%'}</td>
   </tr>`;
