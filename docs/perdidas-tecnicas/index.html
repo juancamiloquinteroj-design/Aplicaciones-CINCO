@@ -89,6 +89,11 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(
 .inicio-mes-panel{border:1px solid var(--border);border-radius:10px;padding:14px 16px;background:var(--bg2)}
 .inicio-mes-panel.actual{border-color:var(--accent);background:var(--accent-bg-soft, var(--bg2))}
 .inicio-mes-titulo{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--text3);margin-bottom:10px;padding-bottom:8px;border-bottom:1px dashed var(--border)}
+/* Un bloque por ZONA dentro de la tarjeta de Nivel 3 (a diferencia de
+   Nivel 4, que es una sola estructura sin zona) -- separador chico entre
+   bloques cuando hay más de una zona. */
+.inicio-zona-titulo{font-size:13px;font-weight:800;color:var(--text);margin:18px 0 4px}
+.inicio-zona-titulo:first-child{margin-top:4px}
 .inicio-mes-fila{display:flex;align-items:center;justify-content:space-between;font-size:13px;color:var(--text2);padding:5px 0}
 .inicio-mes-fila span:first-child{font-weight:600;color:var(--text3);font-size:11px;text-transform:uppercase;letter-spacing:.4px}
 .inicio-mes-fila span:last-child{font-weight:800;font-size:15px;color:var(--text)}
@@ -350,6 +355,10 @@ tfoot td:first-child{text-align:left}
    contenido (el scroll horizontal del contenedor sigue andando igual). */
 #be-tabla-detalle{width:auto}
 .be-tabla-creadas th{text-align:left;padding:7px 10px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:var(--text3);border-bottom:1px solid var(--border);white-space:nowrap}
+/* Balance diario -- títulos más oscuros que el gris tenue de siempre (se
+   pedía que se leyeran más "negro", no gris) -- acotado a esta tabla en
+   particular, no a todas las que comparten .be-tabla-creadas. */
+#be-tabla-detalle-head th{color:var(--text)}
 .be-tabla-creadas td{padding:7px 10px;border-bottom:1px solid var(--border);color:var(--text2);white-space:nowrap}
 .be-tabla-creadas td.num{text-align:right;font-family:ui-monospace,"Cascadia Code","SF Mono",Consolas,monospace}
 .be-tabla-creadas tr:last-child td{border-bottom:none}
@@ -651,6 +660,12 @@ tfoot td:first-child{text-align:left}
       </div>
     </div>
     <div id="ini-n4-msg" class="tm-modal-msg"></div>
+  </div>
+
+  <div id="inicio-dash-nivel3" class="card hidden">
+    <div class="card-title">📉 Pérdidas Por Balance Nivel 3</div>
+    <div id="ini-n3-zonas"></div>
+    <div id="ini-n3-msg" class="tm-modal-msg"></div>
   </div>
 
   <div class="mod-grid">
@@ -1302,10 +1317,12 @@ tfoot td:first-child{text-align:left}
 
     <div class="be-tabla-creadas-wrap">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:12px;padding-bottom:12px;border-bottom:1px dashed var(--border)">
-        <div class="be-tabla-creadas-titulo" style="margin-bottom:0">Balance diario</div>
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <div class="be-tabla-creadas-titulo" style="margin-bottom:0">Balance diario</div>
+          <span style="font-size:11px;color:var(--text3)" title="La tabla siempre muestra el MISMO rango que el gráfico de arriba -- cambialo ahí (fechas, Mes anterior/siguiente, o Diario/Mensual/Anual)">Rango: <b id="be-tabla-rango-actual" style="color:var(--text)">--</b></span>
+        </div>
         <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;justify-content:flex-end">
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-            <span style="font-size:11px;color:var(--text3)" title="La tabla siempre muestra el MISMO rango que el gráfico de arriba -- cambialo ahí (fechas, Mes anterior/siguiente, o Diario/Mensual/Anual)">Rango: <b id="be-tabla-rango-actual" style="color:var(--text)">--</b></span>
             <button type="button" class="be-editar-btn" onclick="beExportarCsv()" title="Exportar el balance de este rango a CSV">⬇ Exportar CSV</button>
             <button type="button" class="be-btn-respaldo" id="be-btn-detalle-medidor" onclick="beToggleDetalleMedidor()">▾ Ocultar detalle por medidor</button>
           </div>
@@ -1942,7 +1959,74 @@ async function mostrarVista(nombre){
   // sumando datos día a día, así que "hoy" cambia con cada visita.
   if(nombre==='inicio'){
     await cargarDashboardInicio();
+    await cargarDashboardNivel3();
   }
+}
+
+// Tarjeta de Inicio: pérdida de balance del ÚNICO "Balance por Nivel de
+// Tensión" de Nivel 4 (siempre hay a lo sumo uno -- Nivel 4 no tiene zona,
+// ver el comentario en cargarListaEstructuras). Reusa los MISMOS endpoints
+// que ya tiene "Ver Balance" (/consumo, /comparacion, /movil-anual) --
+// nada nuevo en el backend, solo se pide un rango que cubra mes actual +
+// mes anterior (+ 12 meses de contexto para que el móvil-anual no salga
+// null en esos dos puntos).
+// "Mes actual" se ancla al último mes que YA tiene datos cargados (no al
+// calendario real) -- mismo criterio que usa el resto de la app (ver
+// "último mes cerrado" en Alertas/comparación): la carga de Usuarios
+// Telemedidos siempre va con algo de rezago, así que anclar al día de HOY
+// dejaría las tarjetas en "Sin datos" la mayoría del tiempo. Reusado por
+// las tarjetas de Nivel 4 (una sola estructura) y Nivel 3 (una por zona).
+async function _iniContextoMeses(){
+  const hoy = new Date();
+  let meta;
+  try{ meta = await apiGet('/api/telemedida/meta'); }catch(e){ meta = {meses:[]}; }
+  const mesesConDatos = meta.meses || [];
+  const mesActual = mesesConDatos.length ? mesesConDatos[mesesConDatos.length-1] : `${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}`;
+  const [anioAct, numMesAct] = mesActual.split('-').map(Number);
+  const mesActualDate = new Date(anioAct, numMesAct-1, 1);
+  const mesAnteriorDate = new Date(anioAct, numMesAct-2, 1);
+  const fmtMes = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+  const mesAnterior = fmtMes(mesAnteriorDate);
+  const desdeCtx = new Date(anioAct, numMesAct-1-13, 1);
+  return {
+    mesActual, mesAnterior, mesActualDate, mesAnteriorDate,
+    nombreMesAnt: mesAnteriorDate.toLocaleDateString('es-CO',{month:'long',year:'numeric'}),
+    nombreMesAct: mesActualDate.toLocaleDateString('es-CO',{month:'long',year:'numeric'}),
+    desdeStr: `${fmtMes(desdeCtx)}-01`, hastaStr: `${mesActual}-01`,
+    hoyStr: `${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}-${String(hoy.getDate()).padStart(2,'0')}`,
+  };
+}
+
+// Trae y calcula los 6 números (Diario/Mensual/Anual x Mes anterior/Mes
+// actual) de pérdida de balance de UNA estructura -- pura data, sin
+// tocar el DOM, para poder reusarla tanto en la tarjeta de Nivel 4 (una
+// sola estructura) como en la de Nivel 3 (una por zona, ver más abajo).
+async function _iniCalcularPanelesBalance(estructuraId, ctx){
+  const {mesAnterior, mesActual, desdeStr, hastaStr, hoyStr} = ctx;
+  const [comp, movil, consumo] = await Promise.all([
+    apiGet(`/api/balances-estructura/${estructuraId}/comparacion?desde=${desdeStr}&hasta=${hastaStr}`, BALANCE_TIMEOUT_MS),
+    apiGet(`/api/balances-estructura/${estructuraId}/movil-anual?desde=${desdeStr}&hasta=${hastaStr}`, BALANCE_TIMEOUT_MS),
+    apiGet(`/api/balances-estructura/${estructuraId}/consumo?desde=${mesAnterior}-01&hasta=${hoyStr}`, BALANCE_TIMEOUT_MS),
+  ]);
+  const idx = (arr, mes) => (arr||[]).indexOf(mes);
+  const idxCompAnt = idx(comp.meses, mesAnterior), idxCompAct = idx(comp.meses, mesActual);
+  const idxMovilAnt = idx(movil.meses, mesAnterior), idxMovilAct = idx(movil.meses, mesActual);
+  // "Diario" = pérdida % del ÚLTIMO día con dato dentro de ese mes -- para
+  // el mes anterior, "cómo cerró"; para el actual, "cómo viene hoy".
+  const ultimoDiaDelMes = prefijoMes => {
+    const fechas = consumo.fechas||[];
+    for(let i=fechas.length-1;i>=0;i--){
+      if(fechas[i].startsWith(prefijoMes) && consumo.perdida_pct[i]!=null) return consumo.perdida_pct[i];
+    }
+    return null;
+  };
+  return {
+    diarioAnt: ultimoDiaDelMes(mesAnterior), diarioAct: ultimoDiaDelMes(mesActual),
+    mensualAnt: idxCompAnt>=0 ? comp.perdida_balance_pct[idxCompAnt] : null,
+    mensualAct: idxCompAct>=0 ? comp.perdida_balance_pct[idxCompAct] : null,
+    anualAnt: idxMovilAnt>=0 ? movil.perdida_balance_movil_pct[idxMovilAnt] : null,
+    anualAct: idxMovilAct>=0 ? movil.perdida_balance_movil_pct[idxMovilAct] : null,
+  };
 }
 
 // Tarjeta de Inicio: pérdida de balance del ÚNICO "Balance por Nivel de
@@ -1962,76 +2046,97 @@ async function cargarDashboardInicio(){
   catch(e){ card.classList.add('hidden'); return; }
   if(!nivel4.length){ card.classList.add('hidden'); return; }
   card.classList.remove('hidden');
-  const estructuraId = nivel4[0].id;
 
-  // "Mes actual" se ancla al último mes que YA tiene datos cargados (no al
-  // calendario real) -- mismo criterio que usa el resto de la app (ver
-  // "último mes cerrado" en Alertas/comparación): la carga de Usuarios
-  // Telemedidos siempre va con algo de rezago, así que anclar al día de
-  // HOY dejaría la tarjeta en "Sin datos" la mayoría del tiempo.
-  const hoy = new Date();
-  let meta;
-  try{ meta = await apiGet('/api/telemedida/meta'); }catch(e){ meta = {meses:[]}; }
-  const mesesConDatos = meta.meses || [];
-  const mesActual = mesesConDatos.length ? mesesConDatos[mesesConDatos.length-1] : `${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}`;
-  const [anioAct, numMesAct] = mesActual.split('-').map(Number);
-  const mesActualDate = new Date(anioAct, numMesAct-1, 1);
-  const mesAnteriorDate = new Date(anioAct, numMesAct-2, 1);
-  const fmtMes = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-  const mesAnterior = fmtMes(mesAnteriorDate);
-  const nombreMes = d => d.toLocaleDateString('es-CO',{month:'long',year:'numeric'});
-  document.getElementById('ini-n4-mes-ant').textContent = nombreMes(mesAnteriorDate);
-  document.getElementById('ini-n4-mes-act').textContent = nombreMes(mesActualDate);
+  const ctx = await _iniContextoMeses();
+  document.getElementById('ini-n4-mes-ant').textContent = ctx.nombreMesAnt;
+  document.getElementById('ini-n4-mes-act').textContent = ctx.nombreMesAct;
 
-  const desdeCtx = new Date(anioAct, numMesAct-1-13, 1);
-  const desdeStr = `${fmtMes(desdeCtx)}-01`;
-  const hastaStr = `${mesActual}-01`;
-  const hoyStr = `${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}-${String(hoy.getDate()).padStart(2,'0')}`;
-
-  let comp, movil, consumo;
-  try{
-    [comp, movil, consumo] = await Promise.all([
-      apiGet(`/api/balances-estructura/${estructuraId}/comparacion?desde=${desdeStr}&hasta=${hastaStr}`, BALANCE_TIMEOUT_MS),
-      apiGet(`/api/balances-estructura/${estructuraId}/movil-anual?desde=${desdeStr}&hasta=${hastaStr}`, BALANCE_TIMEOUT_MS),
-      apiGet(`/api/balances-estructura/${estructuraId}/consumo?desde=${mesAnterior}-01&hasta=${hoyStr}`, BALANCE_TIMEOUT_MS),
-    ]);
-  }catch(e){
+  let p;
+  try{ p = await _iniCalcularPanelesBalance(nivel4[0].id, ctx); }
+  catch(e){
     msg.className = 'tm-modal-msg err';
     msg.textContent = 'No se pudo cargar el balance de Nivel 4.';
     return;
   }
 
   const fmtPct = v => v==null ? 'Sin datos' : `${v.toFixed(2)}%`;
-  const idx = (arr, mes) => (arr||[]).indexOf(mes);
+  document.getElementById('ini-n4-ant-diario').textContent = fmtPct(p.diarioAnt);
+  document.getElementById('ini-n4-ant-mensual').textContent = fmtPct(p.mensualAnt);
+  document.getElementById('ini-n4-ant-anual').textContent = fmtPct(p.anualAnt);
+  document.getElementById('ini-n4-act-diario').textContent = fmtPct(p.diarioAct);
+  document.getElementById('ini-n4-act-mensual').textContent = fmtPct(p.mensualAct);
+  document.getElementById('ini-n4-act-anual').textContent = fmtPct(p.anualAct);
 
-  const idxCompAnt = idx(comp.meses, mesAnterior), idxCompAct = idx(comp.meses, mesActual);
-  const idxMovilAnt = idx(movil.meses, mesAnterior), idxMovilAct = idx(movil.meses, mesActual);
-  const mensualAnt = idxCompAnt>=0 ? comp.perdida_balance_pct[idxCompAnt] : null;
-  const mensualAct = idxCompAct>=0 ? comp.perdida_balance_pct[idxCompAct] : null;
-  const anualAnt = idxMovilAnt>=0 ? movil.perdida_balance_movil_pct[idxMovilAnt] : null;
-  const anualAct = idxMovilAct>=0 ? movil.perdida_balance_movil_pct[idxMovilAct] : null;
+  _iniRenderVariacion('ini-n4-var-mensual', p.mensualAnt, p.mensualAct);
+  _iniRenderVariacion('ini-n4-var-anual', p.anualAnt, p.anualAct);
+}
 
-  // "Diario" = pérdida % del ÚLTIMO día con dato dentro de ese mes -- para
-  // el mes anterior, "cómo cerró"; para el actual, "cómo viene hoy".
-  const ultimoDiaDelMes = prefijoMes => {
-    const fechas = consumo.fechas||[];
-    for(let i=fechas.length-1;i>=0;i--){
-      if(fechas[i].startsWith(prefijoMes) && consumo.perdida_pct[i]!=null) return consumo.perdida_pct[i];
+// Nombres largos para las zonas de Nivel 2/3 -- el sistema solo guarda el
+// código corto (ver "Color por zona" en Parametrización); si aparece un
+// código que no está en este mapa, se muestra tal cual (ej. una zona
+// nueva que todavía no tiene nombre largo asignado acá).
+const INI_NOMBRES_ZONA = {ZC:'Centro', ZN:'Norte', ZS:'Sur', ZE:'Este', ZO:'Oeste', EH:'Electrohuila'};
+
+// Tarjeta de Inicio: pérdida de balance de los "Balance por Nivel de
+// Tensión" de Nivel 3 -- a diferencia de Nivel 4 (una sola estructura),
+// Nivel 3 lleva ZONA y puede haber una estructura por cada una -- se
+// muestra un bloque por zona, cada uno con los mismos 2 paneles (Mes
+// anterior/Mes actual) que la tarjeta de Nivel 4, reusando el mismo
+// cálculo (_iniCalcularPanelesBalance).
+async function cargarDashboardNivel3(){
+  const card = document.getElementById('inicio-dash-nivel3');
+  const cont = document.getElementById('ini-n3-zonas');
+  const msg = document.getElementById('ini-n3-msg');
+  msg.textContent = '';
+  if(DEMO){ card.classList.add('hidden'); return; }
+  let nivel3;
+  try{ nivel3 = await apiGet('/api/balances-estructura?nivel_tension=3&tipo=Z'); }
+  catch(e){ card.classList.add('hidden'); return; }
+  if(!nivel3.length){ card.classList.add('hidden'); return; }
+  card.classList.remove('hidden');
+
+  const ctx = await _iniContextoMeses();
+  const fmtPct = v => v==null ? 'Sin datos' : `${v.toFixed(2)}%`;
+
+  cont.innerHTML = nivel3.map(e => {
+    const nombreZona = e.zona ? (INI_NOMBRES_ZONA[e.zona] || e.zona) : e.nombre;
+    const pref = `ini-n3-${e.id}`;
+    return `
+    <div class="inicio-zona-titulo">📍 Zona ${_mselEsc(nombreZona)}</div>
+    <div class="inicio-dash-grid">
+      <div class="inicio-mes-panel">
+        <div class="inicio-mes-titulo">Mes anterior · ${ctx.nombreMesAnt}</div>
+        <div class="inicio-mes-fila"><span>Diario</span><span id="${pref}-ant-diario">--</span></div>
+        <div class="inicio-mes-fila"><span>Mensual</span><span id="${pref}-ant-mensual">--</span></div>
+        <div class="inicio-mes-fila"><span>Anual (móvil)</span><span id="${pref}-ant-anual">--</span></div>
+      </div>
+      <div class="inicio-mes-panel actual">
+        <div class="inicio-mes-titulo">Mes actual · ${ctx.nombreMesAct}</div>
+        <div class="inicio-mes-fila"><span>Diario</span><span id="${pref}-act-diario">--</span></div>
+        <div class="inicio-mes-fila"><span>Mensual</span><span><span id="${pref}-act-mensual">--</span> <span id="${pref}-var-mensual" class="inicio-variacion"></span></span></div>
+        <div class="inicio-mes-fila"><span>Anual (móvil)</span><span><span id="${pref}-act-anual">--</span> <span id="${pref}-var-anual" class="inicio-variacion"></span></span></div>
+      </div>
+    </div>`;
+  }).join('');
+
+  for(const e of nivel3){
+    const pref = `ini-n3-${e.id}`;
+    let p;
+    try{ p = await _iniCalcularPanelesBalance(e.id, ctx); }
+    catch(err){
+      msg.className = 'tm-modal-msg err';
+      msg.textContent = `No se pudo cargar el balance de ${e.nombre}.`;
+      continue;
     }
-    return null;
-  };
-  const diarioAnt = ultimoDiaDelMes(mesAnterior);
-  const diarioAct = ultimoDiaDelMes(mesActual);
-
-  document.getElementById('ini-n4-ant-diario').textContent = fmtPct(diarioAnt);
-  document.getElementById('ini-n4-ant-mensual').textContent = fmtPct(mensualAnt);
-  document.getElementById('ini-n4-ant-anual').textContent = fmtPct(anualAnt);
-  document.getElementById('ini-n4-act-diario').textContent = fmtPct(diarioAct);
-  document.getElementById('ini-n4-act-mensual').textContent = fmtPct(mensualAct);
-  document.getElementById('ini-n4-act-anual').textContent = fmtPct(anualAct);
-
-  _iniRenderVariacion('ini-n4-var-mensual', mensualAnt, mensualAct);
-  _iniRenderVariacion('ini-n4-var-anual', anualAnt, anualAct);
+    document.getElementById(`${pref}-ant-diario`).textContent = fmtPct(p.diarioAnt);
+    document.getElementById(`${pref}-ant-mensual`).textContent = fmtPct(p.mensualAnt);
+    document.getElementById(`${pref}-ant-anual`).textContent = fmtPct(p.anualAnt);
+    document.getElementById(`${pref}-act-diario`).textContent = fmtPct(p.diarioAct);
+    document.getElementById(`${pref}-act-mensual`).textContent = fmtPct(p.mensualAct);
+    document.getElementById(`${pref}-act-anual`).textContent = fmtPct(p.anualAct);
+    _iniRenderVariacion(`${pref}-var-mensual`, p.mensualAnt, p.mensualAct);
+    _iniRenderVariacion(`${pref}-var-anual`, p.anualAnt, p.anualAct);
+  }
 }
 
 // Variación en puntos porcentuales (pp) entre mes anterior y mes actual --
