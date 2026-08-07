@@ -420,6 +420,13 @@ tfoot td:first-child{text-align:left}
    comentario de ".cliente"): sin esto, el ámbar queda tapado por el gris. */
 .be-tabla-creadas th.suma.siec,.be-tabla-creadas td.suma.siec{background:rgba(244,162,97,.18) !important}
 [data-theme="dark"] .be-tabla-creadas th.suma.siec,[data-theme="dark"] .be-tabla-creadas td.suma.siec{background:rgba(244,162,97,.28) !important}
+/* En modo oscuro, el texto normal de la tabla usa tonos tenues (--text2/
+   --text3) pensados para el fondo oscuro general -- sobre estos fondos más
+   claros (violeta "Cliente", ámbar "SIEC") pierden contraste y se ven mal.
+   Se fuerza al color más claro (--text) solo en modo oscuro. */
+[data-theme="dark"] .be-tabla-creadas th.pto.cliente,[data-theme="dark"] .be-tabla-creadas td.pto.cliente,
+[data-theme="dark"] .be-tabla-creadas td.be-fila-tipo-celda.cliente,
+[data-theme="dark"] .be-tabla-creadas th.suma.siec,[data-theme="dark"] .be-tabla-creadas td.suma.siec{color:var(--text) !important}
 .be-tabla-creadas thead tr:nth-child(2) th.suma.siec{background:rgba(244,162,97,.28) !important}
 .be-tabla-creadas thead tr:nth-child(3) td.suma.siec{background:rgba(244,162,97,.22) !important}
 [data-theme="dark"] .be-tabla-creadas thead tr:nth-child(2) th.suma.siec{background:rgba(244,162,97,.35) !important}
@@ -1239,7 +1246,7 @@ tfoot td:first-child{text-align:left}
     </div>
     <div id="be-chart-nota" class="tm-modal-msg" style="text-align:center"></div>
 
-    <div id="be-tipicos-calc-bar" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:11px;color:var(--text3);margin-bottom:8px">
+    <div id="be-tipicos-calc-bar" style="display:flex;align-items:center;justify-content:flex-end;gap:6px;flex-wrap:wrap;font-size:11px;color:var(--text3);margin-bottom:8px">
       <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px">Calcular datos típicos</span>
       <label style="font-size:10px;color:var(--text3)">Desde</label>
       <input type="month" id="be-tipicos-desde">
@@ -1298,11 +1305,7 @@ tfoot td:first-child{text-align:left}
         <div class="be-tabla-creadas-titulo" style="margin-bottom:0">Balance diario</div>
         <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;justify-content:flex-end">
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-            <label style="font-size:10px;color:var(--text3)">Desde</label>
-            <input type="month" id="be-tabla-desde">
-            <label style="font-size:10px;color:var(--text3)">Hasta</label>
-            <input type="month" id="be-tabla-hasta">
-            <button type="button" class="btn-theme" style="width:auto;padding:6px 12px;background:var(--accent);color:#fff;border-color:var(--accent)" onclick="cargarTablaBalance()" title="Aplicar el rango de fechas elegido">▶ Graficar</button>
+            <span style="font-size:11px;color:var(--text3)" title="La tabla siempre muestra el MISMO rango que el gráfico de arriba -- cambialo ahí (fechas, Mes anterior/siguiente, o Diario/Mensual/Anual)">Rango: <b id="be-tabla-rango-actual" style="color:var(--text)">--</b></span>
             <button type="button" class="be-editar-btn" onclick="beExportarCsv()" title="Exportar el balance de este rango a CSV">⬇ Exportar CSV</button>
             <button type="button" class="be-btn-respaldo" id="be-btn-detalle-medidor" onclick="beToggleDetalleMedidor()">▾ Ocultar detalle por medidor</button>
           </div>
@@ -4225,10 +4228,8 @@ async function verBalanceEstructura(id){
   }
   if(BE_MODO_GRAFICO!==3) renderChartBalanceEstructura(BE_CONSUMO_DATOS, BE_MODO_GRAFICO);
   renderResumenEstructura();
-  // La tabla de "Balance diario" tiene su PROPIO rango (independiente del
-  // gráfico) -- por defecto arranca igual al del gráfico, pero se puede
-  // ampliar a varios meses sin afectar lo que se grafica arriba.
-  _beInicializarFiltroTabla(datos);
+  // La tabla "Balance diario" sigue el MISMO rango que el gráfico de
+  // arriba (ver _beRangoActivoParaTabla) -- ya no tiene su propio filtro.
   cargarTablaBalance();
 }
 
@@ -4377,11 +4378,31 @@ function beRecargarFiltroMensual(){
   else verComparacionEstructura();
 }
 
-function _beInicializarFiltroTabla(datosChart){
-  const desdeInput = document.getElementById('be-tabla-desde');
-  const hastaInput = document.getElementById('be-tabla-hasta');
-  if(!desdeInput.value && datosChart.fechas.length) desdeInput.value = datosChart.fechas[0].slice(0,7);
-  if(!hastaInput.value && datosChart.fechas.length) hastaInput.value = datosChart.fechas[datosChart.fechas.length-1].slice(0,7);
+// La tabla "Balance diario" ya no tiene su propio filtro -- siempre
+// refleja el rango del gráfico que esté activo en ese momento: Diario usa
+// be-desde/hasta (fecha exacta); Mensual/Anual usa be-comp-desde/hasta
+// (mes), convertido al primer/último día de ese rango de meses.
+function _beRangoActivoParaTabla(){
+  if(BE_MODO_GRAFICO===1 || BE_MODO_GRAFICO===2){
+    return {
+      desde: document.getElementById('be-desde').value,
+      hasta: document.getElementById('be-hasta').value,
+    };
+  }
+  const compDesde = document.getElementById('be-comp-desde').value;
+  const compHasta = document.getElementById('be-comp-hasta').value;
+  let hasta = '';
+  if(compHasta){
+    const [y,m] = compHasta.split('-').map(Number);
+    hasta = `${compHasta}-${String(new Date(y,m,0).getDate()).padStart(2,'0')}`;
+  }
+  return { desde: compDesde ? `${compDesde}-01` : '', hasta };
+}
+
+function _beActualizarEtiquetaRangoTabla(desde, hasta){
+  const el = document.getElementById('be-tabla-rango-actual');
+  if(!el) return;
+  el.textContent = (desde && hasta) ? `${_beFechaFmt(desde)} -- ${_beFechaFmt(hasta)}` : '--';
 }
 
 // "Datos típicos" de la estructura activa -- misma cuenta (Z-Score robusto,
@@ -4484,20 +4505,16 @@ async function calcularTipicosEstructuraActiva(){
 
 async function cargarTablaBalance(){
   if(!BE_ACTIVA_ID) return;
-  const desdeMes = document.getElementById('be-tabla-desde').value;
-  const hastaMes = document.getElementById('be-tabla-hasta').value;
+  const {desde, hasta} = _beRangoActivoParaTabla();
   const qs = new URLSearchParams();
-  if(desdeMes) qs.set('desde', `${desdeMes}-01`);
-  if(hastaMes){
-    const [y,m] = hastaMes.split('-').map(Number);
-    const ultimoDia = new Date(y, m, 0).getDate();
-    qs.set('hasta', `${hastaMes}-${String(ultimoDia).padStart(2,'0')}`);
-  }
+  if(desde) qs.set('desde', desde);
+  if(hasta) qs.set('hasta', hasta);
   let datos;
   try{ datos = await apiGet(`/api/balances-estructura/${BE_ACTIVA_ID}/consumo?${qs.toString()}`, BALANCE_TIMEOUT_MS); }
   catch(e){ return; }
   BE_TABLA_DATOS = datos;
   renderTablaDetalleBalance(datos);
+  _beActualizarEtiquetaRangoTabla(desde, hasta);
 }
 
 // El botón "Exportar CSV" ya NO exporta directo lo que se ve en pantalla --
@@ -4507,8 +4524,9 @@ async function cargarTablaBalance(){
 // tabla esté mostrando solo el último mes).
 function beExportarCsv(){
   if(!BE_ACTIVA_ID){ alert('Elegí una estructura primero.'); return; }
-  document.getElementById('beexp-desde').value = document.getElementById('be-tabla-desde').value;
-  document.getElementById('beexp-hasta').value = document.getElementById('be-tabla-hasta').value;
+  const {desde, hasta} = _beRangoActivoParaTabla();
+  document.getElementById('beexp-desde').value = desde ? desde.slice(0,7) : '';
+  document.getElementById('beexp-hasta').value = hasta ? hasta.slice(0,7) : '';
   document.getElementById('beexp-msg').className = 'tm-modal-msg';
   document.getElementById('beexp-msg').textContent = '';
   document.getElementById('modal-be-exportar').classList.remove('hidden');
@@ -4855,6 +4873,11 @@ async function verComparacionEstructura(){
   const desdeInput = document.getElementById('be-comp-desde');
   const desdeMes = desdeInput.value;  // 'YYYY-MM'
   const hastaMes = document.getElementById('be-comp-hasta').value;
+  // La tabla "Balance diario" sigue el MISMO rango del gráfico activo (ver
+  // _beRangoActivoParaTabla) -- si estamos en Mensual, es este filtro
+  // (be-comp-desde/hasta) el que manda, independiente de si /comparacion
+  // encuentra datos técnicos o no (son cosas distintas).
+  if(BE_MODO_GRAFICO===3) cargarTablaBalance();
   let datos = {vinculado:false, meses:[]};
   try{
     const qs = new URLSearchParams();
@@ -5039,6 +5062,9 @@ async function verMovilAnualEstructura(){
   const desdeInput = document.getElementById('be-comp-desde');
   const desdeMes = desdeInput.value;
   const hastaMes = document.getElementById('be-comp-hasta').value;
+  // Ver comentario igual en verComparacionEstructura -- la tabla sigue este
+  // mismo filtro cuando el modo activo es Anual.
+  if(BE_MODO_GRAFICO===4) cargarTablaBalance();
   let datos = {meses:[]};
   try{
     const qs = new URLSearchParams();
@@ -5292,8 +5318,10 @@ function renderTablaDetalleBalance(datos){
     return;
   }
 
-  // Agrupar por usuario_id preservando el orden de aparición, y asignar un
-  // índice estable a cada punto-con-respaldo (para el desplegable lateral).
+  // Agrupar por usuario_id (un medidor bidireccional aporta a entrada Y
+  // salida a la vez, sus 2 canales quedan juntos como un solo grupo), y
+  // asignar un índice estable a cada punto-con-respaldo (para el
+  // desplegable lateral).
   const gruposPorMedidor = [];
   const indicePorMedidor = {};
   let respIdx = 0;
@@ -5306,13 +5334,53 @@ function renderTablaDetalleBalance(datos){
     gruposPorMedidor[indicePorMedidor[col.usuario_id]].push(col);
   });
 
+  // Orden de los grupos: primero los puntos de RED que hacen de "entrada"
+  // de la estructura, después los clientes (telemedidos), después SIEC
+  // (si hay), y por último los puntos de red que hacen de "salida" --
+  // igual que el Excel de referencia de Electrohuila (ej. en una línea,
+  // el extremo de origen, los clientes tapados en el medio, y el extremo
+  // de destino). Un medidor de red normalmente aparece en AMBAS listas
+  // (entrada Y salida, canales opuestos, ver "inversión de canales") --
+  // cuál de las dos es su rol "principal" se decide por en cuál de las
+  // dos tiene el orden MÁS CHICO (ej. si es orden 0 como entrada pero
+  // orden 3 como salida, es "de entrada"; si fuera al revés, "de salida").
+  const _beOrdenGrupo = grupo => {
+    if(grupo.some(c=>c.es_cliente)) return {prioridad:1, orden: Math.min(...grupo.map(c=>c.orden))};
+    const deEntrada = grupo.find(c=>c.tipo==='entrada');
+    const deSalida = grupo.find(c=>c.tipo==='salida');
+    if(deEntrada && (!deSalida || deEntrada.orden <= deSalida.orden)) return {prioridad:0, orden: deEntrada.orden};
+    return {prioridad:2, orden: deSalida ? deSalida.orden : (deEntrada ? deEntrada.orden : 0)};
+  };
+  gruposPorMedidor.sort((a,b)=>{
+    const oa = _beOrdenGrupo(a), ob = _beOrdenGrupo(b);
+    return oa.prioridad !== ob.prioridad ? oa.prioridad - ob.prioridad : oa.orden - ob.orden;
+  });
+
+  // "Cliente SIEC" -- no es un medidor real, es el consumo mensual de
+  // cuentas de facturación sin medidor propio (prorrateado por día, ver
+  // LineaClienteSiecMensual en el backend), pero se muestra como una
+  // columna más, en su lugar dentro del orden de arriba (entre los
+  // clientes telemedidos y el/los punto(s) de salida de red).
+  const haySiecEnTabla = (datos.salida_siec_kwh||[]).some(v=>v!=null);
+  if(haySiecEnTabla){
+    const nulos = fechas.map(()=>null);
+    let idxInsercion = gruposPorMedidor.findIndex(g=>_beOrdenGrupo(g).prioridad > 1);
+    if(idxInsercion < 0) idxInsercion = gruposPorMedidor.length;
+    gruposPorMedidor.splice(idxInsercion, 0, [{
+      _siec: true, usuario_id: 'SIEC', canal: null, orden: -1, tipo: 'salida',
+      usuario_id_back: null, canal_back: null, es_cliente: false, resta: false,
+      valores: datos.salida_siec_kwh, fuentes: nulos, dif: nulos,
+      ajustes: nulos, formulas: nulos, autores: nulos,
+    }]);
+  }
+
   // Antes el label de cada columna le agregaba "(salida)" a mano -- eso
   // hacía que las columnas de salida envolvieran a 2 líneas y las de
   // entrada quedaran en 1, con encabezados de altura pareja pero texto
   // arrancando en alturas distintas (se veía "escalonado"). Ahora la
   // distinción entrada/salida va en su propia fila (ver filaTipoCelda) y
   // el label del medidor queda igual de corto para todas las columnas.
-  const etiquetaMedidor = p => `${p.usuario_id} · ${(BE_NOMBRES_CANAL_CORTO[p.canal]||p.canal)}`;
+  const etiquetaMedidor = p => p._siec ? 'Cliente SIEC' : `${p.usuario_id} · ${(BE_NOMBRES_CANAL_CORTO[p.canal]||p.canal)}`;
   const totalCols = 5 + columnas.reduce((n,c)=>n+(_bePuntoTieneBack(c)?3:1),0);
 
   // Letra de columna (A, B, C...) para las fórmulas de ajuste -- el MISMO
@@ -5327,6 +5395,10 @@ function renderTablaDetalleBalance(datos){
   BE_COLUMNAS_ACTUALES = [];
   let _letraIdx = 0;
   gruposPorMedidor.forEach(grupo => grupo.forEach(col=>{
+    // "Cliente SIEC" no es un medidor real (es un total mensual
+    // prorrateado, ver arriba) -- no tiene sentido darle letra de fórmula,
+    // no hay un dato crudo al que referenciarlo.
+    if(col._siec) return;
     col._letra = _beLetraColumna(_letraIdx++);
     BE_COLUMNAS_ACTUALES.push({letra: col._letra, tipo: col.tipo, orden: col.orden, etiqueta: etiquetaMedidor(col)});
     if(_bePuntoTieneBack(col)){
@@ -5342,10 +5414,10 @@ function renderTablaDetalleBalance(datos){
   // cliente (ver checkbox "Es cliente" en Crear/Editar Estructura), para
   // que el contraste con "Cliente Entrada/Salida" (ver filaTipoCelda) sea
   // explícito de un vistazo, no solo por el color de fondo.
-  const etiquetaTelemedido = col => col.es_cliente ? '' : ' <span class="be-tag-telemedido">Telemedido</span>';
+  const etiquetaTelemedido = col => (col.es_cliente || col._siec) ? '' : ' <span class="be-tag-telemedido">Telemedido</span>';
   const thPunto = (col, esInicioDeGrupo) => {
-    const claseGrupo = (esInicioDeGrupo ? ' grupo-inicio' : '') + (col.es_cliente ? ' cliente' : '');
-    const etiquetaLetra = `<span class="be-letra-col" title="Usá esta letra en las fórmulas de ajuste, ej. =${col._letra}*1.05">${col._letra}</span> `;
+    const claseGrupo = (esInicioDeGrupo ? ' grupo-inicio' : '') + (col.es_cliente ? ' cliente' : '') + (col._siec ? ' siec' : '');
+    const etiquetaLetra = col._siec ? '' : `<span class="be-letra-col" title="Usá esta letra en las fórmulas de ajuste, ej. =${col._letra}*1.05">${col._letra}</span> `;
     if(!_bePuntoTieneBack(col)) return `<th class="pto be-col-detalle${claseGrupo}">${etiquetaLetra}${_mselEsc(etiquetaMedidor(col))}${etiquetaTelemedido(col)}</th>`;
     const titulo = `Respaldo: ${col.usuario_id_back} · ${BE_NOMBRES_CANAL_CORTO[col.canal_back]||col.canal_back}`;
     const etiquetaLetraResp = `<span class="be-letra-col" title="Usá esta letra para referenciar el dato CRUDO del respaldo, ej. =${col._letraRespaldo}*1.05">${col._letraRespaldo}</span> `;
@@ -5362,8 +5434,8 @@ function renderTablaDetalleBalance(datos){
   // llevan la clase "cliente" (otro color, ver CSS) para distinguirlos de
   // los puntos de red comunes.
   const filaTipoCelda = (col, esInicioDeGrupo) => {
-    const claseGrupo = (esInicioDeGrupo ? ' grupo-inicio' : '') + (col.es_cliente ? ' cliente' : '');
-    const etiqueta = (col.es_cliente ? 'Cliente ' : '') + (col.tipo === 'salida' ? 'Salida' : 'Entrada')
+    const claseGrupo = (esInicioDeGrupo ? ' grupo-inicio' : '') + (col.es_cliente ? ' cliente' : '') + (col._siec ? ' siec' : '');
+    const etiqueta = col._siec ? 'Cliente SIEC' : (col.es_cliente ? 'Cliente ' : '') + (col.tipo === 'salida' ? 'Salida' : 'Entrada')
       + (col.resta ? ` (resta de ${col.tipo === 'salida' ? 'Entrada' : 'Salida'})` : '');
     if(!_bePuntoTieneBack(col)) return `<td class="be-col-detalle be-fila-tipo-celda${claseGrupo}">${etiqueta}</td>`;
     return `<td class="be-col-detalle be-fila-tipo-celda${claseGrupo}">${etiqueta}</td>`
@@ -5379,17 +5451,23 @@ function renderTablaDetalleBalance(datos){
 
   const f2 = v => v==null ? '--' : v.toLocaleString('es-CO',{maximumFractionDigits:0});
   const tdPunto = (col, i, esInicioDeGrupo) => {
-    const claseGrupo = (esInicioDeGrupo ? ' grupo-inicio' : '') + (col.es_cliente ? ' cliente' : '');
+    const claseGrupo = (esInicioDeGrupo ? ' grupo-inicio' : '') + (col.es_cliente ? ' cliente' : '') + (col._siec ? ' siec' : '');
     const usoBack = col.fuentes && col.fuentes[i] === 'back';
     const comentarioAjuste = col.ajustes ? col.ajustes[i] : null;
     const formulaAjuste = col.formulas ? col.formulas[i] : null;
     const autorAjuste = col.autores ? col.autores[i] : null;
     const claseAjustado = comentarioAjuste ? ' ajustado' : '';
-    const titulo = comentarioAjuste
+    // "Cliente SIEC" no es un medidor real -- no se puede editar a mano
+    // (es un total mensual prorrateado, se corrige reemplazando el Excel
+    // de origen, no celda por celda), por eso sin data-editable.
+    const editable = col._siec ? '' : ' data-editable="1"';
+    const titulo = col._siec
+      ? 'Consumo mensual de clientes SIEC (facturación, sin medidor propio) repartido en partes iguales entre los días del mes.'
+      : comentarioAjuste
       ? `Ajuste manual (${formulaAjuste})${autorAjuste ? ' por ' + autorAjuste : ''}: ${comentarioAjuste} -- doble clic, borrar y Enter para quitarlo desde acá.`
       : (usoBack ? 'Este día se usó el medidor de respaldo -- el principal no reportó.' : '');
     const manija = formulaAjuste ? '<div class="be-fill-handle" title="Arrastrar para repetir este ajuste en otros días"></div>' : '';
-    let td = `<td class="num pto be-col-detalle${claseGrupo}${usoBack?' usoback':''}${claseAjustado}" data-editable="1" data-tipo="${col.tipo}" data-orden="${col.orden}" data-fecha="${fechas[i]}" data-letra="${col._letra}" data-formula="${formulaAjuste ? _mselEsc(formulaAjuste) : ''}"${titulo?` title="${_mselEsc(titulo)}"`:''}>${f2(col.valores[i])}${manija}</td>`;
+    let td = `<td class="num pto be-col-detalle${claseGrupo}${usoBack?' usoback':''}${claseAjustado}"${editable} data-tipo="${col.tipo}" data-orden="${col.orden}" data-fecha="${fechas[i]}" data-letra="${col._letra}" data-formula="${formulaAjuste ? _mselEsc(formulaAjuste) : ''}"${titulo?` title="${_mselEsc(titulo)}"`:''}>${f2(col.valores[i])}${manija}</td>`;
     if(_bePuntoTieneBack(col)){
       const dif = col.dif ? col.dif[i] : null;
       // El respaldo solo "viaja" aparte cuando se usó como reemplazo (ahí es
@@ -5402,17 +5480,14 @@ function renderTablaDetalleBalance(datos){
     return td;
   };
 
-  // Clientes SIEC/Telegestionados (ver LineaClienteSiecMensual, backend) --
-  // cuentas sin medidor propio, solo se conoce el total del MES (repartido
-  // en partes iguales entre sus días). Se muestran como 2 columnas extra
-  // por lado (SIEC y Telemedido) SOLO si esta estructura de verdad tiene
-  // algo cargado en el rango -- igual que el Excel de referencia de
-  // Electrohuila (columnas ENTRADA/SALIDA/SIEC/TELEMEDIDO/PÉRDIDAS/%), pero
-  // sin ensuciar la tabla de las estructuras que no tienen clientes SIEC.
-  const hayEntradaSiec = (datos.entrada_siec_kwh||[]).some(v=>v!=null);
-  const haySalidaSiec = (datos.salida_siec_kwh||[]).some(v=>v!=null);
-  const colsEntradaSiec = v => hayEntradaSiec ? `<td class="num suma siec">${f2(v)}</td>` : '';
-  const colsSalidaSiec = v => haySalidaSiec ? `<td class="num suma siec">${f2(v)}</td>` : '';
+  // Clientes SIEC (facturación, prorrateado) y Telemedido (clientes CON
+  // medidor propio) -- columnas extra que se suman a Entrada/Salida para
+  // la Pérdida real (ver backend), mostradas aparte SOLO si esta
+  // estructura de verdad tiene algo de eso -- igual que el Excel de
+  // referencia de Electrohuila (ENTRADA/SALIDA/SIEC/TELEMEDIDO/PÉRDIDAS/%),
+  // sin ensuciar la tabla de las estructuras que no tienen clientes.
+  const haySiec = haySiecEnTabla;
+  const hayCliente = (datos.salidas||[]).some(p=>p.es_cliente);
 
   body.innerHTML = fechas.map((f,i)=>{
     const e = datos.entrada_kwh[i], s = datos.salida_kwh[i];
@@ -5425,9 +5500,9 @@ function renderTablaDetalleBalance(datos){
       <td>${f}</td>
       ${detalle}
       <td class="num suma">${f2(e)}</td>
-      ${hayEntradaSiec ? colsEntradaSiec(datos.entrada_siec_kwh[i]) + `<td class="num suma">${f2(datos.entrada_telemedido_kwh[i])}</td>` : ''}
       <td class="num suma">${f2(s)}</td>
-      ${haySalidaSiec ? colsSalidaSiec(datos.salida_siec_kwh[i]) + `<td class="num suma">${f2(datos.salida_telemedido_kwh[i])}</td>` : ''}
+      ${haySiec ? `<td class="num suma siec">${f2(datos.salida_siec_kwh[i])}</td>` : ''}
+      ${hayCliente ? `<td class="num suma">${f2(datos.salida_cliente_kwh[i])}</td>` : ''}
       <td class="num suma">${f2(p)}</td>
       <td class="num suma${fueraTipico?' fuera-tipico':''}"${tituloTipico}>${pct==null?'--':pct.toFixed(2)+'%'}</td>
     </tr>`;
@@ -5459,23 +5534,23 @@ function renderTablaDetalleBalance(datos){
   head.innerHTML = `<tr>
     <td></td>
     ${headTipo}
-    <td></td>${hayEntradaSiec?'<td></td><td></td>':''}<td></td>${haySalidaSiec?'<td></td><td></td>':''}<td></td><td></td>
+    <td></td><td></td>${haySiec?'<td></td>':''}${hayCliente?'<td></td>':''}<td></td><td></td>
   </tr><tr>
     <th>Fecha</th>
     ${headDetalle}
     <th class="suma">ENTRADA</th>
-    ${hayEntradaSiec ? '<th class="suma siec">Entrada SIEC</th><th class="suma">Entrada Telemedido</th>' : ''}
     <th class="suma">SALIDA</th>
-    ${haySalidaSiec ? '<th class="suma siec">Salida SIEC</th><th class="suma">Salida Telemedido</th>' : ''}
+    ${haySiec ? '<th class="suma siec">Cliente SIEC</th>' : ''}
+    ${hayCliente ? '<th class="suma">Telemedido</th>' : ''}
     <th class="suma">PÉRDIDA (kWh)</th>
     <th class="suma">PÉRDIDA (%)</th>
   </tr><tr>
     <td>Total del rango</td>
     ${footDetalle}
     <td class="num suma">${f2(totalEntrada)}</td>
-    ${hayEntradaSiec ? `<td class="num suma siec">${f2(sumar(datos.entrada_siec_kwh))}</td><td class="num suma">${f2(sumar(datos.entrada_telemedido_kwh))}</td>` : ''}
     <td class="num suma">${f2(totalSalida)}</td>
-    ${haySalidaSiec ? `<td class="num suma siec">${f2(sumar(datos.salida_siec_kwh))}</td><td class="num suma">${f2(sumar(datos.salida_telemedido_kwh))}</td>` : ''}
+    ${haySiec ? `<td class="num suma siec">${f2(sumar(datos.salida_siec_kwh))}</td>` : ''}
+    ${hayCliente ? `<td class="num suma">${f2(sumar(datos.salida_cliente_kwh))}</td>` : ''}
     <td class="num suma">${f2(totalPerdida)}</td>
     <td class="num suma">${totalPct==null?'--':totalPct.toFixed(2)+'%'}</td>
   </tr>`;
@@ -5485,13 +5560,9 @@ function renderTablaDetalleBalance(datos){
   // Resumen fuera de la tabla -- una lectura rápida del total del rango,
   // sin tener que sumar columna por columna.
   const resumen = document.getElementById('be-tabla-detalle-resumen');
-  const desdeMesVal = document.getElementById('be-tabla-desde').value;
-  const hastaMesVal = document.getElementById('be-tabla-hasta').value;
   let diasDelRango = fechas.length;
-  if(desdeMesVal && hastaMesVal){
-    const [ay,am] = desdeMesVal.split('-').map(Number);
-    const [hy,hm] = hastaMesVal.split('-').map(Number);
-    const desdeD = new Date(ay, am-1, 1), hastaD = new Date(hy, hm, 0);
+  if(fechas.length > 1){
+    const desdeD = new Date(fechas[0]+'T00:00:00'), hastaD = new Date(fechas[fechas.length-1]+'T00:00:00');
     diasDelRango = Math.round((hastaD - desdeD) / 86400000) + 1;
   }
   resumen.innerHTML = `<span>Días con datos: <b style="color:var(--text)">${fechas.length}</b> de ${diasDelRango} días del rango elegido</span>
