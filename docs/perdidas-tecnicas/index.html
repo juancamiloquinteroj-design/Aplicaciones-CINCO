@@ -1027,7 +1027,7 @@ tfoot td:first-child{text-align:left}
       <input type="date" id="ip-chart-hasta" onchange="ipRenderChart()">
       <button class="be-modo-btn" id="ip-btn-tendencia" onclick="ipToggleTendencia()">📈 Tendencia</button>
       <button class="be-modo-btn" id="ip-btn-proyeccion" onclick="ipToggleProyeccion()">🔮 Proyección</button>
-      <input type="number" id="ip-proyeccion-meses" value="6" min="1" max="24" step="1" title="Cuántos meses proyectar hacia adelante"
+      <input type="number" id="ip-proyeccion-meses" value="2" min="1" max="24" step="1" title="Cuántos meses proyectar hacia adelante"
         style="width:52px;padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg)"
         onchange="if(IP_MOSTRAR_PROYECCION) ipRenderChart()">
       <span style="font-size:11px;color:var(--text3)">meses</span>
@@ -1036,11 +1036,14 @@ tfoot td:first-child{text-align:left}
       <div style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Indicador de Pérdidas Totales (IP_REG)</div>
     </div>
     <div class="fbar" style="margin-bottom:6px">
-      <label>Ver mensual</label>
-      <button class="be-modo-btn" id="ip-btn-mes-entrada" onclick="ipToggleMensual('entrada')">Entrada Mensual</button>
-      <button class="be-modo-btn" id="ip-btn-mes-salida" onclick="ipToggleMensual('salida')">Salida Mensual</button>
-      <button class="be-modo-btn" id="ip-btn-mes-perdida" onclick="ipToggleMensual('perdida')">Pérdida Mensual</button>
-      <button class="be-modo-btn" id="ip-btn-mes-pct" onclick="ipToggleMensual('pct')">% P Mensual</button>
+      <label>Sobreponer variable</label>
+      <select id="ip-overlay-nivel" onchange="ipPoblarVariablesOverlay()">
+        <option value="1">Nivel 1</option>
+        <option value="2">Nivel 2</option>
+        <option value="3">Nivel 3</option>
+        <option value="4">Nivel 4</option>
+      </select>
+      <div id="ip-overlay-variables" style="display:flex;gap:6px;flex-wrap:wrap"></div>
     </div>
     <div class="chart-wrap" style="height:420px"><canvas id="ch-ip-reg"></canvas></div>
   </div>
@@ -6713,7 +6716,7 @@ let IP_REG_FILAS = [];
 let chIpReg = null, chIpNivel1 = null;
 let IP_MOSTRAR_TENDENCIA = false;
 let IP_MOSTRAR_PROYECCION = false;
-let IP_MOSTRAR_MENSUAL = {entrada:false, salida:false, perdida:false, pct:false};
+let IP_OVERLAYS_ACTIVOS = new Set();  // "nivel:campo" -- variables crudas sobrepuestas en el grafico principal
 
 const IP_COLUMNAS_NIVEL = {
   1: [["n1_eej","Eej"],["n1_estj","EsTj"],["n1_eprealesj","EPRealesj"],["n1_eeg","EeG"],
@@ -6746,6 +6749,7 @@ async function cargarIndicadorPerdidas(){
   }
   ipPoblarSelectoresConfig();
   ipPoblarRangoFechas();
+  ipPoblarVariablesOverlay();
   ipRenderChart();
   ipRenderChartNivel1();
   ipRenderTabla();
@@ -6859,16 +6863,34 @@ function ipToggleProyeccion(){
   ipRenderChart();
 }
 
-const IP_MENSUAL_CONFIG = {
-  entrada: {campo:'entrada_mensual_kwh', label:'Entrada Mensual', color:'#06d6a0', eje:'y'},
-  salida:  {campo:'salida_mensual_kwh',  label:'Salida Mensual',  color:'#9d4edd', eje:'y'},
-  perdida: {campo:'perdida_mensual_kwh', label:'Pérdida Mensual', color:'#ef476f', eje:'y'},
-  pct:     {campo:'pct_perdida_mensual', label:'% P Mensual',     color:'#00b4d8', eje:'yPct'},
-};
+// Las variables crudas (Eej, EsTj, EPRj, ...) se repiten idénticas en los
+// 4 Niveles de Tensión (ver IP_COLUMNAS_NIVEL) -- en vez de un botón fijo
+// por variable, se elige el nivel y ahí aparecen SUS variables para
+// sobreponer, cualquier combinación, en el gráfico principal.
+const IP_PALETA_OVERLAY = ['#06d6a0','#9d4edd','#ef476f','#00b4d8','#ffd166','#118ab2','#e76f51','#8ac926','#f72585','#4cc9f0'];
 
-function ipToggleMensual(cual){
-  IP_MOSTRAR_MENSUAL[cual] = !IP_MOSTRAR_MENSUAL[cual];
-  document.getElementById(`ip-btn-mes-${cual}`).classList.toggle('activo', IP_MOSTRAR_MENSUAL[cual]);
+function ipEsOverlayPct(campo){ return IP_COLUMNAS_PCT_NIVEL.has(campo) || IP_COLUMNAS_DECIMAL_NIVEL.has(campo); }
+function ipValorOverlay(f, campo){
+  const v = f[campo];
+  if(v==null) return null;
+  return IP_COLUMNAS_PCT_NIVEL.has(campo) ? v*100 : v;  // decimal-nivel (Pj n2/n3) ya está en escala 0-100
+}
+
+function ipPoblarVariablesOverlay(){
+  const nivel = Number(document.getElementById('ip-overlay-nivel').value);
+  const cont = document.getElementById('ip-overlay-variables');
+  cont.innerHTML = IP_COLUMNAS_NIVEL[nivel].map(([campo, etiqueta]) => {
+    const clave = `${nivel}:${campo}`;
+    const activo = IP_OVERLAYS_ACTIVOS.has(clave) ? ' activo' : '';
+    return `<button class="be-modo-btn${activo}" onclick="ipToggleOverlay(${nivel},'${campo}')">${etiqueta}</button>`;
+  }).join('');
+}
+
+function ipToggleOverlay(nivel, campo){
+  const clave = `${nivel}:${campo}`;
+  if(IP_OVERLAYS_ACTIVOS.has(clave)) IP_OVERLAYS_ACTIVOS.delete(clave);
+  else IP_OVERLAYS_ACTIVOS.add(clave);
+  ipPoblarVariablesOverlay();
   ipRenderChart();
 }
 
@@ -6916,11 +6938,7 @@ function ipRenderChart(){
     return (!desde || clave >= desde) && (!hasta || clave <= hasta);
   });
 
-  // Dos filas de fecha en el eje X: arriba la fecha REAL (a la que
-  // corresponde la energía), abajo la fecha de REPORTE regulatorio
-  // (3 meses vencido) -- Chart.js dibuja un array de strings como líneas
-  // apiladas dentro del mismo tick.
-  const etiquetas = visibles.map(f => [labelMes(ipClaveNormal(f)), `rep. ${labelMes(ipClaveRegulatoria(f))}`]);
+  const etiquetas = visibles.map(f => labelMes(ipClaveNormal(f)));
   const ptDatos = visibles.map(f => f.pt_kwh);
   const iptDatos = visibles.map(f => f.ipt_pct==null ? null : f.ipt_pct*100);
 
@@ -6954,13 +6972,13 @@ function ipRenderChart(){
   }
 
   if(IP_MOSTRAR_PROYECCION && reg){
-    const meses = Math.max(1, Math.min(24, Number(document.getElementById('ip-proyeccion-meses').value) || 6));
+    const meses = Math.max(1, Math.min(24, Number(document.getElementById('ip-proyeccion-meses').value) || 2));
     const nBase = visibles.length;
     for(let h=1; h<=meses; h++){
       const f = visibles[nBase-1] ? {anio_normal:visibles[nBase-1].anio_normal, mes_normal:visibles[nBase-1].mes_normal} : null;
       let idx = f.anio_normal*12 + (f.mes_normal-1) + h;
       const anio = Math.floor(idx/12), mes = (idx%12)+1;
-      etiquetas.push([labelMes(`${anio}-${String(mes).padStart(2,'0')}`), 'proyectado']);
+      etiquetas.push(labelMes(`${anio}-${String(mes).padStart(2,'0')}`));
       ptDatos.push(null);
     }
     const centro = new Array(nBase).fill(null);
@@ -6989,25 +7007,27 @@ function ipRenderChart(){
     );
   }
 
-  // Valores MENSUALES (un solo mes, no ventana móvil) -- Entrada/Salida/
-  // Pérdida en la misma escala de PT (kWh) y % P Mensual en la misma
-  // escala de IPT (%), para poder comparar el mes puntual contra el
-  // acumulado móvil de 12 meses.
-  for(const [cual, activo] of Object.entries(IP_MOSTRAR_MENSUAL)){
-    if(!activo) continue;
-    const cfg = IP_MENSUAL_CONFIG[cual];
-    const esPct = cfg.eje === 'yPct';
+  // Variables crudas sobrepuestas (elegidas con el selector Nivel +
+  // botones de variable, ver ipPoblarVariablesOverlay) -- cada una en la
+  // escala que le corresponda (% a la izquierda, kWh a la derecha).
+  let colorOverlay = 0;
+  for(const clave of IP_OVERLAYS_ACTIVOS){
+    const [nivelStr, campo] = clave.split(':');
+    const nivel = Number(nivelStr);
+    const etiquetaVar = (IP_COLUMNAS_NIVEL[nivel].find(([c])=>c===campo) || [null, campo])[1];
+    const esPct = ipEsOverlayPct(campo);
     datasets.push({
-      type:'line', label:cfg.label, yAxisID:cfg.eje, order:5,
-      data: visibles.map(f => { const v = f[cfg.campo]; return v==null ? null : (esPct ? v*100 : v); }),
-      borderColor:cfg.color, backgroundColor:'transparent', borderWidth:1.75, borderDash:[3,2],
-      pointRadius:1.5, spanGaps:true, tension:.15, datalabels:{display:false},
+      type:'line', label:`N${nivel} ${etiquetaVar}`, yAxisID: esPct ? 'yPct' : 'y', order:5,
+      data: visibles.map(f => ipValorOverlay(f, campo)),
+      borderColor: IP_PALETA_OVERLAY[colorOverlay++ % IP_PALETA_OVERLAY.length], backgroundColor:'transparent',
+      borderWidth:1.75, borderDash:[3,2], pointRadius:1.5, spanGaps:true, tension:.15, datalabels:{display:false},
     });
   }
 
   if(chIpReg) chIpReg.destroy();
   chIpReg = new Chart(document.getElementById('ch-ip-reg'), {
     data:{labels: etiquetas, datasets},
+    plugins:[tmPluginCrosshair],
     options:{
       responsive:true, maintainAspectRatio:false,
       layout:{padding:{top:24, right:28}},
@@ -7029,11 +7049,12 @@ function ipRenderChart(){
         x:{grid:{display:false}, offset:true,
           ticks:{color:tickC, font:{size:10}, maxRotation:0, autoSkip:false},
           afterBuildTicks: ipConstruirTicksEspaciados(16)},
-        y:{grid:{color:gridC}, ticks:{color:tickC, font:{size:11}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
-          title:{display:true, text:'PT (kWh)', color:tickC, font:{size:11}}},
-        yPct:{type:'linear', position:'right', grid:{drawOnChartArea:false},
+        yPct:{type:'linear', position:'left', grid:{color:gridC},
           ticks:{color:'#f4a261', font:{size:11}, callback:v=>v.toFixed(1)+'%'},
-          title:{display:true, text:'IPT (%)', color:'#f4a261', font:{size:11}},
+          title:{display:true, text:'IPT (%)', color:'#f4a261', font:{size:11}}},
+        y:{position:'right', grid:{drawOnChartArea:false},
+          ticks:{color:tickC, font:{size:11}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
+          title:{display:true, text:'PT (kWh)', color:tickC, font:{size:11}},
           afterFit:ax=>{ax.width=Math.max(ax.width,60)}},
       },
     },
@@ -7052,10 +7073,11 @@ function ipRenderChartNivel1(){
     return (!desde || clave >= desde) && (!hasta || clave <= hasta);
   });
 
-  const etiquetas = visibles.map(f => [labelMes(ipClaveNormal(f)), `rep. ${labelMes(ipClaveRegulatoria(f))}`]);
+  const etiquetas = visibles.map(f => labelMes(ipClaveNormal(f)));
 
   if(chIpNivel1) chIpNivel1.destroy();
   chIpNivel1 = new Chart(document.getElementById('ch-ip-nivel1'), {
+    plugins:[tmPluginCrosshair],
     data:{
       labels: etiquetas,
       datasets:[
@@ -7090,11 +7112,12 @@ function ipRenderChartNivel1(){
         x:{grid:{display:false}, offset:true,
           ticks:{color:tickC, font:{size:10}, maxRotation:0, autoSkip:false},
           afterBuildTicks: ipConstruirTicksEspaciados(16)},
-        y:{grid:{color:gridC}, ticks:{color:tickC, font:{size:11}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
-          title:{display:true, text:'PTj,1,t (kWh)', color:tickC, font:{size:11}}},
-        yPct:{type:'linear', position:'right', grid:{drawOnChartArea:false},
+        yPct:{type:'linear', position:'left', grid:{color:gridC},
           ticks:{color:'#2a9d8f', font:{size:11}, callback:v=>v.toFixed(1)+'%'},
-          title:{display:true, text:'IPTj,1,t (%)', color:'#2a9d8f', font:{size:11}},
+          title:{display:true, text:'IPTj,1,t (%)', color:'#2a9d8f', font:{size:11}}},
+        y:{position:'right', grid:{drawOnChartArea:false},
+          ticks:{color:tickC, font:{size:11}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
+          title:{display:true, text:'PTj,1,t (kWh)', color:tickC, font:{size:11}},
           afterFit:ax=>{ax.width=Math.max(ax.width,60)}},
       },
     },
