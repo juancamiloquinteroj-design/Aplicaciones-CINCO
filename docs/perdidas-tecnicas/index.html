@@ -1020,17 +1020,23 @@ tfoot td:first-child{text-align:left}
   </div>
 
   <div class="card">
-    <div style="text-align:center;margin-bottom:8px">
-      <div style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">PT -- Pérdida Total (kWh) · ventana móvil 12 meses</div>
+    <div class="fbar" style="margin-bottom:6px">
+      <label>Rango</label>
+      <input type="date" id="ip-chart-desde" onchange="ipRenderChart()">
+      <span style="font-size:11px;color:var(--text3)">→</span>
+      <input type="date" id="ip-chart-hasta" onchange="ipRenderChart()">
+      <button class="be-modo-btn" id="ip-btn-tendencia" onclick="ipToggleTendencia()">📈 Tendencia</button>
+      <button class="be-modo-btn" id="ip-btn-proyeccion" onclick="ipToggleProyeccion()">🔮 Proyección</button>
+      <input type="number" id="ip-proyeccion-meses" value="6" min="1" max="24" step="1" title="Cuántos meses proyectar hacia adelante"
+        style="width:52px;padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg)"
+        onchange="if(IP_MOSTRAR_PROYECCION) ipRenderChart()">
+      <span style="font-size:11px;color:var(--text3)">meses</span>
     </div>
-    <div class="chart-wrap" style="height:280px"><canvas id="ch-ip-pt"></canvas></div>
-  </div>
-
-  <div class="card">
     <div style="text-align:center;margin-bottom:8px">
-      <div style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">IPT -- Índice de Pérdidas Totales (%) · ventana móvil 12 meses</div>
+      <div style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Indicador de Pérdidas Totales (IP_REG)</div>
+      <div style="font-size:11px;color:var(--text3)">PT (kWh) e IPT (%) -- ventana móvil de 12 meses · eje X: fecha real (arriba) / fecha de reporte regulatorio, 3 meses vencido (abajo)</div>
     </div>
-    <div class="chart-wrap" style="height:280px"><canvas id="ch-ip-ipt"></canvas></div>
+    <div class="chart-wrap" style="height:420px"><canvas id="ch-ip-reg"></canvas></div>
   </div>
 
   <div class="card">
@@ -1038,7 +1044,7 @@ tfoot td:first-child{text-align:left}
     <div class="be-tabla-scroll" style="max-height:420px">
       <table class="be-tabla-creadas">
         <thead><tr>
-          <th>Mes</th><th>Ver.</th><th>PT (kWh)</th><th>IPT (%)</th>
+          <th>Mes (fecha real)</th><th>Fecha reporte (M+3)</th><th>Ver.</th><th>PT (kWh)</th><th>IPT (%)</th>
           <th>Entrada Mensual</th><th>Salida Mensual</th><th>Pérdida Mensual</th><th>% P Mensual</th>
         </tr></thead>
         <tbody id="ip-reg-tabla-body"></tbody>
@@ -6663,24 +6669,54 @@ async function apiDelete(path){
   return data;
 }
 
-/* ---- Indicador de Pérdidas (IP_Reg) -- CREG 015/2018 Cap. 7 ---- */
+/* ---- Indicador de Pérdidas (IP_Reg) -- CREG 015/2018 Cap. 7 ----
+   Cada fila trae DOS fechas: (anio,mes) es la fecha REGULATORIA -- la
+   columna A del Excel, con la que se reporta a la CREG, siempre 3 meses
+   vencida -- y (anio_normal,mes_normal) es la fecha REAL en que ocurrió
+   esa energía (=anio,mes menos 3). El gráfico y la tabla se ordenan y
+   etiquetan por fecha real (lo que preguntaría cualquiera: "¿cuánto dio
+   en junio?"), mostrando la fecha regulatoria como referencia secundaria
+   -- confirmado contra el Excel: la fila con fecha regulatoria sep-2026
+   (fecha real jun-2026) da IPT=15.59%, exactamente lo esperado. */
 let IP_REG_FILAS = [];
-let chIpPt = null, chIpIpt = null;
+let chIpReg = null;
+let IP_MOSTRAR_TENDENCIA = false;
+let IP_MOSTRAR_PROYECCION = false;
+
+function ipClaveNormal(f){ return `${f.anio_normal}-${String(f.mes_normal).padStart(2,'0')}`; }
+function ipClaveRegulatoria(f){ return `${f.anio}-${String(f.mes).padStart(2,'0')}`; }
 
 async function cargarIndicadorPerdidas(){
   const msg = document.getElementById('ip-config-msg');
   msg.className = 'tm-modal-msg'; msg.textContent = '';
   try{
     const data = await apiGet('/api/indicador-perdidas/ip-reg');
-    IP_REG_FILAS = data.filas || [];
+    IP_REG_FILAS = (data.filas || []).slice().sort((a,b)=> ipClaveNormal(a) < ipClaveNormal(b) ? -1 : 1);
   }catch(e){
     msg.className = 'tm-modal-msg err';
     msg.textContent = e.message || 'No se pudo cargar el Indicador de Pérdidas.';
     return;
   }
   ipPoblarSelectoresConfig();
-  ipRenderCharts();
+  ipPoblarRangoFechas();
+  ipRenderChart();
   ipRenderTabla();
+}
+
+function ipPoblarRangoFechas(){
+  const desde = document.getElementById('ip-chart-desde');
+  const hasta = document.getElementById('ip-chart-hasta');
+  // Por defecto: desde ene-2025 (o el primer mes disponible si arrancó
+  // después) hasta el último mes real disponible -- igual que el
+  // slicer del Power BI de referencia.
+  if(!desde.value){
+    const primerDisponible = IP_REG_FILAS[0] ? ipClaveNormal(IP_REG_FILAS[0]) : '2025-01';
+    desde.value = (primerDisponible > '2025-01' ? primerDisponible : '2025-01') + '-01';
+  }
+  if(!hasta.value){
+    const ultima = IP_REG_FILAS[IP_REG_FILAS.length - 1];
+    hasta.value = ultima ? `${ipClaveNormal(ultima)}-01` : '';
+  }
 }
 
 function ipPoblarSelectoresConfig(){
@@ -6694,9 +6730,12 @@ function ipPoblarSelectoresConfig(){
   if(!anios.includes(anioActual)) anios.push(anioActual);
   selAnio.innerHTML = anios.map(a=>`<option value="${a}">${a}</option>`).join('');
 
-  // Por defecto, el ÚLTIMO mes ya cargado -- es el que más probablemente
-  // alguien quiera revisar/corregir al entrar a la vista.
-  const ultima = IP_REG_FILAS[IP_REG_FILAS.length - 1];
+  // Por defecto, el ÚLTIMO mes con configuración real (version_mayor) --
+  // no el último de la lista, que puede ser uno de los meses "virtuales"
+  // agregados solo para completar la ventana móvil de PT/IPT (ver
+  // ip_reg_calculo.calcular_todo), esos todavía no tienen nada que editar.
+  const conVersion = IP_REG_FILAS.filter(f=>f.version_mayor!=null);
+  const ultima = conVersion[conVersion.length - 1];
   if(ultima){
     selAnio.value = ultima.anio;
     selMes.value = ultima.mes;
@@ -6729,8 +6768,8 @@ async function ipGuardarVersion(){
       pj_nivel4: Number(document.getElementById('ip-config-pj4').value),
     });
     const data = await apiGet('/api/indicador-perdidas/ip-reg');
-    IP_REG_FILAS = data.filas || [];
-    ipRenderCharts();
+    IP_REG_FILAS = (data.filas || []).slice().sort((a,b)=> ipClaveNormal(a) < ipClaveNormal(b) ? -1 : 1);
+    ipRenderChart();
     ipRenderTabla();
     msg.className = 'tm-modal-msg ok';
     msg.textContent = 'Guardado -- IP_Reg recalculado.';
@@ -6757,42 +6796,148 @@ async function ipDescargarExcel(){
   }
 }
 
-function ipRenderCharts(){
+function ipToggleTendencia(){
+  IP_MOSTRAR_TENDENCIA = !IP_MOSTRAR_TENDENCIA;
+  document.getElementById('ip-btn-tendencia').classList.toggle('activo', IP_MOSTRAR_TENDENCIA);
+  ipRenderChart();
+}
+
+function ipToggleProyeccion(){
+  IP_MOSTRAR_PROYECCION = !IP_MOSTRAR_PROYECCION;
+  document.getElementById('ip-btn-proyeccion').classList.toggle('activo', IP_MOSTRAR_PROYECCION);
+  ipRenderChart();
+}
+
+// Regresión lineal simple (mínimos cuadrados) sobre puntos {x,y} -- se usa
+// tanto para la línea de tendencia como para la proyección hacia adelante.
+function ipRegresionLineal(puntos){
+  const n = puntos.length;
+  if(n < 2) return null;
+  const sumX = puntos.reduce((a,p)=>a+p.x,0), sumY = puntos.reduce((a,p)=>a+p.y,0);
+  const sumXY = puntos.reduce((a,p)=>a+p.x*p.y,0), sumXX = puntos.reduce((a,p)=>a+p.x*p.x,0);
+  const denom = n*sumXX - sumX*sumX;
+  if(denom === 0) return null;
+  const m = (n*sumXY - sumX*sumY) / denom;
+  const b = (sumY - m*sumX) / n;
+  const residuos = puntos.map(p => p.y - (m*p.x + b));
+  const errorEstandar = n > 2 ? Math.sqrt(residuos.reduce((a,r)=>a+r*r,0) / (n-2)) : 0;
+  return {m, b, errorEstandar, n};
+}
+
+function ipRenderChart(){
   const dark = document.documentElement.getAttribute('data-theme')==='dark';
   const tickC = dark ? '#aab8d1' : '#4b5e7a';
   const gridC = dark ? 'rgba(255,255,255,.10)' : 'rgba(0,0,0,.06)';
-  const etiquetas = IP_REG_FILAS.map(f=>labelMes(`${f.anio}-${String(f.mes).padStart(2,'0')}`));
 
-  const opcionesBase = eje2 => ({
-    responsive:true, maintainAspectRatio:false,
-    interaction:{mode:'index', intersect:false},
-    plugins:{legend:{display:false}},
-    scales:{
-      x:{grid:{display:false}, ticks:{color:tickC, font:{size:10}, maxRotation:0, autoSkip:true, maxTicksLimit:14}},
-      y:{grid:{color:gridC}, ticks:{color:tickC, font:{size:11}, callback: eje2}},
+  const desde = document.getElementById('ip-chart-desde').value ? document.getElementById('ip-chart-desde').value.slice(0,7) : null;
+  const hasta = document.getElementById('ip-chart-hasta').value ? document.getElementById('ip-chart-hasta').value.slice(0,7) : null;
+  const visibles = IP_REG_FILAS.filter(f => {
+    const clave = ipClaveNormal(f);
+    return (!desde || clave >= desde) && (!hasta || clave <= hasta);
+  });
+
+  // Dos filas de fecha en el eje X: arriba la fecha REAL (a la que
+  // corresponde la energía), abajo la fecha de REPORTE regulatorio
+  // (3 meses vencido) -- Chart.js dibuja un array de strings como líneas
+  // apiladas dentro del mismo tick.
+  const etiquetas = visibles.map(f => [labelMes(ipClaveNormal(f)), `rep. ${labelMes(ipClaveRegulatoria(f))}`]);
+  const ptDatos = visibles.map(f => f.pt_kwh);
+  const iptDatos = visibles.map(f => f.ipt_pct==null ? null : f.ipt_pct*100);
+
+  const datasets = [
+    {
+      type:'line', label:'PT -- Pérdida Total (kWh)', data: ptDatos, yAxisID:'y',
+      borderColor:'#4361ee', backgroundColor:'transparent', borderWidth:2, pointRadius:1.5,
+      spanGaps:true, tension:.2, order:3,
     },
-  });
+    {
+      type:'line', label:'IPT -- Índice de Pérdidas Totales (%)', data: iptDatos, yAxisID:'yPct',
+      borderColor:'#f4a261', backgroundColor:'rgba(244,162,97,.12)', borderWidth:2.5, pointRadius:2,
+      spanGaps:true, tension:.25, order:1,
+      datalabels:{display:true, anchor:'end', align:'top', offset:6,
+        formatter:v=>v==null?'':v.toFixed(2)+'%', font:{size:10, weight:'700'}, color:'#f4a261',
+        backgroundColor: dark?'rgba(30,30,40,.85)':'rgba(255,255,255,.85)', borderRadius:3, padding:{left:4,right:4,top:1,bottom:1}},
+    },
+  ];
 
-  if(chIpPt) chIpPt.destroy();
-  chIpPt = new Chart(document.getElementById('ch-ip-pt'), {
-    type:'line',
-    data:{labels: etiquetas, datasets:[{
-      label:'PT (kWh)', data: IP_REG_FILAS.map(f=>f.pt_kwh),
-      borderColor:'#f4a261', backgroundColor:'rgba(244,162,97,.15)', spanGaps:true, tension:.2, pointRadius:1.5,
-    }]},
-    options:{...opcionesBase(v=>v.toLocaleString('es-CO')+' kWh'),
-      plugins:{legend:{display:false}, tooltip:{callbacks:{label:c=>`PT: ${(c.raw==null?0:c.raw).toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`}}}},
-  });
+  // Puntos {x:indice, y:valor%} sin huecos -- índice base para tendencia y proyección.
+  const puntosIpt = iptDatos.map((v,i)=>({x:i, y:v})).filter(p=>p.y!=null);
+  const reg = ipRegresionLineal(puntosIpt);
 
-  if(chIpIpt) chIpIpt.destroy();
-  chIpIpt = new Chart(document.getElementById('ch-ip-ipt'), {
-    type:'line',
-    data:{labels: etiquetas, datasets:[{
-      label:'IPT (%)', data: IP_REG_FILAS.map(f=>f.ipt_pct==null? null : f.ipt_pct*100),
-      borderColor:'#2a9d8f', backgroundColor:'rgba(42,157,143,.15)', spanGaps:true, tension:.2, pointRadius:1.5,
-    }]},
-    options:{...opcionesBase(v=>v.toFixed(1)+'%'),
-      plugins:{legend:{display:false}, tooltip:{callbacks:{label:c=>`IPT: ${(c.raw==null?0:c.raw).toFixed(3)}%`}}}},
+  if(IP_MOSTRAR_TENDENCIA && reg){
+    datasets.push({
+      type:'line', label:'Tendencia', yAxisID:'yPct', order:2,
+      data: iptDatos.map((v,i)=> v==null ? null : reg.m*i + reg.b),
+      borderColor: dark ? '#ffd166' : '#b08900', borderWidth:1.75, borderDash:[6,4],
+      pointRadius:0, spanGaps:true, tension:0, datalabels:{display:false},
+    });
+  }
+
+  if(IP_MOSTRAR_PROYECCION && reg){
+    const meses = Math.max(1, Math.min(24, Number(document.getElementById('ip-proyeccion-meses').value) || 6));
+    const nBase = visibles.length;
+    for(let h=1; h<=meses; h++){
+      const f = visibles[nBase-1] ? {anio_normal:visibles[nBase-1].anio_normal, mes_normal:visibles[nBase-1].mes_normal} : null;
+      let idx = f.anio_normal*12 + (f.mes_normal-1) + h;
+      const anio = Math.floor(idx/12), mes = (idx%12)+1;
+      etiquetas.push([labelMes(`${anio}-${String(mes).padStart(2,'0')}`), 'proyectado']);
+      ptDatos.push(null);
+    }
+    const centro = new Array(nBase).fill(null);
+    const sup = new Array(nBase).fill(null);
+    const inf = new Array(nBase).fill(null);
+    for(let h=1; h<=meses; h++){
+      const x = nBase - 1 + h;
+      const valor = reg.m*x + reg.b;
+      const banda = reg.errorEstandar * 1.6 * Math.sqrt(1 + h/Math.max(1,reg.n));
+      centro.push(valor);
+      sup.push(valor + banda);
+      inf.push(valor - banda);
+    }
+    // El primer punto proyectado repite el último real, para que la línea
+    // de proyección arranque pegada a la serie real (sin salto visual).
+    if(meses>0){ centro[nBase-1] = iptDatos[nBase-1]; sup[nBase-1] = iptDatos[nBase-1]; inf[nBase-1] = iptDatos[nBase-1]; }
+    const colorBanda = dark ? 'rgba(6,214,160,.18)' : 'rgba(6,214,160,.22)';
+    datasets.push(
+      {type:'line', label:'Proyección (banda superior)', yAxisID:'yPct', order:4,
+        data: sup, borderWidth:0, pointRadius:0, spanGaps:true, backgroundColor:colorBanda, datalabels:{display:false}},
+      {type:'line', label:'Proyección (banda inferior)', yAxisID:'yPct', order:4,
+        data: inf, borderWidth:0, pointRadius:0, spanGaps:true, fill:'-1', backgroundColor:colorBanda, datalabels:{display:false}},
+      {type:'line', label:'Proyección', yAxisID:'yPct', order:2,
+        data: centro, borderColor:'#06d6a0', borderWidth:2, borderDash:[5,3], pointRadius:0, spanGaps:true,
+        datalabels:{display:false}},
+    );
+  }
+
+  if(chIpReg) chIpReg.destroy();
+  chIpReg = new Chart(document.getElementById('ch-ip-reg'), {
+    data:{labels: etiquetas, datasets},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      interaction:{mode:'index', intersect:false},
+      plugins:{
+        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:10}, color:tickC,
+          filter:item=>!item.text.startsWith('Proyección (banda')}},
+        tooltip:{callbacks:{label:c=>{
+          if(c.raw==null) return null;
+          return c.dataset.yAxisID==='yPct' ? `${c.dataset.label}: ${c.raw.toFixed(3)}%` : `${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`;
+        }}},
+        zoom:{
+          pan:{enabled:true, mode:'x'},
+          zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'},
+          limits:{x:{minRange:3}},
+        },
+      },
+      scales:{
+        x:{grid:{display:false}, ticks:{color:tickC, font:{size:10}, maxRotation:0, autoSkip:true, maxTicksLimit:16}},
+        y:{grid:{color:gridC}, ticks:{color:tickC, font:{size:11}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
+          title:{display:true, text:'PT (kWh)', color:tickC, font:{size:11}}},
+        yPct:{type:'linear', position:'right', grid:{drawOnChartArea:false},
+          ticks:{color:'#f4a261', font:{size:11}, callback:v=>v.toFixed(1)+'%'},
+          title:{display:true, text:'IPT (%)', color:'#f4a261', font:{size:11}},
+          afterFit:ax=>{ax.width=Math.max(ax.width,60)}},
+      },
+    },
   });
 }
 
@@ -6802,7 +6947,8 @@ function ipRenderTabla(){
   const fp = v => v==null ? '--' : (v*100).toFixed(2)+'%';
   body.innerHTML = [...IP_REG_FILAS].reverse().map(f => `
     <tr>
-      <td>${labelMes(`${f.anio}-${String(f.mes).padStart(2,'0')}`)}</td>
+      <td>${labelMes(ipClaveNormal(f))}</td>
+      <td>${labelMes(ipClaveRegulatoria(f))}</td>
       <td>${f.version_mayor ?? '--'}</td>
       <td>${f2(f.pt_kwh)}</td>
       <td>${fp(f.ipt_pct)}</td>
