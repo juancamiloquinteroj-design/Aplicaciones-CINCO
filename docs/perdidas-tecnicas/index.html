@@ -61,6 +61,11 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(
 .sidebar-sublink{display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:8px;border:none;border-left:2px solid var(--border);background:none;color:var(--text3);font-size:12px;font-weight:600;text-align:left;cursor:pointer}
 .sidebar-sublink:hover{background:var(--bg3);color:var(--text)}
 .sidebar-badge-soon{font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;background:var(--bg3);color:var(--text3);padding:2px 6px;border-radius:10px;white-space:nowrap}
+.ip-tabla-compacta-titulo{color:var(--text)}
+.ip-tabla-compacta table.be-tabla-creadas{font-size:10.5px}
+.ip-tabla-compacta .be-tabla-creadas th{background:#20242f;color:#ffffff;padding:4px 8px;font-size:9px}
+.ip-tabla-compacta .be-tabla-creadas td{padding:4px 8px;color:var(--text);font-weight:600}
+.ip-tabla-compacta .be-tabla-creadas tr:nth-child(even) td{background:var(--bg2)}
 .sidebar-sublink.active{border-left-color:var(--accent);background:rgba(0,180,216,.12);color:var(--accent)}
 .sidebar-proximamente{font-size:10.5px;color:var(--text3);padding:10px 12px;border-top:1px solid var(--border)}
 .sidebar-acceso{margin-top:auto;font-size:10.5px;color:var(--text3);padding:10px 12px;border-top:1px solid var(--border);line-height:1.6}
@@ -628,6 +633,9 @@ tfoot td:first-child{text-align:left}
   </button>
   <div class="sidebar-submenu hidden" id="sidebar-submenu-ip">
     <button class="sidebar-sublink" data-vista="ip-reg" onclick="mostrarVista('ip-reg')">📈 IP_Reg</button>
+    <button class="sidebar-sublink" data-vista="ip-nivel1" onclick="mostrarVista('ip-nivel1')" style="line-height:1.25;text-align:left">
+      Indicador Pérdidas<br>Nivel de Tensión 1
+    </button>
     <button class="sidebar-sublink" disabled title="Próximamente" style="opacity:.5;cursor:default;justify-content:space-between">
       <span>PR8</span><span class="sidebar-badge-soon">Próximamente</span>
     </button>
@@ -1022,15 +1030,17 @@ tfoot td:first-child{text-align:left}
   <div class="card">
     <div class="fbar" style="margin-bottom:6px">
       <label>Rango</label>
-      <input type="date" id="ip-chart-desde" onchange="ipRenderChart()">
+      <input type="date" id="ip-chart-desde" onchange="ipRenderChart(); ipRenderTablaNivel();">
       <span style="font-size:11px;color:var(--text3)">→</span>
-      <input type="date" id="ip-chart-hasta" onchange="ipRenderChart()">
+      <input type="date" id="ip-chart-hasta" onchange="ipRenderChart(); ipRenderTablaNivel();">
       <button class="be-modo-btn" id="ip-btn-tendencia" onclick="ipToggleTendencia()">📈 Tendencia</button>
       <button class="be-modo-btn" id="ip-btn-proyeccion" onclick="ipToggleProyeccion()">🔮 Proyección</button>
       <input type="number" id="ip-proyeccion-meses" value="2" min="1" max="24" step="1" title="Cuántos meses proyectar hacia adelante"
         style="width:52px;padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg)"
         onchange="if(IP_MOSTRAR_PROYECCION) ipRenderChart()">
       <span style="font-size:11px;color:var(--text3)">meses</span>
+      <button class="be-modo-btn" id="ip-btn-sombra" onclick="ipToggleSombraVentana()" title="Resalta los 12 meses que alimentan el último punto real">🌓 Sombrear 12 meses</button>
+      <button class="be-modo-btn" id="ip-btn-variacion" onclick="ipToggleVariacion()" title="Muestra la variación contra el mes anterior en las etiquetas">Δ Variación</button>
     </div>
     <div style="text-align:center;margin-bottom:8px">
       <div style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Indicador de Pérdidas Totales (IP_REG)</div>
@@ -1049,15 +1059,8 @@ tfoot td:first-child{text-align:left}
   </div>
 
   <div class="card">
-    <div style="text-align:center;margin-bottom:8px">
-      <div style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">PTj,1,t / IPTj,1,t -- Sólo Nivel 1</div>
-    </div>
-    <div class="chart-wrap" style="height:340px"><canvas id="ch-ip-nivel1"></canvas></div>
-  </div>
-
-  <div class="card">
-    <div class="be-tabla-creadas-titulo" style="display:flex;align-items:center;justify-content:space-between;gap:8px">
-      <span>Detalle por Nivel de Tensión (igual al Excel)</span>
+    <div class="be-tabla-creadas-titulo ip-tabla-compacta-titulo" style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+      <span>Detalle por Nivel de Tensión</span>
       <select id="ip-nivel-filtro" onchange="ipRenderTablaNivel()">
         <option value="1">Nivel 1</option>
         <option value="2">Nivel 2</option>
@@ -1065,7 +1068,7 @@ tfoot td:first-child{text-align:left}
         <option value="4">Nivel 4</option>
       </select>
     </div>
-    <div class="be-tabla-scroll" style="max-height:420px">
+    <div class="be-tabla-scroll ip-tabla-compacta" style="max-height:420px">
       <table class="be-tabla-creadas">
         <thead><tr id="ip-tabla-nivel-head"></tr></thead>
         <tbody id="ip-tabla-nivel-body"></tbody>
@@ -1088,6 +1091,27 @@ tfoot td:first-child{text-align:left}
 
 </div>
 <!-- fin vista-ip-reg -->
+
+<!-- ---------------- INDICADOR PÉRDIDAS NIVEL DE TENSIÓN 1 ---------------- -->
+<div id="vista-ip-nivel1" class="vista-modulo hidden">
+
+  <div class="sec-hdr">
+    <div class="sec-title">Indicador Pérdidas -- Nivel de Tensión 1</div>
+    <div class="sec-sub">PTj,1,t (kWh) e IPTj,1,t (%) -- misma ventana móvil de 12 meses / 3 meses vencido que IP_REG, restringida a Nivel 1</div>
+  </div>
+
+  <div class="card">
+    <div class="fbar" style="margin-bottom:6px">
+      <label>Rango</label>
+      <input type="date" id="ip-n1-chart-desde" onchange="ipRenderChartNivel1()">
+      <span style="font-size:11px;color:var(--text3)">→</span>
+      <input type="date" id="ip-n1-chart-hasta" onchange="ipRenderChartNivel1()">
+    </div>
+    <div class="chart-wrap" style="height:420px"><canvas id="ch-ip-nivel1"></canvas></div>
+  </div>
+
+</div>
+<!-- fin vista-ip-nivel1 -->
 
 <!-- ---------------- BALANCES POR ESTRUCTURA · CREAR ---------------- -->
 <div id="vista-be-crear" class="vista-modulo hidden">
@@ -2043,7 +2067,7 @@ function toggleSubmenuIP(){
   }
 }
 
-let vistaCargada = {perdidas:false, parametrizacion:false, telemedidos:false, balancesEstructura:false, ipReg:false};
+let vistaCargada = {perdidas:false, parametrizacion:false, telemedidos:false, balancesEstructura:false, ipReg:false, ipNivel1:false};
 
 async function mostrarVista(nombre){
   document.querySelectorAll('.vista-modulo').forEach(v=>v.classList.add('hidden'));
@@ -2058,7 +2082,7 @@ async function mostrarVista(nombre){
   document.getElementById('sidebar-be-padre').classList.toggle('activa', esBalancesEstructura);
   if(esBalancesEstructura) abrirSubmenuBE();
 
-  const esIndicadorPerdidas = nombre==='ip-reg';
+  const esIndicadorPerdidas = nombre==='ip-reg' || nombre==='ip-nivel1';
   document.getElementById('sidebar-ip-padre').classList.toggle('activa', esIndicadorPerdidas);
   if(esIndicadorPerdidas) abrirSubmenuIP();
 
@@ -2084,9 +2108,13 @@ async function mostrarVista(nombre){
     vistaCargada.balancesEstructura = true;
     await cargarBalancesEstructura();
   }
-  if(esIndicadorPerdidas && !vistaCargada.ipReg){
+  if(nombre==='ip-reg' && !vistaCargada.ipReg){
     vistaCargada.ipReg = true;
     await cargarIndicadorPerdidas();
+  }
+  if(nombre==='ip-nivel1' && !vistaCargada.ipNivel1){
+    vistaCargada.ipNivel1 = true;
+    await cargarIndicadorPerdidasNivel1();
   }
   // Las alertas se piden de nuevo cada vez que se entra a esta vista puntual
   // (no solo la primera vez) -- son datos que cambian seguido (atraso día a
@@ -2299,7 +2327,7 @@ function _iniRenderVariacion(elId, valorAnt, valorAct){
 
 function cerrarSesion(){
   TOKEN=null; OPERADOR=null; PERSONA=null; DEMO=false;
-  vistaCargada = {perdidas:false, parametrizacion:false, telemedidos:false, balancesEstructura:false, ipReg:false};
+  vistaCargada = {perdidas:false, parametrizacion:false, telemedidos:false, balancesEstructura:false, ipReg:false, ipNivel1:false};
   document.getElementById('app-screen').classList.add('hidden');
   document.getElementById('login-screen').classList.remove('hidden');
   document.getElementById('badge-op').classList.add('hidden');
@@ -6715,7 +6743,10 @@ async function apiDelete(path){
 let IP_REG_FILAS = [];
 let chIpReg = null, chIpNivel1 = null;
 let IP_MOSTRAR_TENDENCIA = false;
-let IP_MOSTRAR_PROYECCION = false;
+let IP_MOSTRAR_PROYECCION = true;
+let IP_PT_OCULTO = true;  // al abrir el módulo, solo se ve IPT (%) + proyección -- PT se prende clickeando su nombre en la leyenda
+let IP_SOMBREAR_VENTANA = false;
+let IP_MOSTRAR_VARIACION = false;  // etiqueta completa: valor + variación vs. el mes anterior (% para IPT, kWh para PT)
 let IP_OVERLAYS_ACTIVOS = new Set();  // "nivel:campo" -- variables crudas sobrepuestas en el grafico principal
 
 const IP_COLUMNAS_NIVEL = {
@@ -6736,29 +6767,42 @@ const IP_COLUMNAS_DECIMAL_NIVEL = new Set(["n2_pj", "n3_pj"]);  // guardadas com
 function ipClaveNormal(f){ return `${f.anio_normal}-${String(f.mes_normal).padStart(2,'0')}`; }
 function ipClaveRegulatoria(f){ return `${f.anio}-${String(f.mes).padStart(2,'0')}`; }
 
-async function cargarIndicadorPerdidas(){
-  const msg = document.getElementById('ip-config-msg');
-  msg.className = 'tm-modal-msg'; msg.textContent = '';
+// IP_REG_FILAS es compartido entre "IP_Reg" y "Nivel de Tensión 1" (dos
+// vistas/sub-módulos separados) -- cualquiera de las dos que se abra
+// primero lo carga; la otra lo reusa sin volver a pedirlo.
+async function ipAsegurarDatosCargados(msgEl){
+  if(IP_REG_FILAS.length) return true;
   try{
     const data = await apiGet('/api/indicador-perdidas/ip-reg');
     IP_REG_FILAS = (data.filas || []).slice().sort((a,b)=> ipClaveNormal(a) < ipClaveNormal(b) ? -1 : 1);
+    return true;
   }catch(e){
-    msg.className = 'tm-modal-msg err';
-    msg.textContent = e.message || 'No se pudo cargar el Indicador de Pérdidas.';
-    return;
+    if(msgEl){ msgEl.className = 'tm-modal-msg err'; msgEl.textContent = e.message || 'No se pudo cargar el Indicador de Pérdidas.'; }
+    return false;
   }
+}
+
+async function cargarIndicadorPerdidas(){
+  const msg = document.getElementById('ip-config-msg');
+  msg.className = 'tm-modal-msg'; msg.textContent = '';
+  if(!(await ipAsegurarDatosCargados(msg))) return;
   ipPoblarSelectoresConfig();
-  ipPoblarRangoFechas();
+  ipPoblarRangoFechas('ip-chart-desde', 'ip-chart-hasta');
   ipPoblarVariablesOverlay();
   ipRenderChart();
-  ipRenderChartNivel1();
   ipRenderTabla();
   ipRenderTablaNivel();
 }
 
-function ipPoblarRangoFechas(){
-  const desde = document.getElementById('ip-chart-desde');
-  const hasta = document.getElementById('ip-chart-hasta');
+async function cargarIndicadorPerdidasNivel1(){
+  if(!(await ipAsegurarDatosCargados())) return;
+  ipPoblarRangoFechas('ip-n1-chart-desde', 'ip-n1-chart-hasta');
+  ipRenderChartNivel1();
+}
+
+function ipPoblarRangoFechas(idDesde, idHasta){
+  const desde = document.getElementById(idDesde);
+  const hasta = document.getElementById(idHasta);
   // Por defecto: desde ene-2025 (o el primer mes disponible si arrancó
   // después) hasta el último mes real disponible -- igual que el
   // slicer del Power BI de referencia.
@@ -6863,6 +6907,40 @@ function ipToggleProyeccion(){
   ipRenderChart();
 }
 
+function ipToggleSombraVentana(){
+  IP_SOMBREAR_VENTANA = !IP_SOMBREAR_VENTANA;
+  document.getElementById('ip-btn-sombra').classList.toggle('activo', IP_SOMBREAR_VENTANA);
+  ipRenderChart();
+}
+
+function ipToggleVariacion(){
+  IP_MOSTRAR_VARIACION = !IP_MOSTRAR_VARIACION;
+  document.getElementById('ip-btn-variacion').classList.toggle('activo', IP_MOSTRAR_VARIACION);
+  ipRenderChart();
+}
+
+// Sombrea los 12 meses que alimentan la ventana móvil del ÚLTIMO punto
+// REAL (no un mes proyectado) -- el índice se guarda en
+// options.plugins.sombraVentana.ultimoIndice al armar el gráfico.
+const ipPluginSombraVentana = {
+  id: 'sombraVentana',
+  beforeDraw(chart){
+    const cfg = chart.options.plugins.sombraVentana;
+    if(!cfg || !cfg.activo) return;
+    const {ctx, chartArea, scales} = chart;
+    const idxFin = cfg.ultimoIndice;
+    const idxIni = Math.max(0, idxFin - 11);
+    const anchoCategoria = scales.x.getPixelForValue(1) - scales.x.getPixelForValue(0);
+    const xIni = scales.x.getPixelForValue(idxIni) - anchoCategoria/2;
+    const xFin = scales.x.getPixelForValue(idxFin) + anchoCategoria/2;
+    const dark = document.documentElement.getAttribute('data-theme')==='dark';
+    ctx.save();
+    ctx.fillStyle = dark ? 'rgba(67,97,238,.18)' : 'rgba(67,97,238,.10)';
+    ctx.fillRect(Math.max(xIni, chartArea.left), chartArea.top, Math.min(xFin, chartArea.right) - Math.max(xIni, chartArea.left), chartArea.bottom - chartArea.top);
+    ctx.restore();
+  },
+};
+
 // Las variables crudas (Eej, EsTj, EPRj, ...) se repiten idénticas en los
 // 4 Niveles de Tensión (ver IP_COLUMNAS_NIVEL) -- en vez de un botón fijo
 // por variable, se elige el nivel y ahí aparecen SUS variables para
@@ -6903,9 +6981,15 @@ function ipConstruirTicksEspaciados(maxTicks){
   return function(scale){
     const total = scale.ticks.length;
     if(total <= maxTicks) return;
-    const paso = (total - 1) / (maxTicks - 1);
+    // Paso ENTERO parejo (no un promedio con redondeo, que dejaba huecos
+    // irregulares -- ej. dos meses seguidos saltados en una parte y
+    // ninguno en otra) -- todos los ticks quedan a la misma distancia,
+    // salvo el último, que se fuerza aparte porque es el más importante
+    // (el mes más reciente) y puede no caer justo en el paso.
+    const paso = Math.max(1, Math.ceil(total / maxTicks));
     const indices = new Set();
-    for(let i=0; i<maxTicks; i++) indices.add(Math.round(i*paso));
+    for(let i=0; i<total; i+=paso) indices.add(i);
+    indices.add(total - 1);
     scale.ticks = scale.ticks.filter((t,i)=> indices.has(i));
   };
 }
@@ -6929,6 +7013,7 @@ function ipRegresionLineal(puntos){
 function ipRenderChart(){
   const dark = document.documentElement.getAttribute('data-theme')==='dark';
   const tickC = dark ? '#aab8d1' : '#4b5e7a';
+  const tickXFuerte = dark ? '#ffffff' : '#000000';  // eje X en negro/blanco fuerte -- el gris tenue de tickC casi no se veía
   const gridC = dark ? 'rgba(255,255,255,.10)' : 'rgba(0,0,0,.06)';
 
   const desde = document.getElementById('ip-chart-desde').value ? document.getElementById('ip-chart-desde').value.slice(0,7) : null;
@@ -6937,23 +7022,59 @@ function ipRenderChart(){
     const clave = ipClaveNormal(f);
     return (!desde || clave >= desde) && (!hasta || clave <= hasta);
   });
+  const nBase = visibles.length;  // índice del último punto REAL (antes de agregar proyección)
+
+  // Los botones toggle se sincronizan acá (no solo al clickear) -- así el
+  // estado inicial (ej. Proyección arranca activa) se ve reflejado apenas
+  // se pinta el gráfico por primera vez, sin depender de que alguien ya
+  // haya tocado el botón antes.
+  document.getElementById('ip-btn-tendencia').classList.toggle('activo', IP_MOSTRAR_TENDENCIA);
+  document.getElementById('ip-btn-proyeccion').classList.toggle('activo', IP_MOSTRAR_PROYECCION);
+  document.getElementById('ip-btn-sombra').classList.toggle('activo', IP_SOMBREAR_VENTANA);
+  document.getElementById('ip-btn-variacion').classList.toggle('activo', IP_MOSTRAR_VARIACION);
 
   const etiquetas = visibles.map(f => labelMes(ipClaveNormal(f)));
   const ptDatos = visibles.map(f => f.pt_kwh);
   const iptDatos = visibles.map(f => f.ipt_pct==null ? null : f.ipt_pct*100);
 
+  // Si el gráfico ya existía, respeta lo que el usuario haya prendido/
+  // apagado a mano en la leyenda (ej. si ya mostró PT, no se lo vuelve a
+  // esconder solo porque tocó otro filtro).
+  if(chIpReg && chIpReg.data.datasets[0]) IP_PT_OCULTO = !!chIpReg.data.datasets[0].hidden;
+
   const datasets = [
     {
-      type:'line', label:'PT -- Pérdida Total (kWh)', data: ptDatos, yAxisID:'y',
+      type:'line', label:'PT -- Pérdida Total (kWh)', data: ptDatos, yAxisID:'y', hidden: IP_PT_OCULTO,
       borderColor:'#4361ee', backgroundColor:'transparent', borderWidth:2, pointRadius:1.5,
       spanGaps:true, tension:.2, order:3,
+      datalabels:{display: IP_MOSTRAR_VARIACION, anchor:'end', align:'bottom', offset:6,
+        formatter:(v,ctx)=>{
+          if(v==null) return '';
+          const anterior = ptDatos[ctx.dataIndex-1];
+          const base = v.toLocaleString('es-CO',{maximumFractionDigits:0})+' kWh';
+          if(anterior==null) return base;
+          const delta = v - anterior, signo = delta>=0?'+':'';
+          const deltaPct = anterior ? (delta/anterior*100) : 0;
+          return `${base} (${signo}${delta.toLocaleString('es-CO',{maximumFractionDigits:0})}, ${signo}${deltaPct.toFixed(1)}%)`;
+        },
+        font:{size:11, weight:'700'}, color:'#4361ee',
+        backgroundColor: dark?'rgba(30,30,40,.85)':'rgba(255,255,255,.85)', borderRadius:3, padding:{left:4,right:4,top:1,bottom:1}},
     },
     {
       type:'line', label:'IPT -- Índice de Pérdidas Totales (%)', data: iptDatos, yAxisID:'yPct',
       borderColor:'#f4a261', backgroundColor:'rgba(244,162,97,.12)', borderWidth:2.5, pointRadius:2,
       spanGaps:true, tension:.25, order:1,
       datalabels:{display:true, anchor:'end', align:'top', offset:6,
-        formatter:v=>v==null?'':v.toFixed(2)+'%', font:{size:10, weight:'700'}, color:'#f4a261',
+        formatter:(v,ctx)=>{
+          if(v==null) return '';
+          const base = v.toFixed(2)+'%';
+          if(!IP_MOSTRAR_VARIACION) return base;
+          const anterior = iptDatos[ctx.dataIndex-1];
+          if(anterior==null) return base;
+          const delta = v - anterior, signo = delta>=0?'+':'';
+          return `${base} (${signo}${delta.toFixed(2)}pp)`;
+        },
+        font:{size:12, weight:'700'}, color:'#f4a261',
         backgroundColor: dark?'rgba(30,30,40,.85)':'rgba(255,255,255,.85)', borderRadius:3, padding:{left:4,right:4,top:1,bottom:1}},
     },
   ];
@@ -6973,7 +7094,6 @@ function ipRenderChart(){
 
   if(IP_MOSTRAR_PROYECCION && reg){
     const meses = Math.max(1, Math.min(24, Number(document.getElementById('ip-proyeccion-meses').value) || 2));
-    const nBase = visibles.length;
     for(let h=1; h<=meses; h++){
       const f = visibles[nBase-1] ? {anio_normal:visibles[nBase-1].anio_normal, mes_normal:visibles[nBase-1].mes_normal} : null;
       let idx = f.anio_normal*12 + (f.mes_normal-1) + h;
@@ -7027,7 +7147,7 @@ function ipRenderChart(){
   if(chIpReg) chIpReg.destroy();
   chIpReg = new Chart(document.getElementById('ch-ip-reg'), {
     data:{labels: etiquetas, datasets},
-    plugins:[tmPluginCrosshair],
+    plugins:[tmPluginCrosshair, ipPluginSombraVentana],
     options:{
       responsive:true, maintainAspectRatio:false,
       layout:{padding:{top:24, right:28}},
@@ -7044,10 +7164,11 @@ function ipRenderChart(){
           zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'},
           limits:{x:{minRange:3}},
         },
+        sombraVentana:{activo: IP_SOMBREAR_VENTANA, ultimoIndice: nBase-1},
       },
       scales:{
         x:{grid:{display:false}, offset:true,
-          ticks:{color:tickC, font:{size:10}, maxRotation:0, autoSkip:false},
+          ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, autoSkip:false},
           afterBuildTicks: ipConstruirTicksEspaciados(16)},
         yPct:{type:'linear', position:'left', grid:{color:gridC},
           ticks:{color:'#f4a261', font:{size:11}, callback:v=>v.toFixed(1)+'%'},
@@ -7064,10 +7185,11 @@ function ipRenderChart(){
 function ipRenderChartNivel1(){
   const dark = document.documentElement.getAttribute('data-theme')==='dark';
   const tickC = dark ? '#aab8d1' : '#4b5e7a';
+  const tickXFuerte = dark ? '#ffffff' : '#000000';
   const gridC = dark ? 'rgba(255,255,255,.10)' : 'rgba(0,0,0,.06)';
 
-  const desde = document.getElementById('ip-chart-desde').value ? document.getElementById('ip-chart-desde').value.slice(0,7) : null;
-  const hasta = document.getElementById('ip-chart-hasta').value ? document.getElementById('ip-chart-hasta').value.slice(0,7) : null;
+  const desde = document.getElementById('ip-n1-chart-desde').value ? document.getElementById('ip-n1-chart-desde').value.slice(0,7) : null;
+  const hasta = document.getElementById('ip-n1-chart-hasta').value ? document.getElementById('ip-n1-chart-hasta').value.slice(0,7) : null;
   const visibles = IP_REG_FILAS.filter(f => {
     const clave = ipClaveNormal(f);
     return (!desde || clave >= desde) && (!hasta || clave <= hasta);
@@ -7088,7 +7210,7 @@ function ipRenderChartNivel1(){
           data: visibles.map(f=>f.iptj1t_pct==null?null:f.iptj1t_pct*100), borderColor:'#2a9d8f',
           backgroundColor:'rgba(42,157,143,.12)', borderWidth:2.5, pointRadius:2, spanGaps:true, tension:.25,
           datalabels:{display:true, anchor:'end', align:'top', offset:6,
-            formatter:v=>v==null?'':v.toFixed(2)+'%', font:{size:10, weight:'700'}, color:'#2a9d8f',
+            formatter:v=>v==null?'':v.toFixed(2)+'%', font:{size:12, weight:'700'}, color:'#2a9d8f',
             backgroundColor: dark?'rgba(30,30,40,.85)':'rgba(255,255,255,.85)', borderRadius:3, padding:{left:4,right:4,top:1,bottom:1}}},
       ],
     },
@@ -7110,7 +7232,7 @@ function ipRenderChartNivel1(){
       },
       scales:{
         x:{grid:{display:false}, offset:true,
-          ticks:{color:tickC, font:{size:10}, maxRotation:0, autoSkip:false},
+          ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, autoSkip:false},
           afterBuildTicks: ipConstruirTicksEspaciados(16)},
         yPct:{type:'linear', position:'left', grid:{color:gridC},
           ticks:{color:'#2a9d8f', font:{size:11}, callback:v=>v.toFixed(1)+'%'},
@@ -7130,12 +7252,21 @@ function ipRenderTablaNivel(){
   const head = document.getElementById('ip-tabla-nivel-head');
   head.innerHTML = '<th>Mes (fecha real)</th>' + columnas.map(([,etiqueta])=>`<th>${etiqueta}</th>`).join('');
 
+  // Depende TOTALMENTE del mismo rango de fechas del gráfico principal
+  // (ip-chart-desde/hasta) -- no un listado aparte.
+  const desde = document.getElementById('ip-chart-desde').value ? document.getElementById('ip-chart-desde').value.slice(0,7) : null;
+  const hasta = document.getElementById('ip-chart-hasta').value ? document.getElementById('ip-chart-hasta').value.slice(0,7) : null;
+  const visibles = IP_REG_FILAS.filter(f => {
+    const clave = ipClaveNormal(f);
+    return (!desde || clave >= desde) && (!hasta || clave <= hasta);
+  });
+
   const body = document.getElementById('ip-tabla-nivel-body');
   const f2 = v => v==null ? '--' : v.toLocaleString('es-CO', {maximumFractionDigits:0});
   const fp = v => v==null ? '--' : (v*100).toFixed(2)+'%';
   const fd = v => v==null ? '--' : v.toFixed(2);
   const formatear = (clave, v) => IP_COLUMNAS_PCT_NIVEL.has(clave) ? fp(v) : IP_COLUMNAS_DECIMAL_NIVEL.has(clave) ? fd(v) : f2(v);
-  body.innerHTML = [...IP_REG_FILAS].reverse().map(f => `
+  body.innerHTML = [...visibles].reverse().map(f => `
     <tr>
       <td>${labelMes(ipClaveNormal(f))}</td>
       ${columnas.map(([clave]) => `<td>${formatear(clave, f[clave])}</td>`).join('')}
