@@ -6767,6 +6767,23 @@ const IP_COLUMNAS_DECIMAL_NIVEL = new Set(["n2_pj", "n3_pj"]);  // guardadas com
 function ipClaveNormal(f){ return `${f.anio_normal}-${String(f.mes_normal).padStart(2,'0')}`; }
 function ipClaveRegulatoria(f){ return `${f.anio}-${String(f.mes).padStart(2,'0')}`; }
 
+// Las columnas CRUDAS (Eej, EsTj, EsVFC, ...) de una fila pertenecen a la
+// fecha REGULATORIA de esa misma fila (así se calculan -- ver
+// ip_reg_calculo.py: el VLOOKUP usa año/mes propios de la fila, no
+// desplazados). O sea que el dato crudo del mes real M vive en la fila
+// cuya fecha NORMAL es M-3 (porque esa fila tiene fecha regulatoria =
+// (M-3)+3 = M). PT/IPT y Entrada/Salida/Pérdida Mensual SÍ están bien
+// alineados por fecha normal (son la ventana/mes que termina 3 meses
+// antes) -- el problema era solo en las variables crudas por nivel.
+let IP_MAPA_POR_NORMAL = new Map();
+
+function ipFilaConDatosRealesDe(claveReal){
+  const [anio, mes] = claveReal.split('-').map(Number);
+  const idx = anio*12 + (mes-1) - 3;
+  const claveBuscada = `${Math.floor(idx/12)}-${String((idx%12)+1).padStart(2,'0')}`;
+  return IP_MAPA_POR_NORMAL.get(claveBuscada) || null;
+}
+
 // IP_REG_FILAS es compartido entre "IP_Reg" y "Nivel de Tensión 1" (dos
 // vistas/sub-módulos separados) -- cualquiera de las dos que se abra
 // primero lo carga; la otra lo reusa sin volver a pedirlo.
@@ -6775,6 +6792,7 @@ async function ipAsegurarDatosCargados(msgEl){
   try{
     const data = await apiGet('/api/indicador-perdidas/ip-reg');
     IP_REG_FILAS = (data.filas || []).slice().sort((a,b)=> ipClaveNormal(a) < ipClaveNormal(b) ? -1 : 1);
+    IP_MAPA_POR_NORMAL = new Map(IP_REG_FILAS.map(f => [ipClaveNormal(f), f]));
     return true;
   }catch(e){
     if(msgEl){ msgEl.className = 'tm-modal-msg err'; msgEl.textContent = e.message || 'No se pudo cargar el Indicador de Pérdidas.'; }
@@ -6919,6 +6937,14 @@ function ipToggleVariacion(){
   ipRenderChart();
 }
 
+// Rojo si el valor SUBIÓ contra el punto anterior (más pérdida = peor),
+// verde si BAJÓ (menos pérdida = mejor) -- si no hay con qué comparar,
+// se queda con el color normal de la serie.
+function ipColorVariacion(actual, anterior, colorBase){
+  if(actual==null || anterior==null || actual===anterior) return colorBase;
+  return actual > anterior ? '#ef476f' : '#06d6a0';
+}
+
 // Sombrea los 12 meses que alimentan la ventana móvil del ÚLTIMO punto
 // REAL (no un mes proyectado) -- el índice se guarda en
 // options.plugins.sombraVentana.ultimoIndice al armar el gráfico.
@@ -7053,11 +7079,13 @@ function ipRenderChart(){
           const anterior = ptDatos[ctx.dataIndex-1];
           const base = v.toLocaleString('es-CO',{maximumFractionDigits:0})+' kWh';
           if(anterior==null) return base;
-          const delta = v - anterior, signo = delta>=0?'+':'';
+          const delta = v - anterior;
           const deltaPct = anterior ? (delta/anterior*100) : 0;
-          return `${base} (${signo}${delta.toLocaleString('es-CO',{maximumFractionDigits:0})}, ${signo}${deltaPct.toFixed(1)}%)`;
+          const icono = delta>=0 ? '▲' : '▼';
+          return `${base}  ${icono} ${Math.abs(delta).toLocaleString('es-CO',{maximumFractionDigits:0})} (${Math.abs(deltaPct).toFixed(1)}%)`;
         },
-        font:{size:11, weight:'700'}, color:'#4361ee',
+        font:{size:11, weight:'700'},
+        color:(ctx)=> ipColorVariacion(ptDatos[ctx.dataIndex], ptDatos[ctx.dataIndex-1], '#4361ee'),
         backgroundColor: dark?'rgba(30,30,40,.85)':'rgba(255,255,255,.85)', borderRadius:3, padding:{left:4,right:4,top:1,bottom:1}},
     },
     {
@@ -7071,10 +7099,12 @@ function ipRenderChart(){
           if(!IP_MOSTRAR_VARIACION) return base;
           const anterior = iptDatos[ctx.dataIndex-1];
           if(anterior==null) return base;
-          const delta = v - anterior, signo = delta>=0?'+':'';
-          return `${base} (${signo}${delta.toFixed(2)}pp)`;
+          const delta = v - anterior;
+          const icono = delta>=0 ? '▲' : '▼';
+          return `${base}  ${icono}${Math.abs(delta).toFixed(2)}pp`;
         },
-        font:{size:12, weight:'700'}, color:'#f4a261',
+        font:{size:12, weight:'700'},
+        color:(ctx)=> IP_MOSTRAR_VARIACION ? ipColorVariacion(iptDatos[ctx.dataIndex], iptDatos[ctx.dataIndex-1], '#f4a261') : '#f4a261',
         backgroundColor: dark?'rgba(30,30,40,.85)':'rgba(255,255,255,.85)', borderRadius:3, padding:{left:4,right:4,top:1,bottom:1}},
     },
   ];
@@ -7138,7 +7168,14 @@ function ipRenderChart(){
     const esPct = ipEsOverlayPct(campo);
     datasets.push({
       type:'line', label:`N${nivel} ${etiquetaVar}`, yAxisID: esPct ? 'yPct' : 'y', order:5,
-      data: visibles.map(f => ipValorOverlay(f, campo)),
+      // OJO: el dato crudo de "f" (Eej, EsVFC, etc.) pertenece a la fecha
+      // REGULATORIA de "f", no a su fecha normal -- hay que buscar la fila
+      // cuyo dato crudo sí corresponde al mes real de este punto del eje X
+      // (ver ipFilaConDatosRealesDe), si no, todo queda corrido 3 meses.
+      data: visibles.map(f => {
+        const fReal = ipFilaConDatosRealesDe(ipClaveNormal(f));
+        return fReal ? ipValorOverlay(fReal, campo) : null;
+      }),
       borderColor: IP_PALETA_OVERLAY[colorOverlay++ % IP_PALETA_OVERLAY.length], backgroundColor:'transparent',
       borderWidth:1.75, borderDash:[3,2], pointRadius:1.5, spanGaps:true, tension:.15, datalabels:{display:false},
     });
@@ -7266,12 +7303,17 @@ function ipRenderTablaNivel(){
   const fp = v => v==null ? '--' : (v*100).toFixed(2)+'%';
   const fd = v => v==null ? '--' : v.toFixed(2);
   const formatear = (clave, v) => IP_COLUMNAS_PCT_NIVEL.has(clave) ? fp(v) : IP_COLUMNAS_DECIMAL_NIVEL.has(clave) ? fd(v) : f2(v);
-  body.innerHTML = [...visibles].reverse().map(f => `
+  // El dato crudo de cada mes real vive en OTRA fila (ver
+  // ipFilaConDatosRealesDe) -- "f" solo se usa para la etiqueta del mes.
+  body.innerHTML = [...visibles].reverse().map(f => {
+    const fReal = ipFilaConDatosRealesDe(ipClaveNormal(f));
+    return `
     <tr>
       <td>${labelMes(ipClaveNormal(f))}</td>
-      ${columnas.map(([clave]) => `<td>${formatear(clave, f[clave])}</td>`).join('')}
+      ${columnas.map(([clave]) => `<td>${fReal ? formatear(clave, fReal[clave]) : '--'}</td>`).join('')}
     </tr>
-  `).join('');
+  `;
+  }).join('');
 }
 
 function ipRenderTabla(){
