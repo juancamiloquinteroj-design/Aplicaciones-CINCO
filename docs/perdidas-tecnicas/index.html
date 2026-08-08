@@ -60,6 +60,7 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(
 .sidebar-submenu.hidden{display:none}
 .sidebar-sublink{display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:8px;border:none;border-left:2px solid var(--border);background:none;color:var(--text3);font-size:12px;font-weight:600;text-align:left;cursor:pointer}
 .sidebar-sublink:hover{background:var(--bg3);color:var(--text)}
+.sidebar-badge-soon{font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;background:var(--bg3);color:var(--text3);padding:2px 6px;border-radius:10px;white-space:nowrap}
 .sidebar-sublink.active{border-left-color:var(--accent);background:rgba(0,180,216,.12);color:var(--accent)}
 .sidebar-proximamente{font-size:10.5px;color:var(--text3);padding:10px 12px;border-top:1px solid var(--border)}
 .sidebar-acceso{margin-top:auto;font-size:10.5px;color:var(--text3);padding:10px 12px;border-top:1px solid var(--border);line-height:1.6}
@@ -84,19 +85,23 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(
 .inicio-eye{font-size:10px;font-weight:800;letter-spacing:2px;text-transform:uppercase;color:var(--accent);margin-bottom:6px}
 .inicio-titulo{font-size:26px;font-weight:900;margin-bottom:6px}
 .inicio-sub{font-size:13px;color:var(--text2)}
-.inicio-dash-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:10px}
-@media (max-width:640px){ .inicio-dash-grid{grid-template-columns:1fr} }
-.inicio-mes-panel{border:1px solid var(--border);border-radius:10px;padding:14px 16px;background:var(--bg2)}
+/* Fila de tarjetas de balance (Nivel 4 + una por cada zona de Nivel 3) --
+   compactas y en grilla para que quepan varias por fila (antes cada una
+   ocupaba el ancho completo y apiladas se hacía una lista larga). */
+.inicio-dash-fila{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px;margin-bottom:18px}
+#ini-n3-zonas{display:contents}
+.inicio-dash-card{padding:14px 16px;margin-bottom:0}
+.inicio-dash-card .card-title{font-size:11px;margin-bottom:8px}
+.inicio-dash-grid{display:flex;flex-direction:column;gap:8px}
+.inicio-mes-panel{border:1px solid var(--border);border-radius:8px;padding:8px 10px;background:var(--bg2)}
 .inicio-mes-panel.actual{border-color:var(--accent);background:var(--accent-bg-soft, var(--bg2))}
-.inicio-mes-titulo{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--text3);margin-bottom:10px;padding-bottom:8px;border-bottom:1px dashed var(--border)}
-/* Un bloque por ZONA dentro de la tarjeta de Nivel 3 (a diferencia de
-   Nivel 4, que es una sola estructura sin zona) -- separador chico entre
-   bloques cuando hay más de una zona. */
-.inicio-zona-titulo{font-size:13px;font-weight:800;color:var(--text);margin:18px 0 4px}
-.inicio-zona-titulo:first-child{margin-top:4px}
-.inicio-mes-fila{display:flex;align-items:center;justify-content:space-between;font-size:13px;color:var(--text2);padding:5px 0}
-.inicio-mes-fila span:first-child{font-weight:600;color:var(--text3);font-size:11px;text-transform:uppercase;letter-spacing:.4px}
-.inicio-mes-fila span:last-child{font-weight:800;font-size:15px;color:var(--text)}
+.inicio-mes-titulo{font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--text3);margin-bottom:5px;padding-bottom:5px;border-bottom:1px dashed var(--border)}
+/* Nombre de la zona -- va en el card-title de cada tarjeta de Nivel 3
+   (una tarjeta por zona, igual de compacta que la de Nivel 4), no como
+   encabezado propio. */
+.inicio-mes-fila{display:flex;align-items:center;justify-content:space-between;font-size:11px;color:var(--text2);padding:2px 0}
+.inicio-mes-fila span:first-child{font-weight:600;color:var(--text3);font-size:10px;text-transform:uppercase;letter-spacing:.3px}
+.inicio-mes-fila span:last-child{font-weight:800;font-size:12.5px;color:var(--text)}
 .inicio-variacion{font-size:10.5px;font-weight:700;border-radius:5px;padding:2px 6px;white-space:nowrap}
 .inicio-variacion.mejora{background:#06d6a022;color:#06d6a0}
 .inicio-variacion.empeora{background:#ef476f22;color:#ef476f}
@@ -617,10 +622,25 @@ tfoot td:first-child{text-align:left}
   <button class="sidebar-link" data-vista="perdidas" onclick="mostrarVista('perdidas')">📉 Pérdidas Técnicas</button>
   <button class="sidebar-link" data-vista="parametrizacion" onclick="mostrarVista('parametrizacion')">⚙️ Parametrización</button>
   <button class="sidebar-link" data-vista="telemedidos" onclick="mostrarVista('telemedidos')">👥 Usuarios Telemedidos</button>
-  <button class="sidebar-link" disabled title="Próximamente" style="opacity:.5;cursor:default;justify-content:space-between">
+  <button class="sidebar-link sidebar-link-padre" id="sidebar-ip-padre" onclick="toggleSubmenuIP()">
     <span>📊 Indicador de Pérdidas</span>
-    <span style="font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;background:var(--bg3);color:var(--text3);padding:2px 6px;border-radius:10px;white-space:nowrap">Próximamente</span>
+    <span class="sidebar-caret" id="sidebar-ip-caret">▾</span>
   </button>
+  <div class="sidebar-submenu hidden" id="sidebar-submenu-ip">
+    <button class="sidebar-sublink" data-vista="ip-reg" onclick="mostrarVista('ip-reg')">📈 IP_Reg</button>
+    <button class="sidebar-sublink" disabled title="Próximamente" style="opacity:.5;cursor:default;justify-content:space-between">
+      <span>PR8</span><span class="sidebar-badge-soon">Próximamente</span>
+    </button>
+    <button class="sidebar-sublink" disabled title="Próximamente" style="opacity:.5;cursor:default;justify-content:space-between">
+      <span>PR9</span><span class="sidebar-badge-soon">Próximamente</span>
+    </button>
+    <button class="sidebar-sublink" disabled title="Próximamente" style="opacity:.5;cursor:default;justify-content:space-between">
+      <span>PR4</span><span class="sidebar-badge-soon">Próximamente</span>
+    </button>
+    <button class="sidebar-sublink" disabled title="Próximamente" style="opacity:.5;cursor:default;justify-content:space-between">
+      <span>Reporte Tridevanados</span><span class="sidebar-badge-soon">Próximamente</span>
+    </button>
+  </div>
   <button class="sidebar-link sidebar-link-padre" id="sidebar-be-padre" onclick="toggleSubmenuBE()">
     <span>🧮 Balances por Estructura</span>
     <span class="sidebar-caret" id="sidebar-be-caret">▾</span>
@@ -643,30 +663,29 @@ tfoot td:first-child{text-align:left}
     <div class="inicio-sub" id="inicio-sub">Acá vas a encontrar todos los indicadores correspondientes al Sistema de Gestión de la Medida de tu operador.</div>
   </div>
 
-  <div id="inicio-dash-nivel4" class="card hidden">
-    <div class="card-title">📉 Pérdida por Balance -- Nivel 4</div>
-    <div class="inicio-dash-grid">
-      <div class="inicio-mes-panel">
-        <div class="inicio-mes-titulo">Mes anterior · <span id="ini-n4-mes-ant"></span></div>
-        <div class="inicio-mes-fila"><span>Diario</span><span id="ini-n4-ant-diario">--</span></div>
-        <div class="inicio-mes-fila"><span>Mensual</span><span id="ini-n4-ant-mensual">--</span></div>
-        <div class="inicio-mes-fila"><span>Anual (móvil)</span><span id="ini-n4-ant-anual">--</span></div>
+  <div class="inicio-dash-fila">
+    <div id="inicio-dash-nivel4" class="card inicio-dash-card hidden">
+      <div class="card-title">📉 Pérdida por Balance -- Nivel 4</div>
+      <div class="inicio-dash-grid">
+        <div class="inicio-mes-panel">
+          <div class="inicio-mes-titulo">Mes anterior · <span id="ini-n4-mes-ant"></span></div>
+          <div class="inicio-mes-fila"><span>Diario</span><span id="ini-n4-ant-diario">--</span></div>
+          <div class="inicio-mes-fila"><span>Mensual</span><span id="ini-n4-ant-mensual">--</span></div>
+          <div class="inicio-mes-fila"><span>Anual (móvil)</span><span id="ini-n4-ant-anual">--</span></div>
+        </div>
+        <div class="inicio-mes-panel actual">
+          <div class="inicio-mes-titulo">Mes actual · <span id="ini-n4-mes-act"></span></div>
+          <div class="inicio-mes-fila"><span>Diario</span><span id="ini-n4-act-diario">--</span></div>
+          <div class="inicio-mes-fila"><span>Mensual</span><span><span id="ini-n4-act-mensual">--</span> <span id="ini-n4-var-mensual" class="inicio-variacion"></span></span></div>
+          <div class="inicio-mes-fila"><span>Anual (móvil)</span><span><span id="ini-n4-act-anual">--</span> <span id="ini-n4-var-anual" class="inicio-variacion"></span></span></div>
+        </div>
       </div>
-      <div class="inicio-mes-panel actual">
-        <div class="inicio-mes-titulo">Mes actual · <span id="ini-n4-mes-act"></span></div>
-        <div class="inicio-mes-fila"><span>Diario</span><span id="ini-n4-act-diario">--</span></div>
-        <div class="inicio-mes-fila"><span>Mensual</span><span><span id="ini-n4-act-mensual">--</span> <span id="ini-n4-var-mensual" class="inicio-variacion"></span></span></div>
-        <div class="inicio-mes-fila"><span>Anual (móvil)</span><span><span id="ini-n4-act-anual">--</span> <span id="ini-n4-var-anual" class="inicio-variacion"></span></span></div>
-      </div>
+      <div id="ini-n4-msg" class="tm-modal-msg"></div>
     </div>
-    <div id="ini-n4-msg" class="tm-modal-msg"></div>
-  </div>
 
-  <div id="inicio-dash-nivel3" class="card hidden">
-    <div class="card-title">📉 Pérdidas Por Balance Nivel 3</div>
     <div id="ini-n3-zonas"></div>
-    <div id="ini-n3-msg" class="tm-modal-msg"></div>
   </div>
+  <div id="ini-n3-msg" class="tm-modal-msg"></div>
 
   <div class="mod-grid">
     <div class="mod-card active" onclick="mostrarVista('inicio')">
@@ -972,6 +991,63 @@ tfoot td:first-child{text-align:left}
 
 </div>
 <!-- fin vista-telemedidos -->
+
+<!-- ---------------- INDICADOR DE PÉRDIDAS (IP_Reg) ---------------- -->
+<div id="vista-ip-reg" class="vista-modulo hidden">
+
+  <div class="sec-hdr">
+    <div class="sec-title">Indicador de Pérdidas -- IP_Reg</div>
+    <div class="sec-sub">Índice de Pérdidas Totales (CREG 015/2018 Cap. 7) -- ventana móvil de 12 meses, 3 meses vencido</div>
+  </div>
+
+  <div class="card">
+    <div class="fbar" style="margin-bottom:0">
+      <label title="Versión de liquidación de XM (3-6) y % de pérdida reconocida por nivel -- criterio manual, sin regla fija">Configurar mes</label>
+      <select id="ip-config-anio"></select>
+      <select id="ip-config-mes"></select>
+      <label>Versión XM</label>
+      <input type="number" id="ip-config-version" min="3" max="6" step="1" style="width:56px;padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg)">
+      <label title="% pérdida reconocida Nivel 2">Pj N2</label>
+      <input type="number" id="ip-config-pj2" step="0.01" style="width:64px;padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg)">
+      <label title="% pérdida reconocida Nivel 3">Pj N3</label>
+      <input type="number" id="ip-config-pj3" step="0.01" style="width:64px;padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg)">
+      <label title="Fracción (no %) de pérdida reconocida Nivel 4">Pj N4</label>
+      <input type="number" id="ip-config-pj4" step="0.0001" style="width:72px;padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg)">
+      <button class="btn-theme" style="width:auto;padding:0 14px" onclick="ipGuardarVersion()">Guardar y recalcular</button>
+      <button class="btn-theme" style="width:auto;padding:0 14px;margin-left:auto" onclick="ipDescargarExcel()" title="Descargar el histórico completo en el mismo formato de IP_Reg">⬇ Descargar Excel</button>
+    </div>
+    <div id="ip-config-msg" class="tm-modal-msg"></div>
+  </div>
+
+  <div class="card">
+    <div style="text-align:center;margin-bottom:8px">
+      <div style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">PT -- Pérdida Total (kWh) · ventana móvil 12 meses</div>
+    </div>
+    <div class="chart-wrap" style="height:280px"><canvas id="ch-ip-pt"></canvas></div>
+  </div>
+
+  <div class="card">
+    <div style="text-align:center;margin-bottom:8px">
+      <div style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">IPT -- Índice de Pérdidas Totales (%) · ventana móvil 12 meses</div>
+    </div>
+    <div class="chart-wrap" style="height:280px"><canvas id="ch-ip-ipt"></canvas></div>
+  </div>
+
+  <div class="card">
+    <div class="be-tabla-creadas-titulo">Histórico mensual</div>
+    <div class="be-tabla-scroll" style="max-height:420px">
+      <table class="be-tabla-creadas">
+        <thead><tr>
+          <th>Mes</th><th>Ver.</th><th>PT (kWh)</th><th>IPT (%)</th>
+          <th>Entrada Mensual</th><th>Salida Mensual</th><th>Pérdida Mensual</th><th>% P Mensual</th>
+        </tr></thead>
+        <tbody id="ip-reg-tabla-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+<!-- fin vista-ip-reg -->
 
 <!-- ---------------- BALANCES POR ESTRUCTURA · CREAR ---------------- -->
 <div id="vista-be-crear" class="vista-modulo hidden">
@@ -1909,7 +1985,25 @@ function toggleSubmenuBE(){
   }
 }
 
-let vistaCargada = {perdidas:false, parametrizacion:false, telemedidos:false, balancesEstructura:false};
+// Mismo patrón de acordeón que "Balances por Estructura", para el submenú
+// de "Indicador de Pérdidas" (hoy solo IP_Reg activo, PR8/PR9/PR4/Reporte
+// Tridevanados quedan reservados como "Próximamente").
+function abrirSubmenuIP(){
+  document.getElementById('sidebar-submenu-ip').classList.remove('hidden');
+  document.getElementById('sidebar-ip-caret').classList.add('abierto');
+}
+
+function toggleSubmenuIP(){
+  const abierto = !document.getElementById('sidebar-submenu-ip').classList.contains('hidden');
+  if(abierto){
+    document.getElementById('sidebar-submenu-ip').classList.add('hidden');
+    document.getElementById('sidebar-ip-caret').classList.remove('abierto');
+  } else {
+    mostrarVista('ip-reg');
+  }
+}
+
+let vistaCargada = {perdidas:false, parametrizacion:false, telemedidos:false, balancesEstructura:false, ipReg:false};
 
 async function mostrarVista(nombre){
   document.querySelectorAll('.vista-modulo').forEach(v=>v.classList.add('hidden'));
@@ -1923,6 +2017,10 @@ async function mostrarVista(nombre){
   const esBalancesEstructura = nombre==='be-crear' || nombre==='be-ver' || nombre==='be-alertas' || nombre==='be-diagramas' || nombre==='be-diagrama-editor';
   document.getElementById('sidebar-be-padre').classList.toggle('activa', esBalancesEstructura);
   if(esBalancesEstructura) abrirSubmenuBE();
+
+  const esIndicadorPerdidas = nombre==='ip-reg';
+  document.getElementById('sidebar-ip-padre').classList.toggle('activa', esIndicadorPerdidas);
+  if(esIndicadorPerdidas) abrirSubmenuIP();
 
   if(!document.body.classList.contains('sidebar-fija')){
     document.getElementById('sidebar').classList.add('hidden');
@@ -1945,6 +2043,10 @@ async function mostrarVista(nombre){
   if(esBalancesEstructura && !vistaCargada.balancesEstructura){
     vistaCargada.balancesEstructura = true;
     await cargarBalancesEstructura();
+  }
+  if(esIndicadorPerdidas && !vistaCargada.ipReg){
+    vistaCargada.ipReg = true;
+    await cargarIndicadorPerdidas();
   }
   // Las alertas se piden de nuevo cada vez que se entra a esta vista puntual
   // (no solo la primera vez) -- son datos que cambian seguido (atraso día a
@@ -2084,37 +2186,41 @@ const INI_NOMBRES_ZONA = {ZC:'Centro', ZN:'Norte', ZS:'Sur', ZE:'Este', ZO:'Oest
 // anterior/Mes actual) que la tarjeta de Nivel 4, reusando el mismo
 // cálculo (_iniCalcularPanelesBalance).
 async function cargarDashboardNivel3(){
-  const card = document.getElementById('inicio-dash-nivel3');
   const cont = document.getElementById('ini-n3-zonas');
   const msg = document.getElementById('ini-n3-msg');
   msg.textContent = '';
-  if(DEMO){ card.classList.add('hidden'); return; }
+  if(DEMO){ cont.innerHTML = ''; return; }
   let nivel3;
   try{ nivel3 = await apiGet('/api/balances-estructura?nivel_tension=3&tipo=Z'); }
-  catch(e){ card.classList.add('hidden'); return; }
-  if(!nivel3.length){ card.classList.add('hidden'); return; }
-  card.classList.remove('hidden');
+  catch(e){ cont.innerHTML = ''; return; }
+  if(!nivel3.length){ cont.innerHTML = ''; return; }
 
   const ctx = await _iniContextoMeses();
   const fmtPct = v => v==null ? 'Sin datos' : `${v.toFixed(2)}%`;
 
+  // Una tarjeta COMPACTA por zona (no una tarjeta grande con varios
+  // bloques adentro) -- así todas (Nivel 4 + una por cada zona de Nivel
+  // 3) entran en la MISMA fila (ver .inicio-dash-fila), en vez de una
+  // lista larga apilada.
   cont.innerHTML = nivel3.map(e => {
     const nombreZona = e.zona ? (INI_NOMBRES_ZONA[e.zona] || e.zona) : e.nombre;
     const pref = `ini-n3-${e.id}`;
     return `
-    <div class="inicio-zona-titulo">📍 Zona ${_mselEsc(nombreZona)}</div>
-    <div class="inicio-dash-grid">
-      <div class="inicio-mes-panel">
-        <div class="inicio-mes-titulo">Mes anterior · ${ctx.nombreMesAnt}</div>
-        <div class="inicio-mes-fila"><span>Diario</span><span id="${pref}-ant-diario">--</span></div>
-        <div class="inicio-mes-fila"><span>Mensual</span><span id="${pref}-ant-mensual">--</span></div>
-        <div class="inicio-mes-fila"><span>Anual (móvil)</span><span id="${pref}-ant-anual">--</span></div>
-      </div>
-      <div class="inicio-mes-panel actual">
-        <div class="inicio-mes-titulo">Mes actual · ${ctx.nombreMesAct}</div>
-        <div class="inicio-mes-fila"><span>Diario</span><span id="${pref}-act-diario">--</span></div>
-        <div class="inicio-mes-fila"><span>Mensual</span><span><span id="${pref}-act-mensual">--</span> <span id="${pref}-var-mensual" class="inicio-variacion"></span></span></div>
-        <div class="inicio-mes-fila"><span>Anual (móvil)</span><span><span id="${pref}-act-anual">--</span> <span id="${pref}-var-anual" class="inicio-variacion"></span></span></div>
+    <div class="card inicio-dash-card">
+      <div class="card-title">📉 Pérdidas Por Balance Nivel 3 · 📍 ${_mselEsc(nombreZona)}</div>
+      <div class="inicio-dash-grid">
+        <div class="inicio-mes-panel">
+          <div class="inicio-mes-titulo">Mes anterior · ${ctx.nombreMesAnt}</div>
+          <div class="inicio-mes-fila"><span>Diario</span><span id="${pref}-ant-diario">--</span></div>
+          <div class="inicio-mes-fila"><span>Mensual</span><span id="${pref}-ant-mensual">--</span></div>
+          <div class="inicio-mes-fila"><span>Anual (móvil)</span><span id="${pref}-ant-anual">--</span></div>
+        </div>
+        <div class="inicio-mes-panel actual">
+          <div class="inicio-mes-titulo">Mes actual · ${ctx.nombreMesAct}</div>
+          <div class="inicio-mes-fila"><span>Diario</span><span id="${pref}-act-diario">--</span></div>
+          <div class="inicio-mes-fila"><span>Mensual</span><span><span id="${pref}-act-mensual">--</span> <span id="${pref}-var-mensual" class="inicio-variacion"></span></span></div>
+          <div class="inicio-mes-fila"><span>Anual (móvil)</span><span><span id="${pref}-act-anual">--</span> <span id="${pref}-var-anual" class="inicio-variacion"></span></span></div>
+        </div>
       </div>
     </div>`;
   }).join('');
@@ -2153,7 +2259,7 @@ function _iniRenderVariacion(elId, valorAnt, valorAct){
 
 function cerrarSesion(){
   TOKEN=null; OPERADOR=null; PERSONA=null; DEMO=false;
-  vistaCargada = {perdidas:false, parametrizacion:false, telemedidos:false, balancesEstructura:false};
+  vistaCargada = {perdidas:false, parametrizacion:false, telemedidos:false, balancesEstructura:false, ipReg:false};
   document.getElementById('app-screen').classList.add('hidden');
   document.getElementById('login-screen').classList.remove('hidden');
   document.getElementById('badge-op').classList.add('hidden');
@@ -6555,6 +6661,157 @@ async function apiDelete(path){
   const data = await res.json().catch(()=>null);
   if(!res.ok) throw new Error((data && data.detail) || 'Error consultando la API');
   return data;
+}
+
+/* ---- Indicador de Pérdidas (IP_Reg) -- CREG 015/2018 Cap. 7 ---- */
+let IP_REG_FILAS = [];
+let chIpPt = null, chIpIpt = null;
+
+async function cargarIndicadorPerdidas(){
+  const msg = document.getElementById('ip-config-msg');
+  msg.className = 'tm-modal-msg'; msg.textContent = '';
+  try{
+    const data = await apiGet('/api/indicador-perdidas/ip-reg');
+    IP_REG_FILAS = data.filas || [];
+  }catch(e){
+    msg.className = 'tm-modal-msg err';
+    msg.textContent = e.message || 'No se pudo cargar el Indicador de Pérdidas.';
+    return;
+  }
+  ipPoblarSelectoresConfig();
+  ipRenderCharts();
+  ipRenderTabla();
+}
+
+function ipPoblarSelectoresConfig(){
+  const selAnio = document.getElementById('ip-config-anio');
+  const selMes = document.getElementById('ip-config-mes');
+  if(selMes.options.length === 0){
+    for(let m=1; m<=12; m++) selMes.innerHTML += `<option value="${m}">${labelMes(`2000-${String(m).padStart(2,'0')}`).split(' ')[0]}</option>`;
+  }
+  const anios = [...new Set(IP_REG_FILAS.map(f=>f.anio))].sort((a,b)=>a-b);
+  const anioActual = new Date().getFullYear();
+  if(!anios.includes(anioActual)) anios.push(anioActual);
+  selAnio.innerHTML = anios.map(a=>`<option value="${a}">${a}</option>`).join('');
+
+  // Por defecto, el ÚLTIMO mes ya cargado -- es el que más probablemente
+  // alguien quiera revisar/corregir al entrar a la vista.
+  const ultima = IP_REG_FILAS[IP_REG_FILAS.length - 1];
+  if(ultima){
+    selAnio.value = ultima.anio;
+    selMes.value = ultima.mes;
+    ipCargarConfigDelMes();
+  }
+  selAnio.onchange = ipCargarConfigDelMes;
+  selMes.onchange = ipCargarConfigDelMes;
+}
+
+function ipCargarConfigDelMes(){
+  const anio = Number(document.getElementById('ip-config-anio').value);
+  const mes = Number(document.getElementById('ip-config-mes').value);
+  const fila = IP_REG_FILAS.find(f=>f.anio===anio && f.mes===mes);
+  document.getElementById('ip-config-version').value = fila ? fila.version_mayor : 3;
+  document.getElementById('ip-config-pj2').value = fila ? fila.n2_pj : 1.53;
+  document.getElementById('ip-config-pj3').value = fila ? fila.n3_pj : 1.45;
+  document.getElementById('ip-config-pj4').value = fila ? fila.n4_pj : 0;
+}
+
+async function ipGuardarVersion(){
+  const msg = document.getElementById('ip-config-msg');
+  msg.className = 'tm-modal-msg'; msg.textContent = 'Recalculando...';
+  try{
+    await apiPut('/api/indicador-perdidas/version', {
+      anio: Number(document.getElementById('ip-config-anio').value),
+      mes: Number(document.getElementById('ip-config-mes').value),
+      version_mayor: Number(document.getElementById('ip-config-version').value),
+      pj_nivel2: Number(document.getElementById('ip-config-pj2').value),
+      pj_nivel3: Number(document.getElementById('ip-config-pj3').value),
+      pj_nivel4: Number(document.getElementById('ip-config-pj4').value),
+    });
+    const data = await apiGet('/api/indicador-perdidas/ip-reg');
+    IP_REG_FILAS = data.filas || [];
+    ipRenderCharts();
+    ipRenderTabla();
+    msg.className = 'tm-modal-msg ok';
+    msg.textContent = 'Guardado -- IP_Reg recalculado.';
+  }catch(e){
+    msg.className = 'tm-modal-msg err';
+    msg.textContent = e.message || 'No se pudo guardar.';
+  }
+}
+
+async function ipDescargarExcel(){
+  const msg = document.getElementById('ip-config-msg');
+  try{
+    const res = await fetchConTimeout(`${API_BASE_URL}/api/indicador-perdidas/ip-reg/export.xlsx`, {headers: authHeaders()}, AUTH_TIMEOUT_MS);
+    if(!res.ok) throw new Error('No se pudo generar la descarga.');
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `IP_Reg_${OPERADOR.slug}.xlsx`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  }catch(e){
+    msg.className = 'tm-modal-msg err';
+    msg.textContent = e.message || 'Error al descargar.';
+  }
+}
+
+function ipRenderCharts(){
+  const dark = document.documentElement.getAttribute('data-theme')==='dark';
+  const tickC = dark ? '#aab8d1' : '#4b5e7a';
+  const gridC = dark ? 'rgba(255,255,255,.10)' : 'rgba(0,0,0,.06)';
+  const etiquetas = IP_REG_FILAS.map(f=>labelMes(`${f.anio}-${String(f.mes).padStart(2,'0')}`));
+
+  const opcionesBase = eje2 => ({
+    responsive:true, maintainAspectRatio:false,
+    interaction:{mode:'index', intersect:false},
+    plugins:{legend:{display:false}},
+    scales:{
+      x:{grid:{display:false}, ticks:{color:tickC, font:{size:10}, maxRotation:0, autoSkip:true, maxTicksLimit:14}},
+      y:{grid:{color:gridC}, ticks:{color:tickC, font:{size:11}, callback: eje2}},
+    },
+  });
+
+  if(chIpPt) chIpPt.destroy();
+  chIpPt = new Chart(document.getElementById('ch-ip-pt'), {
+    type:'line',
+    data:{labels: etiquetas, datasets:[{
+      label:'PT (kWh)', data: IP_REG_FILAS.map(f=>f.pt_kwh),
+      borderColor:'#f4a261', backgroundColor:'rgba(244,162,97,.15)', spanGaps:true, tension:.2, pointRadius:1.5,
+    }]},
+    options:{...opcionesBase(v=>v.toLocaleString('es-CO')+' kWh'),
+      plugins:{legend:{display:false}, tooltip:{callbacks:{label:c=>`PT: ${(c.raw==null?0:c.raw).toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`}}}},
+  });
+
+  if(chIpIpt) chIpIpt.destroy();
+  chIpIpt = new Chart(document.getElementById('ch-ip-ipt'), {
+    type:'line',
+    data:{labels: etiquetas, datasets:[{
+      label:'IPT (%)', data: IP_REG_FILAS.map(f=>f.ipt_pct==null? null : f.ipt_pct*100),
+      borderColor:'#2a9d8f', backgroundColor:'rgba(42,157,143,.15)', spanGaps:true, tension:.2, pointRadius:1.5,
+    }]},
+    options:{...opcionesBase(v=>v.toFixed(1)+'%'),
+      plugins:{legend:{display:false}, tooltip:{callbacks:{label:c=>`IPT: ${(c.raw==null?0:c.raw).toFixed(3)}%`}}}},
+  });
+}
+
+function ipRenderTabla(){
+  const body = document.getElementById('ip-reg-tabla-body');
+  const f2 = v => v==null ? '--' : v.toLocaleString('es-CO', {maximumFractionDigits:0});
+  const fp = v => v==null ? '--' : (v*100).toFixed(2)+'%';
+  body.innerHTML = [...IP_REG_FILAS].reverse().map(f => `
+    <tr>
+      <td>${labelMes(`${f.anio}-${String(f.mes).padStart(2,'0')}`)}</td>
+      <td>${f.version_mayor ?? '--'}</td>
+      <td>${f2(f.pt_kwh)}</td>
+      <td>${fp(f.ipt_pct)}</td>
+      <td>${f2(f.entrada_mensual_kwh)}</td>
+      <td>${f2(f.salida_mensual_kwh)}</td>
+      <td>${f2(f.perdida_mensual_kwh)}</td>
+      <td>${fp(f.pct_perdida_mensual)}</td>
+    </tr>
+  `).join('');
 }
 
 function labelMes(m){
