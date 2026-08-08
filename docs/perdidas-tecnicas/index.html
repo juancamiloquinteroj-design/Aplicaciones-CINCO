@@ -62,10 +62,21 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(
 .sidebar-sublink:hover{background:var(--bg3);color:var(--text)}
 .sidebar-badge-soon{font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;background:var(--bg3);color:var(--text3);padding:2px 6px;border-radius:10px;white-space:nowrap}
 .ip-tabla-compacta-titulo{color:var(--text)}
-.ip-tabla-compacta table.be-tabla-creadas{font-size:10.5px}
-.ip-tabla-compacta .be-tabla-creadas th{background:#20242f;color:#ffffff;padding:4px 8px;font-size:9px}
-.ip-tabla-compacta .be-tabla-creadas td{padding:4px 8px;color:var(--text);font-weight:600}
-.ip-tabla-compacta .be-tabla-creadas tr:nth-child(even) td{background:var(--bg2)}
+.ip-tabla-compacta table.be-tabla-creadas{font-size:10px;white-space:nowrap}
+.ip-tabla-compacta .be-tabla-creadas th{padding:4px 7px;font-size:9px}
+.ip-tabla-compacta .be-tabla-creadas th.ip-th-mes{background:#20242f;color:#ffffff;position:sticky;left:0;z-index:1}
+.ip-tabla-compacta .be-tabla-creadas td{padding:4px 7px;color:var(--text);font-weight:600}
+.ip-tabla-compacta .be-tabla-creadas td.ip-td-mes{position:sticky;left:0;z-index:1;background:var(--bg2);font-weight:700}
+.ip-tabla-compacta .be-tabla-creadas tr:nth-child(even) td:not(.ip-td-mes){filter:brightness(0.97)}
+[data-theme="dark"] .ip-tabla-compacta .be-tabla-creadas tr:nth-child(even) td:not(.ip-td-mes){filter:brightness(1.15)}
+/* Colores de fila 1 (bloque de Nivel) y fila 2 (nombre de variable) --
+   iguales a los que usa el export de Excel (mismo origen: colores
+   sacados celda por celda del Excel de referencia vía Excel COM). */
+.ip-th-nivel1{background:#FFFF00;color:#000}
+.ip-th-nivel2{background:#ED7D31;color:#000}
+.ip-th-nivel3{background:#0070C0;color:#000}
+.ip-th-nivel4{background:#FF0000;color:#000}
+.ip-th-variable{background:#A9D08E;color:#000}
 .sidebar-sublink.active{border-left-color:var(--accent);background:rgba(0,180,216,.12);color:var(--accent)}
 .sidebar-proximamente{font-size:10.5px;color:var(--text3);padding:10px 12px;border-top:1px solid var(--border)}
 .sidebar-acceso{margin-top:auto;font-size:10.5px;color:var(--text3);padding:10px 12px;border-top:1px solid var(--border);line-height:1.6}
@@ -1059,18 +1070,13 @@ tfoot td:first-child{text-align:left}
   </div>
 
   <div class="card">
-    <div class="be-tabla-creadas-titulo ip-tabla-compacta-titulo" style="display:flex;align-items:center;justify-content:space-between;gap:8px">
-      <span>Detalle por Nivel de Tensión</span>
-      <select id="ip-nivel-filtro" onchange="ipRenderTablaNivel()">
-        <option value="1">Nivel 1</option>
-        <option value="2">Nivel 2</option>
-        <option value="3">Nivel 3</option>
-        <option value="4">Nivel 4</option>
-      </select>
-    </div>
-    <div class="be-tabla-scroll ip-tabla-compacta" style="max-height:420px">
+    <div class="be-tabla-creadas-titulo ip-tabla-compacta-titulo">Detalle por Nivel de Tensión</div>
+    <div class="be-tabla-scroll ip-tabla-compacta" style="max-height:460px">
       <table class="be-tabla-creadas">
-        <thead><tr id="ip-tabla-nivel-head"></tr></thead>
+        <thead>
+          <tr id="ip-tabla-nivel-head-1"></tr>
+          <tr id="ip-tabla-nivel-head-2"></tr>
+        </thead>
         <tbody id="ip-tabla-nivel-body"></tbody>
       </table>
     </div>
@@ -6945,6 +6951,21 @@ function ipColorVariacion(actual, anterior, colorBase){
   return actual > anterior ? '#ef476f' : '#06d6a0';
 }
 
+// Estilo de "tarjetita gris" para la etiqueta con variación -- renglón 1
+// el valor, renglón 2 el ícono + delta en rojo/verde (chartjs-datalabels
+// dibuja un array de líneas como UNA sola tarjeta con varios renglones).
+function ipEstiloTarjetaVariacion(dark, colorBase){
+  return {
+    backgroundColor: dark ? '#2a2f3a' : '#eef0f3',
+    borderColor: dark ? '#3d4453' : '#d7dbe0',
+    borderWidth: 1,
+    borderRadius: 6,
+    padding: {left:7, right:7, top:4, bottom:4},
+    textAlign: 'center',
+    font: [{size:11, weight:'800'}, {size:9.5, weight:'800'}],
+  };
+}
+
 // Sombrea los 12 meses que alimentan la ventana móvil del ÚLTIMO punto
 // REAL (no un mes proyectado) -- el índice se guarda en
 // options.plugins.sombraVentana.ultimoIndice al armar el gráfico.
@@ -7073,39 +7094,43 @@ function ipRenderChart(){
       type:'line', label:'PT -- Pérdida Total (kWh)', data: ptDatos, yAxisID:'y', hidden: IP_PT_OCULTO,
       borderColor:'#4361ee', backgroundColor:'transparent', borderWidth:2, pointRadius:1.5,
       spanGaps:true, tension:.2, order:3,
-      datalabels:{display: IP_MOSTRAR_VARIACION, anchor:'end', align:'bottom', offset:6,
+      datalabels:{display: IP_MOSTRAR_VARIACION, anchor:'end', align:'bottom', offset:8,
         formatter:(v,ctx)=>{
           if(v==null) return '';
           const anterior = ptDatos[ctx.dataIndex-1];
           const base = v.toLocaleString('es-CO',{maximumFractionDigits:0})+' kWh';
-          if(anterior==null) return base;
+          if(anterior==null) return [base, ''];
           const delta = v - anterior;
           const deltaPct = anterior ? (delta/anterior*100) : 0;
           const icono = delta>=0 ? '▲' : '▼';
-          return `${base}  ${icono} ${Math.abs(delta).toLocaleString('es-CO',{maximumFractionDigits:0})} (${Math.abs(deltaPct).toFixed(1)}%)`;
+          return [base, `${icono} ${Math.abs(delta).toLocaleString('es-CO',{maximumFractionDigits:0})} (${Math.abs(deltaPct).toFixed(1)}%)`];
         },
-        font:{size:11, weight:'700'},
-        color:(ctx)=> ipColorVariacion(ptDatos[ctx.dataIndex], ptDatos[ctx.dataIndex-1], '#4361ee'),
-        backgroundColor: dark?'rgba(30,30,40,.85)':'rgba(255,255,255,.85)', borderRadius:3, padding:{left:4,right:4,top:1,bottom:1}},
+        color:(ctx)=> ['#4361ee', ipColorVariacion(ptDatos[ctx.dataIndex], ptDatos[ctx.dataIndex-1], dark?'#aab8d1':'#6b7280')],
+        ...ipEstiloTarjetaVariacion(dark)},
     },
     {
       type:'line', label:'IPT -- Índice de Pérdidas Totales (%)', data: iptDatos, yAxisID:'yPct',
       borderColor:'#f4a261', backgroundColor:'rgba(244,162,97,.12)', borderWidth:2.5, pointRadius:2,
       spanGaps:true, tension:.25, order:1,
-      datalabels:{display:true, anchor:'end', align:'top', offset:6,
+      datalabels: IP_MOSTRAR_VARIACION ? {
+        display:true, anchor:'end', align:'top', offset:8,
         formatter:(v,ctx)=>{
           if(v==null) return '';
           const base = v.toFixed(2)+'%';
-          if(!IP_MOSTRAR_VARIACION) return base;
           const anterior = iptDatos[ctx.dataIndex-1];
-          if(anterior==null) return base;
+          if(anterior==null) return [base, ''];
           const delta = v - anterior;
           const icono = delta>=0 ? '▲' : '▼';
-          return `${base}  ${icono}${Math.abs(delta).toFixed(2)}pp`;
+          return [base, `${icono} ${Math.abs(delta).toFixed(2)}pp`];
         },
-        font:{size:12, weight:'700'},
-        color:(ctx)=> IP_MOSTRAR_VARIACION ? ipColorVariacion(iptDatos[ctx.dataIndex], iptDatos[ctx.dataIndex-1], '#f4a261') : '#f4a261',
-        backgroundColor: dark?'rgba(30,30,40,.85)':'rgba(255,255,255,.85)', borderRadius:3, padding:{left:4,right:4,top:1,bottom:1}},
+        color:(ctx)=> ['#f4a261', ipColorVariacion(iptDatos[ctx.dataIndex], iptDatos[ctx.dataIndex-1], dark?'#aab8d1':'#6b7280')],
+        ...ipEstiloTarjetaVariacion(dark),
+      } : {
+        display:true, anchor:'end', align:'top', offset:6,
+        formatter:v=>v==null?'':v.toFixed(2)+'%',
+        font:{size:12, weight:'700'}, color:'#f4a261',
+        backgroundColor: dark?'rgba(30,30,40,.85)':'rgba(255,255,255,.85)', borderRadius:3, padding:{left:4,right:4,top:1,bottom:1},
+      },
     },
   ];
 
@@ -7283,11 +7308,17 @@ function ipRenderChartNivel1(){
   });
 }
 
+// Los 4 Niveles de Tensión juntos, uno al lado del otro -- igual que la
+// hoja IP_Reg del Excel (con scroll horizontal para el ancho extra) --
+// en vez de elegir uno a la vez con un selector.
 function ipRenderTablaNivel(){
-  const nivel = Number(document.getElementById('ip-nivel-filtro').value || 1);
-  const columnas = IP_COLUMNAS_NIVEL[nivel];
-  const head = document.getElementById('ip-tabla-nivel-head');
-  head.innerHTML = '<th>Mes (fecha real)</th>' + columnas.map(([,etiqueta])=>`<th>${etiqueta}</th>`).join('');
+  const head1 = document.getElementById('ip-tabla-nivel-head-1');
+  const head2 = document.getElementById('ip-tabla-nivel-head-2');
+  head1.innerHTML = '<th class="ip-th-mes" rowspan="2">Mes (fecha real)</th>' +
+    [1,2,3,4].map(n => `<th class="ip-th-nivel${n}" colspan="${IP_COLUMNAS_NIVEL[n].length}">Nivel de Tensión ${n}</th>`).join('');
+  head2.innerHTML = [1,2,3,4].map(n =>
+    IP_COLUMNAS_NIVEL[n].map(([,etiqueta]) => `<th class="ip-th-variable">${etiqueta}</th>`).join('')
+  ).join('');
 
   // Depende TOTALMENTE del mismo rango de fechas del gráfico principal
   // (ip-chart-desde/hasta) -- no un listado aparte.
@@ -7307,12 +7338,10 @@ function ipRenderTablaNivel(){
   // ipFilaConDatosRealesDe) -- "f" solo se usa para la etiqueta del mes.
   body.innerHTML = [...visibles].reverse().map(f => {
     const fReal = ipFilaConDatosRealesDe(ipClaveNormal(f));
-    return `
-    <tr>
-      <td>${labelMes(ipClaveNormal(f))}</td>
-      ${columnas.map(([clave]) => `<td>${fReal ? formatear(clave, fReal[clave]) : '--'}</td>`).join('')}
-    </tr>
-  `;
+    const celdas = [1,2,3,4].map(n =>
+      IP_COLUMNAS_NIVEL[n].map(([clave]) => `<td>${fReal ? formatear(clave, fReal[clave]) : '--'}</td>`).join('')
+    ).join('');
+    return `<tr><td class="ip-td-mes">${labelMes(ipClaveNormal(f))}</td>${celdas}</tr>`;
   }).join('');
 }
 
