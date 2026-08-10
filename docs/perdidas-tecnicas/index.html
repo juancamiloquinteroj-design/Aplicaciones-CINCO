@@ -196,6 +196,15 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(
 .fbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:18px}
 .fbar label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text3)}
 select{padding:6px 10px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg);cursor:pointer;outline:none}
+/* Barra "Configurar mes" -- ocupaba tanto como cualquier otra card pese a
+   ser una sola fila de config poco usada; se achica padding/tipografía sin
+   tocar el estilo ".card" genérico (usado en todos los demás módulos). */
+.ip-config-compacta{padding:10px 16px;margin-bottom:12px}
+.ip-config-compacta .fbar{margin-bottom:0;gap:8px}
+.ip-config-compacta label{font-size:9.5px}
+.ip-config-compacta select,
+.ip-config-compacta input[type="number"]{padding:4px 6px;font-size:11px}
+.ip-config-compacta button{padding:0 10px;font-size:11px;height:26px}
 
 .msel{position:relative;display:inline-block}
 .msel-btn{display:flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid var(--border);border-radius:7px;
@@ -1034,7 +1043,7 @@ tfoot td:first-child{text-align:left}
     <div class="sec-sub">Índice de Pérdidas Totales (CREG 015/2018 Cap. 7) -- ventana móvil de 12 meses, 3 meses vencido</div>
   </div>
 
-  <div class="card">
+  <div class="card ip-config-compacta">
     <div class="fbar" style="margin-bottom:0">
       <label title="Versión de liquidación de XM (3-6) y % de pérdida reconocida por nivel -- criterio manual, sin regla fija">Configurar mes</label>
       <select id="ip-config-anio"></select>
@@ -1089,6 +1098,12 @@ tfoot td:first-child{text-align:left}
       <div id="ip-overlay-variables" style="display:flex;gap:6px;flex-wrap:wrap"></div>
     </div>
     <div class="chart-wrap" style="height:420px"><canvas id="ch-ip-reg"></canvas></div>
+    <div class="be-resumen-cards" id="ip-resumen-principal" style="margin:16px 0 0"></div>
+  </div>
+
+  <div class="card">
+    <div class="be-tabla-creadas-titulo" style="margin-bottom:8px">Análisis IPT</div>
+    <div id="ip-analisis-principal" class="ip-comentario-caja"></div>
   </div>
 
   <div class="card">
@@ -1126,11 +1141,24 @@ tfoot td:first-child{text-align:left}
   <div class="card">
     <div class="fbar" style="margin-bottom:6px">
       <label>Rango</label>
-      <input type="date" id="ip-n1-chart-desde" onchange="ipRenderChartNivel1()">
+      <input type="date" id="ip-n1-chart-desde" onchange="ipRenderChartNivel1(); ipRenderTablaNivel1();">
       <span style="font-size:11px;color:var(--text3)">→</span>
-      <input type="date" id="ip-n1-chart-hasta" onchange="ipRenderChartNivel1()">
+      <input type="date" id="ip-n1-chart-hasta" onchange="ipRenderChartNivel1(); ipRenderTablaNivel1();">
     </div>
     <div class="chart-wrap" style="height:420px"><canvas id="ch-ip-nivel1"></canvas></div>
+  </div>
+
+  <div class="card">
+    <div class="be-tabla-creadas-titulo ip-tabla-compacta-titulo">De dónde salen PTj,1,t / IPTj,1,t -- variables de Nivel 1</div>
+    <div class="be-tabla-scroll ip-tabla-compacta" style="max-height:520px">
+      <table class="be-tabla-creadas">
+        <thead>
+          <tr id="ip-tabla-n1-head-1"></tr>
+          <tr id="ip-tabla-n1-head-2"></tr>
+        </thead>
+        <tbody id="ip-tabla-n1-body"></tbody>
+      </table>
+    </div>
   </div>
 
 </div>
@@ -6832,14 +6860,103 @@ async function cargarIndicadorPerdidas(){
   ipPoblarRangoFechas('ip-chart-desde', 'ip-chart-hasta');
   ipPoblarVariablesOverlay();
   ipRenderChart();
+  ipRenderResumenPrincipal();
+  ipGenerarAnalisisPrincipal();
   ipRenderChartMensual();
   ipRenderTablaNivel();
+}
+
+// Filas con IPT/PT ya calculados (reales, sin contar las 3 "virtuales" que
+// solo completan la ventana móvil) -- ordenadas por fecha normal, para
+// sacar "el mes que salió" (el último real) y compararlo mes a mes / año
+// a año en las tarjetas y el análisis de más abajo.
+function ipUltimasFilasReales(){
+  return IP_REG_FILAS.filter(f => f.ipt_pct != null).slice().sort((a,b)=> ipClaveNormal(a) < ipClaveNormal(b) ? -1 : 1);
+}
+
+// Tarjetas de resumen bajo el gráfico principal -- mismo patrón visual que
+// be-resumen-tile (Balances por Estructura), siempre mirando el último mes
+// real disponible, sin importar el filtro de fecha del gráfico.
+function ipRenderResumenPrincipal(){
+  const cont = document.getElementById('ip-resumen-principal');
+  if(!cont) return;
+  const reales = ipUltimasFilasReales();
+  if(reales.length < 2){ cont.innerHTML = ''; return; }
+  const actual = reales[reales.length - 1];
+  const anterior = reales[reales.length - 2];
+  const mesActual = labelMes(ipClaveNormal(actual));
+  const mesAnterior = labelMes(ipClaveNormal(anterior));
+
+  const deltaIpt = (actual.ipt_pct - anterior.ipt_pct) * 100;
+  const deltaPt = actual.pt_kwh - anterior.pt_kwh;
+  const deltaPtPct = anterior.pt_kwh ? (deltaPt / anterior.pt_kwh * 100) : 0;
+  const colorIpt = ipColorVariacion(actual.ipt_pct, anterior.ipt_pct, 'var(--text2)');
+  const colorPt = ipColorVariacion(actual.pt_kwh, anterior.pt_kwh, 'var(--text2)');
+  const iconoIpt = deltaIpt >= 0 ? '▲' : '▼';
+  const iconoPt = deltaPt >= 0 ? '▲' : '▼';
+  const fk = v => v.toLocaleString('es-CO', {maximumFractionDigits:0}) + ' kWh';
+
+  const tarjeta = (etiqueta, valor, sub, colorValor) => `<div class="be-resumen-tile">
+    <div class="etiqueta">${etiqueta}</div>
+    <div class="valor"${colorValor ? ` style="color:${colorValor}"` : ''}>${valor}</div>
+    ${sub ? `<div class="sub">${sub}</div>` : ''}
+  </div>`;
+
+  cont.innerHTML = [
+    tarjeta('IPT Mes Actual', (actual.ipt_pct*100).toFixed(2)+'%', mesActual),
+    tarjeta('IPT Mes Anterior', (anterior.ipt_pct*100).toFixed(2)+'%', mesAnterior),
+    tarjeta('Variación IPT', `${iconoIpt} ${Math.abs(deltaIpt).toFixed(2)} pp`, `${mesAnterior} → ${mesActual}`, colorIpt),
+    tarjeta('PT Mes Actual', fk(actual.pt_kwh), mesActual),
+    tarjeta('PT Mes Anterior', fk(anterior.pt_kwh), mesAnterior),
+    tarjeta('Variación PT', `${iconoPt} ${fk(Math.abs(deltaPt))} (${Math.abs(deltaPtPct).toFixed(1)}%)`, `${mesAnterior} → ${mesActual}`, colorPt),
+  ].join('');
+}
+
+// Análisis corto del IPT (el indicador de ventana móvil de IP_REG, no el
+// mensual) -- variación mes a mes y año a año respecto al último mes real
+// ("el mes que salió"), en un párrafo, mismo estilo que el análisis del
+// indicador mensual.
+function ipGenerarAnalisisPrincipal(){
+  const cont = document.getElementById('ip-analisis-principal');
+  if(!cont) return;
+  const reales = ipUltimasFilasReales();
+  if(reales.length < 2){
+    cont.innerHTML = '<div class="ip-comentario-titulo">Análisis</div><p>Todavía no hay suficientes meses reales para analizar la variación.</p>';
+    return;
+  }
+  const actual = reales[reales.length - 1];
+  const anterior = reales[reales.length - 2];
+  const claveActual = ipClaveNormal(actual);
+  const claveAnterior = ipClaveNormal(anterior);
+  const [anioAct, mesAct] = claveActual.split('-').map(Number);
+  const claveAnioAnterior = `${anioAct-1}-${String(mesAct).padStart(2,'0')}`;
+  const filaAnioAnterior = IP_MAPA_POR_NORMAL.get(claveAnioAnterior);
+
+  const ipt = f => f.ipt_pct * 100;
+  const deltaMensual = ipt(actual) - ipt(anterior);
+  const subeMensual = deltaMensual > 0;
+  const mesActualTxt = labelMes(claveActual);
+  const mesAnteriorTxt = labelMes(claveAnterior);
+
+  let parrafoAnual = '';
+  if(filaAnioAnterior && filaAnioAnterior.ipt_pct != null){
+    const deltaAnual = ipt(actual) - ipt(filaAnioAnterior);
+    const subeAnual = deltaAnual > 0;
+    parrafoAnual = ` Frente al mismo mes del año anterior (${labelMes(claveAnioAnterior)}: <b>${ipt(filaAnioAnterior).toFixed(2)}%</b>), la variación anual es de <b>${subeAnual?'+':''}${deltaAnual.toFixed(2)} pp</b> (${subeAnual?'subió':'bajó'}).`;
+  }
+
+  cont.innerHTML = `
+    <div class="ip-comentario-titulo">Análisis IPT -- ${mesActualTxt}</div>
+    <div class="ip-comentario-cifra ${subeMensual?'sube':'baja'}">${subeMensual?'▲':'▼'} ${Math.abs(deltaMensual).toFixed(2)} pp (mensual)</div>
+    <p>El Índice de Pérdidas Totales (IPT) del último mes disponible (<b>${mesActualTxt}</b>) fue de <b>${ipt(actual).toFixed(2)}%</b>, frente a <b>${ipt(anterior).toFixed(2)}%</b> en ${mesAnteriorTxt} -- una variación mensual de <b>${subeMensual?'+':''}${deltaMensual.toFixed(2)} pp</b> (${subeMensual?'subió':'bajó'}).${parrafoAnual}</p>
+  `;
 }
 
 async function cargarIndicadorPerdidasNivel1(){
   if(!(await ipAsegurarDatosCargados())) return;
   ipPoblarRangoFechas('ip-n1-chart-desde', 'ip-n1-chart-hasta');
   ipRenderChartNivel1();
+  ipRenderTablaNivel1();
 }
 
 function ipPoblarRangoFechas(idDesde, idHasta){
@@ -6909,7 +7026,10 @@ async function ipGuardarVersion(){
     const data = await apiGet('/api/indicador-perdidas/ip-reg');
     IP_REG_FILAS = (data.filas || []).slice().sort((a,b)=> ipClaveNormal(a) < ipClaveNormal(b) ? -1 : 1);
     ipRenderChart();
+    ipRenderResumenPrincipal();
+    ipGenerarAnalisisPrincipal();
     ipRenderChartNivel1();
+    ipRenderTablaNivel1();
     ipRenderChartMensual();
     ipRenderTablaNivel();
     msg.className = 'tm-modal-msg ok';
@@ -7416,6 +7536,41 @@ function ipRenderTablaNivel(){
       IP_COLUMNAS_NIVEL[n].map(([clave], i) => `<td class="${n>1 && i===0?'ip-sep-nivel':''}">${fReal ? formatear(clave, fReal[clave]) : '--'}</td>`).join('')
     ).join('');
     return `<tr><td class="ip-td-mes">${labelMes(ipClaveNormal(f))}</td>${celdas}</tr>`;
+  }).join('');
+}
+
+// Tabla de "de dónde salen" PTj,1,t/IPTj,1,t -- las 8 variables crudas de
+// Nivel 1 (mismo lookup ipFilaConDatosRealesDe que la tabla combinada,
+// porque son crudas: pertenecen a la fecha REGULATORIA de su fila) más
+// ver./PTj,1,t/IPTj,1,t, que SÍ están bien alineados a "f" tal cual (son
+// resultado de la ventana móvil, no dato crudo). Usa el rango propio de
+// esta vista (ip-n1-chart-desde/hasta), no el de IP_Reg.
+function ipRenderTablaNivel1(){
+  const head1 = document.getElementById('ip-tabla-n1-head-1');
+  const head2 = document.getElementById('ip-tabla-n1-head-2');
+  const columnas = IP_COLUMNAS_NIVEL[1];
+  head1.innerHTML = '<th class="ip-th-mes" rowspan="2">Mes (fecha real)</th>' +
+    `<th class="ip-th-nivel1" colspan="${columnas.length}">Nivel de Tensión 1</th>` +
+    '<th class="ip-th-nivel1" colspan="3">Resultado</th>';
+  head2.innerHTML = columnas.map(([,etiqueta]) => `<th class="ip-th-variable">${etiqueta}</th>`).join('') +
+    '<th class="ip-th-variable">Ver.</th><th class="ip-th-variable">PTj,1,t (kWh)</th><th class="ip-th-variable">IPTj,1,t (%)</th>';
+
+  const desde = document.getElementById('ip-n1-chart-desde').value ? document.getElementById('ip-n1-chart-desde').value.slice(0,7) : null;
+  const hasta = document.getElementById('ip-n1-chart-hasta').value ? document.getElementById('ip-n1-chart-hasta').value.slice(0,7) : null;
+  const visibles = IP_REG_FILAS.filter(f => {
+    const clave = ipClaveNormal(f);
+    return (!desde || clave >= desde) && (!hasta || clave <= hasta);
+  });
+
+  const body = document.getElementById('ip-tabla-n1-body');
+  const f2 = v => v==null ? '--' : v.toLocaleString('es-CO', {maximumFractionDigits:0});
+  const fp = v => v==null ? '--' : (v*100).toFixed(2)+'%';
+  const formatear = clave => IP_COLUMNAS_PCT_NIVEL.has(clave) ? fp : f2;
+  body.innerHTML = [...visibles].reverse().map(f => {
+    const fReal = ipFilaConDatosRealesDe(ipClaveNormal(f));
+    const celdasCrudas = columnas.map(([clave]) => `<td>${fReal ? formatear(clave)(fReal[clave]) : '--'}</td>`).join('');
+    return `<tr><td class="ip-td-mes">${labelMes(ipClaveNormal(f))}</td>${celdasCrudas}
+      <td>${f.version_mayor ?? '--'}</td><td>${f2(f.ptj1t_kwh)}</td><td>${fp(f.iptj1t_pct)}</td></tr>`;
   }).join('');
 }
 
