@@ -583,6 +583,7 @@ tfoot td:first-child{text-align:left}
   </div>
   <div class="nav-right">
     <span id="badge-demo" class="badge-demo hidden">MODO DEMO · sin conexión al servidor</span>
+    <span id="badge-visualizador" class="badge-demo hidden" title="Tu usuario solo puede consultar y filtrar -- pedile a un administrador que te cambie el rol en Centro de Mando si necesitás editar">👁 SOLO LECTURA</span>
     <span id="badge-recarga" class="badge-recarga hidden" title="El servidor revisa los archivos y actualiza los datos solo, cada pocos minutos"></span>
     <span id="badge-op" class="badge-op hidden"></span>
     <button class="btn-logout hidden" id="btn-logout" onclick="cerrarSesion()">Salir</button>
@@ -1118,7 +1119,13 @@ tfoot td:first-child{text-align:left}
     <div class="be-tabla-creadas-titulo">Indicador Mensual (sin ventana móvil)</div>
     <div class="ip-mensual-grid">
       <div class="chart-wrap" style="height:320px"><canvas id="ch-ip-mensual"></canvas></div>
-      <div id="ip-mensual-comentario" class="ip-comentario-caja"></div>
+      <div style="display:flex;flex-direction:column;gap:8px;min-height:0">
+        <div class="fbar" style="margin-bottom:0">
+          <label title="El análisis cambia cada mes -- elegí un mes anterior para ver cómo se veía esa nota en su momento">Mes del análisis</label>
+          <select id="ip-analisis-mes" onchange="ipGenerarAnalisisPrincipal()" style="flex:1;min-width:0"></select>
+        </div>
+        <div id="ip-mensual-comentario" class="ip-comentario-caja" style="flex:1"></div>
+      </div>
     </div>
   </div>
 
@@ -1878,6 +1885,18 @@ const BALANCE_TIMEOUT_MS = 15000;   // consumo/comparacion/movil-anual de Balanc
 const NGROK_HEADERS = {'ngrok-skip-browser-warning':'true'};
 
 let TOKEN = null, OPERADOR = null, PERSONA = null, DEMO = false;
+// Rol asignado desde Centro de Mando (accesos.rol): 'editor' (default) puede
+// crear/editar/borrar; 'visualizador' solo puede filtrar y consultar. El
+// backend es quien realmente lo hace cumplir (403 en cada endpoint de
+// escritura, ver requiere_editor en security.py) -- esto es solo para que
+// la interfaz no deje ni intentar acciones que van a rebotar igual.
+let EDITOR = true;
+
+function requiereEditor(){
+  if(EDITOR) return true;
+  alert('Tu usuario tiene rol de Visualizador (solo lectura) y no puede editar datos. Pedile a un administrador que te cambie el rol en Centro de Mando si necesitás editar.');
+  return false;
+}
 // Las zonas se muestran TAL CUAL vienen en el CSV de cada operador -- no hay
 // una lista fija de nombres/códigos, cada operador puede traer los suyos.
 // Solo se les asigna un color consistente para distinguirlas visualmente.
@@ -1992,6 +2011,7 @@ async function manejarLogin(ev){
       return;
     }
     TOKEN = data.access_token; OPERADOR = data.operador; PERSONA = data.persona; DEMO = false;
+    EDITOR = (data.persona?.rol !== 'visualizador');
     entrarDashboard();
   }catch(e){
     if(e.name==='AbortError' || e instanceof TypeError){
@@ -2406,6 +2426,7 @@ async function entrarDashboard(){
   document.getElementById('badge-op').textContent = OPERADOR.nombre;
   document.getElementById('badge-op').classList.remove('hidden');
   document.getElementById('badge-demo').classList.toggle('hidden', !DEMO);
+  document.getElementById('badge-visualizador').classList.toggle('hidden', EDITOR);
   const nombrePersona = (PERSONA && PERSONA.nombre) ? PERSONA.nombre.split(' ')[0] : (PERSONA && PERSONA.correo) || '';
   document.getElementById('inicio-saludo').textContent = nombrePersona ? `Bienvenido/a, ${nombrePersona} 👋` : 'Bienvenido/a 👋';
   document.getElementById('inicio-sub').textContent =
@@ -2508,6 +2529,7 @@ function onCambiaDiasAtraso(v){
 
 async function guardarDiasAtrasoBalance(v){
   const st = document.getElementById('param-dias-atraso-st');
+  if(!requiereEditor()) return;
   if(DEMO){ st.textContent = '⚠'; st.title = 'No disponible en modo demo'; return; }
   if(isNaN(v) || v<1){ st.textContent = '⚠'; st.title = 'Debe ser 1 o más días'; return; }
   st.textContent = '…';
@@ -2611,6 +2633,7 @@ function guardarConfianzaEstadisticaDebounced(v){
 
 async function guardarConfianzaEstadistica(v){
   const st = document.getElementById('param-confianza-st');
+  if(!requiereEditor()) return;
   if(DEMO){ st.textContent = '⚠'; st.title = 'No disponible en modo demo'; return; }
   if(isNaN(v) || v<50 || v>=100){ st.textContent = '⚠'; st.title = 'Debe estar entre 50% y 99.9%'; return; }
   st.textContent = '…';
@@ -2644,6 +2667,7 @@ function renderParametrizacionZonas(datos){
 }
 
 async function guardarZonaColor(zona, color){
+  if(!requiereEditor()) return;
   const st = document.getElementById(`param-st-${zona}`);
   st.textContent = '…';
   try{
@@ -3115,6 +3139,7 @@ function _beActualizarClienteChart(){
 // contra la línea) se guarda por (estructura, cliente) -- ver
 // LineaClientePolaridad en el backend -- para no reconfirmarla cada vez.
 async function beGuardarPolaridadCliente(){
+  if(!requiereEditor()) return;
   if(!BE_CLIENTE_ACTIVO) return;
   const canal_salida = document.getElementById('be-cliente-canal-salida').value;
   const canal_entrada = document.getElementById('be-cliente-canal-entrada').value;
@@ -4165,6 +4190,7 @@ let BE_ALERTAS_CACHE = [];
 
 async function beRevisarAlerta(ev, tipoAlerta, clave, firma, estado){
   ev.stopPropagation();
+  if(!requiereEditor()) return;
   const boton = ev.currentTarget;
   boton.disabled = true;
   try{
@@ -4386,6 +4412,7 @@ function renderTablaBalanceNivelCreados(){
 async function crearBalanceNivel(){
   const msg = document.getElementById('bn-crear-msg');
   msg.className = 'tm-modal-msg'; msg.textContent = '';
+  if(!requiereEditor()) return;
 
   const nombre = document.getElementById('bn-nombre').value.trim();
   const nivel_tension = parseInt(document.getElementById('bn-nivel').value);
@@ -4426,6 +4453,7 @@ async function crearBalanceNivel(){
 async function crearEstructuraBalance(){
   const msg = document.getElementById('be-crear-msg');
   msg.className = 'tm-modal-msg'; msg.textContent = '';
+  if(!requiereEditor()) return;
 
   const nombre = document.getElementById('be-nombre').value.trim();
   const nivel_tension = parseInt(document.getElementById('be-nivel').value);
@@ -4465,6 +4493,7 @@ async function crearEstructuraBalance(){
 
 async function borrarEstructuraBalance(ev, id, nombre){
   ev.stopPropagation();
+  if(!requiereEditor()) return;
   if(!confirm(`¿Borrar la estructura "${nombre}"? Esto no borra los datos de telemedida, solo la definición del balance.`)) return;
   try{
     await apiDelete(`/api/balances-estructura/${id}`);
@@ -6027,6 +6056,7 @@ function beCancelarBorrarAjuste(){
 }
 
 async function beConfirmarBorrarAjuste(){
+  if(!requiereEditor()) return;
   if(!BE_BORRAR_PENDIENTE) return;
   const {tipo, orden, desde} = BE_BORRAR_PENDIENTE;
   const hasta = document.getElementById('beborrar-hasta').value;
@@ -6064,6 +6094,7 @@ function beCancelarAjuste(){
 }
 
 async function beConfirmarAjuste(){
+  if(!requiereEditor()) return;
   const msg = document.getElementById('beaj-msg');
   const comentario = document.getElementById('beaj-comentario').value.trim();
   if(!comentario){ msg.className='tm-modal-msg err'; msg.textContent='El comentario es obligatorio.'; return; }
@@ -6225,6 +6256,7 @@ async function recargarModalEditarEstructura(){
 }
 
 async function guardarMetadatosEstructura(){
+  if(!requiereEditor()) return;
   const msg = document.getElementById('beed-msg-metadatos');
   msg.className = 'tm-modal-msg'; msg.textContent = '';
   const nombre = document.getElementById('beed-nombre').value.trim();
@@ -6254,6 +6286,7 @@ function _beFechaFmt(iso){
 // se puede prender/apagar en cualquier momento sin abrir una vigencia
 // nueva. Ver LineaClientePolaridad / "Sobreponer cliente" en Ver Balance.
 async function beedFijarEsCliente(vigenciaId, esCliente){
+  if(!requiereEditor()) return;
   try{ await apiPut(`/api/balances-estructura/${BE_EDITAR_ID}/medidores/${vigenciaId}/es-cliente`, {es_cliente: esCliente}); }
   catch(e){ alert(e.message || 'No se pudo guardar.'); }
 }
@@ -6264,6 +6297,7 @@ async function beedFijarEsCliente(vigenciaId, esCliente){
 // y en cambio resta del OPUESTO -- recarga el balance visible porque cambia
 // los totales de Entrada/Salida.
 async function beedFijarResta(vigenciaId, resta){
+  if(!requiereEditor()) return;
   try{
     await apiPut(`/api/balances-estructura/${BE_EDITAR_ID}/medidores/${vigenciaId}/resta`, {resta});
     if(BE_ACTIVA_ID === BE_EDITAR_ID) verBalanceEstructura(BE_ACTIVA_ID);
@@ -6341,6 +6375,7 @@ function beedMostrarVigenciaForm(btn, tipo, orden){
 }
 
 async function beedGuardarVigencia(btn, tipo, orden){
+  if(!requiereEditor()) return;
   const cont = btn.closest('.be-punto-vig-form');
   const msg = cont.querySelector('.beed-vig-msg');
   const principal = _beLeerMedidor(cont.querySelector('.beed-vig-usuario'));
@@ -6370,6 +6405,7 @@ async function beedGuardarVigencia(btn, tipo, orden){
 }
 
 async function beedBorrarVigencia(vigenciaId){
+  if(!requiereEditor()) return;
   if(!confirm('¿Deshacer esta vigencia? Vuelve a quedar abierta la anterior.')) return;
   try{
     await apiDelete(`/api/balances-estructura/${BE_EDITAR_ID}/medidores/vigencia/${vigenciaId}`);
@@ -6382,6 +6418,7 @@ async function beedBorrarVigencia(vigenciaId){
 }
 
 async function beedBorrarPunto(tipo, orden){
+  if(!requiereEditor()) return;
   const quedan = document.querySelectorAll(`.be-punto[data-tipo="${tipo}"]`).length;
   const advertencia = quedan <= 1
     ? `¡Es el ÚLTIMO punto de ${tipo} de esta estructura! Si lo borrás, el balance va a mostrar 0 de ${tipo} hasta que agregues uno nuevo -- confirmá solo si es para corregir un medidor mal seleccionado.\n\n`
@@ -6406,6 +6443,7 @@ function beedMostrarNuevoPunto(tipo){
 }
 
 async function beedAgregarPunto(tipo){
+  if(!requiereEditor()) return;
   const cont = document.getElementById(`beed-nuevo-${tipo}`);
   const msg = cont.querySelector('.beed-nuevo-msg');
   const fila = cont.querySelector('.be-fila-medidor');
@@ -6856,6 +6894,7 @@ async function cargarIndicadorPerdidas(){
   ipPoblarVariablesOverlay();
   ipRenderChart();
   ipRenderResumenPrincipal();
+  ipPoblarSelectorAnalisisMes();
   ipGenerarAnalisisPrincipal();
   ipRenderChartMensual();
   ipRenderTablaNivel();
@@ -6907,16 +6946,32 @@ function ipRenderResumenPrincipal(){
   ].join('');
 }
 
-// Análisis del IPT (ventana móvil de IP_REG) -- vive en la tarjeta de
-// abajo, al lado del gráfico "Indicador Mensual" (reemplazó al análisis
-// mes a mes del % Pérdida Mensual que estaba ahí antes). Cubre:
-//  1) Variación MENSUAL del IPT, explicada por el mes que "sale" y el que
-//     "entra" a la ventana móvil de 12 meses (cada mes que pasa, el más
-//     viejo de los 12 se cae y el nuevo se suma -- si el que entra tiene
-//     más pérdida propia que el que sale, el IPT sube, y viceversa).
-//  2) Variación ANUAL del IPT (mismo mes, un año antes).
-//  3) Variación ANUAL del indicador MENSUAL puro (% Pérdida Mensual, sin
-//     ventana móvil) -- mismo mes, un año antes.
+// Selector "Mes del análisis" -- deja ver cómo era la nota de Análisis IPT
+// en cualquier mes real anterior, no solo el último. Se repuebla cada vez
+// que cambian los datos (nuevo mes cargado / recalculo), tratando de
+// mantener la selección que el usuario ya tenía hecha.
+function ipPoblarSelectorAnalisisMes(){
+  const sel = document.getElementById('ip-analisis-mes');
+  if(!sel) return;
+  const anterior = sel.value;
+  const reales = ipUltimasFilasReales();
+  sel.innerHTML = [...reales].reverse().map(f => {
+    const clave = ipClaveNormal(f);
+    return `<option value="${clave}">${labelMes(clave)}</option>`;
+  }).join('');
+  sel.value = (anterior && [...sel.options].some(o=>o.value===anterior)) ? anterior : (reales.length ? ipClaveNormal(reales[reales.length-1]) : '');
+}
+
+// Análisis del IPT -- vive al lado del gráfico "Indicador Mensual". Por
+// cada mes real (elegible con el selector "Mes del análisis", por defecto
+// el último) muestra:
+//  1) El valor del IPT y la pérdida anualizada (PT, kWh/Anual) de ese mes.
+//  2) Cómo cambió mes a mes: IPT y pérdida anualizada del mes anterior vs.
+//     el elegido, en pp y en kWh.
+//  3) Cómo cambió año a año: IPT del mismo mes, un año antes.
+//  4) El IPT MENSUAL (el valor de un solo mes, no el de IP_REG) de este mes
+//     contra el mismo mes del año anterior, para ver si el mes que entra a
+//     compararse pesa más o menos que el que sale.
 function ipGenerarAnalisisPrincipal(){
   const cont = document.getElementById('ip-mensual-comentario');
   if(!cont) return;
@@ -6925,60 +6980,53 @@ function ipGenerarAnalisisPrincipal(){
     cont.innerHTML = '<div class="ip-comentario-titulo">Análisis</div><p>Todavía no hay suficientes meses reales para analizar la variación.</p>';
     return;
   }
-  const actual = reales[reales.length - 1];
-  const anterior = reales[reales.length - 2];
+  const sel = document.getElementById('ip-analisis-mes');
+  let idxSel = reales.length - 1;
+  if(sel && sel.value){
+    const i = reales.findIndex(f => ipClaveNormal(f) === sel.value);
+    if(i > 0) idxSel = i;
+  }
+  const actual = reales[idxSel];
+  const anterior = reales[idxSel - 1];
   const claveActual = ipClaveNormal(actual);
   const claveAnterior = ipClaveNormal(anterior);
   const [anioAct, mesAct] = claveActual.split('-').map(Number);
-  const idxActual = anioAct*12 + (mesAct-1);
-  const mesActualTxt = labelMes(claveActual);
-  const mesAnteriorTxt = labelMes(claveAnterior);
+  const mesActualTitulo = labelMes(claveActual);
+  const mesActualLargo = labelMesLargo(claveActual);
+  const mesAnteriorLargo = labelMesLargo(claveAnterior);
+  const mesActualCorto = labelMesLargo(claveActual, false);
   const signo = v => v >= 0 ? '+' : '';
 
   const ipt = f => f.ipt_pct * 100;
-  const deltaMensual = ipt(actual) - ipt(anterior);
+  const iptActual = ipt(actual), iptAnterior = ipt(anterior);
+  const deltaMensual = iptActual - iptAnterior;
   const subeMensual = deltaMensual > 0;
-
-  // Mes que sale de la ventana móvil (el más antiguo de los 12 que
-  // alimentaban el mes anterior) y mes que entra (el actual, que es
-  // justamente el nuevo mes que se suma) -- comparados por su propia
-  // pérdida MENSUAL (sin ventana), para explicar hacia dónde empuja el IPT.
-  const idxSale = idxActual - 12;
-  const claveSale = `${Math.floor(idxSale/12)}-${String((idxSale%12+12)%12+1).padStart(2,'0')}`;
-  const filaSale = IP_MAPA_POR_NORMAL.get(claveSale);
-  let fraseVentana = '';
-  if(filaSale && filaSale.pct_perdida_mensual != null && actual.pct_perdida_mensual != null){
-    const pctSale = filaSale.pct_perdida_mensual * 100;
-    const pctEntra = actual.pct_perdida_mensual * 100;
-    const empuja = pctEntra > pctSale;
-    fraseVentana = ` La ventana móvil de 12 meses ahora suma a <b>${mesActualTxt}</b> (pérdida mensual propia de ${pctEntra.toFixed(2)}%) y deja de contar a <b>${labelMes(claveSale)}</b> (${pctSale.toFixed(2)}%) -- como el mes que entra tiene una pérdida ${empuja?'mayor':'menor'} que el que sale, eso ${empuja?'empuja el IPT hacia arriba':'ayuda a que el IPT baje'}.`;
-  }
+  const deltaPtKwh = actual.pt_kwh - anterior.pt_kwh;
+  const fKwh = v => Math.round(v).toLocaleString('es-CO');
 
   const claveAnioAnterior = `${anioAct-1}-${String(mesAct).padStart(2,'0')}`;
   const filaAnioAnterior = IP_MAPA_POR_NORMAL.get(claveAnioAnterior);
 
   let parrafoAnualIpt = '';
   if(filaAnioAnterior && filaAnioAnterior.ipt_pct != null){
-    const deltaAnual = ipt(actual) - ipt(filaAnioAnterior);
+    const deltaAnual = iptActual - ipt(filaAnioAnterior);
     const subeAnual = deltaAnual > 0;
-    parrafoAnualIpt = `Frente al IPT del mismo mes del año anterior (${labelMes(claveAnioAnterior)}: <b>${ipt(filaAnioAnterior).toFixed(2)}%</b>), la variación anual es de <b>${signo(deltaAnual)}${deltaAnual.toFixed(2)} pp</b> (${subeAnual?'subió':'bajó'}).`;
+    parrafoAnualIpt = ` Frente al mismo mes del año anterior (${labelMesLargo(claveAnioAnterior)}), el IPT era de <b>${ipt(filaAnioAnterior).toFixed(2)}%</b>, por lo que la variación anual es de <b>${signo(deltaAnual)}${deltaAnual.toFixed(2)} pp</b> (${subeAnual?'aumenta':'disminuye'}).`;
   }
 
-  let parrafoAnualMensual = '';
+  let parrafoMensual = '';
   if(actual.pct_perdida_mensual != null && filaAnioAnterior && filaAnioAnterior.pct_perdida_mensual != null){
     const mensualActual = actual.pct_perdida_mensual * 100;
     const mensualAnioAnterior = filaAnioAnterior.pct_perdida_mensual * 100;
-    const deltaAnualMensual = mensualActual - mensualAnioAnterior;
-    const subeAnualMensual = deltaAnualMensual > 0;
-    parrafoAnualMensual = `El % de pérdida MENSUAL puro (sin ventana móvil) de ${mesActualTxt} fue <b>${mensualActual.toFixed(2)}%</b>, frente a <b>${mensualAnioAnterior.toFixed(2)}%</b> en ${labelMes(claveAnioAnterior)} un año antes -- variación anual de <b>${signo(deltaAnualMensual)}${deltaAnualMensual.toFixed(2)} pp</b> (${subeAnualMensual?'subió':'bajó'}).`;
+    const masAlto = mensualActual > mensualAnioAnterior;
+    parrafoMensual = `De acuerdo con el IPT mensual, se tiene que para ${mesActualCorto.toLowerCase()}-${anioAct} hay un IPT mensual de <b>${mensualActual.toFixed(2)}%</b>, donde sale un indicador de <b>${mensualAnioAnterior.toFixed(2)}%</b> (${labelMesLargo(claveAnioAnterior)}) -- por lo cual entra un indicador mensual ${masAlto?'más alto':'más bajo'} que el saliente del año anterior.`;
   }
 
   cont.innerHTML = `
-    <div class="ip-comentario-titulo">Análisis IPT -- ${mesActualTxt}</div>
-    <div class="ip-comentario-cifra ${subeMensual?'sube':'baja'}">${subeMensual?'▲':'▼'} ${Math.abs(deltaMensual).toFixed(2)} pp (mensual)</div>
-    <p>El IPT (ventana móvil de 12 meses) pasó de <b>${ipt(anterior).toFixed(2)}%</b> en ${mesAnteriorTxt} a <b>${ipt(actual).toFixed(2)}%</b> en ${mesActualTxt}.${fraseVentana}</p>
-    ${parrafoAnualIpt ? `<p>${parrafoAnualIpt}</p>` : ''}
-    ${parrafoAnualMensual ? `<p>${parrafoAnualMensual}</p>` : ''}
+    <div class="ip-comentario-titulo">Análisis IPT -- ${mesActualTitulo}</div>
+    <div class="ip-comentario-cifra ${subeMensual?'sube':'baja'}">${iptActual.toFixed(2)}% (${fKwh(actual.pt_kwh)} kWh/Anual)</div>
+    <p>El IPT pasó de <b>${iptAnterior.toFixed(2)}%</b> en ${mesAnteriorLargo} a <b>${iptActual.toFixed(2)}%</b> en ${mesActualLargo}, lo que equivale a pasar de una pérdida de <b>${fKwh(anterior.pt_kwh)} kWh/Anual</b> a <b>${fKwh(actual.pt_kwh)} kWh/Anual</b> -- un ${subeMensual?'incremento':'descenso'} de <b>${Math.abs(deltaMensual).toFixed(2)} pp</b>, equivalente a <b>${signo(deltaPtKwh)}${fKwh(Math.abs(deltaPtKwh))} kWh/Anual</b>.${parrafoAnualIpt}</p>
+    ${parrafoMensual ? `<p>${parrafoMensual}</p>` : ''}
   `;
 }
 
@@ -7042,6 +7090,7 @@ function ipCargarConfigDelMes(){
 }
 
 async function ipGuardarVersion(){
+  if(!requiereEditor()) return;
   const msg = document.getElementById('ip-config-msg');
   msg.className = 'tm-modal-msg'; msg.textContent = 'Recalculando...';
   try{
@@ -7057,7 +7106,8 @@ async function ipGuardarVersion(){
     IP_REG_FILAS = (data.filas || []).slice().sort((a,b)=> ipClaveNormal(a) < ipClaveNormal(b) ? -1 : 1);
     ipRenderChart();
     ipRenderResumenPrincipal();
-    ipGenerarAnalisisPrincipal();
+    ipPoblarSelectorAnalisisMes();
+  ipGenerarAnalisisPrincipal();
     ipRenderChartNivel1();
     ipRenderTablaNivel1();
     ipRenderChartMensual();
@@ -7675,6 +7725,14 @@ function labelMes(m){
   const d = new Date(y, mo-1, 1);
   const t = d.toLocaleDateString('es-CO', {month:'short'}).replace(/\./g,'').trim();
   return t.charAt(0).toUpperCase()+t.slice(1)+' '+y;
+}
+
+function labelMesLargo(m, conAnio=true){
+  const [y,mo] = m.split('-').map(Number);
+  const d = new Date(y, mo-1, 1);
+  const t = d.toLocaleDateString('es-CO', {month:'long'});
+  const mes = t.charAt(0).toUpperCase()+t.slice(1);
+  return conAnio ? `${mes}-${y}` : mes;
 }
 
 /* ---- Multiselect genérico (Zona / Alimentador / Nivel) ----
