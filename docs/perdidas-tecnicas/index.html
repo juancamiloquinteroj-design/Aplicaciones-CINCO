@@ -518,6 +518,18 @@ tfoot td:first-child{text-align:left}
 .be-comparacion-vacio{padding:20px;text-align:center;color:var(--text3);font-size:12px;border:1px dashed var(--border);border-radius:8px}
 .be-resumen-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin:16px 0}
 .be-resumen-tile{border:1px solid var(--border);border-radius:8px;padding:10px 12px;background:var(--bg)}
+/* Tarjetas KPI del Indicador de Pérdidas Totales -- a diferencia de las de
+   Balances (que pueden ser pocas y anchas), acá siempre hay muchas (10) y
+   se pidió que entren TODAS en una sola fila en vez de partirse en dos --
+   flex con flex-shrink en vez de grid con auto-fit (que las mandaba a la
+   fila siguiente apenas no entraba una más de 180px), con scroll horizontal
+   como salvavidas si la pantalla es angosta. */
+#ip-resumen-principal{display:flex;flex-wrap:nowrap;overflow-x:auto;margin:16px 0 0}
+#ip-resumen-principal .be-resumen-tile{flex:1 1 0;min-width:110px}
+/* Las de Nivel 1 van AL LADO de la nota, en una columna angosta -- ahí sí
+   se apilan una debajo de otra (ver grid-template-columns:1fr inline). */
+#ip-resumen-n1{gap:8px}
+#ip-resumen-n1 .be-resumen-tile{padding:8px 10px}
 .be-resumen-tile .etiqueta{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:var(--text3);margin-bottom:4px}
 .be-resumen-tile .valor{font-size:14.5px;font-weight:800;color:var(--text);line-height:1.25}
 .be-resumen-tile .sub{font-size:10px;color:var(--text3);margin-top:3px}
@@ -930,7 +942,6 @@ tfoot td:first-child{text-align:left}
 
   <div class="card">
     <div class="card-title">Límites de consumo esperado (Usuarios Telemedidos)</div>
-    <div class="card-sub">El límite superior/inferior de cada gráfica se calcula con la media y la desviación estándar del consumo (distribución normal) -- acá elegís qué tan estricto es ese rango.</div>
     <div class="param-confianza-row">
       <input type="range" id="param-confianza-slider" min="50" max="99.9" step="0.1" oninput="onCambiaConfianzaSlider(this.value)">
       <input type="number" id="param-confianza-num" min="50" max="99.9" step="0.1" oninput="onCambiaConfianzaNum(this.value)">
@@ -952,7 +963,6 @@ tfoot td:first-child{text-align:left}
 
   <div class="card">
     <div class="card-title">Datos típicos de estructuras</div>
-    <div class="card-sub">Promedio, máximo y mínimo "típico" de Pérdida (%) de cada estructura en el rango elegido -- se depuran los días atípicos con Z-Score robusto (mediana + MAD) antes de calcular, para que un solo día rarísimo no distorsione el resultado.</div>
     <div class="param-confianza-row" style="flex-wrap:wrap">
       <label style="font-size:11px;color:var(--text3)">Desde</label>
       <input type="month" id="param-tipicos-desde">
@@ -1041,7 +1051,6 @@ tfoot td:first-child{text-align:left}
 
   <div class="sec-hdr">
     <div class="sec-title">Indicador de Pérdidas -- IP_Reg</div>
-    <div class="sec-sub">Índice de Pérdidas Totales (CREG 015/2018 Cap. 7) -- ventana móvil de 12 meses, 3 meses vencido</div>
   </div>
 
   <div class="card ip-config-compacta">
@@ -1149,6 +1158,9 @@ tfoot td:first-child{text-align:left}
       <span style="font-size:11px;color:var(--text3)">→</span>
       <input type="date" id="ip-n1-chart-hasta" onchange="ipRenderChartNivel1(); ipRenderTablaNivel1();">
     </div>
+    <div style="text-align:center;margin-bottom:8px">
+      <div style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Indicador Pérdidas -- Nivel de Tensión 1</div>
+    </div>
     <div class="chart-wrap" style="height:420px"><canvas id="ch-ip-nivel1"></canvas></div>
   </div>
 
@@ -1157,7 +1169,10 @@ tfoot td:first-child{text-align:left}
       <label title="El análisis cambia cada mes -- elegí un mes anterior para ver cómo se veía esa nota en su momento">Mes del análisis</label>
       <select id="ip-analisis-n1-mes" onchange="ipGenerarAnalisisNivel1()" style="flex:1;min-width:0"></select>
     </div>
-    <div id="ip-analisis-n1-comentario" class="ip-comentario-caja"></div>
+    <div class="ip-mensual-grid">
+      <div id="ip-analisis-n1-comentario" class="ip-comentario-caja"></div>
+      <div id="ip-resumen-n1" class="be-resumen-cards" style="grid-template-columns:1fr;align-content:start"></div>
+    </div>
   </div>
 
   <div class="card">
@@ -7129,6 +7144,40 @@ function ipGenerarAnalisisNivel1(){
     <div class="ip-comentario-cifra ${subeMensual?'sube':'baja'}">${iptActual.toFixed(2)}% (${fKwh(actual.ptj1t_kwh)} kWh/Anual)</div>
     <p>El IPTj,1,t (Nivel 1) pasó de <b>${iptAnterior.toFixed(2)}%</b> en ${mesAnteriorLargo} a <b>${iptActual.toFixed(2)}%</b> en ${mesActualLargo}, lo que equivale a pasar de una pérdida de <b>${fKwh(anterior.ptj1t_kwh)} kWh/Anual</b> a <b>${fKwh(actual.ptj1t_kwh)} kWh/Anual</b> -- un ${subeMensual?'incremento':'descenso'} de <b>${Math.abs(deltaMensual).toFixed(2)} pp</b>, equivalente a <b>${signo(deltaPtKwh)}${fKwh(Math.abs(deltaPtKwh))} kWh/Anual</b>.${parrafoAnual}</p>
   `;
+
+  ipRenderResumenNivel1(actual, anterior, filaAnioAnterior, claveAnterior, claveAnioAnterior);
+}
+
+// 3-4 tarjetas chicas al lado de la nota (indicador anual, energía y
+// variaciones) -- mismo mes que el selector "Mes del análisis" de arriba,
+// para no duplicar esa lógica de selección.
+function ipRenderResumenNivel1(actual, anterior, filaAnioAnterior, claveAnterior, claveAnioAnterior){
+  const cont = document.getElementById('ip-resumen-n1');
+  if(!cont) return;
+  const mesActual = labelMes(ipClaveNormal(actual));
+  const mesAnterior = labelMes(claveAnterior);
+  const ipt = f => f.iptj1t_pct * 100;
+  const deltaMensual = ipt(actual) - ipt(anterior);
+  const colorMensual = ipColorVariacion(actual.iptj1t_pct, anterior.iptj1t_pct, 'var(--text2)');
+  const fk = v => v.toLocaleString('es-CO', {maximumFractionDigits:0}) + ' kWh';
+
+  const tarjeta = (etiqueta, valor, sub, colorValor) => `<div class="be-resumen-tile">
+    <div class="etiqueta">${etiqueta}</div>
+    <div class="valor"${colorValor ? ` style="color:${colorValor}"` : ''}>${valor}</div>
+    ${sub ? `<div class="sub">${sub}</div>` : ''}
+  </div>`;
+
+  const tarjetas = [
+    tarjeta('IPTj,1,t Anual', ipt(actual).toFixed(2)+'%', mesActual),
+    tarjeta('PTj,1,t Anual (energía)', fk(actual.ptj1t_kwh), mesActual),
+    tarjeta('Variación Mensual', `${deltaMensual>=0?'▲':'▼'} ${Math.abs(deltaMensual).toFixed(2)} pp`, `${mesAnterior} → ${mesActual}`, colorMensual),
+  ];
+  if(filaAnioAnterior && filaAnioAnterior.iptj1t_pct != null){
+    const deltaAnual = ipt(actual) - ipt(filaAnioAnterior);
+    const colorAnual = ipColorVariacion(actual.iptj1t_pct, filaAnioAnterior.iptj1t_pct, 'var(--text2)');
+    tarjetas.push(tarjeta('Variación Anual', `${deltaAnual>=0?'▲':'▼'} ${Math.abs(deltaAnual).toFixed(2)} pp`, `${labelMes(claveAnioAnterior)} → ${mesActual}`, colorAnual));
+  }
+  cont.innerHTML = tarjetas.join('');
 }
 
 async function cargarIndicadorPerdidasNivel1(){
