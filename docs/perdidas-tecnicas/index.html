@@ -1116,7 +1116,9 @@ tfoot td:first-child{text-align:left}
   </div>
 
   <div class="card">
-    <div class="be-tabla-creadas-titulo">Indicador Mensual (sin ventana móvil)</div>
+    <div style="text-align:center;margin-bottom:8px">
+      <div style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Indicador Mensual</div>
+    </div>
     <div class="ip-mensual-grid">
       <div class="chart-wrap" style="height:320px"><canvas id="ch-ip-mensual"></canvas></div>
       <div style="display:flex;flex-direction:column;gap:8px;min-height:0">
@@ -1148,6 +1150,14 @@ tfoot td:first-child{text-align:left}
       <input type="date" id="ip-n1-chart-hasta" onchange="ipRenderChartNivel1(); ipRenderTablaNivel1();">
     </div>
     <div class="chart-wrap" style="height:420px"><canvas id="ch-ip-nivel1"></canvas></div>
+  </div>
+
+  <div class="card">
+    <div class="fbar" style="margin-bottom:6px">
+      <label title="El análisis cambia cada mes -- elegí un mes anterior para ver cómo se veía esa nota en su momento">Mes del análisis</label>
+      <select id="ip-analisis-n1-mes" onchange="ipGenerarAnalisisNivel1()" style="flex:1;min-width:0"></select>
+    </div>
+    <div id="ip-analisis-n1-comentario" class="ip-comentario-caja"></div>
   </div>
 
   <div class="card">
@@ -2359,14 +2369,19 @@ async function cargarDashboardNivel3(){
     </div>`;
   }).join('');
 
-  for(const e of nivel3){
+  // Una zona por vez, en secuencia (await dentro de un for), tardaba
+  // N_zonas × (tiempo de cada zona) -- con 6 zonas y ~1-2s cada una eran
+  // varios segundos solo para este panel. Cada zona escribe en SUS PROPIOS
+  // ids del DOM (prefijo ini-n3-{id}), así que no hay ningún estado
+  // compartido que pise a otra -- correrlas todas en paralelo es seguro.
+  await Promise.all(nivel3.map(async e => {
     const pref = `ini-n3-${e.id}`;
     let p;
     try{ p = await _iniCalcularPanelesBalance(e.id, ctx); }
     catch(err){
       msg.className = 'tm-modal-msg err';
       msg.textContent = `No se pudo cargar el balance de ${e.nombre}.`;
-      continue;
+      return;
     }
     document.getElementById(`${pref}-ant-diario`).textContent = fmtPct(p.diarioAnt);
     document.getElementById(`${pref}-ant-mensual`).textContent = fmtPct(p.mensualAnt);
@@ -2376,7 +2391,7 @@ async function cargarDashboardNivel3(){
     document.getElementById(`${pref}-act-anual`).textContent = fmtPct(p.anualAct);
     _iniRenderVariacion(`${pref}-var-mensual`, p.mensualAnt, p.mensualAct);
     _iniRenderVariacion(`${pref}-var-anual`, p.anualAnt, p.anualAct);
-  }
+  }));
 }
 
 // Variación en puntos porcentuales (pp) entre mes anterior y mes actual --
@@ -6910,7 +6925,11 @@ function ipUltimasFilasReales(){
 
 // Tarjetas de resumen bajo el gráfico principal -- mismo patrón visual que
 // be-resumen-tile (Balances por Estructura), siempre mirando el último mes
-// real disponible, sin importar el filtro de fecha del gráfico.
+// real disponible, sin importar el filtro de fecha del gráfico. Cubre TANTO
+// el indicador anualizado (IPT/PT -- ventana móvil de 12 meses, lo que
+// antes se llamaba "Mes Actual/Anterior" pero en realidad es un valor
+// ANUAL) como el indicador mensual puro (IPT Mensual, sin ventana), más la
+// variación anual de cada uno (no solo la mensual).
 function ipRenderResumenPrincipal(){
   const cont = document.getElementById('ip-resumen-principal');
   if(!cont) return;
@@ -6920,6 +6939,11 @@ function ipRenderResumenPrincipal(){
   const anterior = reales[reales.length - 2];
   const mesActual = labelMes(ipClaveNormal(actual));
   const mesAnterior = labelMes(ipClaveNormal(anterior));
+
+  const [anioAct, mesAct] = ipClaveNormal(actual).split('-').map(Number);
+  const claveAnioAnterior = `${anioAct-1}-${String(mesAct).padStart(2,'0')}`;
+  const filaAnioAnterior = IP_MAPA_POR_NORMAL.get(claveAnioAnterior);
+  const mesAnioAnterior = labelMes(claveAnioAnterior);
 
   const deltaIpt = (actual.ipt_pct - anterior.ipt_pct) * 100;
   const deltaPt = actual.pt_kwh - anterior.pt_kwh;
@@ -6936,22 +6960,42 @@ function ipRenderResumenPrincipal(){
     ${sub ? `<div class="sub">${sub}</div>` : ''}
   </div>`;
 
-  cont.innerHTML = [
-    tarjeta('IPT Mes Actual', (actual.ipt_pct*100).toFixed(2)+'%', mesActual),
-    tarjeta('IPT Mes Anterior', (anterior.ipt_pct*100).toFixed(2)+'%', mesAnterior),
-    tarjeta('Variación IPT', `${iconoIpt} ${Math.abs(deltaIpt).toFixed(2)} pp`, `${mesAnterior} → ${mesActual}`, colorIpt),
-    tarjeta('PT Mes Actual', fk(actual.pt_kwh), mesActual),
-    tarjeta('PT Mes Anterior', fk(anterior.pt_kwh), mesAnterior),
-    tarjeta('Variación PT', `${iconoPt} ${fk(Math.abs(deltaPt))} (${Math.abs(deltaPtPct).toFixed(1)}%)`, `${mesAnterior} → ${mesActual}`, colorPt),
-  ].join('');
+  const tarjetas = [
+    tarjeta('IPT Anual', (actual.ipt_pct*100).toFixed(2)+'%', mesActual),
+    tarjeta('IPT Anual Anterior', (anterior.ipt_pct*100).toFixed(2)+'%', mesAnterior),
+    tarjeta('Variación Mensual (IPT Anual)', `${iconoIpt} ${Math.abs(deltaIpt).toFixed(2)} pp`, `${mesAnterior} → ${mesActual}`, colorIpt),
+    tarjeta('PT Anual', fk(actual.pt_kwh), mesActual),
+    tarjeta('PT Anual Anterior', fk(anterior.pt_kwh), mesAnterior),
+    tarjeta('Variación Mensual (PT Anual)', `${iconoPt} ${fk(Math.abs(deltaPt))} (${Math.abs(deltaPtPct).toFixed(1)}%)`, `${mesAnterior} → ${mesActual}`, colorPt),
+  ];
+
+  if(filaAnioAnterior && filaAnioAnterior.ipt_pct != null){
+    const deltaAnualIpt = (actual.ipt_pct - filaAnioAnterior.ipt_pct) * 100;
+    const colorAnualIpt = ipColorVariacion(actual.ipt_pct, filaAnioAnterior.ipt_pct, 'var(--text2)');
+    tarjetas.push(tarjeta('Variación Anual (IPT Anual)', `${deltaAnualIpt>=0?'▲':'▼'} ${Math.abs(deltaAnualIpt).toFixed(2)} pp`, `${mesAnioAnterior} → ${mesActual}`, colorAnualIpt));
+  }
+
+  if(actual.pct_perdida_mensual != null){
+    tarjetas.push(tarjeta('IPT Mensual', (actual.pct_perdida_mensual*100).toFixed(2)+'%', mesActual));
+  }
+  if(filaAnioAnterior && filaAnioAnterior.pct_perdida_mensual != null){
+    tarjetas.push(tarjeta('IPT Mensual (año anterior)', (filaAnioAnterior.pct_perdida_mensual*100).toFixed(2)+'%', mesAnioAnterior));
+  }
+  if(actual.pct_perdida_mensual != null && filaAnioAnterior && filaAnioAnterior.pct_perdida_mensual != null){
+    const deltaAnualMensual = (actual.pct_perdida_mensual - filaAnioAnterior.pct_perdida_mensual) * 100;
+    const colorAnualMensual = ipColorVariacion(actual.pct_perdida_mensual, filaAnioAnterior.pct_perdida_mensual, 'var(--text2)');
+    tarjetas.push(tarjeta('Variación Anual (IPT Mensual)', `${deltaAnualMensual>=0?'▲':'▼'} ${Math.abs(deltaAnualMensual).toFixed(2)} pp`, `${mesAnioAnterior} → ${mesActual}`, colorAnualMensual));
+  }
+
+  cont.innerHTML = tarjetas.join('');
 }
 
 // Selector "Mes del análisis" -- deja ver cómo era la nota de Análisis IPT
 // en cualquier mes real anterior, no solo el último. Se repuebla cada vez
 // que cambian los datos (nuevo mes cargado / recalculo), tratando de
 // mantener la selección que el usuario ya tenía hecha.
-function ipPoblarSelectorAnalisisMes(){
-  const sel = document.getElementById('ip-analisis-mes');
+function ipPoblarSelectorAnalisisMes(idSelect='ip-analisis-mes'){
+  const sel = document.getElementById(idSelect);
   if(!sel) return;
   const anterior = sel.value;
   const reales = ipUltimasFilasReales();
@@ -7030,11 +7074,70 @@ function ipGenerarAnalisisPrincipal(){
   `;
 }
 
+// Mismo tipo de análisis que ipGenerarAnalisisPrincipal, pero para
+// IPTj,1,t/PTj,1,t (Nivel 1) -- mensual y anual. No hay un tercer párrafo
+// de "indicador mensual puro" acá porque Nivel 1 no tiene ese campo
+// separado (a diferencia del total, que sí trae pct_perdida_mensual).
+function ipGenerarAnalisisNivel1(){
+  const cont = document.getElementById('ip-analisis-n1-comentario');
+  if(!cont) return;
+  const reales = ipUltimasFilasReales();
+  if(reales.length < 2){
+    cont.innerHTML = '<div class="ip-comentario-titulo">Análisis</div><p>Todavía no hay suficientes meses reales para analizar la variación.</p>';
+    return;
+  }
+  const sel = document.getElementById('ip-analisis-n1-mes');
+  let idxSel = reales.length - 1;
+  if(sel && sel.value){
+    const i = reales.findIndex(f => ipClaveNormal(f) === sel.value);
+    if(i > 0) idxSel = i;
+  }
+  const actual = reales[idxSel];
+  const anterior = reales[idxSel - 1];
+  const claveActual = ipClaveNormal(actual);
+  const claveAnterior = ipClaveNormal(anterior);
+  const [anioAct, mesAct] = claveActual.split('-').map(Number);
+  const mesActualTitulo = labelMes(claveActual);
+  const mesActualLargo = labelMesLargo(claveActual);
+  const mesAnteriorLargo = labelMesLargo(claveAnterior);
+  const signo = v => v >= 0 ? '+' : '';
+
+  if(actual.iptj1t_pct == null || anterior.iptj1t_pct == null){
+    cont.innerHTML = `<div class="ip-comentario-titulo">Análisis IPTj,1,t -- ${mesActualTitulo}</div><p>Todavía no hay suficiente histórico de Nivel 1 para ese mes.</p>`;
+    return;
+  }
+
+  const ipt = f => f.iptj1t_pct * 100;
+  const iptActual = ipt(actual), iptAnterior = ipt(anterior);
+  const deltaMensual = iptActual - iptAnterior;
+  const subeMensual = deltaMensual > 0;
+  const deltaPtKwh = actual.ptj1t_kwh - anterior.ptj1t_kwh;
+  const fKwh = v => Math.round(v).toLocaleString('es-CO');
+
+  const claveAnioAnterior = `${anioAct-1}-${String(mesAct).padStart(2,'0')}`;
+  const filaAnioAnterior = IP_MAPA_POR_NORMAL.get(claveAnioAnterior);
+
+  let parrafoAnual = '';
+  if(filaAnioAnterior && filaAnioAnterior.iptj1t_pct != null){
+    const deltaAnual = iptActual - ipt(filaAnioAnterior);
+    const subeAnual = deltaAnual > 0;
+    parrafoAnual = ` Frente al mismo mes del año anterior (${labelMesLargo(claveAnioAnterior)}), el IPTj,1,t era de <b>${ipt(filaAnioAnterior).toFixed(2)}%</b>, por lo que la variación anual es de <b>${signo(deltaAnual)}${deltaAnual.toFixed(2)} pp</b> (${subeAnual?'aumenta':'disminuye'}).`;
+  }
+
+  cont.innerHTML = `
+    <div class="ip-comentario-titulo">Análisis IPTj,1,t -- ${mesActualTitulo}</div>
+    <div class="ip-comentario-cifra ${subeMensual?'sube':'baja'}">${iptActual.toFixed(2)}% (${fKwh(actual.ptj1t_kwh)} kWh/Anual)</div>
+    <p>El IPTj,1,t (Nivel 1) pasó de <b>${iptAnterior.toFixed(2)}%</b> en ${mesAnteriorLargo} a <b>${iptActual.toFixed(2)}%</b> en ${mesActualLargo}, lo que equivale a pasar de una pérdida de <b>${fKwh(anterior.ptj1t_kwh)} kWh/Anual</b> a <b>${fKwh(actual.ptj1t_kwh)} kWh/Anual</b> -- un ${subeMensual?'incremento':'descenso'} de <b>${Math.abs(deltaMensual).toFixed(2)} pp</b>, equivalente a <b>${signo(deltaPtKwh)}${fKwh(Math.abs(deltaPtKwh))} kWh/Anual</b>.${parrafoAnual}</p>
+  `;
+}
+
 async function cargarIndicadorPerdidasNivel1(){
   if(!(await ipAsegurarDatosCargados())) return;
   ipPoblarRangoFechas('ip-n1-chart-desde', 'ip-n1-chart-hasta');
   ipRenderChartNivel1();
   ipRenderTablaNivel1();
+  ipPoblarSelectorAnalisisMes('ip-analisis-n1-mes');
+  ipGenerarAnalisisNivel1();
 }
 
 function ipPoblarRangoFechas(idDesde, idHasta){
@@ -7110,6 +7213,8 @@ async function ipGuardarVersion(){
   ipGenerarAnalisisPrincipal();
     ipRenderChartNivel1();
     ipRenderTablaNivel1();
+    ipPoblarSelectorAnalisisMes('ip-analisis-n1-mes');
+    ipGenerarAnalisisNivel1();
     ipRenderChartMensual();
     ipRenderTablaNivel();
     msg.className = 'tm-modal-msg ok';
