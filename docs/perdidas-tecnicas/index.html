@@ -1102,11 +1102,6 @@ tfoot td:first-child{text-align:left}
   </div>
 
   <div class="card">
-    <div class="be-tabla-creadas-titulo" style="margin-bottom:8px">Análisis IPT</div>
-    <div id="ip-analisis-principal" class="ip-comentario-caja"></div>
-  </div>
-
-  <div class="card">
     <div class="be-tabla-creadas-titulo ip-tabla-compacta-titulo">Detalle por Nivel de Tensión</div>
     <div class="be-tabla-scroll ip-tabla-compacta" style="max-height:720px">
       <table class="be-tabla-creadas">
@@ -6912,12 +6907,18 @@ function ipRenderResumenPrincipal(){
   ].join('');
 }
 
-// Análisis corto del IPT (el indicador de ventana móvil de IP_REG, no el
-// mensual) -- variación mes a mes y año a año respecto al último mes real
-// ("el mes que salió"), en un párrafo, mismo estilo que el análisis del
-// indicador mensual.
+// Análisis del IPT (ventana móvil de IP_REG) -- vive en la tarjeta de
+// abajo, al lado del gráfico "Indicador Mensual" (reemplazó al análisis
+// mes a mes del % Pérdida Mensual que estaba ahí antes). Cubre:
+//  1) Variación MENSUAL del IPT, explicada por el mes que "sale" y el que
+//     "entra" a la ventana móvil de 12 meses (cada mes que pasa, el más
+//     viejo de los 12 se cae y el nuevo se suma -- si el que entra tiene
+//     más pérdida propia que el que sale, el IPT sube, y viceversa).
+//  2) Variación ANUAL del IPT (mismo mes, un año antes).
+//  3) Variación ANUAL del indicador MENSUAL puro (% Pérdida Mensual, sin
+//     ventana móvil) -- mismo mes, un año antes.
 function ipGenerarAnalisisPrincipal(){
-  const cont = document.getElementById('ip-analisis-principal');
+  const cont = document.getElementById('ip-mensual-comentario');
   if(!cont) return;
   const reales = ipUltimasFilasReales();
   if(reales.length < 2){
@@ -6929,26 +6930,55 @@ function ipGenerarAnalisisPrincipal(){
   const claveActual = ipClaveNormal(actual);
   const claveAnterior = ipClaveNormal(anterior);
   const [anioAct, mesAct] = claveActual.split('-').map(Number);
-  const claveAnioAnterior = `${anioAct-1}-${String(mesAct).padStart(2,'0')}`;
-  const filaAnioAnterior = IP_MAPA_POR_NORMAL.get(claveAnioAnterior);
+  const idxActual = anioAct*12 + (mesAct-1);
+  const mesActualTxt = labelMes(claveActual);
+  const mesAnteriorTxt = labelMes(claveAnterior);
+  const signo = v => v >= 0 ? '+' : '';
 
   const ipt = f => f.ipt_pct * 100;
   const deltaMensual = ipt(actual) - ipt(anterior);
   const subeMensual = deltaMensual > 0;
-  const mesActualTxt = labelMes(claveActual);
-  const mesAnteriorTxt = labelMes(claveAnterior);
 
-  let parrafoAnual = '';
+  // Mes que sale de la ventana móvil (el más antiguo de los 12 que
+  // alimentaban el mes anterior) y mes que entra (el actual, que es
+  // justamente el nuevo mes que se suma) -- comparados por su propia
+  // pérdida MENSUAL (sin ventana), para explicar hacia dónde empuja el IPT.
+  const idxSale = idxActual - 12;
+  const claveSale = `${Math.floor(idxSale/12)}-${String((idxSale%12+12)%12+1).padStart(2,'0')}`;
+  const filaSale = IP_MAPA_POR_NORMAL.get(claveSale);
+  let fraseVentana = '';
+  if(filaSale && filaSale.pct_perdida_mensual != null && actual.pct_perdida_mensual != null){
+    const pctSale = filaSale.pct_perdida_mensual * 100;
+    const pctEntra = actual.pct_perdida_mensual * 100;
+    const empuja = pctEntra > pctSale;
+    fraseVentana = ` La ventana móvil de 12 meses ahora suma a <b>${mesActualTxt}</b> (pérdida mensual propia de ${pctEntra.toFixed(2)}%) y deja de contar a <b>${labelMes(claveSale)}</b> (${pctSale.toFixed(2)}%) -- como el mes que entra tiene una pérdida ${empuja?'mayor':'menor'} que el que sale, eso ${empuja?'empuja el IPT hacia arriba':'ayuda a que el IPT baje'}.`;
+  }
+
+  const claveAnioAnterior = `${anioAct-1}-${String(mesAct).padStart(2,'0')}`;
+  const filaAnioAnterior = IP_MAPA_POR_NORMAL.get(claveAnioAnterior);
+
+  let parrafoAnualIpt = '';
   if(filaAnioAnterior && filaAnioAnterior.ipt_pct != null){
     const deltaAnual = ipt(actual) - ipt(filaAnioAnterior);
     const subeAnual = deltaAnual > 0;
-    parrafoAnual = ` Frente al mismo mes del año anterior (${labelMes(claveAnioAnterior)}: <b>${ipt(filaAnioAnterior).toFixed(2)}%</b>), la variación anual es de <b>${subeAnual?'+':''}${deltaAnual.toFixed(2)} pp</b> (${subeAnual?'subió':'bajó'}).`;
+    parrafoAnualIpt = `Frente al IPT del mismo mes del año anterior (${labelMes(claveAnioAnterior)}: <b>${ipt(filaAnioAnterior).toFixed(2)}%</b>), la variación anual es de <b>${signo(deltaAnual)}${deltaAnual.toFixed(2)} pp</b> (${subeAnual?'subió':'bajó'}).`;
+  }
+
+  let parrafoAnualMensual = '';
+  if(actual.pct_perdida_mensual != null && filaAnioAnterior && filaAnioAnterior.pct_perdida_mensual != null){
+    const mensualActual = actual.pct_perdida_mensual * 100;
+    const mensualAnioAnterior = filaAnioAnterior.pct_perdida_mensual * 100;
+    const deltaAnualMensual = mensualActual - mensualAnioAnterior;
+    const subeAnualMensual = deltaAnualMensual > 0;
+    parrafoAnualMensual = `El % de pérdida MENSUAL puro (sin ventana móvil) de ${mesActualTxt} fue <b>${mensualActual.toFixed(2)}%</b>, frente a <b>${mensualAnioAnterior.toFixed(2)}%</b> en ${labelMes(claveAnioAnterior)} un año antes -- variación anual de <b>${signo(deltaAnualMensual)}${deltaAnualMensual.toFixed(2)} pp</b> (${subeAnualMensual?'subió':'bajó'}).`;
   }
 
   cont.innerHTML = `
     <div class="ip-comentario-titulo">Análisis IPT -- ${mesActualTxt}</div>
     <div class="ip-comentario-cifra ${subeMensual?'sube':'baja'}">${subeMensual?'▲':'▼'} ${Math.abs(deltaMensual).toFixed(2)} pp (mensual)</div>
-    <p>El Índice de Pérdidas Totales (IPT) del último mes disponible (<b>${mesActualTxt}</b>) fue de <b>${ipt(actual).toFixed(2)}%</b>, frente a <b>${ipt(anterior).toFixed(2)}%</b> en ${mesAnteriorTxt} -- una variación mensual de <b>${subeMensual?'+':''}${deltaMensual.toFixed(2)} pp</b> (${subeMensual?'subió':'bajó'}).${parrafoAnual}</p>
+    <p>El IPT (ventana móvil de 12 meses) pasó de <b>${ipt(anterior).toFixed(2)}%</b> en ${mesAnteriorTxt} a <b>${ipt(actual).toFixed(2)}%</b> en ${mesActualTxt}.${fraseVentana}</p>
+    ${parrafoAnualIpt ? `<p>${parrafoAnualIpt}</p>` : ''}
+    ${parrafoAnualMensual ? `<p>${parrafoAnualMensual}</p>` : ''}
   `;
 }
 
@@ -7638,58 +7668,6 @@ function ipRenderChartMensual(){
       },
     },
   });
-
-  ipGenerarComentarioMensual(visibles);
-}
-
-// Explicación matemática (no requiere IA/LLM externo, que no está
-// integrado en esta app) de por qué el % de pérdida mensual subió o
-// bajó: compara los dos últimos meses reales disponibles y descompone
-// la variación de la pérdida en su origen (cambio en energía de
-// entrada vs. cambio en energía de salida facturada), ya que
-// Pérdida = Entrada - Salida.
-function ipGenerarComentarioMensual(visibles){
-  const cont = document.getElementById('ip-mensual-comentario');
-  if(!cont) return;
-  if(visibles.length < 2){
-    cont.innerHTML = '<div class="ip-comentario-titulo">Análisis</div><p>Se necesitan al menos dos meses con datos reales en el rango seleccionado para explicar la variación.</p>';
-    return;
-  }
-  const actual = visibles[visibles.length - 1];
-  const anterior = visibles[visibles.length - 2];
-  const pctActual = actual.pct_perdida_mensual * 100;
-  const pctAnterior = anterior.pct_perdida_mensual * 100;
-  const deltaPct = pctActual - pctAnterior;
-  const subio = deltaPct > 0;
-
-  const deltaEntrada = actual.entrada_mensual_kwh - anterior.entrada_mensual_kwh;
-  const deltaSalida = actual.salida_mensual_kwh - anterior.salida_mensual_kwh;
-  const deltaPerdida = actual.perdida_mensual_kwh - anterior.perdida_mensual_kwh;
-  // Pérdida = Entrada - Salida => el impacto de cada variable sobre el
-  // cambio de la pérdida es +ΔEntrada y -ΔSalida. El "driver" dominante
-  // es el que tiene mayor valor absoluto.
-  const impactoEntrada = deltaEntrada;
-  const impactoSalida = -deltaSalida;
-  const driverEsEntrada = Math.abs(impactoEntrada) >= Math.abs(impactoSalida);
-
-  const fKwh = v => Math.abs(v).toLocaleString('es-CO', {maximumFractionDigits:0});
-  const mesActual = labelMes(ipClaveNormal(actual));
-  const mesAnterior = labelMes(ipClaveNormal(anterior));
-
-  let explicacion;
-  if(driverEsEntrada){
-    explicacion = `Esto se explica principalmente por ${deltaEntrada>=0?'un aumento':'una disminución'} de la energía de entrada al sistema (<b>${deltaEntrada>=0?'+':'-'}${fKwh(deltaEntrada)} kWh</b>), mientras la energía de salida facturada varió en ${deltaSalida>=0?'+':'-'}${fKwh(deltaSalida)} kWh.`;
-  } else {
-    explicacion = `Esto se explica principalmente por ${deltaSalida>=0?'un aumento':'una disminución'} de la energía de salida facturada (<b>${deltaSalida>=0?'+':'-'}${fKwh(deltaSalida)} kWh</b>), mientras la energía de entrada varió en ${deltaEntrada>=0?'+':'-'}${fKwh(deltaEntrada)} kWh.`;
-  }
-
-  cont.innerHTML = `
-    <div class="ip-comentario-titulo">Análisis ${mesAnterior} → ${mesActual}</div>
-    <div class="ip-comentario-cifra ${subio?'sube':'baja'}">${subio?'▲':'▼'} ${Math.abs(deltaPct).toFixed(2)} pp</div>
-    <p>El % de pérdida mensual pasó de <b>${pctAnterior.toFixed(2)}%</b> a <b>${pctActual.toFixed(2)}%</b> (${subio?'subió':'bajó'}) entre ${mesAnterior} y ${mesActual}.</p>
-    <p>La pérdida mensual pasó de <b>${fKwh(anterior.perdida_mensual_kwh)} kWh</b> a <b>${fKwh(actual.perdida_mensual_kwh)} kWh</b> (${deltaPerdida>=0?'+':'-'}${fKwh(deltaPerdida)} kWh).</p>
-    <p>${explicacion}</p>
-  `;
 }
 
 function labelMes(m){
