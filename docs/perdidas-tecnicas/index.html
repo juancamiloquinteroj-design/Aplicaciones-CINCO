@@ -3233,12 +3233,17 @@ function _beMedidorAfectaSeleccionar(valor){
 }
 
 let BE_ZONAS = [];  // valores de zona del operador (ver Parametrización · Color por zona) -- para el select de Balance por Nivel de Tensión
+let BE_MEDIDAS_INVENTADAS = [];  // [{usuario_id, formula}] -- ver listar_medidas_inventadas en el backend
 
 async function cargarBalancesEstructura(){
   // El mismo padrón de usuarios/medidores de Usuarios Telemedidos -- ahí
   // están los datos de entrada/salida, no hace falta duplicarlos.
   try{ BE_USUARIOS = DEMO ? [] : await apiGet('/api/telemedida/usuarios'); }catch(e){ BE_USUARIOS = []; }
   BE_PUNTOS = _beAgruparPorCustomerId(BE_USUARIOS);
+  // Medidas inventadas ya creadas en OTRAS estructuras -- el buscador de
+  // medidores las ofrece igual que uno real (ver beBuscarMedidor), para
+  // poder reusar la misma derivación sin volver a escribir la fórmula.
+  try{ BE_MEDIDAS_INVENTADAS = DEMO ? [] : await apiGet('/api/balances-estructura/medidas-inventadas'); }catch(e){ BE_MEDIDAS_INVENTADAS = []; }
   await _beCargarTodosCircuitos();
 
   try{ BE_ZONAS = DEMO ? [] : (await apiGet('/api/zona-colores')).map(z=>z.zona); }catch(e){ BE_ZONAS = []; }
@@ -3329,11 +3334,18 @@ function beBuscarMedidor(input){
   const lista = input.nextElementSibling;
   if(!texto){ lista.classList.add('hidden'); lista.innerHTML=''; return; }
   const coincidencias = BE_PUNTOS.filter(p => p.etiqueta.toLowerCase().includes(texto)).slice(0,20);
-  lista.innerHTML = coincidencias.length
-    ? coincidencias.map((p,i)=>
-        `<div class="be-buscador-opt${i===0?' activa':''}" data-customer-id="${_mselEsc(p.customer_id)}" data-etiqueta="${_mselEsc(p.etiqueta)}" onmousedown="beElegirMedidor(event,this)">${_mselEsc(p.etiqueta)}${p.main&&p.backup?' <span style="color:var(--text3)">(Principal + Respaldo)</span>':''}</div>`
-      ).join('')
-    : '<div class="be-buscador-vacio">Sin resultados</div>';
+  // Medidas inventadas de OTRAS estructuras (ver BE_MEDIDAS_INVENTADAS) --
+  // se ofrecen igual que un medidor real, marcadas con 🧮 para no
+  // confundirlas; elegir una copia su FÓRMULA en vez de un usuario_id/canal
+  // real (ver beElegirMedidor/_beLeerMedidor).
+  const coincidenciasInventadas = BE_MEDIDAS_INVENTADAS.filter(m => m.usuario_id.toLowerCase().includes(texto)).slice(0,10);
+  const htmlNormales = coincidencias.map((p,i)=>
+    `<div class="be-buscador-opt${i===0&&!coincidenciasInventadas.length?' activa':''}" data-customer-id="${_mselEsc(p.customer_id)}" data-etiqueta="${_mselEsc(p.etiqueta)}" onmousedown="beElegirMedidor(event,this)">${_mselEsc(p.etiqueta)}${p.main&&p.backup?' <span style="color:var(--text3)">(Principal + Respaldo)</span>':''}</div>`
+  ).join('');
+  const htmlInventadas = coincidenciasInventadas.map((m,i)=>
+    `<div class="be-buscador-opt${i===0?' activa':''}" data-formula="${_mselEsc(m.formula)}" data-etiqueta="${_mselEsc(m.usuario_id)}" onmousedown="beElegirMedidor(event,this)">🧮 ${_mselEsc(m.usuario_id)} <span style="color:var(--text3)">(medida inventada)</span></div>`
+  ).join('');
+  lista.innerHTML = (htmlInventadas + htmlNormales) || '<div class="be-buscador-vacio">Sin resultados</div>';
   lista.classList.remove('hidden');
 }
 
@@ -3342,8 +3354,19 @@ function beElegirMedidor(ev, opt){
   const lista = opt.parentElement;
   const input = lista.previousElementSibling;
   input.value = opt.dataset.etiqueta;
-  input.dataset.customerId = opt.dataset.customerId;
   lista.classList.add('hidden');
+  if(opt.dataset.formula){
+    input.dataset.formula = opt.dataset.formula;
+    delete input.dataset.customerId;
+    // No hay Principal/Respaldo que elegir para una medida inventada --
+    // se apaga el desplegable en vez de dejarlo con la última opción de
+    // otro medidor pegada.
+    const fuenteSelect = input.closest('.be-buscador').nextElementSibling;
+    if(fuenteSelect && fuenteSelect.tagName === 'SELECT'){ fuenteSelect.innerHTML = ''; fuenteSelect.disabled = true; }
+    return;
+  }
+  delete input.dataset.formula;
+  input.dataset.customerId = opt.dataset.customerId;
   _beActualizarFuenteSelect(input);
 }
 
@@ -3484,6 +3507,10 @@ function beAgregarFila(tipo, prefijo='be'){
 function _beLeerMedidor(input){
   const texto = input.value.trim();
   if(!texto) return null;
+  // Medida inventada elegida del buscador (ver beElegirMedidor) -- se
+  // devuelve su FÓRMULA en vez de un usuario_id/canal real; el que llama
+  // (_beLeerFilaMedidor) reconoce esto por la presencia de .formula.
+  if(input.dataset.formula) return {usuario_id: texto, formula: input.dataset.formula};
   const buscador = input.closest('.be-buscador');
   const fuenteSelect = buscador && buscador.nextElementSibling;
   if(fuenteSelect && fuenteSelect.tagName === 'SELECT' && fuenteSelect.value){
@@ -3518,6 +3545,12 @@ function _beLeerFilaMedidor(fila){
 
   const principal = _beLeerMedidor(fila.querySelector('.be-fila-usuario'));
   if(!principal) return null;
+  // El buscador normal también puede devolver una medida inventada (ver
+  // beElegirMedidor) -- si el usuario la eligió ahí en vez de tildar el
+  // checkbox, se reusa su fórmula igual, sin canal/respaldo (no aplican).
+  if(principal.formula){
+    return {usuario_id: principal.usuario_id, canal: 'canal1', usuario_id_back: null, canal_back: null, vigente_desde, es_cliente, resta, formula: principal.formula};
+  }
   const canal = fila.querySelector('.be-fila-canal').value;
   const respaldoInput = fila.querySelector('.be-fila-respaldo-usuario');
   let usuario_id_back = null, canal_back = null;
@@ -6593,7 +6626,9 @@ async function beedGuardarVigencia(btn, tipo, orden){
   }
   try{
     await apiPost(`/api/balances-estructura/${BE_EDITAR_ID}/medidores/vigencia`, {
-      tipo, orden, usuario_id: principal.usuario_id, canal, usuario_id_back, canal_back, vigente_desde: desde,
+      tipo, orden, usuario_id: principal.usuario_id, canal: principal.formula ? 'canal1' : canal,
+      usuario_id_back: principal.formula ? null : usuario_id_back, canal_back: principal.formula ? null : canal_back,
+      vigente_desde: desde, formula: principal.formula || null,
     });
     await recargarModalEditarEstructura();
     await cargarListaEstructuras();
