@@ -742,6 +742,22 @@ tfoot td:first-child{text-align:left}
   </div>
   <div id="ini-n3-msg" class="tm-modal-msg"></div>
 
+  <div id="ini-ip-card" class="card hidden">
+    <div style="text-align:center;margin-bottom:8px">
+      <div style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Indicador de Pérdidas Totales (IP_REG)</div>
+    </div>
+    <div class="ip-mensual-grid">
+      <div class="chart-wrap" style="height:320px"><canvas id="ch-ini-ip-mensual"></canvas></div>
+      <div style="display:flex;flex-direction:column;gap:8px;min-height:0">
+        <div class="fbar" style="margin-bottom:0">
+          <label title="El análisis cambia cada mes -- elegí un mes anterior para ver cómo se veía esa nota en su momento">Mes del análisis</label>
+          <select id="ini-ip-analisis-mes" onchange="ipGenerarAnalisisInicio()" style="flex:1;min-width:0"></select>
+        </div>
+        <div id="ini-ip-mensual-comentario" class="ip-comentario-caja" style="flex:1"></div>
+      </div>
+    </div>
+  </div>
+
   <div class="mod-grid">
     <div class="mod-card active" onclick="mostrarVista('inicio')">
       <span class="mc-icon">🏠</span>
@@ -758,11 +774,10 @@ tfoot td:first-child{text-align:left}
       <div class="mc-title">Usuarios Telemedidos</div>
       <div class="mc-desc">Consumo diario por medidor.</div>
     </div>
-    <div class="mod-card disabled">
-      <span class="mc-badge b-soon">PRÓXIMAMENTE</span>
+    <div class="mod-card" onclick="mostrarVista('ip-reg')">
       <span class="mc-icon">📊</span>
       <div class="mc-title">Indicador de Pérdidas</div>
-      <div class="mc-desc">Nuevo módulo, en construcción.</div>
+      <div class="mc-desc">IP_Reg -- CREG 015/2018 Cap. 7.</div>
     </div>
     <div class="mod-card" onclick="mostrarVista('be-ver')">
       <span class="mc-icon">🧮</span>
@@ -2240,7 +2255,23 @@ async function mostrarVista(nombre){
   if(nombre==='inicio'){
     await cargarDashboardInicio();
     await cargarDashboardNivel3();
+    await cargarDashboardIniIpReg();
   }
+}
+
+// Tarjeta de Inicio: mismo chart+análisis del "Indicador Mensual" de
+// IP_Reg (ver vista-ip-reg), pero con sus PROPIOS ids -- un id de HTML no
+// puede repetirse en dos vistas a la vez. Reusa IP_REG_FILAS (compartido
+// con IP_Reg y Nivel de Tensión 1 -- lo carga quien llegue primero) para
+// no repetir el pedido si ya se entró a IP_Reg antes.
+async function cargarDashboardIniIpReg(){
+  const card = document.getElementById('ini-ip-card');
+  if(DEMO){ card.classList.add('hidden'); return; }
+  if(!(await ipAsegurarDatosCargados()) || !IP_REG_FILAS.length){ card.classList.add('hidden'); return; }
+  card.classList.remove('hidden');
+  ipPoblarSelectorAnalisisMes('ini-ip-analisis-mes');
+  ipGenerarAnalisisInicio();
+  ipRenderChartMensualInicio();
 }
 
 // Tarjeta de Inicio: pérdida de balance del ÚNICO "Balance por Nivel de
@@ -6952,7 +6983,7 @@ async function apiDelete(path){
    -- confirmado contra el Excel: la fila con fecha regulatoria sep-2026
    (fecha real jun-2026) da IPT=15.59%, exactamente lo esperado. */
 let IP_REG_FILAS = [];
-let chIpReg = null, chIpNivel1 = null, chIpMensual = null;
+let chIpReg = null, chIpNivel1 = null, chIpMensual = null, chIniIpMensual = null;
 let IP_MOSTRAR_TENDENCIA = false;
 let IP_MOSTRAR_PROYECCION = true;
 let IP_PT_OCULTO = true;  // al abrir el módulo, solo se ve IPT (%) + proyección -- PT se prende clickeando su nombre en la leyenda
@@ -7137,6 +7168,67 @@ function ipGenerarAnalisisPrincipal(){
     return;
   }
   const sel = document.getElementById('ip-analisis-mes');
+  let idxSel = reales.length - 1;
+  if(sel && sel.value){
+    const i = reales.findIndex(f => ipClaveNormal(f) === sel.value);
+    if(i > 0) idxSel = i;
+  }
+  const actual = reales[idxSel];
+  const anterior = reales[idxSel - 1];
+  const claveActual = ipClaveNormal(actual);
+  const claveAnterior = ipClaveNormal(anterior);
+  const [anioAct, mesAct] = claveActual.split('-').map(Number);
+  const mesActualTitulo = labelMes(claveActual);
+  const mesActualLargo = labelMesLargo(claveActual);
+  const mesAnteriorLargo = labelMesLargo(claveAnterior);
+  const mesActualCorto = labelMesLargo(claveActual, false);
+  const signo = v => v >= 0 ? '+' : '';
+
+  const ipt = f => f.ipt_pct * 100;
+  const iptActual = ipt(actual), iptAnterior = ipt(anterior);
+  const deltaMensual = iptActual - iptAnterior;
+  const subeMensual = deltaMensual > 0;
+  const deltaPtKwh = actual.pt_kwh - anterior.pt_kwh;
+  const fKwh = v => Math.round(v).toLocaleString('es-CO');
+
+  const claveAnioAnterior = `${anioAct-1}-${String(mesAct).padStart(2,'0')}`;
+  const filaAnioAnterior = IP_MAPA_POR_NORMAL.get(claveAnioAnterior);
+
+  let parrafoAnualIpt = '';
+  if(filaAnioAnterior && filaAnioAnterior.ipt_pct != null){
+    const deltaAnual = iptActual - ipt(filaAnioAnterior);
+    const subeAnual = deltaAnual > 0;
+    parrafoAnualIpt = ` Frente al mismo mes del año anterior (${labelMesLargo(claveAnioAnterior)}), el IPT era de <b>${ipt(filaAnioAnterior).toFixed(2)}%</b>, por lo que la variación anual es de <b>${signo(deltaAnual)}${deltaAnual.toFixed(2)} pp</b> (${subeAnual?'aumenta':'disminuye'}).`;
+  }
+
+  let parrafoMensual = '';
+  if(actual.pct_perdida_mensual != null && filaAnioAnterior && filaAnioAnterior.pct_perdida_mensual != null){
+    const mensualActual = actual.pct_perdida_mensual * 100;
+    const mensualAnioAnterior = filaAnioAnterior.pct_perdida_mensual * 100;
+    const masAlto = mensualActual > mensualAnioAnterior;
+    parrafoMensual = `De acuerdo con el IPT mensual, se tiene que para ${mesActualCorto.toLowerCase()}-${anioAct} hay un IPT mensual de <b>${mensualActual.toFixed(2)}%</b>, donde sale un indicador de <b>${mensualAnioAnterior.toFixed(2)}%</b> (${labelMesLargo(claveAnioAnterior)}) -- por lo cual entra un indicador mensual ${masAlto?'más alto':'más bajo'} que el saliente del año anterior.`;
+  }
+
+  cont.innerHTML = `
+    <div class="ip-comentario-titulo">Análisis IPT -- ${mesActualTitulo}</div>
+    <div class="ip-comentario-cifra ${subeMensual?'sube':'baja'}">${iptActual.toFixed(2)}% (${fKwh(actual.pt_kwh)} kWh/Anual)</div>
+    <p>El IPT pasó de <b>${iptAnterior.toFixed(2)}%</b> en ${mesAnteriorLargo} a <b>${iptActual.toFixed(2)}%</b> en ${mesActualLargo}, lo que equivale a pasar de una pérdida de <b>${fKwh(anterior.pt_kwh)} kWh/Anual</b> a <b>${fKwh(actual.pt_kwh)} kWh/Anual</b> -- un ${subeMensual?'incremento':'descenso'} de <b>${Math.abs(deltaMensual).toFixed(2)} pp</b>, equivalente a <b>${signo(deltaPtKwh)}${fKwh(Math.abs(deltaPtKwh))} kWh/Anual</b>.${parrafoAnualIpt}</p>
+    ${parrafoMensual ? `<p>${parrafoMensual}</p>` : ''}
+  `;
+}
+
+// Misma nota que ipGenerarAnalisisPrincipal, duplicada con ids propios
+// para la tarjeta de Inicio (ver cargarDashboardIniIpReg) -- un id de HTML
+// no puede repetirse en dos vistas visibles a la vez.
+function ipGenerarAnalisisInicio(){
+  const cont = document.getElementById('ini-ip-mensual-comentario');
+  if(!cont) return;
+  const reales = ipUltimasFilasReales();
+  if(reales.length < 2){
+    cont.innerHTML = '<div class="ip-comentario-titulo">Análisis</div><p>Todavía no hay suficientes meses reales para analizar la variación.</p>';
+    return;
+  }
+  const sel = document.getElementById('ini-ip-analisis-mes');
   let idxSel = reales.length - 1;
   if(sel && sel.value){
     const i = reales.findIndex(f => ipClaveNormal(f) === sel.value);
@@ -7925,6 +8017,68 @@ function ipRenderChartMensual(){
 
   if(chIpMensual) chIpMensual.destroy();
   chIpMensual = new Chart(document.getElementById('ch-ip-mensual'), {
+    plugins:[tmPluginCrosshair],
+    data:{
+      labels: etiquetas,
+      datasets:[
+        {type:'bar', label:'Pérdida Mensual (kWh)', yAxisID:'y', order:2,
+          data: visibles.map(f=>f.perdida_mensual_kwh), backgroundColor:'rgba(67,97,238,.35)', borderColor:'#4361ee', borderWidth:1},
+        {type:'line', label:'% Pérdida Mensual', yAxisID:'yPct', order:1,
+          data: visibles.map(f=>f.pct_perdida_mensual==null?null:f.pct_perdida_mensual*100), borderColor:'#f4a261',
+          backgroundColor:'rgba(244,162,97,.12)', borderWidth:2.5, pointRadius:2.5, spanGaps:true, tension:.25,
+          datalabels:{display:true, anchor:'end', align:'top', offset:6,
+            formatter:v=>v==null?'':v.toFixed(2)+'%', font:{size:11, weight:'700'}, color:'#f4a261',
+            backgroundColor: dark?'rgba(30,30,40,.85)':'rgba(255,255,255,.85)', borderRadius:3, padding:{left:4,right:4,top:1,bottom:1}}},
+      ],
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      layout:{padding:{top:24, right:20}},
+      interaction:{mode:'index', intersect:false},
+      plugins:{
+        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:10}, color:tickC}},
+        tooltip:{callbacks:{label:c=>{
+          if(c.raw==null) return null;
+          return c.dataset.yAxisID==='yPct' ? `${c.dataset.label}: ${c.raw.toFixed(3)}%` : `${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`;
+        }}},
+        zoom:{
+          pan:{enabled:true, mode:'x'},
+          zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'},
+          limits:{x:{minRange:3}},
+        },
+      },
+      scales:{
+        x:{grid:{display:false}, offset:true,
+          ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, autoSkip:false},
+          afterBuildTicks: ipConstruirTicksEspaciados(6)},
+        yPct:{type:'linear', position:'left', grid:{color:gridC},
+          ticks:{color:'#f4a261', font:{size:11}, callback:v=>v.toFixed(1)+'%'},
+          title:{display:true, text:'% Pérdida Mensual', color:'#f4a261', font:{size:11}}},
+        y:{position:'right', grid:{drawOnChartArea:false},
+          ticks:{color:tickC, font:{size:10}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
+          title:{display:true, text:'Pérdida Mensual (kWh)', color:tickC, font:{size:10}},
+          afterFit:ax=>{ax.width=Math.max(ax.width,60)}},
+      },
+    },
+  });
+}
+
+// Mismo chart que ipRenderChartMensual, duplicado con id propio para la
+// tarjeta de Inicio -- sin los inputs "Rango" del módulo IP_Reg (Inicio no
+// tiene esos filtros), así que en vez de leerlos se muestran directo los
+// últimos 24 meses reales, para que la vista de un vistazo no quede
+// abarrotada con todo el histórico desde 2015.
+function ipRenderChartMensualInicio(){
+  const dark = document.documentElement.getAttribute('data-theme')==='dark';
+  const tickC = dark ? '#aab8d1' : '#4b5e7a';
+  const tickXFuerte = dark ? '#ffffff' : '#000000';
+  const gridC = dark ? 'rgba(255,255,255,.10)' : 'rgba(0,0,0,.06)';
+
+  const visibles = IP_REG_FILAS.filter(f => f.pct_perdida_mensual != null).slice(-24);
+  const etiquetas = visibles.map(f => labelMes(ipClaveNormal(f)));
+
+  if(chIniIpMensual) chIniIpMensual.destroy();
+  chIniIpMensual = new Chart(document.getElementById('ch-ini-ip-mensual'), {
     plugins:[tmPluginCrosshair],
     data:{
       labels: etiquetas,
