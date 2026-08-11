@@ -1516,6 +1516,12 @@ tfoot td:first-child{text-align:left}
         <button type="button" class="be-modo-btn" data-tipo="entrada_salida" onclick="beSeleccionarTipoGrafico('entrada_salida')">🔀 Entrada / Salida</button>
       </div>
     </div>
+    <div id="be-clientes-en-salida-wrap" style="text-align:right;margin:-4px 0 10px">
+      <label style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--text3);cursor:pointer" title="La Salida de red (línea roja) no incluye los puntos marcados 'Es cliente' ni los clientes SIEC -- se muestran aparte en la tabla. Esta opción los suma a la línea del gráfico para ver la salida TOTAL.">
+        <input type="checkbox" id="be-incluir-clientes-salida" onchange="if(BE_MODO_GRAFICO===2) renderChartBalanceEstructura(BE_CONSUMO_DATOS, BE_MODO_GRAFICO)">
+        Incluir clientes/SIEC en la Salida del gráfico
+      </label>
+    </div>
     <div id="be-tipicos-toggle-grafico-wrap" style="text-align:right;margin:-4px 0 10px">
       <label style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--text3);cursor:pointer">
         <input type="checkbox" id="be-tipicos-en-grafico" disabled onchange="if(BE_MODO_GRAFICO!==3) renderChartBalanceEstructura(BE_CONSUMO_DATOS, BE_MODO_GRAFICO)">
@@ -5078,7 +5084,19 @@ async function renderChartBalanceEstructura(datos, modo){
   const ultimoEsHoy = (datos.fechas||[]).length > 0 && datos.fechas[datos.fechas.length-1] === hoyIso;
   const recortar = arr => (ultimoEsHoy && (arr||[]).length > 1) ? arr.slice(0,-1) : (arr||[]);
   const fechas = recortar(datos.fechas);
-  const entradaKwh = recortar(datos.entrada_kwh), salidaKwh = recortar(datos.salida_kwh);
+  const entradaKwh = recortar(datos.entrada_kwh);
+  // "Salida" (línea roja) es SOLO la salida de red por defecto -- igual que
+  // la tabla, deja aparte los puntos "Es cliente" y los clientes SIEC (ver
+  // Cliente SIEC/Telemedido en renderTablaDetalleBalance). El checkbox
+  // "Incluir clientes/SIEC en la Salida del gráfico" los suma acá para ver
+  // la salida TOTAL -- útil en estructuras tipo Zona/Nivel, donde una
+  // parte grande de la salida es justamente consumo de clientes.
+  const incluirClientes = document.getElementById('be-incluir-clientes-salida')?.checked;
+  const salidaKwhCruda = incluirClientes
+    ? datos.salida_kwh.map((v,i)=> (v ?? 0) + (datos.salida_cliente_kwh?.[i] ?? 0) + (datos.salida_siec_kwh?.[i] ?? 0))
+    : datos.salida_kwh;
+  const perdidaKwhCruda = incluirClientes ? datos.perdida_kwh : datos.perdida_kwh;
+  const salidaKwh = recortar(salidaKwhCruda);
   const perdidaKwh = recortar(datos.perdida_kwh), perdidaPct = recortar(datos.perdida_pct);
   // Etiquetas de % sobre la línea punteada solo cuando el rango visible cae
   // dentro de UN mismo mes calendario (ej. tras "Mes anterior/siguiente") --
@@ -5676,13 +5694,18 @@ async function renderResumenEstructura(){
   }catch(e){ /* se muestra igual con lo que haya, aunque sea vacío */ }
 
   const _resumenMes = mesTexto => {
-    let entrada=0, salida=0, diasEntrada=0, diasSalida=0;
+    // La pérdida NO es entrada-salida acá -- "salida" en esta tarjeta es
+    // solo de red (igual que la tabla), y una estructura con puntos "Es
+    // cliente" o clientes SIEC tendría una pérdida inflada si se ignora esa
+    // parte. Se usa perdida_kwh que ya trae el backend (Entrada - (Salida
+    // de red + Cliente/Telemedido + Cliente SIEC), ver _consumo_interno).
+    let entrada=0, salida=0, perdida=0, diasEntrada=0, diasSalida=0;
     datos.fechas.forEach((f,i)=>{
       if(!f.startsWith(mesTexto)) return;
       if(datos.entrada_kwh[i]!=null){ entrada += datos.entrada_kwh[i]; diasEntrada++; }
       if(datos.salida_kwh[i]!=null){ salida += datos.salida_kwh[i]; diasSalida++; }
+      if(datos.perdida_kwh[i]!=null) perdida += datos.perdida_kwh[i];
     });
-    const perdida = entrada - salida;
     const pct = entrada ? perdida/entrada*100 : null;
     return {entrada, salida, perdida, pct, diasEntrada, diasSalida};
   };
