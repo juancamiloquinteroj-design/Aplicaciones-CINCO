@@ -726,13 +726,11 @@ tfoot td:first-child{text-align:left}
       <div class="inicio-dash-grid">
         <div class="inicio-mes-panel">
           <div class="inicio-mes-titulo">Mes anterior · <span id="ini-n4-mes-ant"></span></div>
-          <div class="inicio-mes-fila"><span>Diario</span><span id="ini-n4-ant-diario">--</span></div>
           <div class="inicio-mes-fila"><span>Mensual</span><span id="ini-n4-ant-mensual">--</span></div>
           <div class="inicio-mes-fila"><span>Anual (móvil)</span><span id="ini-n4-ant-anual">--</span></div>
         </div>
         <div class="inicio-mes-panel actual">
           <div class="inicio-mes-titulo">Mes actual · <span id="ini-n4-mes-act"></span></div>
-          <div class="inicio-mes-fila"><span>Diario</span><span id="ini-n4-act-diario">--</span></div>
           <div class="inicio-mes-fila"><span>Mensual</span><span><span id="ini-n4-act-mensual">--</span> <span id="ini-n4-var-mensual" class="inicio-variacion"></span></span></div>
           <div class="inicio-mes-fila"><span>Anual (móvil)</span><span><span id="ini-n4-act-anual">--</span> <span id="ini-n4-var-anual" class="inicio-variacion"></span></span></div>
         </div>
@@ -2284,30 +2282,21 @@ async function _iniContextoMeses(){
 // tocar el DOM, para poder reusarla tanto en la tarjeta de Nivel 4 (una
 // sola estructura) como en la de Nivel 3 (una por zona, ver más abajo).
 async function _iniCalcularPanelesBalance(estructuraId, ctx){
-  const {mesAnterior, mesActual, desdeStr, hastaStr, hoyStr} = ctx;
-  const [comp, movil, consumo] = await Promise.all([
+  const {mesAnterior, mesActual, desdeStr, hastaStr} = ctx;
+  const [comp, movil] = await Promise.all([
     apiGet(`/api/balances-estructura/${estructuraId}/comparacion?desde=${desdeStr}&hasta=${hastaStr}`, BALANCE_TIMEOUT_MS),
     apiGet(`/api/balances-estructura/${estructuraId}/movil-anual?desde=${desdeStr}&hasta=${hastaStr}`, BALANCE_TIMEOUT_MS),
-    apiGet(`/api/balances-estructura/${estructuraId}/consumo?desde=${mesAnterior}-01&hasta=${hoyStr}`, BALANCE_TIMEOUT_MS),
   ]);
   const idx = (arr, mes) => (arr||[]).indexOf(mes);
   const idxCompAnt = idx(comp.meses, mesAnterior), idxCompAct = idx(comp.meses, mesActual);
   const idxMovilAnt = idx(movil.meses, mesAnterior), idxMovilAct = idx(movil.meses, mesActual);
-  // "Diario" = pérdida % del ÚLTIMO día con dato dentro de ese mes -- para
-  // el mes anterior, "cómo cerró"; para el actual, "cómo viene hoy".
-  const ultimoDiaDelMes = prefijoMes => {
-    const fechas = consumo.fechas||[];
-    for(let i=fechas.length-1;i>=0;i--){
-      if(fechas[i].startsWith(prefijoMes) && consumo.perdida_pct[i]!=null) return consumo.perdida_pct[i];
-    }
-    return null;
-  };
   return {
-    diarioAnt: ultimoDiaDelMes(mesAnterior), diarioAct: ultimoDiaDelMes(mesActual),
     mensualAnt: idxCompAnt>=0 ? comp.perdida_balance_pct[idxCompAnt] : null,
     mensualAct: idxCompAct>=0 ? comp.perdida_balance_pct[idxCompAct] : null,
     anualAnt: idxMovilAnt>=0 ? movil.perdida_balance_movil_pct[idxMovilAnt] : null,
     anualAct: idxMovilAct>=0 ? movil.perdida_balance_movil_pct[idxMovilAct] : null,
+    anualAntKwh: idxMovilAnt>=0 ? movil.perdida_balance_movil_kwh[idxMovilAnt] : null,
+    anualActKwh: idxMovilAct>=0 ? movil.perdida_balance_movil_kwh[idxMovilAct] : null,
   };
 }
 
@@ -2342,22 +2331,18 @@ async function cargarDashboardInicio(){
   }
 
   const fmtPct = v => v==null ? 'Sin datos' : `${v.toFixed(2)}%`;
-  document.getElementById('ini-n4-ant-diario').textContent = fmtPct(p.diarioAnt);
   document.getElementById('ini-n4-ant-mensual').textContent = fmtPct(p.mensualAnt);
-  document.getElementById('ini-n4-ant-anual').textContent = fmtPct(p.anualAnt);
-  document.getElementById('ini-n4-act-diario').textContent = fmtPct(p.diarioAct);
+  document.getElementById('ini-n4-ant-anual').textContent = _iniFmtKwhPct(p.anualAntKwh, p.anualAnt);
   document.getElementById('ini-n4-act-mensual').textContent = fmtPct(p.mensualAct);
-  document.getElementById('ini-n4-act-anual').textContent = fmtPct(p.anualAct);
+  document.getElementById('ini-n4-act-anual').textContent = _iniFmtKwhPct(p.anualActKwh, p.anualAct);
 
   _iniRenderVariacion('ini-n4-var-mensual', p.mensualAnt, p.mensualAct);
   _iniRenderVariacion('ini-n4-var-anual', p.anualAnt, p.anualAct);
 }
 
-// Nombres largos para las zonas de Nivel 2/3 -- el sistema solo guarda el
-// código corto (ver "Color por zona" en Parametrización); si aparece un
-// código que no está en este mapa, se muestra tal cual (ej. una zona
-// nueva que todavía no tiene nombre largo asignado acá).
-const INI_NOMBRES_ZONA = {ZC:'Centro', ZN:'Norte', ZS:'Sur', ZE:'Este', ZO:'Oeste', EH:'Electrohuila'};
+// "Anual (móvil)" muestra energía + % juntos (ej. "1.715.164 kWh (25.49%)")
+// -- antes solo mostraba el %, sin la magnitud en kWh de esa pérdida.
+const _iniFmtKwhPct = (kwh, pct) => (kwh==null || pct==null) ? 'Sin datos' : `${kwh.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh (${pct.toFixed(2)}%)`;
 
 // Tarjeta de Inicio: pérdida de balance de los "Balance por Nivel de
 // Tensión" de Nivel 3 -- a diferencia de Nivel 4 (una sola estructura),
@@ -2383,7 +2368,7 @@ async function cargarDashboardNivel3(){
   // 3) entran en la MISMA fila (ver .inicio-dash-fila), en vez de una
   // lista larga apilada.
   cont.innerHTML = nivel3.map(e => {
-    const nombreZona = e.zona ? (INI_NOMBRES_ZONA[e.zona] || e.zona) : e.nombre;
+    const nombreZona = e.zona || e.nombre;
     const pref = `ini-n3-${e.id}`;
     return `
     <div class="card inicio-dash-card">
@@ -2391,13 +2376,11 @@ async function cargarDashboardNivel3(){
       <div class="inicio-dash-grid">
         <div class="inicio-mes-panel">
           <div class="inicio-mes-titulo">Mes anterior · ${ctx.nombreMesAnt}</div>
-          <div class="inicio-mes-fila"><span>Diario</span><span id="${pref}-ant-diario">--</span></div>
           <div class="inicio-mes-fila"><span>Mensual</span><span id="${pref}-ant-mensual">--</span></div>
           <div class="inicio-mes-fila"><span>Anual (móvil)</span><span id="${pref}-ant-anual">--</span></div>
         </div>
         <div class="inicio-mes-panel actual">
           <div class="inicio-mes-titulo">Mes actual · ${ctx.nombreMesAct}</div>
-          <div class="inicio-mes-fila"><span>Diario</span><span id="${pref}-act-diario">--</span></div>
           <div class="inicio-mes-fila"><span>Mensual</span><span><span id="${pref}-act-mensual">--</span> <span id="${pref}-var-mensual" class="inicio-variacion"></span></span></div>
           <div class="inicio-mes-fila"><span>Anual (móvil)</span><span><span id="${pref}-act-anual">--</span> <span id="${pref}-var-anual" class="inicio-variacion"></span></span></div>
         </div>
@@ -2419,12 +2402,10 @@ async function cargarDashboardNivel3(){
       msg.textContent = `No se pudo cargar el balance de ${e.nombre}.`;
       return;
     }
-    document.getElementById(`${pref}-ant-diario`).textContent = fmtPct(p.diarioAnt);
     document.getElementById(`${pref}-ant-mensual`).textContent = fmtPct(p.mensualAnt);
-    document.getElementById(`${pref}-ant-anual`).textContent = fmtPct(p.anualAnt);
-    document.getElementById(`${pref}-act-diario`).textContent = fmtPct(p.diarioAct);
+    document.getElementById(`${pref}-ant-anual`).textContent = _iniFmtKwhPct(p.anualAntKwh, p.anualAnt);
     document.getElementById(`${pref}-act-mensual`).textContent = fmtPct(p.mensualAct);
-    document.getElementById(`${pref}-act-anual`).textContent = fmtPct(p.anualAct);
+    document.getElementById(`${pref}-act-anual`).textContent = _iniFmtKwhPct(p.anualActKwh, p.anualAct);
     _iniRenderVariacion(`${pref}-var-mensual`, p.mensualAnt, p.mensualAct);
     _iniRenderVariacion(`${pref}-var-anual`, p.anualAnt, p.anualAct);
   }));
