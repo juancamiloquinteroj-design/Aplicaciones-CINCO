@@ -3235,6 +3235,13 @@ function _beMedidorAfectaSeleccionar(valor){
 let BE_ZONAS = [];  // valores de zona del operador (ver Parametrización · Color por zona) -- para el select de Balance por Nivel de Tensión
 let BE_MEDIDAS_INVENTADAS = [];  // [{usuario_id, formula}] -- ver listar_medidas_inventadas en el backend
 
+// Se llama después de crear/guardar cualquier punto -- si lo que se acaba
+// de guardar era una medida inventada NUEVA, aparece en el buscador de
+// otras estructuras sin tener que salir y volver a entrar a este módulo.
+async function _beRefrescarMedidasInventadas(){
+  try{ BE_MEDIDAS_INVENTADAS = DEMO ? [] : await apiGet('/api/balances-estructura/medidas-inventadas'); }catch(e){ /* no bloqueante */ }
+}
+
 async function cargarBalancesEstructura(){
   // El mismo padrón de usuarios/medidores de Usuarios Telemedidos -- ahí
   // están los datos de entrada/salida, no hace falta duplicarlos.
@@ -4606,6 +4613,7 @@ async function crearBalanceNivel(){
     msg.className = 'tm-modal-msg';
     msg.textContent = `Listo: "${nombre}" creado.`;
     await cargarListaEstructuras();
+    _beRefrescarMedidasInventadas();
   }catch(e){
     msg.className = 'tm-modal-msg err';
     msg.textContent = e.message || 'No se pudo crear el balance por nivel.';
@@ -4647,6 +4655,7 @@ async function crearEstructuraBalance(){
     msg.className = 'tm-modal-msg';
     msg.textContent = `Listo: "${nombre}" creada.`;
     await cargarListaEstructuras();
+    _beRefrescarMedidasInventadas();
   }catch(e){
     msg.className = 'tm-modal-msg err';
     msg.textContent = e.message || 'No se pudo crear la estructura.';
@@ -6689,6 +6698,7 @@ async function beedAgregarPunto(tipo){
     cont.innerHTML = '';
     await recargarModalEditarEstructura();
     await cargarListaEstructuras();
+    if(datos.formula) _beRefrescarMedidasInventadas();
     if(BE_ACTIVA_ID === BE_EDITAR_ID) verBalanceEstructura(BE_ACTIVA_ID);
   }catch(e){
     msg.className = 'tm-modal-msg err';
