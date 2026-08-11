@@ -3421,9 +3421,11 @@ function _beFilaMedidorHtml(tipo){
   const opuesto = tipo === 'salida' ? 'Entrada' : 'Salida';
   return `<div class="be-fila-medidor">
     <div class="be-fila-grid con-fecha">
-      ${_beMedidorInputHtml('be-fila-usuario', 'Buscar por nombre o código...')}
-      ${_beFuenteSelectHtml('be-fila-fuente')}
-      ${_beCanalSelectHtml('be-fila-canal', tipo)}
+      <span class="be-fila-normal-campos" style="display:contents">
+        ${_beMedidorInputHtml('be-fila-usuario', 'Buscar por nombre o código...')}
+        ${_beFuenteSelectHtml('be-fila-fuente')}
+        ${_beCanalSelectHtml('be-fila-canal', tipo)}
+      </span>
       <input type="date" class="be-fila-vigente-desde" value="${BE_FECHA_MINIMA||''}" title="Vigente desde -- por defecto la fecha más vieja con datos, cambiala si este punto empezó después">
       <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text3);white-space:nowrap;cursor:pointer" title="Marcá esto si el medidor es un CLIENTE conectado (no un punto de red) -- así aparece en 'Sobreponer cliente' de Ver Balance">
         <input type="checkbox" class="be-fila-es-cliente"> Cliente
@@ -3433,7 +3435,12 @@ function _beFilaMedidorHtml(tipo){
       </label>
       <button type="button" class="be-fila-quitar" onclick="this.closest('.be-fila-medidor').remove()" title="Quitar esta fila">✕</button>
     </div>
-    <button type="button" class="be-btn-respaldo" onclick="beToggleRespaldo(this)">+ Medidor de respaldo</button>
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:2px">
+      <button type="button" class="be-btn-respaldo" onclick="beToggleRespaldo(this)">+ Medidor de respaldo</button>
+      <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text3);white-space:nowrap;cursor:pointer" title="Un punto que NO existe físicamente (ej. una derivación sin medidor propio, que en realidad es la combinación de otros medidores reales) -- en vez de elegir un medidor, se calcula con una fórmula.">
+        <input type="checkbox" class="be-fila-inventada" onchange="beToggleFilaInventada(this)"> 🧮 Medida inventada
+      </label>
+    </div>
     <div class="be-fila-respaldo hidden">
       <div class="be-fila-grid">
         ${_beMedidorInputHtml('be-fila-respaldo-usuario', 'Medidor de respaldo (opcional)...')}
@@ -3442,7 +3449,24 @@ function _beFilaMedidorHtml(tipo){
         <button type="button" class="be-fila-quitar" onclick="beQuitarRespaldo(this)" title="Quitar respaldo">✕</button>
       </div>
     </div>
+    <div class="be-fila-inventada-campos hidden" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">
+      <input type="text" class="be-fila-inventada-nombre" placeholder="Nombre de la medida inventada (ej. Derivación Pitalito-Solarte)..." style="flex:1;min-width:220px;padding:7px 9px;border:1px solid var(--border);border-radius:7px;font-size:12.5px;color:var(--text);background:var(--bg)">
+      <input type="text" class="be-fila-inventada-formula" placeholder="Fórmula, ej. =Frt00264 - Frt00265.canal3" title="Combina medidores reales por su código -- suma, resta, multiplica o divide (+ - * /). El canal es opcional (.canal1..canal4, por defecto canal1)." style="flex:2;min-width:260px;padding:7px 9px;border:1px solid var(--border);border-radius:7px;font-size:12.5px;color:var(--text);background:var(--bg);font-family:monospace">
+    </div>
   </div>`;
+}
+
+// Alterna entre elegir un medidor REAL (buscador+canal+respaldo) y definir
+// una "medida inventada" (nombre+fórmula, ver comentario en
+// EstructuraBalanceMedidor.formula) -- no borra lo que ya estaba escrito
+// en el lado que se oculta, por si el usuario destildó por error.
+function beToggleFilaInventada(chk){
+  const bloque = chk.closest('.be-fila-medidor');
+  const inventada = chk.checked;
+  bloque.querySelector('.be-fila-normal-campos').classList.toggle('hidden', inventada);
+  bloque.querySelector('.be-btn-respaldo').classList.toggle('hidden', inventada);
+  if(inventada) bloque.querySelector('.be-fila-respaldo').classList.add('hidden');
+  bloque.querySelector('.be-fila-inventada-campos').classList.toggle('hidden', !inventada);
 }
 
 // prefijo permite reusar exactamente este mecanismo en OTRO formulario con
@@ -3471,30 +3495,44 @@ function _beLeerMedidor(input){
   return null;
 }
 
-// Lee todas las filas de un bloque (entrada/salida) -- null en la lista si
-// la fila principal no coincide con ningún usuario/medidor real. El
-// respaldo es opcional: vacío no bloquea la fila, escrito-pero-inválido sí.
+// Lee UNA fila armada por _beFilaMedidorHtml -- null si es un medidor real
+// pero el buscador no coincide con ninguno, o si es una medida inventada
+// sin nombre/fórmula todavía. El respaldo es opcional: vacío no bloquea la
+// fila, escrito-pero-inválido sí (solo aplica a medidores reales, una
+// medida inventada no puede tener respaldo -- ver _validar_medidor).
+function _beLeerFilaMedidor(fila){
+  const esClienteInput = fila.querySelector('.be-fila-es-cliente');
+  const es_cliente = !!(esClienteInput && esClienteInput.checked);
+  const restaInput = fila.querySelector('.be-fila-resta');
+  const resta = !!(restaInput && restaInput.checked);
+  const vigenteDesdeInput = fila.querySelector('.be-fila-vigente-desde');
+  const vigente_desde = (vigenteDesdeInput && vigenteDesdeInput.value) || null;
+
+  const inventadaChk = fila.querySelector('.be-fila-inventada');
+  if(inventadaChk && inventadaChk.checked){
+    const nombre = fila.querySelector('.be-fila-inventada-nombre').value.trim();
+    const formula = fila.querySelector('.be-fila-inventada-formula').value.trim();
+    if(!nombre || !formula) return null;
+    return {usuario_id: nombre, canal: 'canal1', usuario_id_back: null, canal_back: null, vigente_desde, es_cliente, resta, formula};
+  }
+
+  const principal = _beLeerMedidor(fila.querySelector('.be-fila-usuario'));
+  if(!principal) return null;
+  const canal = fila.querySelector('.be-fila-canal').value;
+  const respaldoInput = fila.querySelector('.be-fila-respaldo-usuario');
+  let usuario_id_back = null, canal_back = null;
+  if(respaldoInput && respaldoInput.value.trim()){
+    const back = _beLeerMedidor(respaldoInput);
+    if(!back) return null;
+    usuario_id_back = back.usuario_id;
+    canal_back = fila.querySelector('.be-fila-respaldo-canal').value;
+  }
+  return {usuario_id: principal.usuario_id, canal, usuario_id_back, canal_back, vigente_desde, es_cliente, resta, formula: null};
+}
+
+// Lee todas las filas de un bloque (entrada/salida) -- ver _beLeerFilaMedidor.
 function _beRecolectarFilas(tipo, prefijo='be'){
-  return [...document.querySelectorAll(`#${prefijo}-filas-${tipo} .be-fila-medidor`)].map(fila=>{
-    const principal = _beLeerMedidor(fila.querySelector('.be-fila-usuario'));
-    if(!principal) return null;
-    const canal = fila.querySelector('.be-fila-canal').value;
-    const vigenteDesdeInput = fila.querySelector('.be-fila-vigente-desde');
-    const vigente_desde = (vigenteDesdeInput && vigenteDesdeInput.value) || null;
-    const respaldoInput = fila.querySelector('.be-fila-respaldo-usuario');
-    let usuario_id_back = null, canal_back = null;
-    if(respaldoInput && respaldoInput.value.trim()){
-      const back = _beLeerMedidor(respaldoInput);
-      if(!back) return null;
-      usuario_id_back = back.usuario_id;
-      canal_back = fila.querySelector('.be-fila-respaldo-canal').value;
-    }
-    const esClienteInput = fila.querySelector('.be-fila-es-cliente');
-    const es_cliente = !!(esClienteInput && esClienteInput.checked);
-    const restaInput = fila.querySelector('.be-fila-resta');
-    const resta = !!(restaInput && restaInput.checked);
-    return {usuario_id: principal.usuario_id, canal, usuario_id_back, canal_back, vigente_desde, es_cliente, resta};
-  });
+  return [...document.querySelectorAll(`#${prefijo}-filas-${tipo} .be-fila-medidor`)].map(_beLeerFilaMedidor);
 }
 
 /* ==================== DIAGRAMA UNIFILAR ====================
@@ -4147,8 +4185,8 @@ async function bdCrearYVincular(){
   if(!nombre){ msg.className='tm-modal-msg err'; msg.textContent='Elegí un nombre.'; return; }
   const entradas = tipo === 'GEN' ? [] : _beRecolectarFilas('entrada','bde');
   const salidas = tipo === 'CARGA' ? [] : _beRecolectarFilas('salida','bde');
-  if(tipo !== 'GEN' && (!entradas.length || entradas.some(m=>!m))){ msg.className='tm-modal-msg err'; msg.textContent='Agregá al menos un medidor de Entrada (elegilo del buscador).'; return; }
-  if(tipo !== 'CARGA' && (!salidas.length || salidas.some(m=>!m))){ msg.className='tm-modal-msg err'; msg.textContent='Agregá al menos un medidor de Salida (elegilo del buscador).'; return; }
+  if(tipo !== 'GEN' && (!entradas.length || entradas.some(m=>!m))){ msg.className='tm-modal-msg err'; msg.textContent='Agregá al menos un medidor de Entrada (elegilo del buscador, o completá nombre y fórmula si es una medida inventada).'; return; }
+  if(tipo !== 'CARGA' && (!salidas.length || salidas.some(m=>!m))){ msg.className='tm-modal-msg err'; msg.textContent='Agregá al menos un medidor de Salida (elegilo del buscador, o completá nombre y fórmula si es una medida inventada).'; return; }
   try{
     const nueva = await apiPost('/api/balances-estructura', {nombre, nivel_tension, tipo, entradas, salidas});
     await bdElegirEstructuraVincular(null, nueva.id);
@@ -4516,8 +4554,8 @@ async function crearBalanceNivel(){
   const salidas = _beRecolectarFilas('salida', 'bn');
 
   if(!nombre){ msg.className='tm-modal-msg err'; msg.textContent='Ponele un nombre.'; return; }
-  if(!entradas.length || entradas.some(m=>!m)){ msg.className='tm-modal-msg err'; msg.textContent='Alguna fila de Entrada no coincide con ningún usuario/medidor real -- elegilo del buscador.'; return; }
-  if(!salidas.length || salidas.some(m=>!m)){ msg.className='tm-modal-msg err'; msg.textContent='Alguna fila de Salida no coincide con ningún usuario/medidor real -- elegilo del buscador.'; return; }
+  if(!entradas.length || entradas.some(m=>!m)){ msg.className='tm-modal-msg err'; msg.textContent='Alguna fila de Entrada no coincide con ningún usuario/medidor real -- elegilo del buscador, o completá nombre y fórmula si es una medida inventada.'; return; }
+  if(!salidas.length || salidas.some(m=>!m)){ msg.className='tm-modal-msg err'; msg.textContent='Alguna fila de Salida no coincide con ningún usuario/medidor real -- elegilo del buscador, o completá nombre y fórmula si es una medida inventada.'; return; }
 
   if(DEMO){ msg.className='tm-modal-msg err'; msg.textContent='No disponible en modo demo (sin conexión al servidor).'; return; }
 
@@ -4557,8 +4595,8 @@ async function crearEstructuraBalance(){
 
   if(!nombre){ msg.className='tm-modal-msg err'; msg.textContent='Ponele un nombre a la estructura.'; return; }
   if(!tipo){ msg.className='tm-modal-msg err'; msg.textContent='Elegí el tipo de estructura (Transformador, Barra o Línea).'; return; }
-  if(!entradas.length || entradas.some(m=>!m)){ msg.className='tm-modal-msg err'; msg.textContent='Alguna fila de Entrada no coincide con ningún usuario/medidor real -- elegilo del buscador.'; return; }
-  if(!salidas.length || salidas.some(m=>!m)){ msg.className='tm-modal-msg err'; msg.textContent='Alguna fila de Salida no coincide con ningún usuario/medidor real -- elegilo del buscador.'; return; }
+  if(!entradas.length || entradas.some(m=>!m)){ msg.className='tm-modal-msg err'; msg.textContent='Alguna fila de Entrada no coincide con ningún usuario/medidor real -- elegilo del buscador, o completá nombre y fórmula si es una medida inventada.'; return; }
+  if(!salidas.length || salidas.some(m=>!m)){ msg.className='tm-modal-msg err'; msg.textContent='Alguna fila de Salida no coincide con ningún usuario/medidor real -- elegilo del buscador, o completá nombre y fórmula si es una medida inventada.'; return; }
 
   if(DEMO){ msg.className='tm-modal-msg err'; msg.textContent='No disponible en modo demo (sin conexión al servidor).'; return; }
 
@@ -5854,7 +5892,7 @@ function renderTablaDetalleBalance(datos){
   // arrancando en alturas distintas (se veía "escalonado"). Ahora la
   // distinción entrada/salida va en su propia fila (ver filaTipoCelda) y
   // el label del medidor queda igual de corto para todas las columnas.
-  const etiquetaMedidor = p => p._siec ? 'Cliente SIEC' : `${p.usuario_id} · ${(BE_NOMBRES_CANAL_CORTO[p.canal]||p.canal)}`;
+  const etiquetaMedidor = p => p._siec ? 'Cliente SIEC' : p.formula ? `🧮 ${p.usuario_id}` : `${p.usuario_id} · ${(BE_NOMBRES_CANAL_CORTO[p.canal]||p.canal)}`;
   const totalCols = 5 + columnas.reduce((n,c)=>n+(_bePuntoTieneBack(c)?3:1),0);
 
   // Letra de columna (A, B, C...) para las fórmulas de ajuste -- el MISMO
@@ -5901,8 +5939,10 @@ function renderTablaDetalleBalance(datos){
     const claseGrupo = (esInicioDeGrupo ? ' grupo-inicio' : '') + (col.es_cliente ? ' cliente' : '') + (col._siec ? ' siec' : '');
     const etiquetaLetra = col._siec ? '' : `<span class="be-letra-col" title="Usá esta letra en las fórmulas de ajuste, ej. =${col._letra}*1.05">${col._letra}</span> `;
     const nombre = nombreMedidor(col);
-    const subtitulo = nombre ? `<span class="be-nombre-medidor" title="${_mselEsc(nombre)}">${_mselEsc(nombre)}</span>` : '';
-    if(!_bePuntoTieneBack(col)) return `<th class="pto be-col-detalle${claseGrupo}">${etiquetaLetra}${_mselEsc(etiquetaMedidor(col))}${subtitulo}</th>`;
+    const subtitulo = col.formula
+      ? `<span class="be-nombre-medidor" title="${_mselEsc(col.formula)}">${_mselEsc(col.formula)}</span>`
+      : (nombre ? `<span class="be-nombre-medidor" title="${_mselEsc(nombre)}">${_mselEsc(nombre)}</span>` : '');
+    if(!_bePuntoTieneBack(col)) return `<th class="pto be-col-detalle${claseGrupo}"${col.formula?` title="Medida inventada -- no existe un medidor físico, se calcula con esta fórmula"`:''}>${etiquetaLetra}${_mselEsc(etiquetaMedidor(col))}${subtitulo}</th>`;
     const titulo = `Respaldo: ${col.usuario_id_back} · ${BE_NOMBRES_CANAL_CORTO[col.canal_back]||col.canal_back}`;
     const etiquetaLetraResp = `<span class="be-letra-col" title="Usá esta letra para referenciar el dato CRUDO del respaldo, ej. =${col._letraRespaldo}*1.05">${col._letraRespaldo}</span> `;
     return `<th class="pto be-col-detalle${claseGrupo}" title="${_mselEsc(titulo)}">${etiquetaLetra}${_mselEsc(etiquetaMedidor(col))}${subtitulo}
@@ -6470,9 +6510,11 @@ function renderPuntosEditor(tipo, puntos){
   }
   cont.innerHTML = puntos.map(p => {
     const actual = p.vigencias[p.vigencias.length-1];
-    const etiqueta = `${actual.usuario_id} · ${BE_NOMBRES_CANAL_CORTO[actual.canal]||actual.canal}`;
-    const respaldo = actual.usuario_id_back
-      ? `<div class="canal">Respaldo: ${_mselEsc(actual.usuario_id_back)} · ${_mselEsc(BE_NOMBRES_CANAL_CORTO[actual.canal_back]||actual.canal_back)}</div>` : '';
+    const etiqueta = actual.formula ? `🧮 ${actual.usuario_id} (medida inventada)` : `${actual.usuario_id} · ${BE_NOMBRES_CANAL_CORTO[actual.canal]||actual.canal}`;
+    const respaldo = actual.formula
+      ? `<div class="canal" style="font-family:monospace">${_mselEsc(actual.formula)}</div>`
+      : (actual.usuario_id_back
+        ? `<div class="canal">Respaldo: ${_mselEsc(actual.usuario_id_back)} · ${_mselEsc(BE_NOMBRES_CANAL_CORTO[actual.canal_back]||actual.canal_back)}</div>` : '');
     const historial = p.vigencias.length > 1 ? `
       <div class="be-punto-vigencias">
         ${p.vigencias.map(v => `
@@ -6605,21 +6647,10 @@ async function beedAgregarPunto(tipo){
   const cont = document.getElementById(`beed-nuevo-${tipo}`);
   const msg = cont.querySelector('.beed-nuevo-msg');
   const fila = cont.querySelector('.be-fila-medidor');
-  const principal = _beLeerMedidor(fila.querySelector('.be-fila-usuario'));
-  if(!principal){ msg.className='tm-modal-msg err'; msg.textContent='Elegí un medidor real del buscador.'; return; }
-  const canal = fila.querySelector('.be-fila-canal').value;
-  const vigenteDesdeInput = fila.querySelector('.be-fila-vigente-desde');
-  const vigente_desde = (vigenteDesdeInput && vigenteDesdeInput.value) || null;
-  const backInput = fila.querySelector('.be-fila-respaldo-usuario');
-  let usuario_id_back = null, canal_back = null;
-  if(backInput.value.trim()){
-    const back = _beLeerMedidor(backInput);
-    if(!back){ msg.className='tm-modal-msg err'; msg.textContent='El respaldo escrito no coincide con ningún medidor real.'; return; }
-    usuario_id_back = back.usuario_id;
-    canal_back = fila.querySelector('.be-fila-respaldo-canal').value;
-  }
+  const datos = _beLeerFilaMedidor(fila);
+  if(!datos){ msg.className='tm-modal-msg err'; msg.textContent='Elegí un medidor real del buscador, o completá nombre y fórmula si es una medida inventada.'; return; }
   try{
-    await apiPost(`/api/balances-estructura/${BE_EDITAR_ID}/medidores`, {tipo, medidor:{usuario_id:principal.usuario_id, canal, usuario_id_back, canal_back, vigente_desde}});
+    await apiPost(`/api/balances-estructura/${BE_EDITAR_ID}/medidores`, {tipo, medidor:datos});
     cont.innerHTML = '';
     await recargarModalEditarEstructura();
     await cargarListaEstructuras();
