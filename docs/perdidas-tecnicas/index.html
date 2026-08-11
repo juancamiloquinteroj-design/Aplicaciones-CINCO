@@ -4139,7 +4139,7 @@ async function bdCrearYVincular(){
 let BE_ESTRUCTURAS_TODAS = [];  // SIEMPRE sin filtro de nivel/tipo -- para "Estructuras ya creadas" (revisar duplicados) y el buscador de medidor->estructuras. BE_ESTRUCTURAS sí respeta el filtro de Ver Balance.
 
 let _beListaEstructurasSeq = 0;
-async function cargarListaEstructuras(){
+async function cargarListaEstructuras(reintentando){
   const miSeq = ++_beListaEstructurasSeq;
   const nivel = document.getElementById('be-filtro-nivel').value;
   const tipo = document.getElementById('be-filtro-tipo').value;
@@ -4150,12 +4150,24 @@ async function cargarListaEstructuras(){
   // Si NO hay filtro activo, la lista filtrada y la completa son la misma
   // llamada -- solo se pide dos veces cuando el filtro de Ver Balance
   // realmente recorta algo, para no duplicar el pedido en el caso común.
-  let datos = [], todas = [];
+  let datos, todas;
   try{
     if(DEMO){ datos = []; todas = []; }
     else if(!qstr){ datos = await apiGet('/api/balances-estructura'); todas = datos; }
     else{ [datos, todas] = await Promise.all([apiGet(`/api/balances-estructura?${qstr}`), apiGet('/api/balances-estructura')]); }
-  }catch(e){ datos = []; todas = []; }
+  }catch(e){
+    if(miSeq !== _beListaEstructurasSeq) return;  // una llamada más nueva ya está en vuelo/resuelta
+    // Antes esto caía en silencio a "0 estructuras" -- indistinguible de un
+    // filtro que de verdad no tiene nada, y el usuario veía "no hay
+    // estructuras para este filtro" con datos reales de por medio (ej. la
+    // recarga automática de CSV cada 10 min, o dos pedidos pisándose
+    // mientras se guarda una edición). Se reintenta una vez, y si vuelve a
+    // fallar se deja la lista VIEJA tal cual en vez de vaciarla -- mejor
+    // mostrar algo desactualizado que borrar estructuras que sí existen.
+    if(!reintentando) return cargarListaEstructuras(true);
+    document.getElementById('be-contador-estructuras').textContent = 'No se pudo actualizar la lista -- reintentá en un momento.';
+    return;
+  }
   if(miSeq !== _beListaEstructurasSeq) return;  // una llamada más nueva ya está en vuelo/resuelta
   BE_ESTRUCTURAS = datos;
   BE_ESTRUCTURAS_TODAS = todas;
