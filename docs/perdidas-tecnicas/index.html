@@ -1441,26 +1441,8 @@ tfoot td:first-child{text-align:left}
         <button type="button" class="be-modo-btn" data-granularidad="anual" onclick="beSeleccionarGranularidad('anual')">Anual</button>
       </div>
       <div id="be-filtro-cliente" class="fbar hidden" style="margin:0">
-        <label>Sobreponer cliente</label>
-        <select id="be-cliente-select" style="max-width:260px" onchange="beSeleccionarClienteOverlay(this.value)">
-          <option value="">Ninguno</option>
-        </select>
-        <span id="be-cliente-polaridad" class="hidden" style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text3)">
-          <label style="margin:0;display:flex;align-items:center;gap:3px">
-            <input type="checkbox" id="be-cliente-mostrar-salida" checked onchange="_beActualizarClienteChart()" title="Mostrar/ocultar esta serie en el gráfico">Salida=
-          </label>
-          <select id="be-cliente-canal-salida" onchange="beGuardarPolaridadCliente()">
-            <option value="canal1">Canal 1</option><option value="canal2">Canal 2</option>
-            <option value="canal3">Canal 3</option><option value="canal4">Canal 4</option>
-          </select>
-          <label style="margin:0;display:flex;align-items:center;gap:3px">
-            <input type="checkbox" id="be-cliente-mostrar-entrada" checked onchange="_beActualizarClienteChart()" title="Mostrar/ocultar esta serie en el gráfico">Entrada=
-          </label>
-          <select id="be-cliente-canal-entrada" onchange="beGuardarPolaridadCliente()">
-            <option value="canal1">Canal 1</option><option value="canal2">Canal 2</option>
-            <option value="canal3">Canal 3</option><option value="canal4">Canal 4</option>
-          </select>
-        </span>
+        <label>Sobreponer cliente(s)</label>
+        <div class="msel" id="msel-be-clientes" style="min-width:200px"></div>
       </div>
       <button type="button" class="be-editar-btn" style="margin-left:auto" onclick="beBorrarFiltrosVer()" title="Volver el filtro de Nivel/Tipo/Estructura a 'Todos'">✕ Borrar filtros</button>
     </div>
@@ -2005,8 +1987,8 @@ let BE_TIPO_GRAFICO = 'perdida';  // 'perdida' | 'entrada_salida'
 let BE_ESTRUCTURAS = [];
 let BE_ACTIVA_ID = null;
 let BE_CLIENTES = [];        // clientes (medidores de entrada/salida) de la Línea activa -- para sobreponer su consumo
-let BE_CLIENTE_ACTIVO = null;  // {usuario_id, nombre, canal_salida, canal_entrada} del cliente elegido en el desplegable, o null
-let BE_CLIENTE_DATOS = null;   // último /telemedida/consumo cargado del cliente activo (fechas + canal1..4)
+let BE_CLIENTES_ACTIVOS = [];   // [{usuario_id, nombre}] -- los tildados en el multiselect "Sobreponer cliente(s)"
+let BE_CLIENTES_DATOS = new Map();  // usuario_id -> último /telemedida/consumo cargado de ESE cliente (fechas + canal1..4)
 let BE_EDITAR_ID = null;
 let chBalanceEstructura = null;  // un solo chart/canvas para los 3 modos de "Ver Balance" -- se destruye y recrea al cambiar de modo
 let META = {zonas:[], niveles:[], meses:[]};
@@ -3119,103 +3101,77 @@ function _beMedidorAfectaOpciones(){
   return opciones;
 }
 
-// "Sobreponer cliente" (ver filtro arriba de "Ver Balance") -- los
+// "Sobreponer cliente(s)" (ver filtro arriba de "Ver Balance") -- los
 // medidores de entrada/salida de la estructura activa SON, en la
 // práctica, sus clientes (mismo criterio que ya usa
 // _beActualizarEtiquetasEntradaSalida para llamarlos "Cliente(s)" cuando
-// tipo='L'). El desplegable aparece cuando hay al menos uno.
+// tipo='L'). El multiselect aparece cuando hay al menos uno; se puede
+// tildar varios a la vez (antes solo uno). Siempre se grafica el canal 1
+// (kWh, energía activa) de cada uno -- es el "consumo" que importa
+// comparar, sin la complejidad de elegir canal/entrada-salida por cliente.
 async function _beActualizarWidgetCliente(id){
   const wrap = document.getElementById('be-filtro-cliente');
-  const sel = document.getElementById('be-cliente-select');
-  BE_CLIENTE_ACTIVO = null; BE_CLIENTE_DATOS = null;
-  document.getElementById('be-cliente-polaridad').classList.add('hidden');
+  BE_CLIENTES_ACTIVOS = []; BE_CLIENTES_DATOS = new Map();
   try{ BE_CLIENTES = DEMO ? [] : await apiGet(`/api/balances-estructura/${id}/clientes`); }
   catch(e){ BE_CLIENTES = []; }
   if(!BE_CLIENTES.length){
     wrap.classList.add('hidden');
-    sel.innerHTML = '<option value="">Ninguno</option>';
+    mselInit('msel-be-clientes', 'Clientes', 'Ninguno', [], beAplicarClientesOverlay, []);
     return;
   }
   wrap.classList.remove('hidden');
-  sel.innerHTML = '<option value="">Ninguno</option>'
-    + BE_CLIENTES.map(c=>`<option value="${_mselEsc(c.usuario_id)}">${_mselEsc(c.nombre||c.usuario_id)}</option>`).join('');
-  sel.value = '';
+  mselInit('msel-be-clientes', 'Clientes', 'Ninguno',
+    BE_CLIENTES.map(c=>({value:c.usuario_id, label:c.nombre||c.usuario_id})),
+    beAplicarClientesOverlay, [], 'Buscar cliente...');
 }
 
-async function beSeleccionarClienteOverlay(usuarioId){
-  const polWrap = document.getElementById('be-cliente-polaridad');
-  if(!usuarioId){
-    BE_CLIENTE_ACTIVO = null; BE_CLIENTE_DATOS = null;
-    polWrap.classList.add('hidden');
-    _beActualizarClienteChart();
-    return;
+// Se llama cada vez que cambia la selección del multiselect -- pide el
+// consumo de los clientes que se acaban de tildar (los que ya estaban
+// tildados no se vuelven a pedir) y descarta los datos de los que se
+// destildaron, para no ir acumulando pedidos viejos en memoria.
+async function beAplicarClientesOverlay(){
+  const usuarioIds = mselValores('msel-be-clientes');
+  BE_CLIENTES_ACTIVOS = usuarioIds.map(uid => BE_CLIENTES.find(c=>c.usuario_id===uid)).filter(Boolean);
+  for(const uid of [...BE_CLIENTES_DATOS.keys()]){
+    if(!usuarioIds.includes(uid)) BE_CLIENTES_DATOS.delete(uid);
   }
-  const c = BE_CLIENTES.find(x=>x.usuario_id===usuarioId);
-  if(!c) return;
-  BE_CLIENTE_ACTIVO = c;
-  document.getElementById('be-cliente-canal-salida').value = c.canal_salida;
-  document.getElementById('be-cliente-canal-entrada').value = c.canal_entrada;
-  polWrap.classList.remove('hidden');
-  await _beCargarConsumoClienteActivo();
-}
-
-async function _beCargarConsumoClienteActivo(){
-  if(!BE_CLIENTE_ACTIVO) return;
-  // Se pide TODO el histórico disponible (no solo el rango del filtro
-  // diario) -- así un solo pedido sirve para los 3 modos (Diario/Mensual/
-  // Anual) sin tener que re-pedir al cambiar de uno a otro; es un solo
-  // medidor, el volumen de filas es chico de cualquier forma.
   const hoy = new Date();
   const hoyStr = `${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}-${String(hoy.getDate()).padStart(2,'0')}`;
-  const qs = new URLSearchParams({usuario_id: BE_CLIENTE_ACTIVO.usuario_id, desde: BE_FECHA_MINIMA || '2020-01-01', hasta: hoyStr});
-  try{ BE_CLIENTE_DATOS = await apiGet(`/api/telemedida/consumo?${qs.toString()}`); }
-  catch(e){ BE_CLIENTE_DATOS = null; }
+  const faltantes = BE_CLIENTES_ACTIVOS.filter(c => !BE_CLIENTES_DATOS.has(c.usuario_id));
+  await Promise.all(faltantes.map(async c => {
+    // Se pide TODO el histórico disponible (no solo el rango del filtro
+    // diario) -- así un solo pedido sirve para los 3 modos (Diario/
+    // Mensual/Anual) sin tener que re-pedir al cambiar de uno a otro.
+    const qs = new URLSearchParams({usuario_id: c.usuario_id, desde: BE_FECHA_MINIMA || '2020-01-01', hasta: hoyStr});
+    try{ BE_CLIENTES_DATOS.set(c.usuario_id, await apiGet(`/api/telemedida/consumo?${qs.toString()}`)); }
+    catch(e){ /* ese cliente queda sin serie -- los demás se grafican igual */ }
+  }));
   _beActualizarClienteChart();
 }
 
-// Suma diaria del cliente -> total por mes, alineado al mismo arreglo
-// "meses" que ya usa el gráfico de Mensual/Anual (para poder sobreponerlo
-// tal cual, sin desalinear el eje X). null en los meses sin NINGÚN día
-// con dato (no 0 -- un 0 real sería "consumió cero ese mes", distinto).
-function _beClienteMesesAlineado(meses, canal){
-  if(!BE_CLIENTE_ACTIVO || !BE_CLIENTE_DATOS) return meses.map(()=>null);
-  const serie = BE_CLIENTE_DATOS.series && BE_CLIENTE_DATOS.series[0];
+// Suma diaria de TODOS los clientes activos -> total por mes, alineado al
+// mismo arreglo "meses" que ya usa el gráfico de Mensual/Anual (para poder
+// sobreponerlo tal cual, sin desalinear el eje X). null en los meses sin
+// NINGÚN día con dato (no 0 -- un 0 real sería "consumió cero ese mes").
+function _beClienteMesesAlineado(meses, cliente){
+  const datos = BE_CLIENTES_DATOS.get(cliente.usuario_id);
+  const serie = datos && datos.series && datos.series[0];
   if(!serie) return meses.map(()=>null);
   const sumaPorMes = {};
-  BE_CLIENTE_DATOS.fechas.forEach((f,i) => {
-    const v = serie[canal] ? serie[canal][i] : null;
+  datos.fechas.forEach((f,i) => {
+    const v = serie.canal1 ? serie.canal1[i] : null;
     if(v!=null){ const m = f.slice(0,7); sumaPorMes[m] = (sumaPorMes[m]||0) + v; }
   });
   return meses.map(m => m in sumaPorMes ? sumaPorMes[m] : null);
 }
 
-function _beClienteVisible(lado){
-  const chk = document.getElementById(`be-cliente-mostrar-${lado}`);
-  return !chk || chk.checked;
-}
-
-// Cualquier cambio en los checkboxes/canales de "Sobreponer cliente" tiene
-// que re-dibujar el gráfico que esté activo en ESE momento -- Diario
-// (modo 1/2), Mensual (3) o Anual (4) -- no solo el diario.
+// Cualquier cambio en la selección de "Sobreponer cliente(s)" tiene que
+// re-dibujar el gráfico que esté activo en ESE momento -- Diario (modo
+// 1/2), Mensual (3) o Anual (4) -- no solo el diario.
 function _beActualizarClienteChart(){
   if(BE_MODO_GRAFICO===3){ if(BE_COMPARACION_DATOS) renderChartComparacionEstructura(BE_COMPARACION_DATOS); }
   else if(BE_MODO_GRAFICO===4){ if(BE_MOVIL_ANUAL_DATOS) renderChartMovilAnual(BE_MOVIL_ANUAL_DATOS); }
   else if(BE_CONSUMO_DATOS){ renderChartBalanceEstructura(BE_CONSUMO_DATOS, BE_MODO_GRAFICO); }
-}
-
-// La polaridad (qué canal del cliente es "salida"/"entrada" al comparar
-// contra la línea) se guarda por (estructura, cliente) -- ver
-// LineaClientePolaridad en el backend -- para no reconfirmarla cada vez.
-async function beGuardarPolaridadCliente(){
-  if(!requiereEditor()) return;
-  if(!BE_CLIENTE_ACTIVO) return;
-  const canal_salida = document.getElementById('be-cliente-canal-salida').value;
-  const canal_entrada = document.getElementById('be-cliente-canal-entrada').value;
-  BE_CLIENTE_ACTIVO.canal_salida = canal_salida;
-  BE_CLIENTE_ACTIVO.canal_entrada = canal_entrada;
-  try{ await apiPut(`/api/balances-estructura/${BE_ACTIVA_ID}/clientes/${encodeURIComponent(BE_CLIENTE_ACTIVO.usuario_id)}/polaridad`, {canal_salida, canal_entrada}); }
-  catch(e){ /* no bloqueante -- la vista ya refleja el cambio igual */ }
-  _beActualizarClienteChart();
 }
 
 function _beActualizarWidgetMedidorAfecta(){
@@ -4744,7 +4700,6 @@ async function verBalanceEstructura(id){
   BE_CONSUMO_DATOS = datos;
   _beActualizarWidgetMedidorAfecta();
   if(cambioDeEstructura) await _beActualizarWidgetCliente(id);
-  else if(BE_CLIENTE_ACTIVO) await _beCargarConsumoClienteActivo();
   _beAplicarModoUI(BE_MODO_GRAFICO);
   if(BE_MODO_GRAFICO===1 || BE_MODO_GRAFICO===2){
     // El gráfico diario SIEMPRE tiene algo para mostrar mientras haya
@@ -5290,28 +5245,22 @@ async function renderChartBalanceEstructura(datos, modo){
   // línea plana pegada al cero. Se realinean sus fechas contra las del
   // gráfico principal (pueden no coincidir 1 a 1) antes de graficar.
   let hayCliente = false;
-  if(BE_CLIENTE_ACTIVO && BE_CLIENTE_DATOS){
-    const serieCliente = BE_CLIENTE_DATOS.series && BE_CLIENTE_DATOS.series[0];
-    if(serieCliente){
-      hayCliente = true;
-      const idxPorFecha = {};
-      BE_CLIENTE_DATOS.fechas.forEach((f,i)=>{ idxPorFecha[f]=i; });
-      const _alinear = canal => fechas.map(f => {
-        const i = idxPorFecha[f];
-        return i==null ? null : serieCliente[canal][i];
-      });
-      // Cada serie se puede ocultar por separado con su propio checkbox
-      // (ver "Sobreponer cliente" arriba) -- por si solo interesa ver una.
-      if(_beClienteVisible('salida')) datasets.push(
-        {type:'line', label:`${serieCliente.nombre} -- salida`, data:_alinear(BE_CLIENTE_ACTIVO.canal_salida),
-          borderColor:'#ff006e', backgroundColor:'transparent', borderWidth:2, borderDash:[4,3],
-          pointRadius:0, tension:.15, spanGaps:true, yAxisID:'yCliente', order:2});
-      if(_beClienteVisible('entrada')) datasets.push(
-        {type:'line', label:`${serieCliente.nombre} -- entrada`, data:_alinear(BE_CLIENTE_ACTIVO.canal_entrada),
-          borderColor:'#ffb703', backgroundColor:'transparent', borderWidth:2, borderDash:[4,3],
-          pointRadius:0, tension:.15, spanGaps:true, yAxisID:'yCliente', order:2});
-    }
-  }
+  BE_CLIENTES_ACTIVOS.forEach((cliente, i) => {
+    const datosCliente = BE_CLIENTES_DATOS.get(cliente.usuario_id);
+    const serieCliente = datosCliente && datosCliente.series && datosCliente.series[0];
+    if(!serieCliente) return;
+    hayCliente = true;
+    const idxPorFecha = {};
+    datosCliente.fechas.forEach((f,j)=>{ idxPorFecha[f]=j; });
+    const valores = fechas.map(f => {
+      const j = idxPorFecha[f];
+      return j==null ? null : serieCliente.canal1[j];
+    });
+    datasets.push(
+      {type:'line', label:`${serieCliente.nombre||cliente.nombre} (canal 1)`, data:valores,
+        borderColor: IP_PALETA_OVERLAY[i % IP_PALETA_OVERLAY.length], backgroundColor:'transparent', borderWidth:2, borderDash:[4,3],
+        pointRadius:0, tension:.15, spanGaps:true, yAxisID:'yCliente', order:2});
+  });
 
   // El fetch de la técnica prorrateada es async -- si mientras se esperaba
   // el usuario ya cambió a otro modo, no pisar lo que se está mostrando ahora.
@@ -5534,18 +5483,16 @@ function renderChartComparacionEstructura(datos){
   // consumo diario del cliente por MES para que sus puntos coincidan con
   // los meses de este gráfico (uno por mes, no por día).
   let hayCliente = false;
-  if(BE_CLIENTE_ACTIVO && BE_CLIENTE_DATOS && (BE_CLIENTE_DATOS.series||[])[0]){
+  BE_CLIENTES_ACTIVOS.forEach((cliente, i) => {
+    const datosCliente = BE_CLIENTES_DATOS.get(cliente.usuario_id);
+    if(!datosCliente || !(datosCliente.series||[])[0]) return;
     hayCliente = true;
-    const nombreCliente = BE_CLIENTE_DATOS.series[0].nombre;
-    if(_beClienteVisible('salida')) datasets.push(
-      {type:'line', label:`${nombreCliente} -- salida`, data:_beClienteMesesAlineado(datos.meses, BE_CLIENTE_ACTIVO.canal_salida),
-        borderColor:'#ff006e', backgroundColor:'transparent', borderWidth:2, pointRadius:2, borderDash:[4,3],
+    const nombreCliente = datosCliente.series[0].nombre || cliente.nombre;
+    datasets.push(
+      {type:'line', label:`${nombreCliente} (canal 1)`, data:_beClienteMesesAlineado(datos.meses, cliente),
+        borderColor: IP_PALETA_OVERLAY[i % IP_PALETA_OVERLAY.length], backgroundColor:'transparent', borderWidth:2, pointRadius:2, borderDash:[4,3],
         tension:.15, spanGaps:true, yAxisID:'yCliente'});
-    if(_beClienteVisible('entrada')) datasets.push(
-      {type:'line', label:`${nombreCliente} -- entrada`, data:_beClienteMesesAlineado(datos.meses, BE_CLIENTE_ACTIVO.canal_entrada),
-        borderColor:'#ffb703', backgroundColor:'transparent', borderWidth:2, pointRadius:2, borderDash:[4,3],
-        tension:.15, spanGaps:true, yAxisID:'yCliente'});
-  }
+  });
 
   if(chBalanceEstructura) chBalanceEstructura.destroy();
   chBalanceEstructura = new Chart(ctx, {
@@ -5702,18 +5649,16 @@ function renderChartMovilAnual(datos){
       tension:.15, spanGaps:true, yAxisID:'yVolumen', fill:3},
   ];
   let hayCliente = false;
-  if(BE_CLIENTE_ACTIVO && BE_CLIENTE_DATOS && (BE_CLIENTE_DATOS.series||[])[0]){
+  BE_CLIENTES_ACTIVOS.forEach((cliente, i) => {
+    const datosCliente = BE_CLIENTES_DATOS.get(cliente.usuario_id);
+    if(!datosCliente || !(datosCliente.series||[])[0]) return;
     hayCliente = true;
-    const nombreCliente = BE_CLIENTE_DATOS.series[0].nombre;
-    if(_beClienteVisible('salida')) datasets.push(
-      {type:'line', label:`${nombreCliente} -- salida`, data:_beClienteMesesAlineado(datos.meses, BE_CLIENTE_ACTIVO.canal_salida),
-        borderColor:'#ff006e', backgroundColor:'transparent', borderWidth:2, pointRadius:2, borderDash:[4,3],
+    const nombreCliente = datosCliente.series[0].nombre || cliente.nombre;
+    datasets.push(
+      {type:'line', label:`${nombreCliente} (canal 1)`, data:_beClienteMesesAlineado(datos.meses, cliente),
+        borderColor: IP_PALETA_OVERLAY[i % IP_PALETA_OVERLAY.length], backgroundColor:'transparent', borderWidth:2, pointRadius:2, borderDash:[4,3],
         tension:.15, spanGaps:true, yAxisID:'yCliente'});
-    if(_beClienteVisible('entrada')) datasets.push(
-      {type:'line', label:`${nombreCliente} -- entrada`, data:_beClienteMesesAlineado(datos.meses, BE_CLIENTE_ACTIVO.canal_entrada),
-        borderColor:'#ffb703', backgroundColor:'transparent', borderWidth:2, pointRadius:2, borderDash:[4,3],
-        tension:.15, spanGaps:true, yAxisID:'yCliente'});
-  }
+  });
 
   if(chBalanceEstructura) chBalanceEstructura.destroy();
   chBalanceEstructura = new Chart(ctx, {
