@@ -426,6 +426,7 @@ tfoot td:first-child{text-align:left}
 .be-tabla-creadas th.pto.cliente,.be-tabla-creadas td.pto.cliente,.be-tabla-creadas td.be-fila-tipo-celda.cliente{background:rgba(123,47,255,.14) !important}
 [data-theme="dark"] .be-tabla-creadas th.pto.cliente,[data-theme="dark"] .be-tabla-creadas td.pto.cliente,[data-theme="dark"] .be-tabla-creadas td.be-fila-tipo-celda.cliente{background:rgba(123,47,255,.24) !important}
 .be-tag-telemedido{font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:var(--text3);background:var(--bg3);border-radius:3px;padding:1px 4px;vertical-align:middle;white-space:nowrap}
+.be-nombre-medidor{display:block;font-size:9.5px;font-weight:500;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px}
 .be-tabla-creadas td.pto[data-editable]{cursor:cell;position:relative}
 .be-tabla-creadas td.pto[data-editable]:hover{outline:1px dashed var(--accent2)}
 .be-tabla-creadas td.pto.ajustado{background:rgba(255,193,7,.4) !important;color:#c62828 !important;font-weight:700}
@@ -1410,6 +1411,11 @@ tfoot td:first-child{text-align:left}
         <option value="PT">Transformador (PT)</option>
         <option value="PB">Barra (PB)</option>
         <option value="L">Línea (L)</option>
+      </select>
+      <label>Zona</label>
+      <select id="be-filtro-zona" onchange="cargarListaEstructuras()">
+        <option value="">Todas</option>
+        <option value="__sin_zona__">(Sin zona)</option>
       </select>
       <label>Estructura</label>
       <select id="be-selector-estructura" style="min-width:420px" onchange="verBalanceEstructura(parseInt(this.value))">
@@ -3226,6 +3232,8 @@ async function cargarBalancesEstructura(){
   try{ BE_ZONAS = DEMO ? [] : (await apiGet('/api/zona-colores')).map(z=>z.zona); }catch(e){ BE_ZONAS = []; }
   const filtroZonaCreadas = document.getElementById('be-tabla-creadas-filtro-zona');
   if(filtroZonaCreadas) filtroZonaCreadas.innerHTML = '<option value="">Todas</option><option value="__sin_zona__">(Sin zona)</option>' + BE_ZONAS.map(z=>`<option value="${_mselEsc(z)}">${_mselEsc(z)}</option>`).join('');
+  const filtroZonaVer = document.getElementById('be-filtro-zona');
+  if(filtroZonaVer) filtroZonaVer.innerHTML = '<option value="">Todas</option><option value="__sin_zona__">(Sin zona)</option>' + BE_ZONAS.map(z=>`<option value="${_mselEsc(z)}">${_mselEsc(z)}</option>`).join('');
 
   try{
     const meta = DEMO ? {meses:[]} : await apiGet('/api/telemedida/meta');
@@ -4149,9 +4157,11 @@ async function cargarListaEstructuras(reintentando){
   const miSeq = ++_beListaEstructurasSeq;
   const nivel = document.getElementById('be-filtro-nivel').value;
   const tipo = document.getElementById('be-filtro-tipo').value;
+  const zona = document.getElementById('be-filtro-zona').value;
   const qs = new URLSearchParams();
   if(nivel) qs.set('nivel_tension', nivel);
   if(tipo) qs.set('tipo', tipo);
+  if(zona) qs.set('zona', zona);
   const qstr = qs.toString();
   // Si NO hay filtro activo, la lista filtrada y la completa son la misma
   // llamada -- solo se pide dos veces cuando el filtro de Ver Balance
@@ -4210,6 +4220,7 @@ async function cargarListaEstructuras(reintentando){
 async function beBorrarFiltrosVer(){
   document.getElementById('be-filtro-nivel').value = '';
   document.getElementById('be-filtro-tipo').value = '';
+  document.getElementById('be-filtro-zona').value = '';
   BE_ACTIVA_ID = null;
   document.getElementById('be-chart-card').classList.add('hidden');
   document.getElementById('be-granularidad-bar').classList.add('hidden');
@@ -5866,13 +5877,24 @@ function renderTablaDetalleBalance(datos){
   // que el contraste con "Cliente Entrada/Salida" (ver filaTipoCelda) sea
   // explícito de un vistazo, no solo por el color de fondo.
   const etiquetaTelemedido = col => (col.es_cliente || col._siec) ? '' : ' <span class="be-tag-telemedido">Telemedido</span>';
+  // Nombre del medidor (Usuarios Telemedidos) además del código -- el código
+  // solo (ej. "PIT6LPL1") no dice nada a simple vista de a quién/qué
+  // corresponde; se busca por usuario_id en BE_USUARIOS, la misma fuente
+  // que ya alimenta esta vista.
+  const nombreMedidor = col => {
+    if(col._siec) return '';
+    const u = BE_USUARIOS.find(x=>x.usuario_id===col.usuario_id);
+    return (u && u.nombre) ? u.nombre : '';
+  };
   const thPunto = (col, esInicioDeGrupo) => {
     const claseGrupo = (esInicioDeGrupo ? ' grupo-inicio' : '') + (col.es_cliente ? ' cliente' : '') + (col._siec ? ' siec' : '');
     const etiquetaLetra = col._siec ? '' : `<span class="be-letra-col" title="Usá esta letra en las fórmulas de ajuste, ej. =${col._letra}*1.05">${col._letra}</span> `;
-    if(!_bePuntoTieneBack(col)) return `<th class="pto be-col-detalle${claseGrupo}">${etiquetaLetra}${_mselEsc(etiquetaMedidor(col))}${etiquetaTelemedido(col)}</th>`;
+    const nombre = nombreMedidor(col);
+    const subtitulo = nombre ? `<span class="be-nombre-medidor" title="${_mselEsc(nombre)}">${_mselEsc(nombre)}</span>` : '';
+    if(!_bePuntoTieneBack(col)) return `<th class="pto be-col-detalle${claseGrupo}">${etiquetaLetra}${_mselEsc(etiquetaMedidor(col))}${etiquetaTelemedido(col)}${subtitulo}</th>`;
     const titulo = `Respaldo: ${col.usuario_id_back} · ${BE_NOMBRES_CANAL_CORTO[col.canal_back]||col.canal_back}`;
     const etiquetaLetraResp = `<span class="be-letra-col" title="Usá esta letra para referenciar el dato CRUDO del respaldo, ej. =${col._letraRespaldo}*1.05">${col._letraRespaldo}</span> `;
-    return `<th class="pto be-col-detalle${claseGrupo}" title="${_mselEsc(titulo)}">${etiquetaLetra}${_mselEsc(etiquetaMedidor(col))}${etiquetaTelemedido(col)}
+    return `<th class="pto be-col-detalle${claseGrupo}" title="${_mselEsc(titulo)}">${etiquetaLetra}${_mselEsc(etiquetaMedidor(col))}${etiquetaTelemedido(col)}${subtitulo}
         <button type="button" class="be-resp-toggle" onclick="beToggleRespaldoColumna(${col._respIdx},this)" title="Ver respaldo/diferencia">▸</button></th>`
       + `<th class="pto back be-col-detalle hidden" data-resp-grupo="${col._respIdx}">${etiquetaLetraResp}Respaldo</th>`
       + `<th class="pto dif be-col-detalle hidden" data-resp-grupo="${col._respIdx}">Dif.</th>`;
