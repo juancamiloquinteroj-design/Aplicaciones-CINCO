@@ -1213,21 +1213,6 @@ tfoot td:first-child{text-align:left}
     <div class="sec-sub">Formularios PR1 a PR9 -- salen de los mismos datos de Indicador de Pérdidas.</div>
   </div>
 
-  <!-- Encabezado compartido por TODOS los PR -- se llena una sola vez acá,
-       en vez de pedirlo de nuevo en cada formulario (ver comentario en
-       ReporteSspdDatosGenerales, backend). -->
-  <div class="card">
-    <div class="be-tabla-creadas-titulo" style="margin-bottom:10px">Datos generales del mercado</div>
-    <div class="fbar" style="margin-bottom:0">
-      <label>ID Mercado</label>
-      <input type="text" id="sspd-id-mercado" style="max-width:160px" oninput="_sspdActualizarPreviewPr1()">
-      <label>Nombre Mercado</label>
-      <input type="text" id="sspd-nombre-mercado" style="flex:1;min-width:220px" oninput="_sspdActualizarPreviewPr1()">
-      <button class="btn-theme" style="width:auto;padding:0 16px" onclick="guardarDatosGeneralesSspd()">Guardar</button>
-    </div>
-    <div id="sspd-generales-msg" class="tm-modal-msg"></div>
-  </div>
-
   <div class="mod-grid">
     <div class="mod-card" onclick="toggleDetallePr1()">
       <span class="mc-badge">EN CONSTRUCCIÓN</span>
@@ -1292,6 +1277,12 @@ tfoot td:first-child{text-align:left}
           <p><b>Fecha inicial para reporte:</b> Desde el día 1 del mes siguiente a la aprobación de ingresos por parte de la CREG.</p>
           <p><b>Fecha límite para reporte:</b> Hasta el día 15 del mes siguiente a la aprobación de ingresos por parte de la CREG.</p>
           <p><b>Descripción:</b> Este formulario clasifica las empresas que tienen o no, pérdidas reconocidas y plan de reducción de pérdidas aprobado de acuerdo con lo dispuesto en Resolución CREG 172 de 2011.</p>
+        </div>
+        <div class="fbar" style="margin-bottom:10px">
+          <label>ID Mercado</label>
+          <input type="text" id="sspd-pr1-id-mercado" style="max-width:120px" oninput="_sspdActualizarPreviewPr1()">
+          <label>Nombre Mercado</label>
+          <input type="text" id="sspd-pr1-nombre-mercado" style="flex:1;min-width:180px" oninput="_sspdActualizarPreviewPr1()">
         </div>
         <div class="be-field">
           <label>1. Cuenta con Resolución Particular de acuerdo a la Resolución CREG 172 de 2011</label>
@@ -7544,10 +7535,13 @@ async function cargarIndicadorPerdidasNivel1(){
 /* ---- Reportes Resolución SSPD 20192200020155 ---- */
 
 async function cargarReportesSspd(){
+  // ID/Nombre Mercado se guardan en un solo lugar compartido (para que
+  // PR2-PR9 lo reusen más adelante sin volver a escribirlo), pero se
+  // EDITAN desde dentro de cada PR -- ver comentario en toggleDetallePr1.
   try{
     const dg = DEMO ? {id_mercado:null, nombre_mercado:null} : await apiGet('/api/reportes-sspd/datos-generales');
-    document.getElementById('sspd-id-mercado').value = dg.id_mercado || '';
-    document.getElementById('sspd-nombre-mercado').value = dg.nombre_mercado || '';
+    document.getElementById('sspd-pr1-id-mercado').value = dg.id_mercado || '';
+    document.getElementById('sspd-pr1-nombre-mercado').value = dg.nombre_mercado || '';
   }catch(e){ /* deja los campos vacíos -- no bloqueante */ }
   try{
     const pr1 = DEMO ? {cuenta_resolucion_particular:null} : await apiGet('/api/reportes-sspd/pr1');
@@ -7561,8 +7555,8 @@ async function cargarReportesSspd(){
 // valor, SIN esperar a que se guarde -- así el usuario ve de una la tabla
 // que se va armando (pedido explícito), no solo después de guardar.
 function _sspdActualizarPreviewPr1(){
-  const id = document.getElementById('sspd-id-mercado').value.trim();
-  const nombre = document.getElementById('sspd-nombre-mercado').value.trim();
+  const id = document.getElementById('sspd-pr1-id-mercado').value.trim();
+  const nombre = document.getElementById('sspd-pr1-nombre-mercado').value.trim();
   const valor = document.getElementById('sspd-pr1-valor').value;
   document.getElementById('sspd-preview-id').textContent = id || '--';
   document.getElementById('sspd-preview-nombre').textContent = nombre || '--';
@@ -7585,22 +7579,6 @@ async function descargarExcelPr1(){
   }
 }
 
-async function guardarDatosGeneralesSspd(){
-  if(!requiereEditor()) return;
-  const msg = document.getElementById('sspd-generales-msg');
-  const id_mercado = document.getElementById('sspd-id-mercado').value.trim();
-  const nombre_mercado = document.getElementById('sspd-nombre-mercado').value.trim();
-  try{
-    await apiPut('/api/reportes-sspd/datos-generales', {id_mercado, nombre_mercado});
-    msg.className = 'tm-modal-msg';
-    msg.textContent = 'Guardado.';
-    setTimeout(()=>{ if(msg.textContent==='Guardado.') msg.textContent=''; }, 2500);
-  }catch(e){
-    msg.className = 'tm-modal-msg err';
-    msg.textContent = e.message || 'No se pudo guardar.';
-  }
-}
-
 // PR1 no tiene todavía su propia vista/ruta -- alcanza con desplegar el
 // detalle en la misma página (ver "Reportes Resolución SSPD"), un solo
 // campo no justifica una vista aparte.
@@ -7608,11 +7586,17 @@ function toggleDetallePr1(){
   document.getElementById('sspd-pr1-detalle').classList.toggle('hidden');
 }
 
+// Un solo "Guardar" para las 3 columnas de la tabla -- ID/Nombre Mercado
+// (compartido, ver comentario en cargarReportesSspd) y el campo propio de
+// PR1, aunque vivan en 2 tablas distintas en el backend.
 async function guardarPr1Sspd(){
   if(!requiereEditor()) return;
   const msg = document.getElementById('sspd-pr1-msg');
+  const id_mercado = document.getElementById('sspd-pr1-id-mercado').value.trim();
+  const nombre_mercado = document.getElementById('sspd-pr1-nombre-mercado').value.trim();
   const valor = document.getElementById('sspd-pr1-valor').value;
   try{
+    await apiPut('/api/reportes-sspd/datos-generales', {id_mercado, nombre_mercado});
     await apiPut('/api/reportes-sspd/pr1', {cuenta_resolucion_particular: valor ? parseInt(valor) : null});
     msg.className = 'tm-modal-msg';
     msg.textContent = 'Guardado.';
