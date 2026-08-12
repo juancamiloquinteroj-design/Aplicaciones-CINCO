@@ -417,6 +417,16 @@ tfoot td:first-child{text-align:left}
 .sspd-preview-tabla{border:1px solid var(--border)}
 .sspd-preview-tabla th{border:1px solid var(--border);text-transform:none;font-size:11.5px;text-align:center;white-space:normal;color:var(--text)}
 .sspd-preview-tabla td{border:1px solid var(--border);white-space:normal;text-align:center;font-weight:600;color:var(--text)}
+
+/* PR8: fila 1 = número de columna (chica, color acento), fila 2 = nombre
+   -- mismo look "claro" (centrado, normal, sin mayúsculas forzadas) que
+   las tablas de vista previa de PR1/PR2, no el compacto genérico. */
+.sspd-pr8-tabla thead tr:first-child th{font-size:10px;font-weight:700;color:var(--accent);background:var(--bg3);padding:2px 6px;text-align:center}
+.sspd-pr8-tabla thead tr:nth-child(2) th{text-transform:none;font-size:11px;white-space:normal;text-align:center;padding:6px 8px}
+.be-tabla-scroll-acotada .sspd-pr8-tabla thead tr:first-child th{position:sticky;top:0;z-index:6}
+.be-tabla-scroll-acotada .sspd-pr8-tabla thead tr:nth-child(2) th{position:sticky;top:19px;z-index:6}
+/* Separador más grueso entre un mes y el siguiente (cada 4 filas = 1 mes). */
+.sspd-pr8-tabla tbody tr.sspd-pr8-mes-inicio td{border-top:2px solid var(--text3)}
 .be-tabla-creadas td.num{text-align:right;font-family:ui-monospace,"Cascadia Code","SF Mono",Consolas,monospace}
 .be-tabla-creadas tr:last-child td{border-bottom:none}
 .be-tabla-creadas .borrar{color:#ef476f;cursor:pointer}
@@ -1494,13 +1504,23 @@ tfoot td:first-child{text-align:left}
       <p style="font-size:11.5px">*Teniendo en cuenta que algunos indicadores solicitados en este formulario dependen de las ventas reportadas en el SUI en formato TC2 y que tienen un rezago de 2 meses. Razón por la cual este formulario requiere del reporte de datos 3 meses vencidos.</p>
       <p style="margin-top:10px;color:var(--text3);font-size:11.5px">Esta tabla se arma sola a partir del Indicador de Pérdidas (IP_Reg) -- no se edita a mano; si un dato cambia allá, también cambia acá.</p>
     </div>
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px">
-      <div class="be-tabla-creadas-titulo" style="margin-bottom:0">Histórico mensual (crece solo cada mes)</div>
-      <button type="button" class="be-editar-btn" onclick="descargarExcelPr8()" title="Descargar esta tabla en Excel">📊 Descargar Excel</button>
+    <div class="fbar" style="margin-bottom:12px">
+      <label>Ver desde</label>
+      <input type="date" id="sspd-pr8-desde" onchange="_sspdCargarPr8()">
+      <label>hasta</label>
+      <input type="date" id="sspd-pr8-hasta" onchange="_sspdCargarPr8()">
+      <button type="button" class="be-editar-btn" style="margin-left:auto" onclick="descargarExcelPr8()" title="Descarga solo el rango seleccionado arriba">📊 Descargar Excel</button>
     </div>
+    <div class="be-tabla-creadas-titulo">Histórico mensual</div>
     <div class="be-tabla-scroll be-tabla-scroll-acotada ip-tabla-compacta">
-      <table class="be-tabla-creadas" id="sspd-pr8-tabla">
+      <table class="be-tabla-creadas sspd-pr8-tabla" id="sspd-pr8-tabla">
         <thead>
+          <tr>
+            <th></th><th></th>
+            <th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th><th>7</th><th>8</th><th>9</th><th>10</th>
+            <th>11</th><th>12</th><th>13</th><th>14</th><th>15</th><th>16</th><th>17</th><th>18</th><th>19</th><th>20</th>
+            <th>21</th><th>22</th><th>23</th><th>24</th><th>25</th>
+          </tr>
           <tr>
             <th>FECHA CALENDARIO</th><th>FECHA REGULATORIA</th><th>ID MERCADO</th><th>NOMBRE MERCADO</th><th>NIVEL DE TENSIÓN</th>
             <th>Ee</th><th>EeG</th><th>FeSTN</th><th>FeOR</th><th>FeNS</th>
@@ -7914,19 +7934,35 @@ async function guardarPr3Sspd(){
 
 function descargarExcelPr3(){ _sspdDescargarExcel('/api/reportes-sspd/pr3/export.xlsx', `PR3_${OPERADOR.slug}.xlsx`); }
 
+// Formatea "2026-07-01" -> "Julio-2026", igual que labelMesLargo ya usa en
+// el resto de la app (pedido explícito, antes salía "2026-07-01").
+function _sspdFechaLarga(iso){
+  return labelMesLargo(iso.slice(0, 7));
+}
+
 async function _sspdCargarPr8(){
+  const inDesde = document.getElementById('sspd-pr8-desde');
+  const inHasta = document.getElementById('sspd-pr8-hasta');
+  // Por defecto: desde ene-2025 hasta el último mes calculado (hasta
+  // abierto = sin tope, el backend ya se detiene solo en el último mes
+  // con datos reales en Indicador de Pérdidas).
+  if(!inDesde.value) inDesde.value = '2025-01-01';
+
   const tbody = document.getElementById('sspd-pr8-tbody');
   tbody.innerHTML = `<tr><td colspan="27" style="text-align:center;color:var(--text3)">Cargando...</td></tr>`;
   try{
-    const datos = DEMO ? {filas:[]} : await apiGet('/api/reportes-sspd/pr8');
+    const qs = new URLSearchParams();
+    if(inDesde.value) qs.set('desde', inDesde.value.slice(0,7));
+    if(inHasta.value) qs.set('hasta', inHasta.value.slice(0,7));
+    const datos = DEMO ? {filas:[]} : await apiGet(`/api/reportes-sspd/pr8?${qs}`);
     _sspdPr8Cargado = true;
     const fn = v => Number(v).toLocaleString('es-CO', {maximumFractionDigits:2});
     if(!datos.filas.length){
-      tbody.innerHTML = `<tr><td colspan="27" style="text-align:center;color:var(--text3)">Todavía no hay meses calculados en el Indicador de Pérdidas.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="27" style="text-align:center;color:var(--text3)">No hay meses calculados en ese rango.</td></tr>`;
       return;
     }
-    tbody.innerHTML = datos.filas.map(f => `<tr>
-      <td>${f.fecha_calendario}</td><td>${f.fecha_regulatoria}</td><td>${f.id_mercado||'--'}</td><td>${f.nombre_mercado||'--'}</td><td>${f.nivel_tension}</td>
+    tbody.innerHTML = datos.filas.map((f, i) => `<tr${i % 4 === 0 ? ' class="sspd-pr8-mes-inicio"' : ''}>
+      <td>${_sspdFechaLarga(f.fecha_calendario)}</td><td>${_sspdFechaLarga(f.fecha_regulatoria)}</td><td>${f.id_mercado||'--'}</td><td>${f.nombre_mercado||'--'}</td><td>${f.nivel_tension}</td>
       <td>${fn(f.ee)}</td><td>${fn(f.eeg)}</td><td>${fn(f.festn)}</td><td>${fn(f.feor)}</td><td>${fn(f.fens)}</td>
       <td>${fn(f.ee2)}</td><td>${fn(f.es2)}</td><td>${fn(f.epr2)}</td><td>${fn(f.fdf2)}</td>
       <td>${fn(f.ee3)}</td><td>${fn(f.es3)}</td><td>${fn(f.epr3)}</td><td>${fn(f.fdf3)}</td>
@@ -7938,7 +7974,14 @@ async function _sspdCargarPr8(){
   }
 }
 
-function descargarExcelPr8(){ _sspdDescargarExcel('/api/reportes-sspd/pr8/export.xlsx', `PR8_${OPERADOR.slug}.xlsx`); }
+function descargarExcelPr8(){
+  const desde = document.getElementById('sspd-pr8-desde').value;
+  const hasta = document.getElementById('sspd-pr8-hasta').value;
+  const qs = new URLSearchParams();
+  if(desde) qs.set('desde', desde.slice(0,7));
+  if(hasta) qs.set('hasta', hasta.slice(0,7));
+  _sspdDescargarExcel(`/api/reportes-sspd/pr8/export.xlsx?${qs}`, `PR8_${OPERADOR.slug}.xlsx`);
+}
 
 function ipPoblarRangoFechas(idDesde, idHasta){
   const desde = document.getElementById(idDesde);
