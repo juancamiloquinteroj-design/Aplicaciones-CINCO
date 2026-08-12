@@ -1206,8 +1206,24 @@ tfoot td:first-child{text-align:left}
     <div class="sec-title">Reportes Resolución SSPD 20192200020155</div>
     <div class="sec-sub">Formularios PR1 a PR9 -- salen de los mismos datos de Indicador de Pérdidas.</div>
   </div>
+
+  <!-- Encabezado compartido por TODOS los PR -- se llena una sola vez acá,
+       en vez de pedirlo de nuevo en cada formulario (ver comentario en
+       ReporteSspdDatosGenerales, backend). -->
+  <div class="card">
+    <div class="be-tabla-creadas-titulo" style="margin-bottom:10px">Datos generales del mercado</div>
+    <div class="fbar" style="margin-bottom:0">
+      <label>ID Mercado</label>
+      <input type="text" id="sspd-id-mercado" style="max-width:160px">
+      <label>Nombre Mercado</label>
+      <input type="text" id="sspd-nombre-mercado" style="flex:1;min-width:220px">
+      <button class="btn-theme" style="width:auto;padding:0 16px" onclick="guardarDatosGeneralesSspd()">Guardar</button>
+    </div>
+    <div id="sspd-generales-msg" class="tm-modal-msg"></div>
+  </div>
+
   <div class="mod-grid">
-    <div class="mod-card disabled">
+    <div class="mod-card" onclick="toggleDetallePr1()">
       <span class="mc-badge">EN CONSTRUCCIÓN</span>
       <span class="mc-icon">📄</span>
       <div class="mc-title">PR1</div>
@@ -1253,6 +1269,32 @@ tfoot td:first-child{text-align:left}
       <span class="mc-icon">📄</span>
       <div class="mc-title">PR9</div>
     </div>
+  </div>
+
+  <!-- Detalle de PR1 -- texto tal cual la resolución (tipo de cargue,
+       periodicidad, fechas, descripción) y el único campo que pide el
+       formulario (Tabla 103 de la resolución SSPD). -->
+  <div id="sspd-pr1-detalle" class="card hidden">
+    <div class="be-tabla-creadas-titulo" style="margin-bottom:10px">FORMULARIO PR1. Resolución Particular Pérdidas CREG 172 de 2011</div>
+    <div style="font-size:12.5px;color:var(--text2);line-height:1.7;margin-bottom:16px">
+      <p><b>Tipo de cargue:</b> Fábrica Formulario.</p>
+      <p><b>Periodicidad:</b> Cargue Único (mensual - demanda*).</p>
+      <p><b>Dato a reportar:</b> Único.</p>
+      <p><b>Fecha inicial para reporte:</b> Desde el día 1 del mes siguiente a la aprobación de ingresos por parte de la CREG.</p>
+      <p><b>Fecha límite para reporte:</b> Hasta el día 15 del mes siguiente a la aprobación de ingresos por parte de la CREG.</p>
+      <p><b>Descripción:</b> Este formulario clasifica las empresas que tienen o no, pérdidas reconocidas y plan de reducción de pérdidas aprobado de acuerdo con lo dispuesto en Resolución CREG 172 de 2011.</p>
+      <p style="font-size:11px;color:var(--text3)">* Mensual - demanda: entendiéndose mensual el mes siguiente a la aprobación de ingresos, momento en el cual el operador de red deberá solicitar la habilitación de este formulario y realizar un solo cargue.</p>
+    </div>
+    <div class="be-field">
+      <label>1. Cuenta con Resolución Particular de acuerdo a la Resolución CREG 172 de 2011</label>
+      <select id="sspd-pr1-valor" style="max-width:520px">
+        <option value="">Elegí un valor...</option>
+        <option value="1">1 -- Cuenta con resolución particular de acuerdo con lo establecido en Resolución CREG 172 de 2011</option>
+        <option value="2">2 -- No cuenta con resolución particular de acuerdo con lo establecido en Resolución CREG 172 de 2011</option>
+      </select>
+    </div>
+    <button class="btn-theme" style="width:auto;padding:0 16px" onclick="guardarPr1Sspd()">Guardar</button>
+    <div id="sspd-pr1-msg" class="tm-modal-msg"></div>
   </div>
 </div>
 <!-- fin vista-reportes-sspd -->
@@ -2230,7 +2272,7 @@ function toggleSubmenuIP(){
   }
 }
 
-let vistaCargada = {perdidas:false, parametrizacion:false, telemedidos:false, balancesEstructura:false, ipReg:false, ipNivel1:false};
+let vistaCargada = {perdidas:false, parametrizacion:false, telemedidos:false, balancesEstructura:false, ipReg:false, ipNivel1:false, reportesSspd:false};
 
 async function mostrarVista(nombre){
   document.querySelectorAll('.vista-modulo').forEach(v=>v.classList.add('hidden'));
@@ -2278,6 +2320,10 @@ async function mostrarVista(nombre){
   if(nombre==='ip-nivel1' && !vistaCargada.ipNivel1){
     vistaCargada.ipNivel1 = true;
     await cargarIndicadorPerdidasNivel1();
+  }
+  if(nombre==='reportes-sspd' && !vistaCargada.reportesSspd){
+    vistaCargada.reportesSspd = true;
+    await cargarReportesSspd();
   }
   // Las alertas se piden de nuevo cada vez que se entra a esta vista puntual
   // (no solo la primera vez) -- son datos que cambian seguido (atraso día a
@@ -7459,6 +7505,58 @@ async function cargarIndicadorPerdidasNivel1(){
   ipRenderTablaNivel1();
   ipPoblarSelectorAnalisisMes('ip-analisis-n1-mes');
   ipGenerarAnalisisNivel1();
+}
+
+/* ---- Reportes Resolución SSPD 20192200020155 ---- */
+
+async function cargarReportesSspd(){
+  try{
+    const dg = DEMO ? {id_mercado:null, nombre_mercado:null} : await apiGet('/api/reportes-sspd/datos-generales');
+    document.getElementById('sspd-id-mercado').value = dg.id_mercado || '';
+    document.getElementById('sspd-nombre-mercado').value = dg.nombre_mercado || '';
+  }catch(e){ /* deja los campos vacíos -- no bloqueante */ }
+  try{
+    const pr1 = DEMO ? {cuenta_resolucion_particular:null} : await apiGet('/api/reportes-sspd/pr1');
+    document.getElementById('sspd-pr1-valor').value = pr1.cuenta_resolucion_particular ? String(pr1.cuenta_resolucion_particular) : '';
+  }catch(e){ /* deja sin elegir -- no bloqueante */ }
+}
+
+async function guardarDatosGeneralesSspd(){
+  if(!requiereEditor()) return;
+  const msg = document.getElementById('sspd-generales-msg');
+  const id_mercado = document.getElementById('sspd-id-mercado').value.trim();
+  const nombre_mercado = document.getElementById('sspd-nombre-mercado').value.trim();
+  try{
+    await apiPut('/api/reportes-sspd/datos-generales', {id_mercado, nombre_mercado});
+    msg.className = 'tm-modal-msg';
+    msg.textContent = 'Guardado.';
+    setTimeout(()=>{ if(msg.textContent==='Guardado.') msg.textContent=''; }, 2500);
+  }catch(e){
+    msg.className = 'tm-modal-msg err';
+    msg.textContent = e.message || 'No se pudo guardar.';
+  }
+}
+
+// PR1 no tiene todavía su propia vista/ruta -- alcanza con desplegar el
+// detalle en la misma página (ver "Reportes Resolución SSPD"), un solo
+// campo no justifica una vista aparte.
+function toggleDetallePr1(){
+  document.getElementById('sspd-pr1-detalle').classList.toggle('hidden');
+}
+
+async function guardarPr1Sspd(){
+  if(!requiereEditor()) return;
+  const msg = document.getElementById('sspd-pr1-msg');
+  const valor = document.getElementById('sspd-pr1-valor').value;
+  try{
+    await apiPut('/api/reportes-sspd/pr1', {cuenta_resolucion_particular: valor ? parseInt(valor) : null});
+    msg.className = 'tm-modal-msg';
+    msg.textContent = 'Guardado.';
+    setTimeout(()=>{ if(msg.textContent==='Guardado.') msg.textContent=''; }, 2500);
+  }catch(e){
+    msg.className = 'tm-modal-msg err';
+    msg.textContent = e.message || 'No se pudo guardar.';
+  }
 }
 
 function ipPoblarRangoFechas(idDesde, idHasta){
