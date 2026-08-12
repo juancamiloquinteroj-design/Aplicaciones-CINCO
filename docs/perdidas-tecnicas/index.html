@@ -1282,10 +1282,12 @@ tfoot td:first-child{text-align:left}
         <div class="mc-desc">Índices Intermedios Cálculos de Pérdidas.</div>
       </div>
     </div>
-    <div class="mod-card disabled">
-      <span class="mc-badge b-soon">PRÓXIMAMENTE</span>
+    <div class="mod-card" onclick="toggleDetallePr9()">
       <span class="mc-icon-pr"></span>
-      <div class="mc-title">PR9</div>
+      <div class="mc-row">
+        <div class="mc-title">PR9</div>
+        <div class="mc-desc">Índices Anuales de Cálculos de Pérdidas.</div>
+      </div>
     </div>
   </div>
 
@@ -1536,6 +1538,40 @@ tfoot td:first-child{text-align:left}
           </tr>
         </thead>
         <tbody id="sspd-pr8-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Detalle de PR9 -- igual que PR8, NO se llena a mano: PT/IPT/PE1/P1
+       salen de ip_reg_mensual (una fila por año, no por mes -- tabla
+       chica, sin filtro de fechas). -->
+  <div id="sspd-pr9-detalle" class="card hidden sspd-detalle">
+    <div style="font-size:15px;font-weight:800;color:var(--accent);margin-bottom:14px">FORMULARIO PR9. Índices Anuales de Cálculos de Pérdidas</div>
+    <div style="font-size:12.5px;color:var(--text2);line-height:1.7;margin-bottom:16px">
+      <p><b>Tipo de cargue:</b> Fábrica de Formulario.</p>
+      <p><b>Periodicidad:</b> Anual.</p>
+      <p><b>Dato a reportar:</b> Anual.</p>
+      <p><b>Fecha inicial para reporte:</b> Desde el día 1 del mes de abril del año correspondiente al reporte.</p>
+      <p><b>Fecha límite para reporte:</b> Hasta el día 15 del mes de abril del año correspondiente al reporte.</p>
+      <p><b>Descripción:</b> Este formulario captura las pérdidas anuales en energía totales y en el nivel de tensión 1, así como también, los respectivos índices de pérdidas calculados para el año correspondiente.</p>
+      <p style="font-size:11.5px"><b>1. PT:</b> Pérdidas totales de energía en el mercado de comercialización servido por el OR, en kWh (numeral 7.1.4.1 Resolución CREG 015 de 2018).<br>
+      <b>2. IPT:</b> Índice de pérdidas totales de energía en el mercado de comercialización servido por el OR (%).<br>
+      <b>3. PE1:</b> Pérdidas de energía del Nivel de Tensión 1, en kWh.<br>
+      <b>4. P1:</b> Índice de pérdidas de energía del Nivel de Tensión 1 (%).</p>
+      <p style="margin-top:10px;color:var(--text3);font-size:11.5px">Esta tabla se arma sola a partir del Indicador de Pérdidas (IP_Reg) -- no se edita a mano; si un dato cambia allá, también cambia acá.</p>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px">
+      <div class="be-tabla-creadas-titulo" style="margin-bottom:0">Histórico anual</div>
+      <button type="button" class="be-editar-btn" onclick="descargarExcelPr9()" title="Descargar esta tabla en Excel">📊 Descargar Excel</button>
+    </div>
+    <div class="be-tabla-scroll">
+      <table class="be-tabla-creadas sspd-preview-tabla" id="sspd-pr9-tabla">
+        <thead>
+          <tr>
+            <th>PERIODO</th><th>REPORTE</th><th>ID MERCADO</th><th>NOMBRE MERCADO</th><th>PT</th><th>IPT</th><th>PE1</th><th>P1</th>
+          </tr>
+        </thead>
+        <tbody id="sspd-pr9-tbody"></tbody>
       </table>
     </div>
   </div>
@@ -7854,6 +7890,11 @@ function toggleDetallePr8(){
   _sspdToggleDetalle('sspd-pr8-detalle');
   if(!_sspdPr8Cargado) _sspdCargarPr8();
 }
+let _sspdPr9Cargado = false;
+function toggleDetallePr9(){
+  _sspdToggleDetalle('sspd-pr9-detalle');
+  if(!_sspdPr9Cargado) _sspdCargarPr9();
+}
 
 // Un solo "Guardar" para toda la fila de la tabla -- ID/Nombre Mercado
 // (compartido, ver comentario en cargarReportesSspd) y el campo propio de
@@ -7988,6 +8029,28 @@ function descargarExcelPr8(){
   if(hasta) qs.set('hasta', hasta.slice(0,7));
   _sspdDescargarExcel(`/api/reportes-sspd/pr8/export.xlsx?${qs}`, `PR8_${OPERADOR.slug}.xlsx`);
 }
+
+async function _sspdCargarPr9(){
+  const tbody = document.getElementById('sspd-pr9-tbody');
+  tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--text3)">Cargando...</td></tr>`;
+  try{
+    const datos = DEMO ? {filas:[]} : await apiGet('/api/reportes-sspd/pr9');
+    _sspdPr9Cargado = true;
+    const fn = v => Number(v).toLocaleString('es-CO', {maximumFractionDigits:2});
+    if(!datos.filas.length){
+      tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--text3)">Todavía no hay años calculados en el Indicador de Pérdidas.</td></tr>`;
+      return;
+    }
+    tbody.innerHTML = datos.filas.map(f => `<tr>
+      <td>${f.periodo}</td><td>${f.reporte}</td><td>${f.id_mercado||'--'}</td><td>${f.nombre_mercado||'--'}</td>
+      <td>${fn(f.pt)}</td><td>${fn(f.ipt)}</td><td>${fn(f.pe1)}</td><td>${fn(f.p1)}</td>
+    </tr>`).join('');
+  }catch(e){
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:#ef476f">${e.message || 'No se pudo cargar la tabla.'}</td></tr>`;
+  }
+}
+
+function descargarExcelPr9(){ _sspdDescargarExcel('/api/reportes-sspd/pr9/export.xlsx', `PR9_${OPERADOR.slug}.xlsx`); }
 
 function ipPoblarRangoFechas(idDesde, idHasta){
   const desde = document.getElementById(idDesde);
