@@ -1560,9 +1560,13 @@ tfoot td:first-child{text-align:left}
       <b>4. P1:</b> Índice de pérdidas de energía del Nivel de Tensión 1 (%).</p>
       <p style="margin-top:10px;color:var(--text3);font-size:11.5px">Esta tabla se arma sola a partir del Indicador de Pérdidas (IP_Reg) -- no se edita a mano; si un dato cambia allá, también cambia acá.</p>
     </div>
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;flex-wrap:wrap">
       <div class="be-tabla-creadas-titulo" style="margin-bottom:0">Histórico anual</div>
-      <button type="button" class="be-editar-btn" onclick="descargarExcelPr9()" title="Descargar esta tabla en Excel">📊 Descargar Excel</button>
+      <div style="display:flex;align-items:center;gap:8px">
+        <label style="font-size:11px;color:var(--text3)">Año a exportar</label>
+        <select id="sspd-pr9-anio-exportar" style="max-width:100px"></select>
+        <button type="button" class="be-editar-btn" onclick="descargarExcelPr9()" title="Descargar solo el año elegido, en el formato oficial del formulario">📊 Descargar Excel</button>
+      </div>
     </div>
     <div class="be-tabla-scroll">
       <table class="be-tabla-creadas sspd-preview-tabla" id="sspd-pr9-tabla">
@@ -8032,6 +8036,7 @@ function descargarExcelPr8(){
 
 async function _sspdCargarPr9(){
   const tbody = document.getElementById('sspd-pr9-tbody');
+  const selAnio = document.getElementById('sspd-pr9-anio-exportar');
   tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--text3)">Cargando...</td></tr>`;
   try{
     const datos = DEMO ? {filas:[]} : await apiGet('/api/reportes-sspd/pr9');
@@ -8039,18 +8044,26 @@ async function _sspdCargarPr9(){
     const fn = v => Number(v).toLocaleString('es-CO', {maximumFractionDigits:2});
     if(!datos.filas.length){
       tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--text3)">Todavía no hay años calculados en el Indicador de Pérdidas.</td></tr>`;
+      selAnio.innerHTML = '';
       return;
     }
     tbody.innerHTML = datos.filas.map(f => `<tr>
       <td>${f.periodo}</td><td>${f.reporte}</td><td>${f.id_mercado||'--'}</td><td>${f.nombre_mercado||'--'}</td>
       <td>${fn(f.pt)}</td><td>${fn(f.ipt)}</td><td>${fn(f.pe1)}</td><td>${fn(f.p1)}</td>
     </tr>`).join('');
+    // Selector de año a exportar -- por defecto el más reciente.
+    selAnio.innerHTML = datos.filas.map(f => `<option value="${f.periodo}">${f.periodo}</option>`).join('');
+    selAnio.value = datos.filas[datos.filas.length - 1].periodo;
   }catch(e){
     tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:#ef476f">${e.message || 'No se pudo cargar la tabla.'}</td></tr>`;
   }
 }
 
-function descargarExcelPr9(){ _sspdDescargarExcel('/api/reportes-sspd/pr9/export.xlsx', `PR9_${OPERADOR.slug}.xlsx`); }
+function descargarExcelPr9(){
+  const anio = document.getElementById('sspd-pr9-anio-exportar').value;
+  if(!anio){ alert('No hay años disponibles para exportar.'); return; }
+  _sspdDescargarExcel(`/api/reportes-sspd/pr9/export.xlsx?anio=${anio}`, `PR9_${anio}_${OPERADOR.slug}.xlsx`);
+}
 
 function ipPoblarRangoFechas(idDesde, idHasta){
   const desde = document.getElementById(idDesde);
