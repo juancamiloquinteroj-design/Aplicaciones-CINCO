@@ -1260,10 +1260,12 @@ tfoot td:first-child{text-align:left}
       <span class="mc-icon">📄</span>
       <div class="mc-title">PR7</div>
     </div>
-    <div class="mod-card disabled">
-      <span class="mc-badge b-soon">PRÓXIMAMENTE</span>
+    <div class="mod-card" onclick="toggleDetallePr8()">
       <span class="mc-icon">📄</span>
-      <div class="mc-title">PR8</div>
+      <div class="mc-row">
+        <div class="mc-title">PR8</div>
+        <div class="mc-desc">Índices Intermedios Cálculos de Pérdidas.</div>
+      </div>
     </div>
     <div class="mod-card disabled">
       <span class="mc-badge b-soon">PRÓXIMAMENTE</span>
@@ -1471,6 +1473,44 @@ tfoot td:first-child{text-align:left}
           </table>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- Detalle de PR8 -- NO se llena a mano: es un pivot de lo ya calculado
+       en Indicador de Pérdidas (IP_Reg), 4 filas por mes (una por Nivel de
+       Tensión 1-4). Por eso no tiene campos de entrada ni botón Guardar --
+       solo texto de la resolución arriba y la tabla histórica (crece cada
+       mes) abajo, tal como pidió el usuario. -->
+  <div id="sspd-pr8-detalle" class="card hidden sspd-detalle">
+    <div style="font-size:15px;font-weight:800;color:var(--accent);margin-bottom:14px">FORMULARIO PR8. Índices Intermedios Cálculos de Pérdidas</div>
+    <div style="font-size:12.5px;color:var(--text2);line-height:1.7;margin-bottom:16px">
+      <p><b>Tipo de cargue:</b> Fábrica de Formulario.</p>
+      <p><b>Periodicidad:</b> Mensual.</p>
+      <p><b>Dato a reportar:</b> Tercer mes vencido*.</p>
+      <p><b>Fecha inicial para reporte:</b> Desde el día 1 del mes de reporte del año correspondiente al reporte.</p>
+      <p><b>Fecha límite para reporte:</b> Hasta el día 15 del mes de reporte del año correspondiente al reporte.</p>
+      <p><b>Descripción:</b> Este formulario captura las variables intermedias mes tras mes para el cálculo de las pérdidas de energía y sus respectivos índices de pérdidas anuales.</p>
+      <p style="font-size:11.5px">*Teniendo en cuenta que algunos indicadores solicitados en este formulario dependen de las ventas reportadas en el SUI en formato TC2 y que tienen un rezago de 2 meses. Razón por la cual este formulario requiere del reporte de datos 3 meses vencidos.</p>
+      <p style="margin-top:10px;color:var(--text3);font-size:11.5px">Esta tabla se arma sola a partir del Indicador de Pérdidas (IP_Reg) -- no se edita a mano; si un dato cambia allá, también cambia acá.</p>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px">
+      <div class="be-tabla-creadas-titulo" style="margin-bottom:0">Histórico mensual (crece solo cada mes)</div>
+      <button type="button" class="be-editar-btn" onclick="descargarExcelPr8()" title="Descargar esta tabla en Excel">📊 Descargar Excel</button>
+    </div>
+    <div class="be-tabla-scroll be-tabla-scroll-acotada ip-tabla-compacta">
+      <table class="be-tabla-creadas" id="sspd-pr8-tabla">
+        <thead>
+          <tr>
+            <th>FECHA CALENDARIO</th><th>FECHA REGULATORIA</th><th>ID MERCADO</th><th>NOMBRE MERCADO</th><th>NIVEL DE TENSIÓN</th>
+            <th>Ee</th><th>EeG</th><th>FeSTN</th><th>FeOR</th><th>FeNS</th>
+            <th>Ee2</th><th>Es2</th><th>EPR2</th><th>FDF2</th>
+            <th>Ee3</th><th>Es3</th><th>EPR3</th><th>FDF3</th>
+            <th>Ee4</th><th>Es4</th><th>EPR4</th><th>FDF4</th>
+            <th>Es</th><th>EsVFC</th><th>EsVSFC</th><th>FsSTN</th><th>FsOR</th>
+          </tr>
+        </thead>
+        <tbody id="sspd-pr8-tbody"></tbody>
+      </table>
     </div>
   </div>
 </div>
@@ -7780,6 +7820,14 @@ function _sspdToggleDetalle(id){
 function toggleDetallePr1(){ _sspdToggleDetalle('sspd-pr1-detalle'); }
 function toggleDetallePr2(){ _sspdToggleDetalle('sspd-pr2-detalle'); }
 function toggleDetallePr3(){ _sspdToggleDetalle('sspd-pr3-detalle'); }
+// PR8 no tiene campos que editar -- la tabla se trae del servidor recién
+// al abrirlo (no en cargarReportesSspd) porque es histórica y solo crece,
+// no hace falta recargarla cada vez que se entra al submódulo.
+let _sspdPr8Cargado = false;
+function toggleDetallePr8(){
+  _sspdToggleDetalle('sspd-pr8-detalle');
+  if(!_sspdPr8Cargado) _sspdCargarPr8();
+}
 
 // Un solo "Guardar" para toda la fila de la tabla -- ID/Nombre Mercado
 // (compartido, ver comentario en cargarReportesSspd) y el campo propio de
@@ -7864,6 +7912,32 @@ async function guardarPr3Sspd(){
 }
 
 function descargarExcelPr3(){ _sspdDescargarExcel('/api/reportes-sspd/pr3/export.xlsx', `PR3_${OPERADOR.slug}.xlsx`); }
+
+async function _sspdCargarPr8(){
+  const tbody = document.getElementById('sspd-pr8-tbody');
+  tbody.innerHTML = `<tr><td colspan="27" style="text-align:center;color:var(--text3)">Cargando...</td></tr>`;
+  try{
+    const datos = DEMO ? {filas:[]} : await apiGet('/api/reportes-sspd/pr8');
+    _sspdPr8Cargado = true;
+    const fn = v => Number(v).toLocaleString('es-CO', {maximumFractionDigits:2});
+    if(!datos.filas.length){
+      tbody.innerHTML = `<tr><td colspan="27" style="text-align:center;color:var(--text3)">Todavía no hay meses calculados en el Indicador de Pérdidas.</td></tr>`;
+      return;
+    }
+    tbody.innerHTML = datos.filas.map(f => `<tr>
+      <td>${f.fecha_calendario}</td><td>${f.fecha_regulatoria}</td><td>${f.id_mercado||'--'}</td><td>${f.nombre_mercado||'--'}</td><td>${f.nivel_tension}</td>
+      <td>${fn(f.ee)}</td><td>${fn(f.eeg)}</td><td>${fn(f.festn)}</td><td>${fn(f.feor)}</td><td>${fn(f.fens)}</td>
+      <td>${fn(f.ee2)}</td><td>${fn(f.es2)}</td><td>${fn(f.epr2)}</td><td>${fn(f.fdf2)}</td>
+      <td>${fn(f.ee3)}</td><td>${fn(f.es3)}</td><td>${fn(f.epr3)}</td><td>${fn(f.fdf3)}</td>
+      <td>${fn(f.ee4)}</td><td>${fn(f.es4)}</td><td>${fn(f.epr4)}</td><td>${fn(f.fdf4)}</td>
+      <td>${fn(f.es)}</td><td>${fn(f.esvfc)}</td><td>${fn(f.esvsfc)}</td><td>${fn(f.fsstn)}</td><td>${fn(f.fsor)}</td>
+    </tr>`).join('');
+  }catch(e){
+    tbody.innerHTML = `<tr><td colspan="27" style="text-align:center;color:#ef476f">${e.message || 'No se pudo cargar la tabla.'}</td></tr>`;
+  }
+}
+
+function descargarExcelPr8(){ _sspdDescargarExcel('/api/reportes-sspd/pr8/export.xlsx', `PR8_${OPERADOR.slug}.xlsx`); }
 
 function ipPoblarRangoFechas(idDesde, idHasta){
   const desde = document.getElementById(idDesde);
