@@ -43,6 +43,8 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(
 .badge-recarga b{color:var(--text2)}
 .btn-theme,.btn-logout{height:34px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:13px;color:var(--text);padding:0 12px}
 .btn-theme{width:34px;padding:0}
+.ip-com-modo-btn{opacity:.55}
+.ip-com-modo-btn.activo{opacity:1;background:var(--accent);color:#fff;border-color:var(--accent)}
 .btn-theme:hover,.btn-logout:hover{border-color:var(--accent)}
 
 /* SIDEBAR */
@@ -235,6 +237,8 @@ select{padding:6px 10px;border:1px solid var(--border);border-radius:7px;font-si
 #ch-balance-estructura:active{cursor:grabbing}
 canvas[id^="ch-tride-"]{cursor:grab}
 canvas[id^="ch-tride-"]:active{cursor:grabbing}
+#ch-ip-comercial{cursor:grab}
+#ch-ip-comercial:active{cursor:grabbing}
 .split-wrap{display:flex;gap:18px;align-items:stretch;flex-wrap:wrap}
 .split-wrap>div{flex:1;min-width:280px}
 @media(max-width:800px){.split-wrap>div{flex:1 1 100%}}
@@ -715,6 +719,9 @@ tfoot td:first-child{text-align:left}
   </button>
   <div class="sidebar-submenu hidden" id="sidebar-submenu-ip">
     <button class="sidebar-sublink" data-vista="ip-reg" onclick="mostrarVista('ip-reg')">📈 IP_Reg</button>
+    <button class="sidebar-sublink" data-vista="ip-comercial" onclick="mostrarVista('ip-comercial')" style="line-height:1.25;text-align:left">
+      💰 Indicador Pérdidas<br>Comercial
+    </button>
     <button class="sidebar-sublink" data-vista="ip-nivel1" onclick="mostrarVista('ip-nivel1')" style="line-height:1.25;text-align:left">
       Indicador Pérdidas<br>Nivel de Tensión 1
     </button>
@@ -1181,6 +1188,26 @@ tfoot td:first-child{text-align:left}
 
 </div>
 <!-- fin vista-ip-reg -->
+
+<!-- ---------------- INDICADOR DE PÉRDIDAS COMERCIAL ---------------- -->
+<!-- Datos YA calculados en un Excel del operador (Indice Perdidas
+     EH_Comercial.xlsx, hoja "1. Balance_Final") -- no depende de IP_Reg ni
+     de Datos_XM.csv, es una fuente totalmente aparte. -->
+<div id="vista-ip-comercial" class="vista-modulo hidden">
+  <div class="sec-hdr">
+    <div class="sec-title">Indicador de Pérdidas Comercial</div>
+    <div class="sec-sub">Pérdidas de energía (Compra - Venta) mes a mes, según el balance comercial del operador.</div>
+  </div>
+
+  <div class="card">
+    <div class="fbar" style="margin-bottom:12px">
+      <button type="button" class="btn-theme ip-com-modo-btn activo" id="ip-com-btn-perdidas" style="width:auto;padding:0 16px" onclick="ipComercialCambiarModo('perdidas')">📉 Pérdidas (% y kWh)</button>
+      <button type="button" class="btn-theme ip-com-modo-btn" id="ip-com-btn-compraventa" style="width:auto;padding:0 16px" onclick="ipComercialCambiarModo('compraventa')">💰 Compra / Venta</button>
+    </div>
+    <div class="chart-wrap" style="height:420px"><canvas id="ch-ip-comercial"></canvas></div>
+  </div>
+</div>
+<!-- fin vista-ip-comercial -->
 
 <!-- ---------------- INDICADOR PÉRDIDAS NIVEL DE TENSIÓN 1 ---------------- -->
 <div id="vista-ip-nivel1" class="vista-modulo hidden">
@@ -2758,7 +2785,7 @@ function toggleSubmenuIP(){
   }
 }
 
-let vistaCargada = {perdidas:false, parametrizacion:false, telemedidos:false, balancesEstructura:false, ipReg:false, ipNivel1:false, reportesSspd:false, tridevanados:false};
+let vistaCargada = {perdidas:false, parametrizacion:false, telemedidos:false, balancesEstructura:false, ipReg:false, ipComercial:false, ipNivel1:false, reportesSspd:false, tridevanados:false};
 
 async function mostrarVista(nombre){
   document.querySelectorAll('.vista-modulo').forEach(v=>v.classList.add('hidden'));
@@ -2773,7 +2800,7 @@ async function mostrarVista(nombre){
   document.getElementById('sidebar-be-padre').classList.toggle('activa', esBalancesEstructura);
   if(esBalancesEstructura) abrirSubmenuBE();
 
-  const esIndicadorPerdidas = nombre==='ip-reg' || nombre==='ip-nivel1' || nombre==='reportes-sspd' || nombre==='tridevanados';
+  const esIndicadorPerdidas = nombre==='ip-reg' || nombre==='ip-comercial' || nombre==='ip-nivel1' || nombre==='reportes-sspd' || nombre==='tridevanados';
   document.getElementById('sidebar-ip-padre').classList.toggle('activa', esIndicadorPerdidas);
   if(esIndicadorPerdidas) abrirSubmenuIP();
 
@@ -2802,6 +2829,10 @@ async function mostrarVista(nombre){
   if(nombre==='ip-reg' && !vistaCargada.ipReg){
     vistaCargada.ipReg = true;
     await cargarIndicadorPerdidas();
+  }
+  if(nombre==='ip-comercial' && !vistaCargada.ipComercial){
+    vistaCargada.ipComercial = true;
+    await cargarIndicadorPerdidasComercial();
   }
   if(nombre==='ip-nivel1' && !vistaCargada.ipNivel1){
     vistaCargada.ipNivel1 = true;
@@ -3030,7 +3061,7 @@ function _iniRenderVariacion(elId, valorAnt, valorAct){
 
 function cerrarSesion(){
   TOKEN=null; OPERADOR=null; PERSONA=null; DEMO=false;
-  vistaCargada = {perdidas:false, parametrizacion:false, telemedidos:false, balancesEstructura:false, ipReg:false, ipNivel1:false, reportesSspd:false, tridevanados:false};
+  vistaCargada = {perdidas:false, parametrizacion:false, telemedidos:false, balancesEstructura:false, ipReg:false, ipComercial:false, ipNivel1:false, reportesSspd:false, tridevanados:false};
   document.getElementById('app-screen').classList.add('hidden');
   document.getElementById('login-screen').classList.remove('hidden');
   document.getElementById('badge-op').classList.add('hidden');
@@ -7675,6 +7706,107 @@ async function cargarIndicadorPerdidas(){
   ipGenerarAnalisisPrincipal();
   ipRenderChartMensual();
   ipRenderTablaNivel();
+}
+
+/* ---- Indicador de Pérdidas COMERCIAL -- fuente aparte (Excel ya
+   calculado por el operador), no depende de IP_Reg ni de Datos_XM.csv. ---- */
+let IP_COMERCIAL_FILAS = [];
+let IP_COMERCIAL_MODO = 'perdidas';
+let chIpComercial = null;
+
+// "MM-AAAA" (pedido explícito, distinto del resto de la app que usa
+// nombre de mes -- "Ene 2026").
+function labelMesNumerico(clave){
+  const [y, m] = clave.split('-');
+  return `${m}-${y}`;
+}
+
+async function cargarIndicadorPerdidasComercial(){
+  const cont = document.getElementById('ch-ip-comercial').parentElement;
+  try{
+    const datos = DEMO ? {filas:[]} : await apiGet('/api/indicador-perdidas-comercial');
+    IP_COMERCIAL_FILAS = datos.filas;
+  }catch(e){
+    cont.innerHTML = `<div style="text-align:center;color:#ef476f;padding:40px">${e.message || 'No se pudo cargar el indicador comercial.'}</div>`;
+    return;
+  }
+  ipComercialRenderChart();
+}
+
+function ipComercialCambiarModo(modo){
+  IP_COMERCIAL_MODO = modo;
+  document.getElementById('ip-com-btn-perdidas').classList.toggle('activo', modo==='perdidas');
+  document.getElementById('ip-com-btn-compraventa').classList.toggle('activo', modo==='compraventa');
+  ipComercialRenderChart();
+}
+
+function ipComercialRenderChart(){
+  if(!IP_COMERCIAL_FILAS.length) return;
+  const dark = document.documentElement.getAttribute('data-theme')==='dark';
+  const tickC = dark ? '#aab8d1' : '#4b5e7a';
+  const tickXFuerte = dark ? '#ffffff' : '#000000';
+  const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
+
+  const etiquetas = IP_COMERCIAL_FILAS.map(f => labelMesNumerico(`${f.anio}-${String(f.mes).padStart(2,'0')}`));
+  let datasets, scales;
+
+  if(IP_COMERCIAL_MODO === 'perdidas'){
+    datasets = [
+      {label:'Pérdida % (mensual)', yAxisID:'yPct', data: IP_COMERCIAL_FILAS.map(f=>f.perdida_pct),
+        borderColor:'#f4a261', backgroundColor:'transparent', borderWidth:1.75, pointRadius:1.5, spanGaps:true, tension:.15},
+      {label:'Pérdida % Anual (12m)', yAxisID:'yPct', data: IP_COMERCIAL_FILAS.map(f=>f.perdida_pct_12),
+        borderColor:'#e76f51', backgroundColor:'transparent', borderWidth:2.25, pointRadius:0, spanGaps:true, tension:.15},
+      {label:'Pérdida kWh (mensual)', yAxisID:'y', data: IP_COMERCIAL_FILAS.map(f=>f.perdida_kwh),
+        borderColor:'#00b4d8', backgroundColor:'transparent', borderWidth:1.75, pointRadius:1.5, spanGaps:true, tension:.15},
+      {label:'Pérdida kWh Anual (12m)', yAxisID:'y', data: IP_COMERCIAL_FILAS.map(f=>f.perdida_kwh_12),
+        borderColor:'#0077b6', backgroundColor:'transparent', borderWidth:2.25, pointRadius:0, spanGaps:true, tension:.15},
+    ];
+    scales = {
+      x:{grid:{display:false}, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:45, minRotation:45}},
+      yPct:{type:'linear', position:'left', grid:{color:gridC},
+        ticks:{color:'#f4a261', font:{size:11}, callback:v=>v.toFixed(1)+'%'},
+        title:{display:true, text:'Pérdida (%)', color:'#f4a261', font:{size:11}}},
+      y:{position:'right', grid:{drawOnChartArea:false},
+        ticks:{color:tickC, font:{size:11}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
+        title:{display:true, text:'Pérdida (kWh)', color:tickC, font:{size:11}}},
+    };
+  }else{
+    datasets = [
+      {label:'Compra (kWh)', yAxisID:'y', data: IP_COMERCIAL_FILAS.map(f=>f.compra_kwh),
+        borderColor:'#06d6a0', backgroundColor:'transparent', borderWidth:2, pointRadius:1.5, spanGaps:true, tension:.15},
+      {label:'Venta (kWh)', yAxisID:'y', data: IP_COMERCIAL_FILAS.map(f=>f.venta_kwh),
+        borderColor:'#7b2fff', backgroundColor:'transparent', borderWidth:2, pointRadius:1.5, spanGaps:true, tension:.15},
+    ];
+    scales = {
+      x:{grid:{display:false}, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:45, minRotation:45}},
+      y:{grid:{color:gridC},
+        ticks:{color:tickC, font:{size:11}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
+        title:{display:true, text:'Energía (kWh)', color:tickC, font:{size:11}}},
+    };
+  }
+
+  if(chIpComercial) chIpComercial.destroy();
+  chIpComercial = new Chart(document.getElementById('ch-ip-comercial'), {
+    type:'line',
+    data:{labels: etiquetas, datasets},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      interaction:{mode:'index', intersect:false},
+      plugins:{
+        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:10}, color:tickC}},
+        tooltip:{callbacks:{label:c=>{
+          if(c.raw==null) return null;
+          return c.dataset.yAxisID==='yPct' ? `${c.dataset.label}: ${c.raw.toFixed(2)}%` : `${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`;
+        }}},
+        zoom:{
+          pan:{enabled:true, mode:'x'},
+          zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'},
+          limits:{x:{minRange:3}},
+        },
+      },
+      scales,
+    },
+  });
 }
 
 // Filas con IPT/PT ya calculados (reales, sin contar las 3 "virtuales" que
