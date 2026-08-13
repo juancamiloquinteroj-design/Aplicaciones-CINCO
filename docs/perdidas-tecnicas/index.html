@@ -737,6 +737,15 @@ tfoot td:first-child{text-align:left}
     </button>
     <button class="sidebar-sublink" data-vista="tridevanados" onclick="mostrarVista('tridevanados')">🔺 Reporte Tridevanados</button>
   </div>
+  <button class="sidebar-link sidebar-link-padre" id="sidebar-alim-padre" onclick="toggleSubmenuAlim()">
+    <span>🔌 Alimentadores</span>
+    <span class="sidebar-caret" id="sidebar-alim-caret">▾</span>
+  </button>
+  <div class="sidebar-submenu hidden" id="sidebar-submenu-alim">
+    <button class="sidebar-sublink" data-vista="alim-n21" onclick="mostrarVista('alim-n21')">Indicador N2-1</button>
+    <button class="sidebar-sublink" data-vista="alim-subestaciones" onclick="mostrarVista('alim-subestaciones')">Subestaciones</button>
+    <button class="sidebar-sublink" data-vista="alim-alimentadores" onclick="mostrarVista('alim-alimentadores')">Alimentadores</button>
+  </div>
   <button class="sidebar-link sidebar-link-padre" id="sidebar-be-padre" onclick="toggleSubmenuBE()">
     <span>🧮 Balances por Estructura</span>
     <span class="sidebar-caret" id="sidebar-be-caret">▾</span>
@@ -1843,6 +1852,36 @@ tfoot td:first-child{text-align:left}
 </div>
 <!-- fin vista-tridevanados -->
 
+<!-- ---------------- ALIMENTADORES -- 3 submódulos, todos sobre el mismo
+     dato crudo de "Resumen de Alimentadores.csv" (ver load_alimentadores.py).
+     Se van armando de a uno, por ahora solo confirman que el dato cargó. ---------------- -->
+<div id="vista-alim-n21" class="vista-modulo hidden">
+  <div class="sec-hdr">
+    <div class="sec-title">Indicador N2-1</div>
+    <div class="sec-sub">Depende exclusivamente de Resumen de Alimentadores.csv.</div>
+  </div>
+  <div class="card"><div id="alim-n21-estado" style="color:var(--text3)">Cargando…</div></div>
+</div>
+<!-- fin vista-alim-n21 -->
+
+<div id="vista-alim-subestaciones" class="vista-modulo hidden">
+  <div class="sec-hdr">
+    <div class="sec-title">Subestaciones</div>
+    <div class="sec-sub">Depende exclusivamente de Resumen de Alimentadores.csv.</div>
+  </div>
+  <div class="card"><div id="alim-subestaciones-estado" style="color:var(--text3)">Cargando…</div></div>
+</div>
+<!-- fin vista-alim-subestaciones -->
+
+<div id="vista-alim-alimentadores" class="vista-modulo hidden">
+  <div class="sec-hdr">
+    <div class="sec-title">Alimentadores</div>
+    <div class="sec-sub">Depende exclusivamente de Resumen de Alimentadores.csv.</div>
+  </div>
+  <div class="card"><div id="alim-alimentadores-estado" style="color:var(--text3)">Cargando…</div></div>
+</div>
+<!-- fin vista-alim-alimentadores -->
+
 <!-- ---------------- BALANCES POR ESTRUCTURA · CREAR ---------------- -->
 <div id="vista-be-crear" class="vista-modulo hidden">
 
@@ -2834,7 +2873,22 @@ function toggleSubmenuIP(){
   }
 }
 
-let vistaCargada = {perdidas:false, parametrizacion:false, telemedidos:false, balancesEstructura:false, ipReg:false, ipComercial:false, ipNivel1:false, reportesSspd:false, tridevanados:false};
+function abrirSubmenuAlim(){
+  document.getElementById('sidebar-submenu-alim').classList.remove('hidden');
+  document.getElementById('sidebar-alim-caret').classList.add('abierto');
+}
+
+function toggleSubmenuAlim(){
+  const abierto = !document.getElementById('sidebar-submenu-alim').classList.contains('hidden');
+  if(abierto){
+    document.getElementById('sidebar-submenu-alim').classList.add('hidden');
+    document.getElementById('sidebar-alim-caret').classList.remove('abierto');
+  } else {
+    mostrarVista('alim-n21');
+  }
+}
+
+let vistaCargada = {perdidas:false, parametrizacion:false, telemedidos:false, balancesEstructura:false, ipReg:false, ipComercial:false, ipNivel1:false, reportesSspd:false, tridevanados:false, alimN21:false, alimSubestaciones:false, alimAlimentadores:false};
 
 async function mostrarVista(nombre){
   document.querySelectorAll('.vista-modulo').forEach(v=>v.classList.add('hidden'));
@@ -2852,6 +2906,10 @@ async function mostrarVista(nombre){
   const esIndicadorPerdidas = nombre==='ip-reg' || nombre==='ip-comercial' || nombre==='ip-nivel1' || nombre==='reportes-sspd' || nombre==='tridevanados';
   document.getElementById('sidebar-ip-padre').classList.toggle('activa', esIndicadorPerdidas);
   if(esIndicadorPerdidas) abrirSubmenuIP();
+
+  const esAlimentadores = nombre==='alim-n21' || nombre==='alim-subestaciones' || nombre==='alim-alimentadores';
+  document.getElementById('sidebar-alim-padre').classList.toggle('activa', esAlimentadores);
+  if(esAlimentadores) abrirSubmenuAlim();
 
   if(!document.body.classList.contains('sidebar-fija')){
     document.getElementById('sidebar').classList.add('hidden');
@@ -2894,6 +2952,18 @@ async function mostrarVista(nombre){
   if(nombre==='tridevanados' && !vistaCargada.tridevanados){
     vistaCargada.tridevanados = true;
     await cargarTridevanados();
+  }
+  if(nombre==='alim-n21' && !vistaCargada.alimN21){
+    vistaCargada.alimN21 = true;
+    await cargarAlimentadoresModulo('alim-n21');
+  }
+  if(nombre==='alim-subestaciones' && !vistaCargada.alimSubestaciones){
+    vistaCargada.alimSubestaciones = true;
+    await cargarAlimentadoresModulo('alim-subestaciones');
+  }
+  if(nombre==='alim-alimentadores' && !vistaCargada.alimAlimentadores){
+    vistaCargada.alimAlimentadores = true;
+    await cargarAlimentadoresModulo('alim-alimentadores');
   }
   // Las alertas se piden de nuevo cada vez que se entra a esta vista puntual
   // (no solo la primera vez) -- son datos que cambian seguido (atraso día a
@@ -7832,6 +7902,37 @@ function ipComercialDescargarCsv(){
   a.href = url; a.download = `indicador_perdidas_comercial_${OPERADOR.slug}.csv`;
   document.body.appendChild(a); a.click(); a.remove();
   URL.revokeObjectURL(url);
+}
+
+/* ---- Alimentadores -- depende EXCLUSIVAMENTE de "Resumen de
+   Alimentadores.csv" (ver load_alimentadores.py). Los 3 submódulos
+   (Indicador N2-1, Subestaciones, Alimentadores) comparten el mismo dato
+   crudo -- por ahora solo confirman que cargó, en construcción. ---- */
+let ALIM_FILAS = null;
+async function _alimAsegurarDatosCargados(){
+  if(ALIM_FILAS) return ALIM_FILAS;
+  ALIM_FILAS = DEMO ? [] : (await apiGet('/api/alimentadores')).filas;
+  return ALIM_FILAS;
+}
+
+async function cargarAlimentadoresModulo(nombreVista){
+  const idEstado = `${nombreVista}-estado`;
+  const cont = document.getElementById(idEstado);
+  if(!cont) return;
+  try{
+    const filas = await _alimAsegurarDatosCargados();
+    if(!filas.length){
+      cont.textContent = 'Sin datos cargados todavía.';
+      return;
+    }
+    const meses = [...new Set(filas.map(f=>`${f.anio}-${String(f.mes).padStart(2,'0')}`))].sort();
+    const nemonicos = new Set(filas.map(f=>f.nemonico));
+    cont.innerHTML = `Datos cargados: <b>${filas.length.toLocaleString('es-CO')}</b> filas --
+      <b>${nemonicos.size}</b> alimentadores -- de <b>${labelMesLargo(meses[0])}</b> a <b>${labelMesLargo(meses[meses.length-1])}</b>.
+      <br><span style="color:var(--text3);font-size:12px">En construcción -- decime qué querés ver acá.</span>`;
+  }catch(e){
+    cont.textContent = e.message || 'No se pudo cargar.';
+  }
 }
 
 function ipComercialRenderTodo(){
