@@ -1724,7 +1724,7 @@ tfoot td:first-child{text-align:left}
         <button class="btn-theme" style="width:100%" onclick="tridAgregarFila()">Agregar fila</button>
         <div id="tride-msg" class="tm-modal-msg"></div>
       </div>
-      <div style="width:290px;flex-shrink:0">
+      <div>
         <div class="be-tabla-creadas-titulo">Transformadores configurados</div>
         <div class="be-tabla-scroll">
           <table class="be-tabla-creadas sspd-preview-tabla" style="font-size:11px">
@@ -8336,49 +8336,86 @@ async function cargarTridevanados(){
 // con la energía de Alta/Media/Baja del ÚLTIMO mes con dato -- SIEMPRE el
 // último mes real, sin importar el filtro "Ver desde/hasta" de la tabla
 // (por eso pide su propio /reporte-xm sin filtro, no reusa la tabla).
+// Nivel de tensión de cada devanado -- se saca del propio Nombre
+// Transformador (viene con el patrón ".../230/115/13.8 KV", confirmado en
+// los 4 transformadores ya configurados) en vez de pedirle al usuario que
+// lo escriba de nuevo en otro lado.
+function _tridTensionesKv(nombre){
+  const m = nombre.match(/(\d+(?:[.,]\d+)?)\s*\/\s*(\d+(?:[.,]\d+)?)\s*\/\s*(\d+(?:[.,]\d+)?)\s*k?V/i);
+  if(!m) return null;
+  return {ALTA: m[1], MEDIA: m[2], BAJA: m[3]};
+}
+
 async function tridRenderSimbologia(){
   const cont = document.getElementById('tride-simbologia');
   if(!TRIDE_FILAS.length){ cont.innerHTML = ''; return; }
   try{
     const datos = DEMO ? {filas:[]} : await apiGet('/api/reporte-tridevanados/reporte-xm');
     if(!datos.filas.length){ cont.innerHTML = `<div style="color:var(--text3);font-size:12px">Sin datos calculados todavía.</div>`; return; }
-    const ultimoMes = datos.filas.reduce((max, f) => f.fecha_operacion > max ? f.fecha_operacion : max, datos.filas[0].fecha_operacion);
+    const mesesDisponibles = [...new Set(datos.filas.map(f => f.fecha_operacion))].sort();
+    const ultimoMes = mesesDisponibles[mesesDisponibles.length - 1];
+    const mesAnterior = mesesDisponibles[mesesDisponibles.length - 2] || null;
     const porTransformador = new Map();
+    const porTransformadorAnt = new Map();
     for(const f of datos.filas){
-      if(f.fecha_operacion !== ultimoMes) continue;
-      if(!porTransformador.has(f.codigo_transformador)) porTransformador.set(f.codigo_transformador, {});
-      porTransformador.get(f.codigo_transformador)[f.devanado] = f.valor_kwh;
+      if(f.fecha_operacion === ultimoMes){
+        if(!porTransformador.has(f.codigo_transformador)) porTransformador.set(f.codigo_transformador, {});
+        porTransformador.get(f.codigo_transformador)[f.devanado] = f.valor_kwh;
+      }else if(mesAnterior && f.fecha_operacion === mesAnterior){
+        if(!porTransformadorAnt.has(f.codigo_transformador)) porTransformadorAnt.set(f.codigo_transformador, {});
+        porTransformadorAnt.get(f.codigo_transformador)[f.devanado] = f.valor_kwh;
+      }
     }
     const fn = v => v==null ? '--' : Number(v).toLocaleString('es-CO', {maximumFractionDigits:0});
+    // Rojo = subió respecto al mes anterior, verde = bajó -- si no hay mes
+    // anterior o algún valor falta, se deja en el color normal del texto.
+    const colorVariacion = (actual, anterior) => {
+      if(actual==null || anterior==null) return 'currentColor';
+      if(actual > anterior) return '#ef476f';
+      if(actual < anterior) return '#2a9d5c';
+      return 'currentColor';
+    };
     // Símbolo de tridevanado (3 círculos juntos, igual que Diagramas
     // Unifilares) -- de cada círculo sale una línea "líder" hacia afuera
-    // con el devanado y su valor al lado, en vez de una tabla aparte.
-    const svgTrafo3 = (valores) => `
+    // con el devanado, su nivel de tensión y el valor al lado.
+    const svgTrafo3 = (valores, valoresAnt, kv) => {
+      const kvTxt = d => kv ? `${kv[d]} kV` : '';
+      return `
       <circle cx="-12" cy="-5" r="12" fill="none" stroke="currentColor" stroke-width="1.4"/>
       <circle cx="12" cy="-5" r="12" fill="none" stroke="currentColor" stroke-width="1.4"/>
       <circle cx="0" cy="13" r="12" fill="none" stroke="currentColor" stroke-width="1.4"/>
       <line x1="-24" y1="-5" x2="-46" y2="-5" stroke="currentColor" stroke-width="1"/>
-      <text x="-48" y="-8" text-anchor="end" font-size="7.5" font-weight="700" fill="currentColor">ALTA</text>
-      <text x="-48" y="1" text-anchor="end" font-size="7.5" fill="currentColor">${fn(valores.ALTA)}</text>
+      <text x="-48" y="-14" text-anchor="end" font-size="7.5" font-weight="700" fill="currentColor">ALTA</text>
+      <text x="-48" y="-5" text-anchor="end" font-size="6.5" fill="currentColor" opacity=".7">${kvTxt('ALTA')}</text>
+      <text x="-48" y="4" text-anchor="end" font-size="7.5" fill="${colorVariacion(valores.ALTA, valoresAnt.ALTA)}">${fn(valores.ALTA)}</text>
       <line x1="24" y1="-5" x2="46" y2="-5" stroke="currentColor" stroke-width="1"/>
-      <text x="48" y="-8" text-anchor="start" font-size="7.5" font-weight="700" fill="currentColor">MEDIA</text>
-      <text x="48" y="1" text-anchor="start" font-size="7.5" fill="currentColor">${fn(valores.MEDIA)}</text>
+      <text x="48" y="-14" text-anchor="start" font-size="7.5" font-weight="700" fill="currentColor">MEDIA</text>
+      <text x="48" y="-5" text-anchor="start" font-size="6.5" fill="currentColor" opacity=".7">${kvTxt('MEDIA')}</text>
+      <text x="48" y="4" text-anchor="start" font-size="7.5" fill="${colorVariacion(valores.MEDIA, valoresAnt.MEDIA)}">${fn(valores.MEDIA)}</text>
       <line x1="0" y1="25" x2="0" y2="44" stroke="currentColor" stroke-width="1"/>
       <text x="0" y="55" text-anchor="middle" font-size="7.5" font-weight="700" fill="currentColor">BAJA</text>
-      <text x="0" y="64" text-anchor="middle" font-size="7.5" fill="currentColor">${fn(valores.BAJA)}</text>
-    `;
-    cont.innerHTML = TRIDE_FILAS
+      <text x="0" y="64" text-anchor="middle" font-size="6.5" fill="currentColor" opacity=".7">${kvTxt('BAJA')}</text>
+      <text x="0" y="73" text-anchor="middle" font-size="7.5" fill="${colorVariacion(valores.BAJA, valoresAnt.BAJA)}">${fn(valores.BAJA)}</text>
+    `;};
+    const tarjetas = TRIDE_FILAS
       .reduce((acc, f) => (acc.includes(f.codigo_transformador) ? acc : [...acc, f.codigo_transformador]), [])
       .map(codigo => {
         const filaCfg = TRIDE_FILAS.find(x => x.codigo_transformador === codigo);
         const valores = porTransformador.get(codigo) || {};
+        const valoresAnt = porTransformadorAnt.get(codigo) || {};
+        const kv = _tridTensionesKv(filaCfg.nombre_transformador);
         return `
         <div style="border:1px solid var(--border);border-radius:10px;padding:10px 8px;text-align:center">
           <div style="font-size:12px;font-weight:700;color:var(--text)">${filaCfg.nombre_transformador}</div>
           <div style="font-size:10px;color:var(--text3);margin-bottom:2px">${codigo} -- ${labelMesLargo(ultimoMes.slice(0,7))}</div>
-          <svg viewBox="-62 -22 124 90" width="100%" height="110" style="color:var(--text2)">${svgTrafo3(valores)}</svg>
+          <svg viewBox="-62 -30 124 108" width="100%" height="122" style="color:var(--text2)">${svgTrafo3(valores, valoresAnt, kv)}</svg>
         </div>`;
       }).join('');
+    cont.innerHTML = tarjetas + `
+      <div style="grid-column:1/-1;display:flex;gap:16px;justify-content:center;font-size:10.5px;color:var(--text3);margin-top:2px">
+        <span><span style="color:#ef476f;font-weight:700">■</span> Subió vs. mes anterior</span>
+        <span><span style="color:#2a9d5c;font-weight:700">■</span> Bajó vs. mes anterior</span>
+      </div>`;
   }catch(e){
     cont.innerHTML = `<div style="color:#ef476f;font-size:12px">${e.message || 'No se pudo cargar la simbología.'}</div>`;
   }
