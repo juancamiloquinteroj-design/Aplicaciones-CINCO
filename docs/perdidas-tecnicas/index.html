@@ -1687,6 +1687,14 @@ tfoot td:first-child{text-align:left}
       "Para los puntos de conexión en los cuales exista un transformador tridevanado y en el caso que no exista medida en cada uno de los devanados, el OR deberá reportar mensualmente al ASIC los valores de energía de entrada al transformador y los de energía de salida por cada uno de los devanados para que el ASIC efectúe la asignación al nivel de tensión que corresponda" (CREG 015/2018).
       Configura acá qué código de <b>Frontera</b> (de Datos_XM.csv) representa el consumo de cada devanado -- si un devanado no tiene medidor propio, repite ahí el mismo código de Frontera de otro devanado (ej. Alta=Media).
     </div>
+    <div class="fbar" style="margin-bottom:14px">
+      <div class="be-field" style="min-width:130px">
+        <label>Código_OR</label>
+        <input type="text" id="tride-codigo-or" placeholder="HLAD" onchange="tridGuardarConfig()">
+      </div>
+      <div style="font-size:11px;color:var(--text3);align-self:flex-end;padding-bottom:9px">Código del operador ante XM -- primera columna del Excel de exportación.</div>
+      <div id="tride-config-msg" class="tm-modal-msg" style="align-self:flex-end"></div>
+    </div>
     <div class="fbar" style="flex-wrap:wrap">
       <div class="be-field" style="min-width:130px">
         <label>Frontera</label>
@@ -8277,8 +8285,26 @@ function descargarExcelPr9(){
 let TRIDE_FILAS = [];
 
 async function cargarTridevanados(){
+  try{
+    const cfg = DEMO ? {codigo_or:null} : await apiGet('/api/reporte-tridevanados/config');
+    document.getElementById('tride-codigo-or').value = cfg.codigo_or || '';
+  }catch(e){ /* deja el campo vacío -- no bloqueante */ }
   await tridRecargarConfig();
   await tridRecargarMatriz();
+}
+
+async function tridGuardarConfig(){
+  if(!requiereEditor()) return;
+  const msg = document.getElementById('tride-config-msg');
+  try{
+    await apiPut('/api/reporte-tridevanados/config', {codigo_or: document.getElementById('tride-codigo-or').value.trim()});
+    msg.className = 'tm-modal-msg';
+    msg.textContent = 'Guardado.';
+    setTimeout(()=>{ if(msg.textContent==='Guardado.') msg.textContent=''; }, 2000);
+  }catch(e){
+    msg.className = 'tm-modal-msg err';
+    msg.textContent = e.message || 'No se pudo guardar.';
+  }
 }
 
 async function tridRecargarConfig(){
