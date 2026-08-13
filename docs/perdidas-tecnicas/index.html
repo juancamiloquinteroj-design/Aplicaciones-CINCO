@@ -1745,7 +1745,7 @@ tfoot td:first-child{text-align:left}
       <label>hasta</label>
       <input type="date" id="tride-xm-hasta">
       <button type="button" class="btn-theme" style="width:auto;padding:0 14px" onclick="tridRecargarMatriz()">Mostrar</button>
-      <button type="button" class="be-editar-btn" style="margin-left:auto" onclick="tridDescargarExcel()" title="Descarga solo el rango seleccionado arriba">📊 Descargar Excel</button>
+      <button type="button" class="be-editar-btn" style="margin-left:auto" onclick="abrirModalDescargaTride()" title="Pregunta qué año y mes exportar">📊 Descargar Excel</button>
     </div>
     <div class="be-tabla-creadas-titulo">Reporte a XM</div>
     <div style="display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap">
@@ -2460,6 +2460,24 @@ tfoot td:first-child{text-align:left}
     <div id="tm-alarma-lista" class="tm-alarma-lista"></div>
     <div class="tm-modal-botones">
       <button class="btn-theme" style="width:auto;padding:8px 16px" onclick="cerrarModalAlarmasTm()">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<div id="modal-tride-descarga" class="tm-modal-overlay hidden" onclick="if(event.target===this) cerrarModalDescargaTride()">
+  <div class="tm-modal">
+    <div class="tm-modal-title">Descargar Excel -- Reporte a XM</div>
+    <div class="tm-modal-sub">Elige el año y mes que deseas exportar.</div>
+    <div class="tm-modal-row">
+      <label>Año</label>
+      <select id="tride-descarga-anio"></select>
+      <label>Mes</label>
+      <select id="tride-descarga-mes"></select>
+    </div>
+    <div id="tride-descarga-msg" class="tm-modal-msg"></div>
+    <div class="tm-modal-botones">
+      <button class="btn-theme" style="width:auto;padding:8px 16px" onclick="cerrarModalDescargaTride()">Cancelar</button>
+      <button class="btn-theme" style="width:auto;padding:8px 16px;background:var(--accent);color:#fff;border-color:var(--accent)" onclick="confirmarDescargaTride()">⬇ Descargar</button>
     </div>
   </div>
 </div>
@@ -8403,11 +8421,19 @@ async function tridRecargarMatriz(){
       tridRenderGraficas([]);
       return;
     }
-    // El backend entrega las filas de mes más viejo a más nuevo (mismo
-    // orden que exporta el Excel oficial) -- en PANTALLA se invierte para
-    // mostrar primero el mes más reciente (pedido explícito), el Excel
-    // exportado sigue igual (formato oficial).
-    const filasPantalla = [...datos.filas].reverse();
+    // El backend entrega las filas de mes más viejo a más nuevo, y DENTRO
+    // de cada mes por transformador con Alta/Media/Baja en ese orden
+    // (mismo orden que exporta el Excel oficial). En PANTALLA se muestra
+    // primero el mes más reciente (pedido explícito) -- pero invertir el
+    // arreglo COMPLETO con reverse() también invertía el orden interno
+    // (quedaba Baja/Media/Alta) -- por eso se agrupa por mes primero y
+    // solo se invierte el orden de los BLOQUES de mes, no lo de adentro.
+    const gruposPorMes = new Map();
+    for(const f of datos.filas){
+      if(!gruposPorMes.has(f.fecha_operacion)) gruposPorMes.set(f.fecha_operacion, []);
+      gruposPorMes.get(f.fecha_operacion).push(f);
+    }
+    const filasPantalla = [...gruposPorMes.keys()].reverse().flatMap(mes => gruposPorMes.get(mes));
     tbody.innerHTML = filasPantalla.map((f, i) => {
       const esInicioMes = i === 0 || f.fecha_operacion !== filasPantalla[i-1].fecha_operacion;
       return `<tr${esInicioMes ? ' class="tride-mes-inicio"' : ''}>
@@ -8486,13 +8512,38 @@ function tridRenderGraficas(filasXm){
   });
 }
 
-function tridDescargarExcel(){
-  const desde = document.getElementById('tride-xm-desde').value;
-  const hasta = document.getElementById('tride-xm-hasta').value;
-  const qs = new URLSearchParams();
-  if(desde) qs.set('desde', desde.slice(0,7));
-  if(hasta) qs.set('hasta', hasta.slice(0,7));
-  _sspdDescargarExcel(`/api/reporte-tridevanados/export.xlsx?${qs}`, `FormatoReporteXM_Tridevanados_${OPERADOR.slug}.xlsx`);
+// La descarga SIEMPRE pregunta qué año y mes exportar (pedido explícito
+// del usuario) -- independiente del filtro "Ver desde/hasta" de arriba,
+// que es solo para lo que se ve en pantalla.
+function abrirModalDescargaTride(){
+  const selAnio = document.getElementById('tride-descarga-anio');
+  const selMes = document.getElementById('tride-descarga-mes');
+  if(selMes.options.length === 0){
+    for(let m=1; m<=12; m++) selMes.innerHTML += `<option value="${m}">${labelMes(`2000-${String(m).padStart(2,'0')}`).split(' ')[0]}</option>`;
+  }
+  if(selAnio.options.length === 0){
+    const anioActual = new Date().getFullYear();
+    const anios = [];
+    for(let a=2015; a<=anioActual; a++) anios.push(a);
+    selAnio.innerHTML = anios.map(a => `<option value="${a}">${a}</option>`).join('');
+  }
+  const hoy = new Date();
+  selAnio.value = hoy.getFullYear();
+  selMes.value = hoy.getMonth() + 1;
+  document.getElementById('tride-descarga-msg').textContent = '';
+  document.getElementById('modal-tride-descarga').classList.remove('hidden');
+}
+
+function cerrarModalDescargaTride(){
+  document.getElementById('modal-tride-descarga').classList.add('hidden');
+}
+
+function confirmarDescargaTride(){
+  const anio = document.getElementById('tride-descarga-anio').value;
+  const mes = document.getElementById('tride-descarga-mes').value;
+  const am = `${anio}-${String(mes).padStart(2,'0')}`;
+  _sspdDescargarExcel(`/api/reporte-tridevanados/export.xlsx?desde=${am}&hasta=${am}`, `FormatoReporteXM_Tridevanados_${am}_${OPERADOR.slug}.xlsx`);
+  cerrarModalDescargaTride();
 }
 
 function ipPoblarRangoFechas(idDesde, idHasta){
