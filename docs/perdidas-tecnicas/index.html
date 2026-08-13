@@ -1694,8 +1694,8 @@ tfoot td:first-child{text-align:left}
       "Para los puntos de conexión en los cuales exista un transformador tridevanado y en el caso que no exista medida en cada uno de los devanados, el OR deberá reportar mensualmente al ASIC los valores de energía de entrada al transformador y los de energía de salida por cada uno de los devanados para que el ASIC efectúe la asignación al nivel de tensión que corresponda" (CREG 015/2018).
       Configura acá qué código de <b>Frontera</b> (de Datos_XM.csv) representa el consumo de cada devanado -- si un devanado no tiene medidor propio, repite ahí el mismo código de Frontera de otro devanado (ej. Alta=Media).
     </div>
-    <div class="ip-mensual-grid">
-      <div style="max-width:230px">
+    <div style="display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap">
+      <div style="width:210px;flex-shrink:0">
         <div class="be-field" style="margin-bottom:12px">
           <label>Código_OR</label>
           <input type="text" id="tride-codigo-or" placeholder="HLAD" onchange="tridGuardarConfig()">
@@ -1724,7 +1724,7 @@ tfoot td:first-child{text-align:left}
         <button class="btn-theme" style="width:100%" onclick="tridAgregarFila()">Agregar fila</button>
         <div id="tride-msg" class="tm-modal-msg"></div>
       </div>
-      <div>
+      <div style="width:290px;flex-shrink:0">
         <div class="be-tabla-creadas-titulo">Transformadores configurados</div>
         <div class="be-tabla-scroll">
           <table class="be-tabla-creadas sspd-preview-tabla" style="font-size:11px">
@@ -1734,6 +1734,10 @@ tfoot td:first-child{text-align:left}
             <tbody id="tride-config-tbody"></tbody>
           </table>
         </div>
+      </div>
+      <div style="flex:1;min-width:280px">
+        <div class="be-tabla-creadas-titulo">Simbología por transformador (último mes)</div>
+        <div id="tride-simbologia" style="display:flex;flex-wrap:wrap;gap:14px"></div>
       </div>
     </div>
   </div>
@@ -8324,6 +8328,51 @@ async function cargarTridevanados(){
   }catch(e){ /* deja el campo vacío -- no bloqueante */ }
   await tridRecargarConfig();
   await tridRecargarMatriz();
+  await tridRenderSimbologia();
+}
+
+// Un símbolo de tridevanado (mismo dibujo que usa Diagramas Unifilares,
+// ver _bdFormaSvg('transformador3')) por cada transformador configurado,
+// con la energía de Alta/Media/Baja del ÚLTIMO mes con dato -- SIEMPRE el
+// último mes real, sin importar el filtro "Ver desde/hasta" de la tabla
+// (por eso pide su propio /reporte-xm sin filtro, no reusa la tabla).
+async function tridRenderSimbologia(){
+  const cont = document.getElementById('tride-simbologia');
+  if(!TRIDE_FILAS.length){ cont.innerHTML = ''; return; }
+  try{
+    const datos = DEMO ? {filas:[]} : await apiGet('/api/reporte-tridevanados/reporte-xm');
+    if(!datos.filas.length){ cont.innerHTML = `<div style="color:var(--text3);font-size:12px">Sin datos calculados todavía.</div>`; return; }
+    const ultimoMes = datos.filas.reduce((max, f) => f.fecha_operacion > max ? f.fecha_operacion : max, datos.filas[0].fecha_operacion);
+    const porTransformador = new Map();
+    for(const f of datos.filas){
+      if(f.fecha_operacion !== ultimoMes) continue;
+      if(!porTransformador.has(f.codigo_transformador)) porTransformador.set(f.codigo_transformador, {});
+      porTransformador.get(f.codigo_transformador)[f.devanado] = f.valor_kwh;
+    }
+    const fn = v => v==null ? '--' : Number(v).toLocaleString('es-CO', {maximumFractionDigits:0});
+    const svgTrafo3 = '<circle cx="-12" cy="-5" r="12" fill="none" stroke="currentColor" stroke-width="1.4"/>'
+      + '<circle cx="12" cy="-5" r="12" fill="none" stroke="currentColor" stroke-width="1.4"/>'
+      + '<circle cx="0" cy="13" r="12" fill="none" stroke="currentColor" stroke-width="1.4"/>';
+    cont.innerHTML = TRIDE_FILAS
+      .reduce((acc, f) => (acc.includes(f.codigo_transformador) ? acc : [...acc, f.codigo_transformador]), [])
+      .map(codigo => {
+        const filaCfg = TRIDE_FILAS.find(x => x.codigo_transformador === codigo);
+        const valores = porTransformador.get(codigo) || {};
+        return `
+        <div style="border:1px solid var(--border);border-radius:10px;padding:10px 12px;text-align:center;min-width:150px">
+          <div style="font-size:12px;font-weight:700;color:var(--text)">${filaCfg.nombre_transformador}</div>
+          <div style="font-size:10px;color:var(--text3);margin-bottom:6px">${codigo} -- ${labelMesLargo(ultimoMes.slice(0,7))}</div>
+          <svg viewBox="-30 -24 60 55" width="80" height="72" style="color:var(--text2)">${svgTrafo3}</svg>
+          <div style="display:flex;justify-content:space-between;gap:6px;font-size:10px;margin-top:4px;color:var(--text2)">
+            <div>ALTA<br><b style="color:var(--text)">${fn(valores.ALTA)}</b></div>
+            <div>MEDIA<br><b style="color:var(--text)">${fn(valores.MEDIA)}</b></div>
+            <div>BAJA<br><b style="color:var(--text)">${fn(valores.BAJA)}</b></div>
+          </div>
+        </div>`;
+      }).join('');
+  }catch(e){
+    cont.innerHTML = `<div style="color:#ef476f;font-size:12px">${e.message || 'No se pudo cargar la simbología.'}</div>`;
+  }
 }
 
 async function tridGuardarConfig(){
@@ -8379,6 +8428,7 @@ async function tridAgregarFila(){
     setTimeout(()=>{ if(msg.textContent==='Agregado.') msg.textContent=''; }, 2000);
     await tridRecargarConfig();
     await tridRecargarMatriz();
+    await tridRenderSimbologia();
   }catch(e){
     msg.className = 'tm-modal-msg err';
     msg.textContent = e.message || 'No se pudo agregar.';
@@ -8392,6 +8442,7 @@ async function tridBorrarFila(id){
     await apiDelete(`/api/reporte-tridevanados/filas/${id}`);
     await tridRecargarConfig();
     await tridRecargarMatriz();
+    await tridRenderSimbologia();
   }catch(e){
     alert(e.message || 'No se pudo borrar.');
   }
