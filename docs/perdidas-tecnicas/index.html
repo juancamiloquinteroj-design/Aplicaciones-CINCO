@@ -239,6 +239,8 @@ canvas[id^="ch-tride-"]{cursor:grab}
 canvas[id^="ch-tride-"]:active{cursor:grabbing}
 #ch-ip-comercial{cursor:grab}
 #ch-ip-comercial:active{cursor:grabbing}
+#ch-ip-comercial-mensual{cursor:grab}
+#ch-ip-comercial-mensual:active{cursor:grabbing}
 .split-wrap{display:flex;gap:18px;align-items:stretch;flex-wrap:wrap}
 .split-wrap>div{flex:1;min-width:280px}
 @media(max-width:800px){.split-wrap>div{flex:1 1 100%}}
@@ -1200,11 +1202,42 @@ tfoot td:first-child{text-align:left}
   </div>
 
   <div class="card">
-    <div class="fbar" style="margin-bottom:12px">
-      <button type="button" class="btn-theme ip-com-modo-btn activo" id="ip-com-btn-perdidas" style="width:auto;padding:0 16px" onclick="ipComercialCambiarModo('perdidas')">📉 Pérdidas (% y kWh)</button>
+    <div class="fbar" style="margin-bottom:6px">
+      <label>Rango</label>
+      <input type="date" id="ip-com-desde" onchange="ipComercialRenderTodo()">
+      <span style="font-size:11px;color:var(--text3)">→</span>
+      <input type="date" id="ip-com-hasta" onchange="ipComercialRenderTodo()">
+      <button type="button" class="btn-theme ip-com-modo-btn activo" id="ip-com-btn-perdidas" style="width:auto;padding:0 16px;margin-left:auto" onclick="ipComercialCambiarModo('perdidas')">📉 Pérdidas</button>
       <button type="button" class="btn-theme ip-com-modo-btn" id="ip-com-btn-compraventa" style="width:auto;padding:0 16px" onclick="ipComercialCambiarModo('compraventa')">💰 Compra / Venta</button>
     </div>
+    <div style="text-align:center;margin-bottom:8px">
+      <div style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Índice de Pérdidas Anual (12 meses)</div>
+    </div>
     <div class="chart-wrap" style="height:420px"><canvas id="ch-ip-comercial"></canvas></div>
+  </div>
+
+  <div class="card">
+    <div class="ip-mensual-grid">
+      <div>
+        <div class="be-tabla-creadas-titulo">Detalle mensual</div>
+        <div class="be-tabla-scroll ip-tabla-compacta" style="max-height:420px">
+          <table class="be-tabla-creadas">
+            <thead>
+              <tr>
+                <th>Mes</th><th>Compra (kWh)</th><th>Venta (kWh)</th>
+                <th>Pérdida (kWh)</th><th>Pérdida (%)</th>
+                <th>Pérdida Anual (kWh)</th><th>Pérdida Anual (%)</th>
+              </tr>
+            </thead>
+            <tbody id="ip-com-tabla-body"></tbody>
+          </table>
+        </div>
+      </div>
+      <div>
+        <div class="be-tabla-creadas-titulo" style="text-align:center">Indicador Mensual</div>
+        <div class="chart-wrap" style="height:340px"><canvas id="ch-ip-comercial-mensual"></canvas></div>
+      </div>
+    </div>
   </div>
 </div>
 <!-- fin vista-ip-comercial -->
@@ -7713,13 +7746,9 @@ async function cargarIndicadorPerdidas(){
 let IP_COMERCIAL_FILAS = [];
 let IP_COMERCIAL_MODO = 'perdidas';
 let chIpComercial = null;
+let chIpComercialMensual = null;
 
-// "MM-AAAA" (pedido explícito, distinto del resto de la app que usa
-// nombre de mes -- "Ene 2026").
-function labelMesNumerico(clave){
-  const [y, m] = clave.split('-');
-  return `${m}-${y}`;
-}
+function ipComercialClave(f){ return `${f.anio}-${String(f.mes).padStart(2,'0')}`; }
 
 async function cargarIndicadorPerdidasComercial(){
   const cont = document.getElementById('ch-ip-comercial').parentElement;
@@ -7730,7 +7759,27 @@ async function cargarIndicadorPerdidasComercial(){
     cont.innerHTML = `<div style="text-align:center;color:#ef476f;padding:40px">${e.message || 'No se pudo cargar el indicador comercial.'}</div>`;
     return;
   }
-  ipComercialRenderChart();
+  // Por defecto: desde ene-2024 (o el primer mes disponible si arrancó
+  // después) hasta el último mes real disponible -- pedido explícito.
+  const inDesde = document.getElementById('ip-com-desde');
+  const inHasta = document.getElementById('ip-com-hasta');
+  if(!inDesde.value && IP_COMERCIAL_FILAS.length){
+    const primerDisponible = ipComercialClave(IP_COMERCIAL_FILAS[0]);
+    inDesde.value = (primerDisponible > '2024-01' ? primerDisponible : '2024-01') + '-01';
+  }
+  if(!inHasta.value && IP_COMERCIAL_FILAS.length){
+    inHasta.value = ipComercialClave(IP_COMERCIAL_FILAS[IP_COMERCIAL_FILAS.length-1]) + '-01';
+  }
+  ipComercialRenderTodo();
+}
+
+function ipComercialVisibles(){
+  const desde = document.getElementById('ip-com-desde').value ? document.getElementById('ip-com-desde').value.slice(0,7) : null;
+  const hasta = document.getElementById('ip-com-hasta').value ? document.getElementById('ip-com-hasta').value.slice(0,7) : null;
+  return IP_COMERCIAL_FILAS.filter(f => {
+    const clave = ipComercialClave(f);
+    return (!desde || clave >= desde) && (!hasta || clave <= hasta);
+  });
 }
 
 function ipComercialCambiarModo(modo){
@@ -7740,42 +7789,55 @@ function ipComercialCambiarModo(modo){
   ipComercialRenderChart();
 }
 
+function ipComercialRenderTodo(){
+  ipComercialRenderChart();
+  ipComercialRenderTabla();
+  ipComercialRenderChartMensual();
+}
+
+// Gráfico principal -- SOLO el índice anual (ventana móvil de 12 meses),
+// pedido explícito ("solo quiero ver el indicador anual"); con etiquetas
+// de datos igual que el gráfico principal de IP_Reg.
 function ipComercialRenderChart(){
-  if(!IP_COMERCIAL_FILAS.length) return;
+  const visibles = ipComercialVisibles();
+  if(!visibles.length) return;
   const dark = document.documentElement.getAttribute('data-theme')==='dark';
   const tickC = dark ? '#aab8d1' : '#4b5e7a';
   const tickXFuerte = dark ? '#ffffff' : '#000000';
   const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
-
-  const etiquetas = IP_COMERCIAL_FILAS.map(f => labelMesNumerico(`${f.anio}-${String(f.mes).padStart(2,'0')}`));
+  const etiquetas = visibles.map(f => labelMesLargo(ipComercialClave(f)));
   let datasets, scales;
 
   if(IP_COMERCIAL_MODO === 'perdidas'){
+    const pctDatos = visibles.map(f=>f.perdida_pct_12);
+    const kwhDatos = visibles.map(f=>f.perdida_kwh_12);
     datasets = [
-      {label:'Pérdida % (mensual)', yAxisID:'yPct', data: IP_COMERCIAL_FILAS.map(f=>f.perdida_pct),
-        borderColor:'#f4a261', backgroundColor:'transparent', borderWidth:1.75, pointRadius:1.5, spanGaps:true, tension:.15},
-      {label:'Pérdida % Anual (12m)', yAxisID:'yPct', data: IP_COMERCIAL_FILAS.map(f=>f.perdida_pct_12),
-        borderColor:'#e76f51', backgroundColor:'transparent', borderWidth:2.25, pointRadius:0, spanGaps:true, tension:.15},
-      {label:'Pérdida kWh (mensual)', yAxisID:'y', data: IP_COMERCIAL_FILAS.map(f=>f.perdida_kwh),
-        borderColor:'#00b4d8', backgroundColor:'transparent', borderWidth:1.75, pointRadius:1.5, spanGaps:true, tension:.15},
-      {label:'Pérdida kWh Anual (12m)', yAxisID:'y', data: IP_COMERCIAL_FILAS.map(f=>f.perdida_kwh_12),
-        borderColor:'#0077b6', backgroundColor:'transparent', borderWidth:2.25, pointRadius:0, spanGaps:true, tension:.15},
+      {type:'line', label:'IPT Comercial -- Pérdida % Anual (12m)', yAxisID:'yPct', data: pctDatos,
+        borderColor:'#f4a261', backgroundColor:'rgba(244,162,97,.12)', borderWidth:2.5, pointRadius:2, spanGaps:true, tension:.25, order:1,
+        datalabels:{display:true, anchor:'end', align:'top', offset:6, formatter:v=>v==null?'':v.toFixed(2)+'%',
+          font:{size:10, weight:'700'}, color:'#f4a261',
+          backgroundColor: dark?'rgba(30,30,40,.85)':'rgba(255,255,255,.85)', borderRadius:3, padding:{left:4,right:4,top:1,bottom:1}}},
+      {type:'line', label:'PT Comercial -- Pérdida kWh Anual (12m)', yAxisID:'y', data: kwhDatos,
+        borderColor:'#4361ee', backgroundColor:'transparent', borderWidth:2, pointRadius:1.5, spanGaps:true, tension:.2, order:2,
+        datalabels:{display:true, anchor:'end', align:'bottom', offset:6, formatter:v=>v==null?'':v.toLocaleString('es-CO',{maximumFractionDigits:0}),
+          font:{size:10, weight:'700'}, color:'#4361ee',
+          backgroundColor: dark?'rgba(30,30,40,.85)':'rgba(255,255,255,.85)', borderRadius:3, padding:{left:4,right:4,top:1,bottom:1}}},
     ];
     scales = {
       x:{grid:{display:false}, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:45, minRotation:45}},
       yPct:{type:'linear', position:'left', grid:{color:gridC},
         ticks:{color:'#f4a261', font:{size:11}, callback:v=>v.toFixed(1)+'%'},
-        title:{display:true, text:'Pérdida (%)', color:'#f4a261', font:{size:11}}},
+        title:{display:true, text:'Pérdida Anual (%)', color:'#f4a261', font:{size:11}}},
       y:{position:'right', grid:{drawOnChartArea:false},
         ticks:{color:tickC, font:{size:11}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
-        title:{display:true, text:'Pérdida (kWh)', color:tickC, font:{size:11}}},
+        title:{display:true, text:'Pérdida Anual (kWh)', color:tickC, font:{size:11}}},
     };
   }else{
     datasets = [
-      {label:'Compra (kWh)', yAxisID:'y', data: IP_COMERCIAL_FILAS.map(f=>f.compra_kwh),
-        borderColor:'#06d6a0', backgroundColor:'transparent', borderWidth:2, pointRadius:1.5, spanGaps:true, tension:.15},
-      {label:'Venta (kWh)', yAxisID:'y', data: IP_COMERCIAL_FILAS.map(f=>f.venta_kwh),
-        borderColor:'#7b2fff', backgroundColor:'transparent', borderWidth:2, pointRadius:1.5, spanGaps:true, tension:.15},
+      {label:'Compra (kWh)', yAxisID:'y', data: visibles.map(f=>f.compra_kwh),
+        borderColor:'#06d6a0', backgroundColor:'transparent', borderWidth:2, pointRadius:1.5, spanGaps:true, tension:.15, datalabels:{display:false}},
+      {label:'Venta (kWh)', yAxisID:'y', data: visibles.map(f=>f.venta_kwh),
+        borderColor:'#7b2fff', backgroundColor:'transparent', borderWidth:2, pointRadius:1.5, spanGaps:true, tension:.15, datalabels:{display:false}},
     ];
     scales = {
       x:{grid:{display:false}, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:45, minRotation:45}},
@@ -7787,10 +7849,10 @@ function ipComercialRenderChart(){
 
   if(chIpComercial) chIpComercial.destroy();
   chIpComercial = new Chart(document.getElementById('ch-ip-comercial'), {
-    type:'line',
     data:{labels: etiquetas, datasets},
     options:{
       responsive:true, maintainAspectRatio:false,
+      layout:{padding:{top:24, right:20}},
       interaction:{mode:'index', intersect:false},
       plugins:{
         legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:10}, color:tickC}},
@@ -7805,6 +7867,79 @@ function ipComercialRenderChart(){
         },
       },
       scales,
+    },
+  });
+}
+
+function ipComercialRenderTabla(){
+  const tbody = document.getElementById('ip-com-tabla-body');
+  if(!tbody) return;
+  const visibles = ipComercialVisibles();
+  const fn = v => v==null ? '--' : Number(v).toLocaleString('es-CO', {maximumFractionDigits:0});
+  const fnPct = v => v==null ? '--' : Number(v).toFixed(2)+'%';
+  tbody.innerHTML = visibles.map(f => `<tr>
+    <td>${labelMesLargo(ipComercialClave(f))}</td>
+    <td>${fn(f.compra_kwh)}</td><td>${fn(f.venta_kwh)}</td>
+    <td>${fn(f.perdida_kwh)}</td><td>${fnPct(f.perdida_pct)}</td>
+    <td>${fn(f.perdida_kwh_12)}</td><td>${fnPct(f.perdida_pct_12)}</td>
+  </tr>`).join('');
+}
+
+// "Indicador Mensual" -- al lado de la tabla: Energía (Compra) en barras y
+// % Pérdida MENSUAL (no anual) en línea, con etiqueta de dato la pérdida
+// mensual -- mismo patrón visual que ipRenderChartMensual (IP_Reg).
+function ipComercialRenderChartMensual(){
+  const cv = document.getElementById('ch-ip-comercial-mensual');
+  if(!cv) return;
+  const visibles = ipComercialVisibles();
+  if(!visibles.length) return;
+  const dark = document.documentElement.getAttribute('data-theme')==='dark';
+  const tickC = dark ? '#aab8d1' : '#4b5e7a';
+  const tickXFuerte = dark ? '#ffffff' : '#000000';
+  const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
+  const etiquetas = visibles.map(f => labelMesLargo(ipComercialClave(f)));
+
+  if(chIpComercialMensual) chIpComercialMensual.destroy();
+  chIpComercialMensual = new Chart(cv, {
+    data:{
+      labels: etiquetas,
+      datasets:[
+        {type:'bar', label:'Energía Comprada (kWh)', yAxisID:'y', order:2,
+          data: visibles.map(f=>f.compra_kwh), backgroundColor:'rgba(6,214,160,.35)', borderColor:'#06d6a0', borderWidth:1,
+          datalabels:{display:false}},
+        {type:'line', label:'% Pérdida Mensual', yAxisID:'yPct', order:1,
+          data: visibles.map(f=>f.perdida_pct), borderColor:'#f4a261',
+          backgroundColor:'rgba(244,162,97,.12)', borderWidth:2.5, pointRadius:2.5, spanGaps:true, tension:.25,
+          datalabels:{display:true, anchor:'end', align:'top', offset:6,
+            formatter:v=>v==null?'':v.toFixed(2)+'%', font:{size:10, weight:'700'}, color:'#f4a261',
+            backgroundColor: dark?'rgba(30,30,40,.85)':'rgba(255,255,255,.85)', borderRadius:3, padding:{left:4,right:4,top:1,bottom:1}}},
+      ],
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      layout:{padding:{top:24, right:20}},
+      interaction:{mode:'index', intersect:false},
+      plugins:{
+        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:10}, color:tickC}},
+        tooltip:{callbacks:{label:c=>{
+          if(c.raw==null) return null;
+          return c.dataset.yAxisID==='yPct' ? `${c.dataset.label}: ${c.raw.toFixed(2)}%` : `${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`;
+        }}},
+        zoom:{
+          pan:{enabled:true, mode:'x'},
+          zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'},
+          limits:{x:{minRange:3}},
+        },
+      },
+      scales:{
+        x:{grid:{display:false}, ticks:{color:tickXFuerte, font:{size:9, weight:'600'}, maxRotation:45, minRotation:45}},
+        yPct:{type:'linear', position:'left', grid:{color:gridC},
+          ticks:{color:'#f4a261', font:{size:10}, callback:v=>v.toFixed(1)+'%'},
+          title:{display:true, text:'% Pérdida Mensual', color:'#f4a261', font:{size:10}}},
+        y:{position:'right', grid:{drawOnChartArea:false},
+          ticks:{color:tickC, font:{size:9}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
+          title:{display:true, text:'Energía Comprada (kWh)', color:tickC, font:{size:9}}},
+      },
     },
   });
 }
