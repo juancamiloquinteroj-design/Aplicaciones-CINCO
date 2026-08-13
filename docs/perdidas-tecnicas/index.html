@@ -87,6 +87,11 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(
 .ip-tabla-compacta .be-tabla-creadas td.ip-sep-nivel{border-left:2px solid #8a8f99}
 .ip-mensual-grid{display:grid;grid-template-columns:2fr 1fr;gap:16px;align-items:stretch}
 @media (max-width:900px){.ip-mensual-grid{grid-template-columns:1fr}}
+/* Indicador de Pérdidas Comercial -- acá la tabla necesita menos espacio
+   que la gráfica (pocas columnas numéricas), al revés que el resto de
+   usos de ip-mensual-grid. */
+.ip-com-detalle-grid{grid-template-columns:1fr 1.5fr}
+@media (max-width:900px){.ip-com-detalle-grid{grid-template-columns:1fr}}
 .ip-comentario-caja{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:14px 16px;font-size:12.5px;line-height:1.65;color:var(--text2);display:flex;flex-direction:column;gap:10px}
 .ip-comentario-caja .ip-comentario-titulo{font-size:11px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:var(--text3)}
 .ip-comentario-caja .ip-comentario-cifra{font-size:22px;font-weight:800}
@@ -1204,20 +1209,29 @@ tfoot td:first-child{text-align:left}
   <div class="card">
     <div class="fbar" style="margin-bottom:6px">
       <label>Rango</label>
-      <input type="date" id="ip-com-desde" onchange="ipComercialRenderTodo()">
+      <input type="date" id="ip-com-desde">
       <span style="font-size:11px;color:var(--text3)">→</span>
-      <input type="date" id="ip-com-hasta" onchange="ipComercialRenderTodo()">
+      <input type="date" id="ip-com-hasta">
+      <button type="button" class="btn-theme" style="width:auto;padding:0 14px" onclick="ipComercialRenderTodo()">Graficar</button>
       <button type="button" class="btn-theme ip-com-modo-btn activo" id="ip-com-btn-perdidas" style="width:auto;padding:0 16px;margin-left:auto" onclick="ipComercialCambiarModo('perdidas')">📉 Pérdidas</button>
       <button type="button" class="btn-theme ip-com-modo-btn" id="ip-com-btn-compraventa" style="width:auto;padding:0 16px" onclick="ipComercialCambiarModo('compraventa')">💰 Compra / Venta</button>
     </div>
     <div style="text-align:center;margin-bottom:8px">
-      <div style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Índice de Pérdidas Anual (12 meses)</div>
+      <div style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Índice de Pérdidas Comercial</div>
     </div>
     <div class="chart-wrap" style="height:420px"><canvas id="ch-ip-comercial"></canvas></div>
+    <div class="be-resumen-cards" id="ip-com-resumen" style="margin:16px 0 0"></div>
   </div>
 
   <div class="card">
-    <div class="ip-mensual-grid">
+    <div style="text-align:center;margin-bottom:8px">
+      <div style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Análisis</div>
+    </div>
+    <div id="ip-com-comentario" class="ip-comentario-caja"></div>
+  </div>
+
+  <div class="card">
+    <div class="ip-mensual-grid ip-com-detalle-grid">
       <div>
         <div class="be-tabla-creadas-titulo">Detalle mensual</div>
         <div class="be-tabla-scroll ip-tabla-compacta" style="max-height:420px">
@@ -1235,7 +1249,7 @@ tfoot td:first-child{text-align:left}
       </div>
       <div>
         <div class="be-tabla-creadas-titulo" style="text-align:center">Indicador Mensual</div>
-        <div class="chart-wrap" style="height:340px"><canvas id="ch-ip-comercial-mensual"></canvas></div>
+        <div class="chart-wrap" style="height:380px"><canvas id="ch-ip-comercial-mensual"></canvas></div>
       </div>
     </div>
   </div>
@@ -7791,9 +7805,16 @@ function ipComercialCambiarModo(modo){
 
 function ipComercialRenderTodo(){
   ipComercialRenderChart();
+  ipComercialRenderResumen();
+  ipComercialGenerarAnalisis();
   ipComercialRenderTabla();
   ipComercialRenderChartMensual();
 }
+
+// PT Comercial (kWh) arranca OCULTO -- pedido explícito, el usuario lo
+// prende a mano haciendo clic en la leyenda. Igual que IP_PT_OCULTO en
+// IP_Reg, se respeta lo que el usuario ya haya prendido/apagado a mano.
+let IP_COMERCIAL_PT_OCULTO = true;
 
 // Gráfico principal -- SOLO el índice anual (ventana móvil de 12 meses),
 // pedido explícito ("solo quiero ver el indicador anual"); con etiquetas
@@ -7808,6 +7829,8 @@ function ipComercialRenderChart(){
   const etiquetas = visibles.map(f => labelMesLargo(ipComercialClave(f)));
   let datasets, scales;
 
+  if(chIpComercial && chIpComercial.data.datasets[1]) IP_COMERCIAL_PT_OCULTO = !!chIpComercial.data.datasets[1].hidden;
+
   if(IP_COMERCIAL_MODO === 'perdidas'){
     const pctDatos = visibles.map(f=>f.perdida_pct_12);
     const kwhDatos = visibles.map(f=>f.perdida_kwh_12);
@@ -7817,7 +7840,7 @@ function ipComercialRenderChart(){
         datalabels:{display:true, anchor:'end', align:'top', offset:6, formatter:v=>v==null?'':v.toFixed(2)+'%',
           font:{size:10, weight:'700'}, color:'#f4a261',
           backgroundColor: dark?'rgba(30,30,40,.85)':'rgba(255,255,255,.85)', borderRadius:3, padding:{left:4,right:4,top:1,bottom:1}}},
-      {type:'line', label:'PT Comercial -- Pérdida kWh Anual (12m)', yAxisID:'y', data: kwhDatos,
+      {type:'line', label:'PT Comercial -- Pérdida kWh Anual (12m)', yAxisID:'y', data: kwhDatos, hidden: IP_COMERCIAL_PT_OCULTO,
         borderColor:'#4361ee', backgroundColor:'transparent', borderWidth:2, pointRadius:1.5, spanGaps:true, tension:.2, order:2,
         datalabels:{display:true, anchor:'end', align:'bottom', offset:6, formatter:v=>v==null?'':v.toLocaleString('es-CO',{maximumFractionDigits:0}),
           font:{size:10, weight:'700'}, color:'#4361ee',
@@ -7834,9 +7857,9 @@ function ipComercialRenderChart(){
     };
   }else{
     datasets = [
-      {label:'Compra (kWh)', yAxisID:'y', data: visibles.map(f=>f.compra_kwh),
+      {type:'line', label:'Compra (kWh)', yAxisID:'y', data: visibles.map(f=>f.compra_kwh),
         borderColor:'#06d6a0', backgroundColor:'transparent', borderWidth:2, pointRadius:1.5, spanGaps:true, tension:.15, datalabels:{display:false}},
-      {label:'Venta (kWh)', yAxisID:'y', data: visibles.map(f=>f.venta_kwh),
+      {type:'line', label:'Venta (kWh)', yAxisID:'y', data: visibles.map(f=>f.venta_kwh),
         borderColor:'#7b2fff', backgroundColor:'transparent', borderWidth:2, pointRadius:1.5, spanGaps:true, tension:.15, datalabels:{display:false}},
     ];
     scales = {
@@ -7869,6 +7892,115 @@ function ipComercialRenderChart(){
       scales,
     },
   });
+}
+
+// Últimos 2 meses REALES disponibles (todo el histórico, sin importar el
+// filtro de fecha del gráfico) -- para las tarjetas y el análisis, mismo
+// criterio que ipUltimasFilasReales() en IP_Reg.
+function ipComercialUltimasFilasReales(){
+  return IP_COMERCIAL_FILAS.filter(f => f.perdida_pct_12 != null).slice()
+    .sort((a,b) => ipComercialClave(a) < ipComercialClave(b) ? -1 : 1);
+}
+
+// Tarjetas de resumen bajo el gráfico principal -- mismo patrón visual
+// (be-resumen-tile) que IP_Reg.
+function ipComercialRenderResumen(){
+  const cont = document.getElementById('ip-com-resumen');
+  if(!cont) return;
+  const reales = ipComercialUltimasFilasReales();
+  if(reales.length < 2){ cont.innerHTML = ''; return; }
+  const actual = reales[reales.length - 1];
+  const anterior = reales[reales.length - 2];
+  const mesActual = labelMes(ipComercialClave(actual));
+  const mesAnterior = labelMes(ipComercialClave(anterior));
+
+  const [anioAct, mesAct] = ipComercialClave(actual).split('-').map(Number);
+  const claveAnioAnterior = `${anioAct-1}-${String(mesAct).padStart(2,'0')}`;
+  const filaAnioAnterior = IP_COMERCIAL_FILAS.find(f => ipComercialClave(f)===claveAnioAnterior);
+  const mesAnioAnterior = labelMes(claveAnioAnterior);
+
+  const deltaPct = actual.perdida_pct_12 - anterior.perdida_pct_12;
+  const deltaKwh = actual.perdida_kwh_12 - anterior.perdida_kwh_12;
+  const deltaKwhPct = anterior.perdida_kwh_12 ? (deltaKwh / anterior.perdida_kwh_12 * 100) : 0;
+  const colorPct = ipColorVariacion(actual.perdida_pct_12, anterior.perdida_pct_12, 'var(--text2)');
+  const colorKwh = ipColorVariacion(actual.perdida_kwh_12, anterior.perdida_kwh_12, 'var(--text2)');
+  const iconoPct = deltaPct >= 0 ? '▲' : '▼';
+  const iconoKwh = deltaKwh >= 0 ? '▲' : '▼';
+  const fk = v => v==null ? '--' : v.toLocaleString('es-CO', {maximumFractionDigits:0}) + ' kWh';
+
+  const tarjeta = (etiqueta, valor, sub, colorValor) => `<div class="be-resumen-tile">
+    <div class="etiqueta">${etiqueta}</div>
+    <div class="valor"${colorValor ? ` style="color:${colorValor}"` : ''}>${valor}</div>
+    ${sub ? `<div class="sub">${sub}</div>` : ''}
+  </div>`;
+
+  const tarjetas = [
+    tarjeta('Pérdida % Anual', actual.perdida_pct_12.toFixed(2)+'%', mesActual),
+    tarjeta('Pérdida % Anual Anterior', anterior.perdida_pct_12.toFixed(2)+'%', mesAnterior),
+    tarjeta('Variación Mensual (%)', `${iconoPct} ${Math.abs(deltaPct).toFixed(2)} pp`, `${mesAnterior} → ${mesActual}`, colorPct),
+    tarjeta('Pérdida kWh Anual', fk(actual.perdida_kwh_12), mesActual),
+    tarjeta('Pérdida kWh Anual Anterior', fk(anterior.perdida_kwh_12), mesAnterior),
+    tarjeta('Variación Mensual (kWh)', `${iconoKwh} ${fk(Math.abs(deltaKwh))} (${Math.abs(deltaKwhPct).toFixed(1)}%)`, `${mesAnterior} → ${mesActual}`, colorKwh),
+  ];
+
+  if(filaAnioAnterior && filaAnioAnterior.perdida_pct_12 != null){
+    const deltaAnual = actual.perdida_pct_12 - filaAnioAnterior.perdida_pct_12;
+    const colorAnual = ipColorVariacion(actual.perdida_pct_12, filaAnioAnterior.perdida_pct_12, 'var(--text2)');
+    tarjetas.push(tarjeta('Variación Anual (%)', `${deltaAnual>=0?'▲':'▼'} ${Math.abs(deltaAnual).toFixed(2)} pp`, `${mesAnioAnterior} → ${mesActual}`, colorAnual));
+  }
+  if(actual.perdida_pct != null){
+    tarjetas.push(tarjeta('Pérdida % Mensual', actual.perdida_pct.toFixed(2)+'%', mesActual));
+  }
+  if(filaAnioAnterior && filaAnioAnterior.perdida_pct != null && actual.perdida_pct != null){
+    const deltaAnualMensual = actual.perdida_pct - filaAnioAnterior.perdida_pct;
+    const colorAnualMensual = ipColorVariacion(actual.perdida_pct, filaAnioAnterior.perdida_pct, 'var(--text2)');
+    tarjetas.push(tarjeta('Variación Anual (% Mensual)', `${deltaAnualMensual>=0?'▲':'▼'} ${Math.abs(deltaAnualMensual).toFixed(2)} pp`, `${mesAnioAnterior} → ${mesActual}`, colorAnualMensual));
+  }
+
+  cont.innerHTML = tarjetas.join('');
+}
+
+// Análisis narrativo -- mismo tono que ipGenerarAnalisisPrincipal (IP_Reg):
+// cómo cambió el índice anual mes a mes (el mes que "sale" de la ventana
+// de 12 meses vs. el que "entra"), más la comparación año a año.
+function ipComercialGenerarAnalisis(){
+  const cont = document.getElementById('ip-com-comentario');
+  if(!cont) return;
+  const reales = ipComercialUltimasFilasReales();
+  if(reales.length < 2){
+    cont.innerHTML = '<p>Todavía no hay suficientes meses reales para analizar la variación.</p>';
+    return;
+  }
+  const actual = reales[reales.length - 1];
+  const anterior = reales[reales.length - 2];
+  const claveActual = ipComercialClave(actual);
+  const claveAnterior = ipComercialClave(anterior);
+  const [anioAct, mesAct] = claveActual.split('-').map(Number);
+  const mesActualLargo = labelMesLargo(claveActual);
+  const mesAnteriorLargo = labelMesLargo(claveAnterior);
+  const signo = v => v >= 0 ? '+' : '';
+
+  const pctActual = actual.perdida_pct_12, pctAnterior = anterior.perdida_pct_12;
+  const deltaMensual = pctActual - pctAnterior;
+  const subeMensual = deltaMensual > 0;
+  const deltaKwh = actual.perdida_kwh_12 - anterior.perdida_kwh_12;
+  const fKwh = v => Math.round(v).toLocaleString('es-CO');
+
+  const claveAnioAnterior = `${anioAct-1}-${String(mesAct).padStart(2,'0')}`;
+  const filaAnioAnterior = IP_COMERCIAL_FILAS.find(f => ipComercialClave(f)===claveAnioAnterior);
+
+  let parrafoAnual = '';
+  if(filaAnioAnterior && filaAnioAnterior.perdida_pct_12 != null){
+    const deltaAnual = pctActual - filaAnioAnterior.perdida_pct_12;
+    const subeAnual = deltaAnual > 0;
+    parrafoAnual = ` Frente al mismo mes del año anterior (${labelMesLargo(claveAnioAnterior)}), el índice era de <b>${filaAnioAnterior.perdida_pct_12.toFixed(2)}%</b>, por lo que la variación anual es de <b>${signo(deltaAnual)}${deltaAnual.toFixed(2)} pp</b> (${subeAnual?'aumenta':'disminuye'}).`;
+  }
+
+  cont.innerHTML = `
+    <div class="ip-comentario-titulo">Índice de Pérdidas Comercial -- ${mesActualLargo}</div>
+    <div class="ip-comentario-cifra ${subeMensual?'sube':'baja'}">${pctActual.toFixed(2)}% (${fKwh(actual.perdida_kwh_12)} kWh/Anual)</div>
+    <p>El índice de pérdidas comercial pasó de <b>${pctAnterior.toFixed(2)}%</b> en ${mesAnteriorLargo} (mes que sale de la ventana de 12 meses) a <b>${pctActual.toFixed(2)}%</b> en ${mesActualLargo} (mes que entra), lo que equivale a pasar de una pérdida de <b>${fKwh(anterior.perdida_kwh_12)} kWh/Anual</b> a <b>${fKwh(actual.perdida_kwh_12)} kWh/Anual</b> -- un ${subeMensual?'incremento':'descenso'} de <b>${Math.abs(deltaMensual).toFixed(2)} pp</b>, equivalente a <b>${signo(deltaKwh)}${fKwh(Math.abs(deltaKwh))} kWh/Anual</b>.${parrafoAnual}</p>
+  `;
 }
 
 function ipComercialRenderTabla(){
