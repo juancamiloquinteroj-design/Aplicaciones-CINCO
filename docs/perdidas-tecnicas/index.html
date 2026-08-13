@@ -8377,8 +8377,9 @@ async function tridRenderSimbologia(){
     };
     // Símbolo de tridevanado (3 círculos juntos, igual que Diagramas
     // Unifilares) -- de cada círculo sale una línea "líder" hacia afuera
-    // con el devanado, su nivel de tensión y el valor al lado.
-    const svgTrafo3 = (valores, valoresAnt, kv) => {
+    // con el devanado, su nivel de tensión, el valor y el código de
+    // Frontera usado para ese devanado.
+    const svgTrafo3 = (valores, valoresAnt, kv, fronteras) => {
       const kvTxt = d => kv ? `${kv[d]} kV` : '';
       return `
       <circle cx="-12" cy="-5" r="12" fill="none" stroke="currentColor" stroke-width="1.4"/>
@@ -8388,14 +8389,17 @@ async function tridRenderSimbologia(){
       <text x="-48" y="-14" text-anchor="end" font-size="7.5" font-weight="700" fill="currentColor">ALTA</text>
       <text x="-48" y="-5" text-anchor="end" font-size="6.5" fill="currentColor" opacity=".7">${kvTxt('ALTA')}</text>
       <text x="-48" y="4" text-anchor="end" font-size="7.5" fill="${colorVariacion(valores.ALTA, valoresAnt.ALTA)}">${fn(valores.ALTA)}</text>
+      <text x="-48" y="13" text-anchor="end" font-size="6.5" fill="currentColor" opacity=".7">${fronteras.ALTA||''}</text>
       <line x1="24" y1="-5" x2="46" y2="-5" stroke="currentColor" stroke-width="1"/>
       <text x="48" y="-14" text-anchor="start" font-size="7.5" font-weight="700" fill="currentColor">MEDIA</text>
       <text x="48" y="-5" text-anchor="start" font-size="6.5" fill="currentColor" opacity=".7">${kvTxt('MEDIA')}</text>
       <text x="48" y="4" text-anchor="start" font-size="7.5" fill="${colorVariacion(valores.MEDIA, valoresAnt.MEDIA)}">${fn(valores.MEDIA)}</text>
+      <text x="48" y="13" text-anchor="start" font-size="6.5" fill="currentColor" opacity=".7">${fronteras.MEDIA||''}</text>
       <line x1="0" y1="25" x2="0" y2="44" stroke="currentColor" stroke-width="1"/>
       <text x="0" y="55" text-anchor="middle" font-size="7.5" font-weight="700" fill="currentColor">BAJA</text>
       <text x="0" y="64" text-anchor="middle" font-size="6.5" fill="currentColor" opacity=".7">${kvTxt('BAJA')}</text>
       <text x="0" y="73" text-anchor="middle" font-size="7.5" fill="${colorVariacion(valores.BAJA, valoresAnt.BAJA)}">${fn(valores.BAJA)}</text>
+      <text x="0" y="82" text-anchor="middle" font-size="6.5" fill="currentColor" opacity=".7">${fronteras.BAJA||''}</text>
     `;};
     const tarjetas = TRIDE_FILAS
       .reduce((acc, f) => (acc.includes(f.codigo_transformador) ? acc : [...acc, f.codigo_transformador]), [])
@@ -8404,11 +8408,16 @@ async function tridRenderSimbologia(){
         const valores = porTransformador.get(codigo) || {};
         const valoresAnt = porTransformadorAnt.get(codigo) || {};
         const kv = _tridTensionesKv(filaCfg.nombre_transformador);
+        const fronteras = {
+          ALTA: (TRIDE_FILAS.find(x => x.codigo_transformador===codigo && x.devanado==='Alta')||{}).frontera,
+          MEDIA: (TRIDE_FILAS.find(x => x.codigo_transformador===codigo && x.devanado==='Media')||{}).frontera,
+          BAJA: (TRIDE_FILAS.find(x => x.codigo_transformador===codigo && x.devanado==='Baja')||{}).frontera,
+        };
         return `
         <div style="border:1px solid var(--border);border-radius:10px;padding:10px 8px;text-align:center">
           <div style="font-size:12px;font-weight:700;color:var(--text)">${filaCfg.nombre_transformador}</div>
           <div style="font-size:10px;color:var(--text3);margin-bottom:2px">${codigo} -- ${labelMesLargo(ultimoMes.slice(0,7))}</div>
-          <svg viewBox="-62 -30 124 108" width="100%" height="122" style="color:var(--text2)">${svgTrafo3(valores, valoresAnt, kv)}</svg>
+          <svg viewBox="-62 -30 124 118" width="100%" height="132" style="color:var(--text2)">${svgTrafo3(valores, valoresAnt, kv, fronteras)}</svg>
         </div>`;
       }).join('');
     cont.innerHTML = tarjetas + `
