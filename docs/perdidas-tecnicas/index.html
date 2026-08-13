@@ -425,6 +425,11 @@ tfoot td:first-child{text-align:left}
 .sspd-pr8-tabla thead tr:nth-child(2) th{text-transform:none;font-size:11px;white-space:normal;text-align:center;padding:6px 8px}
 .be-tabla-scroll-acotada .sspd-pr8-tabla thead tr:first-child th{position:sticky;top:0;z-index:6}
 .be-tabla-scroll-acotada .sspd-pr8-tabla thead tr:nth-child(2) th{position:sticky;top:19px;z-index:6}
+/* Reporte Tridevanados -- tabla angosta (ancho = contenido, no 100%) y
+   separador entre un mes y el siguiente (igual patrón que PR8). */
+.tride-tabla-xm{width:auto}
+.tride-tabla-xm tr.tride-mes-inicio td{box-shadow:inset 0 2px 0 0 var(--text3)}
+
 /* Separador más grueso entre un mes y el siguiente (cada 4 filas = 1 mes).
    box-shadow en vez de border-top -- con border-collapse:collapse el
    border-top de esta fila compite con el border-bottom de la fila
@@ -1688,37 +1693,33 @@ tfoot td:first-child{text-align:left}
       Configura acá qué código de <b>Frontera</b> (de Datos_XM.csv) representa el consumo de cada devanado -- si un devanado no tiene medidor propio, repite ahí el mismo código de Frontera de otro devanado (ej. Alta=Media).
     </div>
     <div class="ip-mensual-grid">
-      <div>
-        <div class="fbar" style="margin-bottom:14px">
-          <div class="be-field" style="min-width:130px">
-            <label>Código_OR</label>
-            <input type="text" id="tride-codigo-or" placeholder="HLAD" onchange="tridGuardarConfig()">
-          </div>
-          <div id="tride-config-msg" class="tm-modal-msg" style="align-self:flex-end"></div>
+      <div style="max-width:230px">
+        <div class="be-field" style="margin-bottom:12px">
+          <label>Código_OR</label>
+          <input type="text" id="tride-codigo-or" placeholder="HLAD" onchange="tridGuardarConfig()">
         </div>
-        <div class="fbar" style="flex-wrap:wrap">
-          <div class="be-field" style="min-width:130px">
-            <label>Frontera</label>
-            <input type="text" id="tride-nueva-frontera" placeholder="Frt00264">
-          </div>
-          <div class="be-field" style="min-width:190px">
-            <label>Nombre Transformador</label>
-            <input type="text" id="tride-nueva-nombre">
-          </div>
-          <div class="be-field" style="min-width:150px">
-            <label>Código Transformador</label>
-            <input type="text" id="tride-nueva-codigo">
-          </div>
-          <div class="be-field" style="min-width:110px">
-            <label>Devanado</label>
-            <select id="tride-nueva-devanado">
-              <option value="Alta">Alta</option>
-              <option value="Media">Media</option>
-              <option value="Baja">Baja</option>
-            </select>
-          </div>
-          <button class="btn-theme" style="width:auto;padding:0 16px;align-self:flex-end" onclick="tridAgregarFila()">Agregar fila</button>
+        <div id="tride-config-msg" class="tm-modal-msg"></div>
+        <div class="be-field" style="margin-bottom:10px">
+          <label>Frontera</label>
+          <input type="text" id="tride-nueva-frontera" placeholder="Frt00264">
         </div>
+        <div class="be-field" style="margin-bottom:10px">
+          <label>Nombre Transformador</label>
+          <input type="text" id="tride-nueva-nombre">
+        </div>
+        <div class="be-field" style="margin-bottom:10px">
+          <label>Código Transformador</label>
+          <input type="text" id="tride-nueva-codigo">
+        </div>
+        <div class="be-field" style="margin-bottom:10px">
+          <label>Devanado</label>
+          <select id="tride-nueva-devanado">
+            <option value="Alta">Alta</option>
+            <option value="Media">Media</option>
+            <option value="Baja">Baja</option>
+          </select>
+        </div>
+        <button class="btn-theme" style="width:100%" onclick="tridAgregarFila()">Agregar fila</button>
         <div id="tride-msg" class="tm-modal-msg"></div>
       </div>
       <div>
@@ -1726,7 +1727,7 @@ tfoot td:first-child{text-align:left}
         <div class="be-tabla-scroll">
           <table class="be-tabla-creadas sspd-preview-tabla" style="font-size:11px">
             <thead>
-              <tr><th>Frontera</th><th>Transformador</th><th>Devanado</th><th></th></tr>
+              <tr><th>Frontera</th><th>Nombre Transformador</th><th>Código</th><th>Devanado</th><th></th></tr>
             </thead>
             <tbody id="tride-config-tbody"></tbody>
           </table>
@@ -1746,7 +1747,7 @@ tfoot td:first-child{text-align:left}
     </div>
     <div class="be-tabla-creadas-titulo">Reporte a XM</div>
     <div class="be-tabla-scroll be-tabla-scroll-acotada">
-      <table class="be-tabla-creadas sspd-preview-tabla" id="tride-matriz-tabla">
+      <table class="be-tabla-creadas sspd-preview-tabla tride-tabla-xm" id="tride-matriz-tabla">
         <thead>
           <tr><th>Código_OR</th><th>Código Transformador</th><th>Fecha Operación</th><th>Devanado</th><th>Valor_kWh</th></tr>
         </thead>
@@ -8321,15 +8322,15 @@ async function tridRecargarConfig(){
   try{
     TRIDE_FILAS = DEMO ? [] : await apiGet('/api/reporte-tridevanados/filas');
     if(!TRIDE_FILAS.length){
-      tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--text3)">Sin transformadores.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--text3)">Sin transformadores.</td></tr>`;
       return;
     }
     tbody.innerHTML = TRIDE_FILAS.map(f => `<tr>
-      <td>${f.frontera}</td><td title="${f.nombre_transformador}">${f.codigo_transformador}</td><td>${f.devanado}</td>
+      <td>${f.frontera}</td><td>${f.nombre_transformador}</td><td>${f.codigo_transformador}</td><td>${f.devanado}</td>
       <td><span class="borrar" onclick="tridBorrarFila(${f.id})" title="Borrar">🗑</span></td>
     </tr>`).join('');
   }catch(e){
-    tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:#ef476f">${e.message || 'No se pudo cargar.'}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:#ef476f">${e.message || 'No se pudo cargar.'}</td></tr>`;
   }
 }
 
@@ -8395,9 +8396,14 @@ async function tridRecargarMatriz(){
       tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--text3)">No hay datos en ese rango.</td></tr>`;
       return;
     }
-    tbody.innerHTML = datos.filas.map(f => `<tr>
+    // El backend ya entrega las filas ordenadas por mes -- se marca el
+    // cambio de mes comparando con la fila anterior (mismo patrón que PR8).
+    tbody.innerHTML = datos.filas.map((f, i) => {
+      const esInicioMes = i === 0 || f.fecha_operacion !== datos.filas[i-1].fecha_operacion;
+      return `<tr${esInicioMes ? ' class="tride-mes-inicio"' : ''}>
       <td>${f.codigo_or||'--'}</td><td>${f.codigo_transformador}</td><td>${labelMesLargo(f.fecha_operacion.slice(0,7))}</td><td>${f.devanado}</td><td>${fn(f.valor_kwh)}</td>
-    </tr>`).join('');
+    </tr>`;
+    }).join('');
   }catch(e){
     tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:#ef476f">${e.message || 'No se pudo cargar el histórico.'}</td></tr>`;
   }
