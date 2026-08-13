@@ -1746,13 +1746,16 @@ tfoot td:first-child{text-align:left}
       <button type="button" class="be-editar-btn" style="margin-left:auto" onclick="tridDescargarExcel()" title="Descarga solo el rango seleccionado arriba">📊 Descargar Excel</button>
     </div>
     <div class="be-tabla-creadas-titulo">Reporte a XM</div>
-    <div class="be-tabla-scroll be-tabla-scroll-acotada">
-      <table class="be-tabla-creadas sspd-preview-tabla tride-tabla-xm" id="tride-matriz-tabla">
-        <thead>
-          <tr><th>Código_OR</th><th>Código Transformador</th><th>Fecha Operación</th><th>Devanado</th><th>Valor_kWh</th></tr>
-        </thead>
-        <tbody id="tride-matriz-tbody"></tbody>
-      </table>
+    <div style="display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap">
+      <div class="be-tabla-scroll be-tabla-scroll-acotada" style="flex-shrink:0">
+        <table class="be-tabla-creadas sspd-preview-tabla tride-tabla-xm" id="tride-matriz-tabla">
+          <thead>
+            <tr><th>Código_OR</th><th>Código Transformador</th><th>Fecha Operación</th><th>Devanado</th><th>Valor_kWh</th></tr>
+          </thead>
+          <tbody id="tride-matriz-tbody"></tbody>
+        </table>
+      </div>
+      <div id="tride-graficas" style="flex:1;min-width:320px;display:flex;flex-direction:column;gap:22px"></div>
     </div>
   </div>
 </div>
@@ -8381,6 +8384,7 @@ async function tridRecargarMatriz(){
   const tbody = document.getElementById('tride-matriz-tbody');
   if(!TRIDE_FILAS.length){
     tbody.innerHTML = '';
+    tridRenderGraficas([]);
     return;
   }
   tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--text3)">Cargando...</td></tr>`;
@@ -8394,19 +8398,83 @@ async function tridRecargarMatriz(){
     const fn = v => v==null ? '--' : Number(v).toLocaleString('es-CO', {maximumFractionDigits:2});
     if(!datos.filas.length){
       tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--text3)">No hay datos en ese rango.</td></tr>`;
+      tridRenderGraficas([]);
       return;
     }
-    // El backend ya entrega las filas ordenadas por mes -- se marca el
-    // cambio de mes comparando con la fila anterior (mismo patrón que PR8).
-    tbody.innerHTML = datos.filas.map((f, i) => {
-      const esInicioMes = i === 0 || f.fecha_operacion !== datos.filas[i-1].fecha_operacion;
+    // El backend entrega las filas de mes más viejo a más nuevo (mismo
+    // orden que exporta el Excel oficial) -- en PANTALLA se invierte para
+    // mostrar primero el mes más reciente (pedido explícito), el Excel
+    // exportado sigue igual (formato oficial).
+    const filasPantalla = [...datos.filas].reverse();
+    tbody.innerHTML = filasPantalla.map((f, i) => {
+      const esInicioMes = i === 0 || f.fecha_operacion !== filasPantalla[i-1].fecha_operacion;
       return `<tr${esInicioMes ? ' class="tride-mes-inicio"' : ''}>
       <td>${f.codigo_or||'--'}</td><td>${f.codigo_transformador}</td><td>${labelMesLargo(f.fecha_operacion.slice(0,7))}</td><td>${f.devanado}</td><td>${fn(f.valor_kwh)}</td>
     </tr>`;
     }).join('');
+    tridRenderGraficas(datos.filas);
   }catch(e){
     tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:#ef476f">${e.message || 'No se pudo cargar el histórico.'}</td></tr>`;
   }
+}
+
+// Una gráfica por transformador (Alta/Media/Baja vs. tiempo), en el
+// espacio libre a la derecha de la tabla -- depende del MISMO filtro de
+// fechas que la tabla (usa los mismos datos ya filtrados, no pide de nuevo).
+let TRIDE_CHARTS = {};
+function tridRenderGraficas(filasXm){
+  const cont = document.getElementById('tride-graficas');
+  const porTransformador = new Map();
+  for(const f of filasXm){
+    if(!porTransformador.has(f.codigo_transformador)){
+      porTransformador.set(f.codigo_transformador, {nombre: f.codigo_transformador, series:{ALTA:new Map(), MEDIA:new Map(), BAJA:new Map()}});
+    }
+    porTransformador.get(f.codigo_transformador).series[f.devanado].set(f.fecha_operacion, f.valor_kwh);
+  }
+  for(const [codigo, g] of porTransformador){
+    const filaCfg = TRIDE_FILAS.find(x => x.codigo_transformador === codigo);
+    if(filaCfg) g.nombre = filaCfg.nombre_transformador;
+  }
+
+  for(const chart of Object.values(TRIDE_CHARTS)) chart.destroy();
+  TRIDE_CHARTS = {};
+
+  if(!porTransformador.size){ cont.innerHTML = ''; return; }
+
+  const fechas = [...new Set(filasXm.map(f => f.fecha_operacion))].sort();
+  const etiquetas = fechas.map(f => labelMesLargo(f.slice(0,7)));
+  const dark = document.documentElement.getAttribute('data-theme')==='dark';
+  const tickC = dark ? '#aab8d1' : '#4b5e7a';
+  const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
+  const colores = {ALTA:'#00b4d8', MEDIA:'#f4a261', BAJA:'#06d6a0'};
+
+  cont.innerHTML = [...porTransformador.entries()].map(([codigo, g], i) => `
+    <div>
+      <div style="font-size:13px;font-weight:700;margin-bottom:6px;text-align:center;color:var(--text)">${g.nombre}</div>
+      <div style="height:220px"><canvas id="ch-tride-${i}"></canvas></div>
+    </div>`).join('');
+
+  [...porTransformador.values()].forEach((g, i) => {
+    const datasets = ['ALTA','MEDIA','BAJA'].map(dev => ({
+      label: dev,
+      data: fechas.map(f => g.series[dev].get(f) ?? null),
+      borderColor: colores[dev], backgroundColor:'transparent',
+      borderWidth:2, pointRadius:2, spanGaps:true, tension:.15,
+    }));
+    TRIDE_CHARTS[i] = new Chart(document.getElementById(`ch-tride-${i}`), {
+      type:'line',
+      data:{labels: etiquetas, datasets},
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        interaction:{mode:'index', intersect:false},
+        plugins:{legend:{display:true, position:'bottom', labels:{boxWidth:10, font:{size:10}, color:tickC}}},
+        scales:{
+          x:{grid:{display:false}, ticks:{color:tickC, font:{size:9}, maxRotation:45, minRotation:45}},
+          y:{grid:{color:gridC}, ticks:{color:tickC, font:{size:9}, callback:v=>v.toLocaleString('es-CO')}},
+        },
+      },
+    });
+  });
 }
 
 function tridDescargarExcel(){
