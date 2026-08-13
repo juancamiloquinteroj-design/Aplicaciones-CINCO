@@ -1216,6 +1216,14 @@ tfoot td:first-child{text-align:left}
       <button type="button" class="btn-theme ip-com-modo-btn activo" id="ip-com-btn-perdidas" style="width:auto;padding:0 16px;margin-left:auto" onclick="ipComercialCambiarModo('perdidas')">📉 Pérdidas</button>
       <button type="button" class="btn-theme ip-com-modo-btn" id="ip-com-btn-compraventa" style="width:auto;padding:0 16px" onclick="ipComercialCambiarModo('compraventa')">💰 Compra / Venta</button>
     </div>
+    <div class="fbar" style="margin-bottom:6px">
+      <button class="be-modo-btn" id="ip-com-btn-proyeccion" onclick="ipComercialToggleProyeccion()">🔮 Proyección</button>
+      <input type="number" id="ip-com-proyeccion-meses" value="2" min="1" max="24" step="1" title="Cuántos meses proyectar hacia adelante"
+        style="width:52px;padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg)"
+        onchange="if(IP_COMERCIAL_MOSTRAR_PROYECCION) ipComercialRenderChart()">
+      <span style="font-size:11px;color:var(--text3)">meses</span>
+      <button type="button" class="btn-theme" style="width:auto;padding:0 14px;margin-left:auto" onclick="ipComercialDescargarCsv()" title="Descarga el rango filtrado arriba">⬇ Descargar CSV</button>
+    </div>
     <div style="text-align:center;margin-bottom:8px">
       <div style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Índice de Pérdidas Comercial</div>
     </div>
@@ -7797,6 +7805,36 @@ function ipComercialCambiarModo(modo){
   ipComercialRenderChart();
 }
 
+// Apagada por defecto -- se prende a mano con el botón. Reusa la misma
+// regresión lineal (ipRegresionLineal) que la Proyección de IP_Reg.
+let IP_COMERCIAL_MOSTRAR_PROYECCION = false;
+function ipComercialToggleProyeccion(){
+  IP_COMERCIAL_MOSTRAR_PROYECCION = !IP_COMERCIAL_MOSTRAR_PROYECCION;
+  document.getElementById('ip-com-btn-proyeccion').classList.toggle('activo', IP_COMERCIAL_MOSTRAR_PROYECCION);
+  ipComercialRenderChart();
+}
+
+// Exporta EXACTAMENTE el rango filtrado arriba (Rango desde/hasta) -- CSV
+// con ";" y coma decimal, mismo formato que el resto de la app.
+function ipComercialDescargarCsv(){
+  const visibles = ipComercialVisibles();
+  const encabezado = ['Mes','Compra (kWh)','Venta (kWh)','Pérdida (kWh)','Pérdida (%)','Pérdida Anual (kWh)','Pérdida Anual (%)'];
+  const filas = visibles.map(f => [
+    labelMesLargo(ipComercialClave(f)), f.compra_kwh, f.venta_kwh, f.perdida_kwh, f.perdida_pct, f.perdida_kwh_12, f.perdida_pct_12,
+  ]);
+  const linea = fila => fila.map(v => {
+    if(v==null||v===undefined) return '';
+    return typeof v === 'number' ? String(v).replace('.',',') : String(v);
+  }).join(';');
+  const csv = [linea(encabezado), ...filas.map(linea)].join('\r\n');
+  const blob = new Blob(['﻿'+csv], {type:'text/csv;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `indicador_perdidas_comercial_${OPERADOR.slug}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+
 function ipComercialRenderTodo(){
   ipComercialRenderChart();
   ipComercialRenderResumen();
@@ -7821,25 +7859,67 @@ function ipComercialRenderChart(){
   const tickXFuerte = dark ? '#ffffff' : '#000000';
   const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
   const etiquetas = visibles.map(f => labelMesLargo(ipComercialClave(f)));
+  const nBase = visibles.length;  // índice del último punto REAL, antes de agregar proyección
   let datasets, scales;
 
   if(chIpComercial && chIpComercial.data.datasets[1]) IP_COMERCIAL_PT_OCULTO = !!chIpComercial.data.datasets[1].hidden;
+  document.getElementById('ip-com-btn-proyeccion').classList.toggle('activo', IP_COMERCIAL_MOSTRAR_PROYECCION);
 
   if(IP_COMERCIAL_MODO === 'perdidas'){
     const pctDatos = visibles.map(f=>f.perdida_pct_12);
     const kwhDatos = visibles.map(f=>f.perdida_kwh_12);
     datasets = [
-      {type:'line', label:'IPT Comercial -- Pérdida % Anual (12m)', yAxisID:'yPct', data: pctDatos,
-        borderColor:'#f4a261', backgroundColor:'rgba(244,162,97,.12)', borderWidth:2.5, pointRadius:2, spanGaps:true, tension:.25, order:1,
+      {type:'line', label:'IPT Comercial -- Pérdida % Anual (12m)', yAxisID:'yPct', data: pctDatos, order:1,
+        borderColor:'#f4a261', backgroundColor:'rgba(244,162,97,.12)', borderWidth:2.5, pointRadius:2, spanGaps:true, tension:.25,
         datalabels:{display:true, anchor:'end', align:'top', offset:6, formatter:v=>v==null?'':v.toFixed(2)+'%',
           font:{size:10, weight:'700'}, color:'#f4a261',
           backgroundColor: dark?'rgba(30,30,40,.85)':'rgba(255,255,255,.85)', borderRadius:3, padding:{left:4,right:4,top:1,bottom:1}}},
-      {type:'line', label:'PT Comercial -- Pérdida kWh Anual (12m)', yAxisID:'y', data: kwhDatos, hidden: IP_COMERCIAL_PT_OCULTO,
-        borderColor:'#4361ee', backgroundColor:'transparent', borderWidth:2, pointRadius:1.5, spanGaps:true, tension:.2, order:2,
+      {type:'line', label:'PT Comercial -- Pérdida kWh Anual (12m)', yAxisID:'y', data: kwhDatos, hidden: IP_COMERCIAL_PT_OCULTO, order:2,
+        borderColor:'#4361ee', backgroundColor:'transparent', borderWidth:2, pointRadius:1.5, spanGaps:true, tension:.2,
         datalabels:{display:true, anchor:'end', align:'bottom', offset:6, formatter:v=>v==null?'':v.toLocaleString('es-CO',{maximumFractionDigits:0}),
           font:{size:10, weight:'700'}, color:'#4361ee',
           backgroundColor: dark?'rgba(30,30,40,.85)':'rgba(255,255,255,.85)', borderRadius:3, padding:{left:4,right:4,top:1,bottom:1}}},
     ];
+
+    // Proyección -- solo del % anual (igual que IP_Reg, que tampoco
+    // proyecta el kWh), regresión lineal simple con banda de confianza.
+    const puntosPct = pctDatos.map((v,i)=>({x:i, y:v})).filter(p=>p.y!=null);
+    const reg = ipRegresionLineal(puntosPct);
+    if(IP_COMERCIAL_MOSTRAR_PROYECCION && reg && nBase>0){
+      const meses = Math.max(1, Math.min(24, Number(document.getElementById('ip-com-proyeccion-meses').value) || 2));
+      const ultima = visibles[nBase-1];
+      for(let h=1; h<=meses; h++){
+        let idx = ultima.anio*12 + (ultima.mes-1) + h;
+        const anio = Math.floor(idx/12), mes = (idx%12)+1;
+        etiquetas.push(labelMesLargo(`${anio}-${String(mes).padStart(2,'0')}`));
+        kwhDatos.push(null);
+      }
+      const centro = new Array(nBase).fill(null);
+      const sup = new Array(nBase).fill(null);
+      const inf = new Array(nBase).fill(null);
+      for(let h=1; h<=meses; h++){
+        const x = nBase - 1 + h;
+        const valor = reg.m*x + reg.b;
+        const banda = reg.errorEstandar * 1.6 * Math.sqrt(1 + h/Math.max(1,reg.n));
+        centro.push(valor);
+        sup.push(valor + banda);
+        inf.push(valor - banda);
+      }
+      // El primer punto proyectado repite el último real -- sin salto visual.
+      centro[nBase-1] = pctDatos[nBase-1]; sup[nBase-1] = pctDatos[nBase-1]; inf[nBase-1] = pctDatos[nBase-1];
+      const colorBanda = dark ? 'rgba(6,214,160,.18)' : 'rgba(6,214,160,.22)';
+      datasets.push(
+        {type:'line', label:'Proyección (banda superior)', yAxisID:'yPct', order:4,
+          data: sup, borderWidth:0, pointRadius:0, spanGaps:true, backgroundColor:colorBanda, datalabels:{display:false}},
+        {type:'line', label:'Proyección (banda inferior)', yAxisID:'yPct', order:4,
+          data: inf, borderWidth:0, pointRadius:0, spanGaps:true, fill:'-1', backgroundColor:colorBanda, datalabels:{display:false}},
+        {type:'line', label:'Proyección', yAxisID:'yPct', order:2,
+          data: centro, borderColor:'#06d6a0', borderWidth:2, borderDash:[5,3], pointRadius:0, spanGaps:true,
+          datalabels:{display:true, anchor:'end', align:'top', offset:6, formatter:v=>v==null?'':v.toFixed(2)+'%',
+            font:{size:10, weight:'700'}, color:'#06d6a0',
+            backgroundColor: dark?'rgba(30,30,40,.85)':'rgba(255,255,255,.85)', borderRadius:3, padding:{left:4,right:4,top:1,bottom:1}}},
+      );
+    }
     scales = {
       x:{grid:{display:false}, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:45, minRotation:45}},
       yPct:{type:'linear', position:'left', grid:{color:gridC},
@@ -7872,7 +7952,8 @@ function ipComercialRenderChart(){
       layout:{padding:{top:24, right:20}},
       interaction:{mode:'index', intersect:false},
       plugins:{
-        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:10}, color:tickC}},
+        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:10}, color:tickC,
+          filter:item=>!item.text.startsWith('Proyección (banda')}},
         tooltip:{callbacks:{label:c=>{
           if(c.raw==null) return null;
           return c.dataset.yAxisID==='yPct' ? `${c.dataset.label}: ${c.raw.toFixed(2)}%` : `${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`;
