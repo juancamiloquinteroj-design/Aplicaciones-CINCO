@@ -7775,16 +7775,15 @@ async function cargarIndicadorPerdidasComercial(){
     cont.innerHTML = `<div style="text-align:center;color:#ef476f;padding:40px">${e.message || 'No se pudo cargar el indicador comercial.'}</div>`;
     return;
   }
-  // Por defecto: desde ene-2024 (o el primer mes disponible si arrancó
-  // después) hasta el último mes real disponible -- pedido explícito.
+  // Ventana móvil de IP_VENTANA_MESES_DEFECTO meses (misma que IP_Reg, ver
+  // _ipVentanaPorDefecto) -- cada vez que aparece un mes nuevo, el rango
+  // se corre hacia adelante en vez de solo estirarse desde un "desde" fijo.
   const inDesde = document.getElementById('ip-com-desde');
   const inHasta = document.getElementById('ip-com-hasta');
-  if(!inDesde.value && IP_COMERCIAL_FILAS.length){
-    const primerDisponible = ipComercialClave(IP_COMERCIAL_FILAS[0]);
-    inDesde.value = (primerDisponible > '2024-01' ? primerDisponible : '2024-01') + '-01';
-  }
-  if(!inHasta.value && IP_COMERCIAL_FILAS.length){
-    inHasta.value = ipComercialClave(IP_COMERCIAL_FILAS[IP_COMERCIAL_FILAS.length-1]) + '-01';
+  if(IP_COMERCIAL_FILAS.length){
+    const ultimaClave = ipComercialClave(IP_COMERCIAL_FILAS[IP_COMERCIAL_FILAS.length-1]);
+    if(!inDesde.value) inDesde.value = _ipVentanaPorDefecto(ultimaClave).desde + '-01';
+    if(!inHasta.value) inHasta.value = ultimaClave + '-01';
   }
   ipComercialRenderTodo();
 }
@@ -9126,19 +9125,36 @@ function confirmarDescargaTride(){
   cerrarModalDescargaTride();
 }
 
+// "YYYY-MM" +/- N meses -- reusado por el rango por defecto de IP_Reg y de
+// Indicador de Pérdidas Comercial (ventana móvil, ver _ipVentanaPorDefecto).
+function _ipSumarMesesClave(clave, delta){
+  const [y, m] = clave.split('-').map(Number);
+  const total = y*12 + (m-1) + delta;
+  const anio = Math.floor(total/12), mes = (total%12)+1;
+  return `${anio}-${String(mes).padStart(2,'0')}`;
+}
+
+// Ventana móvil de ancho fijo (pedido explícito: "cada vez que se detecte
+// un nuevo mes el mes más antiguo debe ir saliendo del gráfico") -- arranca
+// IP_VENTANA_MESES_DEFECTO meses atrás del último real disponible, así que
+// cuando aparece un mes nuevo el rango completo se corre un mes hacia
+// adelante en vez de solo estirarse. Se recalcula desde cero cada vez que
+// se entra al módulo (no queda "pegada" a un desde fijo en el calendario).
+const IP_VENTANA_MESES_DEFECTO = 29;
+function _ipVentanaPorDefecto(ultimaClave){
+  return {desde: _ipSumarMesesClave(ultimaClave, -(IP_VENTANA_MESES_DEFECTO-1)), hasta: ultimaClave};
+}
+
 function ipPoblarRangoFechas(idDesde, idHasta){
   const desde = document.getElementById(idDesde);
   const hasta = document.getElementById(idHasta);
-  // Por defecto: desde ene-2025 (o el primer mes disponible si arrancó
-  // después) hasta el último mes real disponible -- igual que el
-  // slicer del Power BI de referencia.
-  if(!desde.value){
-    const primerDisponible = IP_REG_FILAS[0] ? ipClaveNormal(IP_REG_FILAS[0]) : '2025-01';
-    desde.value = (primerDisponible > '2025-01' ? primerDisponible : '2025-01') + '-01';
+  const ultima = IP_REG_FILAS[IP_REG_FILAS.length - 1];
+  const ultimaClave = ultima ? ipClaveNormal(ultima) : null;
+  if(!desde.value && ultimaClave){
+    desde.value = _ipVentanaPorDefecto(ultimaClave).desde + '-01';
   }
   if(!hasta.value){
-    const ultima = IP_REG_FILAS[IP_REG_FILAS.length - 1];
-    hasta.value = ultima ? `${ipClaveNormal(ultima)}-01` : '';
+    hasta.value = ultimaClave ? `${ultimaClave}-01` : '';
   }
 }
 
