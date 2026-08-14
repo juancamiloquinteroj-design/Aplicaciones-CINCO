@@ -829,6 +829,13 @@ tfoot td:first-child{text-align:left}
   </div>
   <div id="ini-n3-msg" class="tm-modal-msg"></div>
 
+  <div id="ini-mapa-zona-card" class="card hidden">
+    <div style="text-align:center;margin-bottom:8px">
+      <div style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Pérdida por Zona</div>
+    </div>
+    <div id="ini-mapa-zona-leaflet" style="height:460px;border-radius:10px;overflow:hidden;background:var(--bg3)"></div>
+  </div>
+
   <div class="mod-grid">
     <div class="mod-card active" onclick="mostrarVista('inicio')">
       <span class="mc-icon">🏠</span>
@@ -3128,6 +3135,7 @@ async function mostrarVista(nombre){
     await cargarDashboardInicio();
     await cargarDashboardNivel3();
     await cargarDashboardIniIpReg();
+    await cargarDashboardMapaZona();
   }
 }
 
@@ -3144,6 +3152,64 @@ async function cargarDashboardIniIpReg(){
   ipPoblarSelectorAnalisisMes('ini-ip-analisis-mes');
   ipGenerarAnalisisInicio();
   ipRenderChartAnualInicio();
+}
+
+// Tarjeta de Inicio: el MISMO croquis por zona de Indicador N2-1
+// (Alimentadores), pedido explícito -- reusa toda la infraestructura
+// compartida (mapaZonasRenderLeaflet/mapaZonasCentroPorZona/etc.) en vez
+// de duplicarla. Versión simplificada: solo el mapa + tarjetas del mes
+// más reciente (sin dona/barras/lista/Mensual-Anual, eso se ve completo
+// en Indicador N2-1) -- se esconde si el operador todavía no parametrizó
+// departamento/zonas.
+async function cargarDashboardMapaZona(){
+  const card = document.getElementById('ini-mapa-zona-card');
+  if(!card) return;
+  if(DEMO){ card.classList.add('hidden'); return; }
+  try{
+    const filas = await _alimAsegurarDatosCargados();
+    if(!filas.length){ card.classList.add('hidden'); return; }
+    const topo = await mapaZonasCargarTopo();
+    const resp = await apiGet('/api/mapa-zonas');
+    if(!resp.departamento){ card.classList.add('hidden'); return; }
+    const features = mapaZonasFeaturesDeDepto(topo, resp.departamento);
+    const render = mapaZonasRenderLeaflet('ini-mapa-zona-leaflet', features, id => resp.municipios[id], null, 0.7);
+    if(!render){ card.classList.add('hidden'); return; }
+    card.classList.remove('hidden');
+
+    const centros = mapaZonasCentroPorZona(features, resp.municipios);
+    const zonas = Object.keys(centros);
+    if(!zonas.length) return;
+    const deptoBounds = L.geoJSON(features).getBounds();
+    const posicionesGuardadas = resp.posiciones || {};
+    const auto = mapaZonasPosicionesAutomaticas(centros, deptoBounds);
+    const fmt = v => v==null ? '--' : Math.round(v).toLocaleString('es-CO');
+
+    zonas.forEach(zona => {
+      const serie = alimN21AgregarMensual(new Set([zona])).filter(f => f.pct != null);
+      if(!serie.length) return;
+      const u = serie[serie.length-1];
+      const color = colorParaZona(zona);
+      const tip = centros[zona];
+      const guardada = posicionesGuardadas[zona];
+      const box = guardada ? L.latLng(guardada.lat, guardada.lng) : auto[zona];
+      mapaZonasDibujarFlecha(render.mapa, box, tip);
+      const html = `<div class="zcard" style="border-top:4px solid ${color}">
+        <div class="zc-h">Zona ${zona}</div>
+        <div class="zc-pct" style="color:${color}">${u.pct.toFixed(2)}%</div>
+        <div class="zc-rows">
+          <div><span>Entrada</span><b>${fmt(u.entrada)}</b></div>
+          <div><span>Salida</span><b>${fmt(u.salida)}</b></div>
+          <div><span>Pérdida</span><b style="color:${color}">${fmt(u.perdida)}</b></div>
+        </div>
+      </div>`;
+      L.marker(box, {
+        icon: L.divIcon({className:'', iconSize:[152,0], iconAnchor:[76,42], html}),
+        interactive:false, zIndexOffset:4000,
+      }).addTo(render.mapa);
+    });
+  }catch(e){
+    card.classList.add('hidden');
+  }
 }
 
 // Tarjeta de Inicio: pérdida de balance del ÚNICO "Balance por Nivel de
@@ -4110,24 +4176,34 @@ async function guardarConfianzaEstadistica(v){
   }
 }
 
+// `real` (viene del backend) = si la zona tiene circuitos de verdad en
+// Pérdidas Técnicas -- esas no se pueden hacer desaparecer del todo (una
+// zona real sin color simplemente vuelve con color automático), pero las
+// creadas a mano (ej. para el croquis, sin datos de Pérdidas Técnicas
+// todavía) sí se borran del todo.
 function renderParametrizacionZonas(datos){
   const cont = document.getElementById('parametrizacion-zonas');
   if(DEMO){
     cont.innerHTML = '<div style="padding:20px;color:var(--text3);font-size:12px">No disponible en modo demo (sin conexión al servidor).</div>';
     return;
   }
-  if(!datos.length){
-    cont.innerHTML = '<div style="padding:20px;color:var(--text3);font-size:12px">Todavía no hay zonas cargadas para este operador.</div>';
-    return;
-  }
-  cont.innerHTML = datos.map(d=>{
+  const zonas = datos.map(d=>{
     const color = d.color || colorParaZona(d.zona);
     return `<div class="param-zona-item">
       <span class="zb" id="param-badge-${d.zona}" style="background:${color}22;color:${color};min-width:56px;justify-content:center">${d.zona}</span>
       <input type="color" value="${color}" onchange="guardarZonaColor('${d.zona}', this.value)">
       <span class="creg-st" id="param-st-${d.zona}"></span>
+      <span onclick="borrarZonaColor('${d.zona}', ${!!d.real})" title="${d.real ? 'Zona con circuitos reales -- esto solo resetea el color' : 'Borrar esta zona'}" style="cursor:pointer;color:#ef476f;font-weight:800;padding:0 2px">✕</span>
     </div>`;
   }).join('');
+  const nueva = `<div class="param-zona-item" style="background:transparent;border-style:dashed">
+    <input type="text" id="param-zona-nueva-nombre" placeholder="Nueva zona" maxlength="20"
+      style="width:90px;padding:5px 7px;border:1px solid var(--border);border-radius:6px;font-size:12px;color:var(--text);background:var(--bg)"
+      onkeydown="if(event.key==='Enter'){ event.preventDefault(); crearZonaColor(); }">
+    <input type="color" id="param-zona-nueva-color" value="#00b4d8">
+    <button type="button" class="btn-theme" style="width:auto;padding:0 10px;font-size:12px" onclick="crearZonaColor()">＋ Crear</button>
+  </div>`;
+  cont.innerHTML = (zonas || '') + nueva;
 }
 
 async function guardarZonaColor(zona, color){
@@ -4143,6 +4219,41 @@ async function guardarZonaColor(zona, color){
     setTimeout(()=>{ if(st.textContent==='✓') st.textContent=''; }, 2000);
   }catch(e){
     st.textContent = '⚠'; st.title = e.message || 'Error al guardar';
+  }
+}
+
+// Crea una zona nueva (con color) directo desde Parametrización -- no
+// hace falta que ya tenga circuitos reales en Pérdidas Técnicas. Queda
+// disponible en TODOS los gráficos que usan colorParaZona (chips/mapa de
+// zonas, Comparativo por Zona, croquis N2-1, etc.).
+async function crearZonaColor(){
+  if(!requiereEditor()) return;
+  const input = document.getElementById('param-zona-nueva-nombre');
+  const colorInput = document.getElementById('param-zona-nueva-color');
+  const zona = (input.value || '').trim().toUpperCase();
+  if(!zona) return;
+  try{
+    await apiPost('/api/zona-colores', {zona, color: colorInput.value});
+    ZONA_COLORES_PERSONALIZADOS[zona] = colorInput.value;
+    input.value = '';
+    await cargarParametrizacion();
+  }catch(e){
+    alert(e.message || 'No se pudo crear la zona.');
+  }
+}
+
+async function borrarZonaColor(zona, esReal){
+  if(!requiereEditor()) return;
+  const msg = esReal
+    ? `"${zona}" tiene circuitos reales -- esto solo le resetea el color a automático (va a seguir apareciendo). ¿Seguir?`
+    : `¿Borrar la zona "${zona}"? No se puede deshacer.`;
+  if(!confirm(msg)) return;
+  try{
+    await apiDelete(`/api/zona-colores/${encodeURIComponent(zona)}`);
+    delete ZONA_COLORES_PERSONALIZADOS[zona];
+    await cargarParametrizacion();
+  }catch(e){
+    alert(e.message || 'No se pudo borrar la zona.');
   }
 }
 
