@@ -3874,6 +3874,19 @@ function mapaZonasRenderLeaflet(contId, features, zonaDeMunicipio, onClickMunici
   delete cont._leaflet_id;
   const mapa = L.map(contId, {zoomControl:true, attributionControl:false});
   MAPA_ZONAS_INSTANCIAS[contId] = mapa;
+  // Bug real de Leaflet encontrado con datos reales: si se agrega un
+  // L.polygon/geoJSON al mapa ANTES de que el mapa haya tenido alguna
+  // vista (centro/zoom) por primera vez, el renderer SVG interno no
+  // alcanza a inicializar su `_bounds`, y el primer intento de dibujar
+  // ese polígono revienta con "Cannot read properties of undefined
+  // (reading 'min')" adentro de Leaflet (Polygon.js, _clipPoints) --
+  // pasaba de verdad cuando el ResizeObserver de más abajo disparaba
+  // fitBounds() con el contenedor todavía en un tamaño de tránsito (no
+  // cero, pero tampoco el final). Por eso ahora se fija una vista
+  // aproximada ACÁ, sincrónico, ANTES de agregar cualquier capa -- el
+  // ResizeObserver de abajo solo AFINA el zoom una vez el contenedor ya
+  // tiene su tamaño real y estable.
+  mapa.fitBounds(L.geoJSON(features).getBounds(), {padding:[10,10]});
   const capasBase = mapaZonasCapasBase();
   capasBase['Calles'].addTo(mapa);
   L.control.layers(capasBase, {'Vías y nombres (sobre Satélite)': mapaZonasCapaVias()}, {position:'topright', collapsed:true}).addTo(mapa);
