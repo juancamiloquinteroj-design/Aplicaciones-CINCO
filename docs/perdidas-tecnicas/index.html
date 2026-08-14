@@ -1975,19 +1975,23 @@ tfoot td:first-child{text-align:left}
         <div style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Pérdida por Zona</div>
         <button type="button" class="be-modo-btn activo" id="alim-n21-btn-mapa-mensual" style="margin-left:12px" onclick="alimN21ToggleMapaModo('mensual')">Mensual</button>
         <button type="button" class="be-modo-btn" id="alim-n21-btn-mapa-anual" onclick="alimN21ToggleMapaModo('anual')">Anual (12M)</button>
+        <select id="alim-n21-mapa-mes" onchange="alimN21CambiarMesMapa(this.value)" style="margin-left:6px"></select>
+        <span id="alim-n21-mapa-anual-caption" class="hidden" style="font-size:11px;color:var(--text3);font-weight:700"></span>
         <label style="margin-left:16px">Opacidad</label>
         <input type="range" min="0" max="0.9" step="0.05" value="0.7" oninput="alimN21CambiarOpacidad(this.value)" style="width:120px" title="Bajala para ver el terreno/vías debajo">
       </div>
       <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">
         <div style="width:300px;flex-shrink:0">
           <div class="be-tabla-creadas-titulo" style="text-align:center">Pérdida por Zona</div>
-          <div class="chart-wrap" style="height:200px"><canvas id="ch-alim-n21-dona-zonas"></canvas></div>
+          <div class="chart-wrap" style="height:190px"><canvas id="ch-alim-n21-dona-zonas"></canvas></div>
           <div id="alim-n21-dona-leyenda" style="display:flex;flex-direction:column;gap:4px;margin:10px 0 16px"></div>
-          <div class="be-tabla-creadas-titulo" style="text-align:center">Mensual / Anual por zona</div>
+          <div class="be-tabla-creadas-titulo" style="text-align:center">Entrada / Salida por Zona</div>
+          <div class="chart-wrap" style="height:190px"><canvas id="ch-alim-n21-barras-zonas"></canvas></div>
+          <div class="be-tabla-creadas-titulo" style="text-align:center;margin-top:16px">Mensual / Anual por zona</div>
           <div id="alim-n21-tarjetas-lista" style="display:flex;flex-direction:column;gap:6px"></div>
         </div>
-        <div style="flex:1;min-width:360px">
-          <div id="alim-n21-mapa-leaflet" style="height:620px;border-radius:10px;overflow:hidden;background:var(--bg3)"></div>
+        <div style="flex:0 1 620px;min-width:320px">
+          <div id="alim-n21-mapa-leaflet" style="height:460px;border-radius:10px;overflow:hidden;background:var(--bg3)"></div>
         </div>
       </div>
     </div>
@@ -8754,10 +8758,30 @@ let ALIM_N21_MAPA_MODO = 'mensual';
 let ALIM_N21_MAPA_REF = null;       // {resp, features, mapa, capa, zonaDeMunicipio} del último croquis cargado
 let ALIM_N21_MAPA_MARCADORES = [];  // tarjetas flotantes activas -- se destruyen y recrean al togglear modo
 let ALIM_N21_MAPA_OPACIDAD = 0.7;
+let ALIM_N21_MAPA_MES = null;       // mes elegido (modo Mensual + gráfica Entrada/Salida) -- arranca en el último real
+let chAlimN21BarrasZonas = null;
 
 function alimN21CambiarOpacidad(v){
   ALIM_N21_MAPA_OPACIDAD = Number(v);
   if(ALIM_N21_MAPA_REF) mapaZonasAplicarOpacidad(ALIM_N21_MAPA_REF.capa, ALIM_N21_MAPA_REF.zonaDeMunicipio, ALIM_N21_MAPA_OPACIDAD);
+}
+
+// Meses reales disponibles en ALIM_FILAS -- pobla el selector de "Mes" de
+// esta sección (mapa en modo Mensual + gráfica Entrada/Salida) con el
+// último mes real preseleccionado.
+function alimN21PoblarSelectorMesMapa(){
+  const sel = document.getElementById('alim-n21-mapa-mes');
+  if(!sel || !ALIM_FILAS || !ALIM_FILAS.length) return;
+  const meses = [...new Set(ALIM_FILAS.map(f => alimN21Clave(f.anio, f.mes)))].sort();
+  if(!meses.length) return;
+  if(!ALIM_N21_MAPA_MES || !meses.includes(ALIM_N21_MAPA_MES)) ALIM_N21_MAPA_MES = meses[meses.length-1];
+  sel.innerHTML = meses.map(m => `<option value="${m}"${m===ALIM_N21_MAPA_MES?' selected':''}>${labelMesLargo(m)}</option>`).join('');
+}
+
+function alimN21CambiarMesMapa(clave){
+  ALIM_N21_MAPA_MES = clave;
+  alimN21RenderMarcadoresZona();
+  alimN21RenderBarrasZonas();
 }
 
 async function alimN21CargarMapa(){
@@ -8776,7 +8800,9 @@ async function alimN21CargarMapa(){
     const render = mapaZonasRenderLeaflet('alim-n21-mapa-leaflet', features, id => resp.municipios[id], null, ALIM_N21_MAPA_OPACIDAD);
     if(!render) return;
     ALIM_N21_MAPA_REF = {resp, features, mapa: render.mapa, capa: render.capa, zonaDeMunicipio: render.zonaDeMunicipio};
+    alimN21PoblarSelectorMesMapa();
     alimN21RenderMarcadoresZona();
+    alimN21RenderBarrasZonas();
   }catch(e){
     cont.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#ef476f;font-size:12px">${e.message || 'No se pudo cargar el croquis.'}</div>`;
   }
@@ -8786,6 +8812,11 @@ function alimN21ToggleMapaModo(modo){
   ALIM_N21_MAPA_MODO = modo;
   document.getElementById('alim-n21-btn-mapa-mensual').classList.toggle('activo', modo==='mensual');
   document.getElementById('alim-n21-btn-mapa-anual').classList.toggle('activo', modo==='anual');
+  // El selector de mes solo aplica al modo Mensual -- en Anual siempre se
+  // muestra la ÚLTIMA ventana de 12 meses, con un texto que lo aclara
+  // (pedido explícito: "ser claro que está mostrando la última fecha anual").
+  document.getElementById('alim-n21-mapa-mes').classList.toggle('hidden', modo==='anual');
+  document.getElementById('alim-n21-mapa-anual-caption').classList.toggle('hidden', modo!=='anual');
   alimN21RenderMarcadoresZona();
 }
 
@@ -8830,6 +8861,7 @@ function alimN21RenderMarcadoresZona(){
 
   const centros = mapaZonasCentroPorZona(features, resp.municipios);
   const datosPorZona = {};
+  let ultimoClaveAnual = null;
   Object.keys(centros).forEach(zona => {
     const serieMensual = alimN21AgregarMensual(new Set([zona])).filter(f => f.pct != null);
     if(!serieMensual.length) return;
@@ -8838,11 +8870,14 @@ function alimN21RenderMarcadoresZona(){
       if(!serieAnual.length) return;
       const u = serieAnual[serieAnual.length-1];
       datosPorZona[zona] = {entrada:u.entrada12, salida:u.salida12, perdida:u.perdida12, pct:u.pct12};
+      ultimoClaveAnual = u.clave;
     }else{
-      const u = serieMensual[serieMensual.length-1];
+      const u = serieMensual.find(f => f.clave === ALIM_N21_MAPA_MES) || serieMensual[serieMensual.length-1];
       datosPorZona[zona] = {entrada:u.entrada, salida:u.salida, perdida:u.perdida, pct:u.pct};
     }
   });
+  const caption = document.getElementById('alim-n21-mapa-anual-caption');
+  if(caption && ultimoClaveAnual) caption.textContent = `Ventana 12 meses móvil -- datos a ${labelMesLargo(ultimoClaveAnual)}`;
   alimN21RenderDonutZonas(datosPorZona);
   alimN21RenderTarjetasLista();
   const zonasConDatos = Object.keys(datosPorZona);
@@ -8878,6 +8913,52 @@ function alimN21RenderMarcadoresZona(){
     });
     marker.addTo(mapa);
     ALIM_N21_MAPA_MARCADORES.push(marker);
+  });
+}
+
+// Barras Entrada/Salida por zona -- SIEMPRE del mes elegido en el
+// selector de arriba (ALIM_N21_MAPA_MES), sin importar el toggle
+// Mensual/Anual (que es de las tarjetas/dona) -- pedido explícito, con el
+// usuario pudiendo cambiar de mes.
+function alimN21RenderBarrasZonas(){
+  const cv = document.getElementById('ch-alim-n21-barras-zonas');
+  if(!cv || !ALIM_N21_MAPA_REF || !ALIM_N21_MAPA_MES) return;
+  const {resp, features} = ALIM_N21_MAPA_REF;
+  const zonas = Object.keys(mapaZonasCentroPorZona(features, resp.municipios)).sort();
+  if(chAlimN21BarrasZonas){ chAlimN21BarrasZonas.destroy(); chAlimN21BarrasZonas = null; }
+  if(!zonas.length) return;
+  const dark = document.documentElement.getAttribute('data-theme')==='dark';
+  const tickC = dark ? '#aab8d1' : '#4b5e7a';
+  const gridC = dark ? 'rgba(255,255,255,.12)' : 'rgba(0,0,0,.06)';
+
+  const entradaVals = [], salidaVals = [];
+  zonas.forEach(zona => {
+    const fila = alimN21AgregarMensual(new Set([zona])).find(f => f.clave === ALIM_N21_MAPA_MES);
+    entradaVals.push(fila ? fila.entrada : 0);
+    salidaVals.push(fila ? fila.salida : 0);
+  });
+
+  chAlimN21BarrasZonas = new Chart(cv, {
+    type:'bar',
+    data:{
+      labels: zonas,
+      datasets:[
+        {label:'Entrada', data: entradaVals, backgroundColor:'rgba(6,214,160,.75)', borderColor:'#06d6a0', borderWidth:1},
+        {label:'Salida', data: salidaVals, backgroundColor:'rgba(239,71,111,.75)', borderColor:'#ef476f', borderWidth:1},
+      ],
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{
+        legend:{display:true, position:'bottom', labels:{boxWidth:10, font:{size:9}, color:tickC}},
+        tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${Math.round(c.raw).toLocaleString('es-CO')} kWh`}},
+        datalabels:{display:false},
+      },
+      scales:{
+        x:{ticks:{color:tickC, font:{size:10, weight:'700'}}, grid:{display:false}},
+        y:{ticks:{color:tickC, font:{size:9}, callback:v=>v.toLocaleString('es-CO')}, grid:{color:gridC}},
+      },
+    },
   });
 }
 
