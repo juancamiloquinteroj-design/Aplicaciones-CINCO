@@ -1858,9 +1858,48 @@ tfoot td:first-child{text-align:left}
 <div id="vista-alim-n21" class="vista-modulo hidden">
   <div class="sec-hdr">
     <div class="sec-title">Indicador N2-1</div>
-    <div class="sec-sub">Depende exclusivamente de Resumen de Alimentadores.csv.</div>
+    <div class="sec-sub">Pérdidas de energía a Nivel de Tensión 2-1 (Entrada Total - Salida Total), por circuito/alimentador.</div>
   </div>
-  <div class="card"><div id="alim-n21-estado" style="color:var(--text3)">Cargando…</div></div>
+
+  <div id="alim-n21-vacio" class="card hidden"><div style="color:var(--text3)">Sin datos cargados todavía.</div></div>
+
+  <div id="alim-n21-contenido" class="hidden">
+
+    <div class="card">
+      <div class="fbar" style="margin-bottom:6px">
+        <label>Rango</label>
+        <input type="date" id="alim-n21-desde" onchange="alimN21RenderTodo()">
+        <span style="font-size:11px;color:var(--text3)">→</span>
+        <input type="date" id="alim-n21-hasta" onchange="alimN21RenderTodo()">
+        <label style="margin-left:10px" title="Filtra las 2 gráficas de arriba y las tarjetas -- vacío = todas las zonas juntas. El comparativo por zona de abajo siempre muestra las 5.">Zona</label>
+        <div id="alim-n21-zonas" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+        <button type="button" class="btn-theme" style="width:auto;padding:0 14px;margin-left:auto" onclick="alimN21DescargarCsv()">⬇ Descargar CSV</button>
+      </div>
+      <div class="be-resumen-cards" id="alim-n21-resumen" style="margin:16px 0 0"></div>
+    </div>
+
+    <div class="card">
+      <div style="text-align:center;margin-bottom:8px">
+        <div style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Pérdidas Mensuales</div>
+      </div>
+      <div class="chart-wrap" style="height:380px"><canvas id="ch-alim-n21-mensual"></canvas></div>
+    </div>
+
+    <div class="card">
+      <div style="text-align:center;margin-bottom:8px">
+        <div style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Pérdidas Anuales (12 Meses Móvil)</div>
+      </div>
+      <div class="chart-wrap" style="height:380px"><canvas id="ch-alim-n21-anual"></canvas></div>
+    </div>
+
+    <div class="card">
+      <div style="text-align:center;margin-bottom:8px">
+        <div style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Comparativo Pérdidas por Zona</div>
+      </div>
+      <div class="chart-wrap" style="height:380px"><canvas id="ch-alim-n21-zonas"></canvas></div>
+    </div>
+
+  </div>
 </div>
 <!-- fin vista-alim-n21 -->
 
@@ -7916,6 +7955,7 @@ async function _alimAsegurarDatosCargados(){
 }
 
 async function cargarAlimentadoresModulo(nombreVista){
+  if(nombreVista === 'alim-n21'){ await alimN21Cargar(); return; }
   const idEstado = `${nombreVista}-estado`;
   const cont = document.getElementById(idEstado);
   if(!cont) return;
@@ -7933,6 +7973,356 @@ async function cargarAlimentadoresModulo(nombreVista){
   }catch(e){
     cont.textContent = e.message || 'No se pudo cargar.';
   }
+}
+
+/* ---- Indicador N2-1 -- agregado mensual de TODAS las filas de Alimentadores
+   (sin filtrar Tipo/on-off: se verificó numéricamente contra el tablero de
+   referencia del usuario que la suma cruda de Entrada/Salida/Perdida Total
+   de TODAS las filas reproduce el % de pérdida esperado mes a mes). El
+   filtro de Zona (chips) acota esta suma; el comparativo por zona de abajo
+   siempre desglosa las 5, sin importar ese filtro. La ventana de 12 meses
+   móvil se calcula sobre el HISTÓRICO COMPLETO (no solo lo visible en el
+   rango Desde/Hasta) -- mismo criterio que IP_Reg/IP Comercial, para que el
+   indicador anual sea correcto incluso en el primer mes visible. ---- */
+const ALIM_N21_ZONAS = ['ZC','ZE','ZN','ZO','ZS'];
+const ALIM_N21_COLOR_ZONA = {ZC:'#f4a261', ZE:'#ef476f', ZN:'#06d6a0', ZO:'#4361ee', ZS:'#7b2fff'};
+let ALIM_N21_ZONAS_SEL = new Set();
+let chAlimN21Mensual = null, chAlimN21Anual = null, chAlimN21Zonas = null;
+
+function alimN21Clave(anio, mes){ return `${anio}-${String(mes).padStart(2,'0')}`; }
+
+// Agrega ALIM_FILAS por mes -- opcionalmente solo las zonas en `zonas`
+// (Set vacío o null = todas). Devuelve el histórico COMPLETO ordenado.
+function alimN21AgregarMensual(zonas){
+  const mapa = new Map();
+  for(const f of ALIM_FILAS){
+    if(zonas && zonas.size && !zonas.has(f.zona)) continue;
+    const clave = alimN21Clave(f.anio, f.mes);
+    if(!mapa.has(clave)) mapa.set(clave, {anio:f.anio, mes:f.mes, clave, entrada:0, salida:0, perdida:0});
+    const a = mapa.get(clave);
+    a.entrada += f.entrada_total || 0;
+    a.salida += f.salida_total || 0;
+    a.perdida += f.perdida_kwh || 0;
+  }
+  return [...mapa.values()]
+    .sort((a,b) => (a.anio*12+a.mes) - (b.anio*12+b.mes))
+    .map(a => ({...a, pct: a.entrada ? a.perdida/a.entrada*100 : null}));
+}
+
+// Suma los 12 meses trailing (mes actual incluido) sobre la serie mensual
+// ya ordenada -- null mientras no haya 12 meses de historia disponibles.
+function alimN21Con12Meses(mensual){
+  return mensual.map((f,i) => {
+    if(i < 11) return {...f, entrada12:null, salida12:null, perdida12:null, pct12:null};
+    const ventana = mensual.slice(i-11, i+1);
+    const entrada12 = ventana.reduce((s,x)=>s+x.entrada, 0);
+    const salida12 = ventana.reduce((s,x)=>s+x.salida, 0);
+    const perdida12 = ventana.reduce((s,x)=>s+x.perdida, 0);
+    return {...f, entrada12, salida12, perdida12, pct12: entrada12 ? perdida12/entrada12*100 : null};
+  });
+}
+
+function alimN21RenderZonasChips(){
+  const cont = document.getElementById('alim-n21-zonas');
+  if(!cont) return;
+  cont.innerHTML = ALIM_N21_ZONAS.map(z => `<button type="button" class="be-modo-btn${ALIM_N21_ZONAS_SEL.has(z)?' activo':''}" onclick="alimN21ToggleZona('${z}')">${z}</button>`).join('');
+}
+
+function alimN21ToggleZona(zona){
+  if(ALIM_N21_ZONAS_SEL.has(zona)) ALIM_N21_ZONAS_SEL.delete(zona); else ALIM_N21_ZONAS_SEL.add(zona);
+  alimN21RenderZonasChips();
+  alimN21RenderTodo();
+}
+
+function alimN21Visibles(datos){
+  const desde = document.getElementById('alim-n21-desde').value ? document.getElementById('alim-n21-desde').value.slice(0,7) : null;
+  const hasta = document.getElementById('alim-n21-hasta').value ? document.getElementById('alim-n21-hasta').value.slice(0,7) : null;
+  return datos.filter(f => (!desde || f.clave >= desde) && (!hasta || f.clave <= hasta));
+}
+
+async function alimN21Cargar(){
+  const vacio = document.getElementById('alim-n21-vacio');
+  const contenido = document.getElementById('alim-n21-contenido');
+  try{
+    const filas = await _alimAsegurarDatosCargados();
+    if(!filas.length){
+      vacio.classList.remove('hidden');
+      contenido.classList.add('hidden');
+      return;
+    }
+  }catch(e){
+    vacio.classList.remove('hidden');
+    contenido.classList.add('hidden');
+    vacio.querySelector('div').textContent = e.message || 'No se pudo cargar Alimentadores.';
+    return;
+  }
+  vacio.classList.add('hidden');
+  contenido.classList.remove('hidden');
+  alimN21RenderZonasChips();
+
+  const inDesde = document.getElementById('alim-n21-desde');
+  const inHasta = document.getElementById('alim-n21-hasta');
+  if(!inDesde.value || !inHasta.value){
+    const claves = [...new Set(ALIM_FILAS.map(f => alimN21Clave(f.anio, f.mes)))].sort();
+    if(claves.length){
+      const ultima = claves[claves.length-1];
+      if(!inHasta.value) inHasta.value = ultima + '-01';
+      if(!inDesde.value){
+        // Arranca mostrando el último año completo -- así el indicador
+        // anual (12 meses móvil) ya tiene ventana llena desde el primer punto visible.
+        const [aH, mH] = ultima.split('-').map(Number);
+        const idx = aH*12 + (mH-1) - 11;
+        const aD = Math.floor(idx/12), mD = (idx%12)+1;
+        const claveD = alimN21Clave(aD, mD);
+        inDesde.value = (claves.includes(claveD) ? claveD : claves[0]) + '-01';
+      }
+    }
+  }
+
+  alimN21RenderTodo();
+}
+
+function alimN21RenderTodo(){
+  const datos12 = alimN21Con12Meses(alimN21AgregarMensual(ALIM_N21_ZONAS_SEL));
+  alimN21RenderChartMensual(datos12);
+  alimN21RenderChartAnual(datos12);
+  alimN21RenderChartZonas();
+  alimN21RenderResumen(datos12);
+}
+
+function alimN21DescargarCsv(){
+  const datos12 = alimN21Visibles(alimN21Con12Meses(alimN21AgregarMensual(ALIM_N21_ZONAS_SEL)));
+  const encabezado = ['Mes','Entrada Total (kWh)','Salida Total (kWh)','Pérdida (kWh)','Pérdida (%)','Entrada Anual 12M (kWh)','Salida Anual 12M (kWh)','Pérdida Anual 12M (kWh)','Pérdida Anual 12M (%)'];
+  const filas = datos12.map(f => [
+    labelMesLargo(f.clave), f.entrada, f.salida, f.perdida, f.pct, f.entrada12, f.salida12, f.perdida12, f.pct12,
+  ]);
+  const linea = fila => fila.map(v => {
+    if(v==null||v===undefined) return '';
+    return typeof v === 'number' ? String(v).replace('.',',') : String(v);
+  }).join(';');
+  const zonasTxt = ALIM_N21_ZONAS_SEL.size ? [...ALIM_N21_ZONAS_SEL].join('-') : 'todas';
+  const csv = [linea(encabezado), ...filas.map(linea)].join('\r\n');
+  const blob = new Blob(['﻿'+csv], {type:'text/csv;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `indicador_n21_${zonasTxt}_${OPERADOR.slug}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+
+// Pérdidas Mensuales -- Entrada/Salida/Pérdida (kWh, áreas superpuestas
+// semitransparentes -- se anidan solas porque Entrada > Salida > Pérdida)
+// + % de pérdida mensual en línea sobre eje secundario.
+function alimN21RenderChartMensual(datos12){
+  const cv = document.getElementById('ch-alim-n21-mensual');
+  if(!cv) return;
+  const visibles = alimN21Visibles(datos12);
+  if(!visibles.length) return;
+  const dark = document.documentElement.getAttribute('data-theme')==='dark';
+  const tickC = dark ? '#aab8d1' : '#4b5e7a';
+  const tickXFuerte = dark ? '#ffffff' : '#000000';
+  const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
+  const etiquetas = visibles.map(f => labelMesLargo(f.clave));
+
+  if(chAlimN21Mensual) chAlimN21Mensual.destroy();
+  chAlimN21Mensual = new Chart(cv, {
+    plugins:[tmPluginCrosshair],
+    data:{
+      labels: etiquetas,
+      datasets:[
+        {type:'line', label:'Suma de Entrada Total', yAxisID:'y', order:4, fill:'origin',
+          data: visibles.map(f=>f.entrada), borderColor:'#06d6a0', backgroundColor:'rgba(6,214,160,.20)',
+          borderWidth:2, pointRadius:1.5, spanGaps:true, tension:.2, datalabels:{display:false}},
+        {type:'line', label:'Suma de Salida Total', yAxisID:'y', order:3, fill:'origin',
+          data: visibles.map(f=>f.salida), borderColor:'#ef476f', backgroundColor:'rgba(239,71,111,.20)',
+          borderWidth:2, pointRadius:1.5, spanGaps:true, tension:.2, datalabels:{display:false}},
+        {type:'line', label:'Suma de Pérdida kWh', yAxisID:'y', order:2, fill:'origin',
+          data: visibles.map(f=>f.perdida), borderColor:'#4361ee', backgroundColor:'rgba(67,97,238,.35)',
+          borderWidth:2, pointRadius:1.5, spanGaps:true, tension:.2, datalabels:{display:false}},
+        {type:'line', label:'Pérdida Zonal %', yAxisID:'yPct', order:1,
+          data: visibles.map(f=>f.pct), borderColor:'#7b2fff', backgroundColor:'transparent',
+          borderWidth:2.5, pointRadius:2, spanGaps:true, tension:.25,
+          datalabels:{display:true, anchor:'end', align:'top', offset:6, formatter:v=>v==null?'':v.toFixed(2)+'%',
+            font:{size:10, weight:'700'}, color:'#7b2fff',
+            backgroundColor: dark?'rgba(30,30,40,.85)':'rgba(255,255,255,.85)', borderRadius:3, padding:{left:4,right:4,top:1,bottom:1}}},
+      ],
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      layout:{padding:{top:28, right:20}},
+      interaction:{mode:'index', intersect:false},
+      plugins:{
+        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:10}, color:tickC}},
+        tooltip:{callbacks:{label:c=>{
+          if(c.raw==null) return null;
+          return c.dataset.yAxisID==='yPct' ? `${c.dataset.label}: ${c.raw.toFixed(2)}%` : `${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`;
+        }}},
+        zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:3}}},
+      },
+      scales:{
+        x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:45, minRotation:45}},
+        yPct:{type:'linear', position:'right', grid:{drawOnChartArea:false},
+          ticks:{color:'#7b2fff', font:{size:11}, callback:v=>v.toFixed(1)+'%'},
+          title:{display:true, text:'Pérdida Zonal (%)', color:'#7b2fff', font:{size:11}}},
+        y:{position:'left', grid:{color:gridC},
+          ticks:{color:tickC, font:{size:10}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
+          title:{display:true, text:'Energía (kWh)', color:tickC, font:{size:10}}},
+      },
+    },
+  });
+}
+
+// Pérdidas Anuales -- mismas 4 series, en ventana móvil de 12 meses.
+function alimN21RenderChartAnual(datos12){
+  const cv = document.getElementById('ch-alim-n21-anual');
+  if(!cv) return;
+  const visibles = alimN21Visibles(datos12).filter(f => f.pct12 != null);
+  if(!visibles.length) return;
+  const dark = document.documentElement.getAttribute('data-theme')==='dark';
+  const tickC = dark ? '#aab8d1' : '#4b5e7a';
+  const tickXFuerte = dark ? '#ffffff' : '#000000';
+  const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
+  const etiquetas = visibles.map(f => labelMesLargo(f.clave));
+
+  if(chAlimN21Anual) chAlimN21Anual.destroy();
+  chAlimN21Anual = new Chart(cv, {
+    plugins:[tmPluginCrosshair],
+    data:{
+      labels: etiquetas,
+      datasets:[
+        {type:'line', label:'Entrada N21 (12M Móvil)', yAxisID:'y', order:4, fill:'origin',
+          data: visibles.map(f=>f.entrada12), borderColor:'#06d6a0', backgroundColor:'rgba(6,214,160,.20)',
+          borderWidth:2, pointRadius:1.5, spanGaps:true, tension:.2, datalabels:{display:false}},
+        {type:'line', label:'Salida N21 (12M Móvil)', yAxisID:'y', order:3, fill:'origin',
+          data: visibles.map(f=>f.salida12), borderColor:'#ef476f', backgroundColor:'rgba(239,71,111,.20)',
+          borderWidth:2, pointRadius:1.5, spanGaps:true, tension:.2, datalabels:{display:false}},
+        {type:'line', label:'Pérdida N21 (12M Móvil)', yAxisID:'y', order:2, fill:'origin',
+          data: visibles.map(f=>f.perdida12), borderColor:'#4361ee', backgroundColor:'rgba(67,97,238,.35)',
+          borderWidth:2, pointRadius:1.5, spanGaps:true, tension:.2, datalabels:{display:false}},
+        {type:'line', label:'Pérdida (%) N21 (12M Móvil)', yAxisID:'yPct', order:1,
+          data: visibles.map(f=>f.pct12), borderColor:'#7b2fff', backgroundColor:'transparent',
+          borderWidth:2.5, pointRadius:2, spanGaps:true, tension:.25,
+          datalabels:{display:true, anchor:'end', align:'top', offset:6, formatter:v=>v==null?'':v.toFixed(2)+'%',
+            font:{size:10, weight:'700'}, color:'#7b2fff',
+            backgroundColor: dark?'rgba(30,30,40,.85)':'rgba(255,255,255,.85)', borderRadius:3, padding:{left:4,right:4,top:1,bottom:1}}},
+      ],
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      layout:{padding:{top:28, right:20}},
+      interaction:{mode:'index', intersect:false},
+      plugins:{
+        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:10}, color:tickC}},
+        tooltip:{callbacks:{label:c=>{
+          if(c.raw==null) return null;
+          return c.dataset.yAxisID==='yPct' ? `${c.dataset.label}: ${c.raw.toFixed(2)}%` : `${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`;
+        }}},
+        zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:3}}},
+      },
+      scales:{
+        x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:45, minRotation:45}},
+        yPct:{type:'linear', position:'right', grid:{drawOnChartArea:false},
+          ticks:{color:'#7b2fff', font:{size:11}, callback:v=>v.toFixed(1)+'%'},
+          title:{display:true, text:'Pérdida N21 Anual (%)', color:'#7b2fff', font:{size:11}}},
+        y:{position:'left', grid:{color:gridC},
+          ticks:{color:tickC, font:{size:10}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
+          title:{display:true, text:'Energía Anual (kWh)', color:tickC, font:{size:10}}},
+      },
+    },
+  });
+}
+
+// Comparativo por zona -- SIEMPRE las 5 zonas (ignora el filtro de arriba,
+// es justamente para comparar unas contra otras), % de pérdida mensual.
+function alimN21RenderChartZonas(){
+  const cv = document.getElementById('ch-alim-n21-zonas');
+  if(!cv) return;
+  const dark = document.documentElement.getAttribute('data-theme')==='dark';
+  const tickC = dark ? '#aab8d1' : '#4b5e7a';
+  const tickXFuerte = dark ? '#ffffff' : '#000000';
+  const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
+
+  const porZona = {};
+  let etiquetas = null;
+  for(const z of ALIM_N21_ZONAS){
+    const visibles = alimN21Visibles(alimN21AgregarMensual(new Set([z])));
+    if(!etiquetas) etiquetas = visibles.map(f => labelMesLargo(f.clave));
+    porZona[z] = visibles.map(f => f.pct);
+  }
+  if(!etiquetas || !etiquetas.length) return;
+
+  if(chAlimN21Zonas) chAlimN21Zonas.destroy();
+  chAlimN21Zonas = new Chart(cv, {
+    plugins:[tmPluginCrosshair],
+    data:{
+      labels: etiquetas,
+      datasets: ALIM_N21_ZONAS.map(z => ({
+        type:'line', label:z, data: porZona[z], borderColor: ALIM_N21_COLOR_ZONA[z], backgroundColor:'transparent',
+        borderWidth:2, pointRadius:1.5, spanGaps:true, tension:.25, datalabels:{display:false},
+      })),
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      layout:{padding:{top:20, right:20}},
+      interaction:{mode:'index', intersect:false},
+      plugins:{
+        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:10}, color:tickC}},
+        tooltip:{callbacks:{label:c=>{
+          if(c.raw==null) return null;
+          return `${c.dataset.label}: ${c.raw.toFixed(2)}%`;
+        }}},
+        zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:3}}},
+      },
+      scales:{
+        x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:45, minRotation:45}},
+        y:{grid:{color:gridC}, ticks:{color:tickC, font:{size:11}, callback:v=>v.toFixed(0)+'%'},
+          title:{display:true, text:'Pérdida (%)', color:tickC, font:{size:11}}},
+      },
+    },
+  });
+}
+
+// Tarjetas -- Indicador Mensual e Indicador Anual (12 meses móvil), con la
+// variación contra el mes anterior (mismo patrón visual que IP Comercial).
+function alimN21RenderResumen(datos12){
+  const cont = document.getElementById('alim-n21-resumen');
+  if(!cont) return;
+  const reales = datos12.filter(f => f.pct != null);
+  if(reales.length < 2){ cont.innerHTML = ''; return; }
+  const actual = reales[reales.length-1];
+  const anterior = reales[reales.length-2];
+  const mesActual = labelMes(actual.clave);
+  const mesAnterior = labelMes(anterior.clave);
+  const fk = v => v==null ? '--' : v.toLocaleString('es-CO', {maximumFractionDigits:0}) + ' kWh';
+
+  const tarjeta = (etiqueta, valor, sub, colorValor) => `<div class="be-resumen-tile">
+    <div class="etiqueta">${etiqueta}</div>
+    <div class="valor"${colorValor ? ` style="color:${colorValor}"` : ''}>${valor}</div>
+    ${sub ? `<div class="sub">${sub}</div>` : ''}
+  </div>`;
+
+  const deltaPctMensual = actual.pct - anterior.pct;
+  const colorPctMensual = ipColorVariacion(actual.pct, anterior.pct, 'var(--text2)');
+  const tarjetas = [
+    tarjeta('Indicador Mensual', actual.pct.toFixed(2)+'%', mesActual),
+    tarjeta('Variación Mensual', `${deltaPctMensual>=0?'▲':'▼'} ${Math.abs(deltaPctMensual).toFixed(2)} pp`, `${mesAnterior} → ${mesActual}`, colorPctMensual),
+    tarjeta('Pérdida kWh Mensual', fk(actual.perdida), mesActual),
+  ];
+
+  const realesAnual = datos12.filter(f => f.pct12 != null);
+  if(realesAnual.length){
+    const actual12 = realesAnual[realesAnual.length-1];
+    tarjetas.push(tarjeta('Indicador Anual (12M)', actual12.pct12.toFixed(2)+'%', labelMes(actual12.clave)));
+    if(realesAnual.length >= 2){
+      const anterior12 = realesAnual[realesAnual.length-2];
+      const deltaPct12 = actual12.pct12 - anterior12.pct12;
+      const colorPct12 = ipColorVariacion(actual12.pct12, anterior12.pct12, 'var(--text2)');
+      tarjetas.push(tarjeta('Variación Anual', `${deltaPct12>=0?'▲':'▼'} ${Math.abs(deltaPct12).toFixed(2)} pp`, `${labelMes(anterior12.clave)} → ${labelMes(actual12.clave)}`, colorPct12));
+    }
+    tarjetas.push(tarjeta('Pérdida kWh Anual (12M)', fk(actual12.perdida12), labelMes(actual12.clave)));
+  }
+
+  cont.innerHTML = tarjetas.join('');
 }
 
 function ipComercialRenderTodo(){
