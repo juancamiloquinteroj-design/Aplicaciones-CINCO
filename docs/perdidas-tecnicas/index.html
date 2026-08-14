@@ -836,32 +836,19 @@ tfoot td:first-child{text-align:left}
       <label style="margin-left:16px">Opacidad</label>
       <input type="range" min="0" max="0.9" step="0.05" value="0.7" oninput="iniMapaZonaCambiarOpacidad(this.value)" style="width:120px" title="Bajala para ver el terreno/vías debajo">
     </div>
-    <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">
-      <div id="ini-mapa-zona-wrap" class="hidden" style="flex:1;min-width:360px">
-        <div id="ini-mapa-zona-leaflet" style="height:560px;border-radius:10px;overflow:hidden;background:var(--bg3)"></div>
+    <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:stretch">
+      <div id="ini-mapa-zona-wrap" class="hidden" style="flex:1;min-width:360px;display:flex">
+        <div id="ini-mapa-zona-leaflet" style="flex:1;min-height:560px;border-radius:10px;overflow:hidden;background:var(--bg3)"></div>
       </div>
       <div style="flex:0 0 600px;max-width:600px;display:flex;flex-direction:column;gap:14px">
-        <!-- Tarjeta Total + una por zona, en un contenedor COMPACTO
-             acotado al mismo alto que el mapa (pedido explícito: "deben
-             ser equivalentes") -- ver .ini-n21-cards-compactas. -->
+        <!-- Total + una tarjeta por zona, TODAS en la misma grilla de 2
+             columnas (el Total es la primera celda) -- con 5 zonas + Total
+             son 6 celdas parejas (3 filas x 2), sin la celda vacía que
+             quedaba antes con el Total aparte arriba (pedido explícito).
+             Orden armado en cargarDashboardN21Zonas(). Contenedor
+             COMPACTO acotado al mismo alto que el mapa (ver
+             .ini-n21-cards-compactas). -->
         <div class="ini-n21-cards-compactas">
-          <div id="ini-n21-total" class="card inicio-dash-card hidden" style="border:2px solid var(--accent);margin-bottom:14px">
-            <div class="card-title">⚡ Indicador N2-1 -- Total</div>
-            <div class="inicio-dash-grid">
-              <div class="inicio-mes-panel">
-                <div class="inicio-mes-titulo">Mes anterior · <span id="ini-n21-tot-mes-ant"></span></div>
-                <div class="inicio-mes-fila"><span>Mensual</span><span id="ini-n21-tot-ant-mensual">--</span></div>
-                <div class="inicio-mes-fila"><span>Anual (móvil)</span><span id="ini-n21-tot-ant-anual">--</span></div>
-              </div>
-              <div class="inicio-mes-panel actual">
-                <div class="inicio-mes-titulo">Mes actual · <span id="ini-n21-tot-mes-act"></span></div>
-                <div class="inicio-mes-fila"><span>Mensual</span><span><span id="ini-n21-tot-act-mensual">--</span> <span id="ini-n21-tot-var-mensual" class="inicio-variacion"></span></span></div>
-                <div class="inicio-mes-fila"><span>Anual (móvil)</span><span><span id="ini-n21-tot-act-anual">--</span> <span id="ini-n21-tot-var-anual" class="inicio-variacion"></span></span></div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Una tarjeta por zona, mismo modelo, en 2 columnas -->
           <div id="ini-n21-zonas" class="inicio-dash-fila" style="margin-bottom:0"></div>
         </div>
 
@@ -3233,7 +3220,6 @@ async function mostrarVista(nombre){
     // se haya asentado.
     await cargarDashboardIniIpReg();
     await cargarDashboardMapaZona();
-    await cargarDashboardN21Total();
     await cargarDashboardN21Zonas();
     await cargarDashboardInicio();
     await cargarDashboardNivel3();
@@ -3376,36 +3362,16 @@ function _iniCalcularPanelesN21(zonaSet){
   };
 }
 
-// Tarjeta PRINCIPAL de Inicio: indicador N2-1 TOTAL (todas las zonas),
-// mismo modelo visual que las de Balance (Mes anterior/Mes actual x
-// Mensual/Anual con variación) -- pedido explícito, "ocupa el espacio"
-// para que resalte más que las de zona.
-async function cargarDashboardN21Total(){
-  const card = document.getElementById('ini-n21-total');
-  if(!card) return;
-  if(DEMO){ card.classList.add('hidden'); return; }
-  try{
-    const filas = await _alimAsegurarDatosCargados();
-    if(!filas.length){ card.classList.add('hidden'); return; }
-    const p = _iniCalcularPanelesN21(new Set());
-    if(!p){ card.classList.add('hidden'); return; }
-    card.classList.remove('hidden');
-    const fmtPct = v => v==null ? 'Sin datos' : `${v.toFixed(2)}%`;
-    document.getElementById('ini-n21-tot-mes-ant').textContent = p.mesAntNombre;
-    document.getElementById('ini-n21-tot-mes-act').textContent = p.mesActNombre;
-    document.getElementById('ini-n21-tot-ant-mensual').textContent = fmtPct(p.mensualAnt);
-    document.getElementById('ini-n21-tot-ant-anual').textContent = _iniFmtKwhPct(p.anualAntKwh, p.anualAnt);
-    document.getElementById('ini-n21-tot-act-mensual').textContent = fmtPct(p.mensualAct);
-    document.getElementById('ini-n21-tot-act-anual').textContent = _iniFmtKwhPct(p.anualActKwh, p.anualAct);
-    _iniRenderVariacion('ini-n21-tot-var-mensual', p.mensualAnt, p.mensualAct);
-    _iniRenderVariacion('ini-n21-tot-var-anual', p.anualAnt, p.anualAct);
-  }catch(e){
-    card.classList.add('hidden');
-  }
-}
+// Total + una tarjeta por zona, TODAS en la misma grilla de 2 columnas
+// (mismo modelo que Nivel 3, ver cargarDashboardNivel3) -- el Total va
+// primero, con el mismo tamaño que las de zona (pedido explícito: "para
+// que no quede ese espacio ahí desigual" -- con 5 zonas + Total quedan 6
+// celdas parejas). Orden fijo pedido por el usuario (Total, ZE, ZN, ZS,
+// ZC, ZO); cualquier zona que no esté en esa lista (operador nuevo, o una
+// zona nueva de este) se agrega al final, alfabética -- para que la grilla
+// no se rompa si cambia el set de zonas.
+const INI_N21_ORDEN_ZONAS = ['ZE', 'ZN', 'ZS', 'ZC', 'ZO'];
 
-// Una tarjeta por zona (mismo modelo que Nivel 3, ver cargarDashboardNivel3)
-// -- pero con el indicador N2-1 de Alimentadores, no Balance por Estructura.
 async function cargarDashboardN21Zonas(){
   const cont = document.getElementById('ini-n21-zonas');
   if(!cont) return;
@@ -3413,13 +3379,15 @@ async function cargarDashboardN21Zonas(){
   try{
     const filas = await _alimAsegurarDatosCargados();
     if(!filas.length){ cont.innerHTML = ''; return; }
-    const zonas = [...new Set(filas.map(f => f.zona).filter(Boolean))].sort();
-    cont.innerHTML = zonas.map(zona => {
-      const color = colorParaZona(zona);
-      const pref = `ini-n21-z-${zona}`;
-      return `
+    const zonasReales = [...new Set(filas.map(f => f.zona).filter(Boolean))];
+    const zonas = [
+      ...INI_N21_ORDEN_ZONAS.filter(z => zonasReales.includes(z)),
+      ...zonasReales.filter(z => !INI_N21_ORDEN_ZONAS.includes(z)).sort(),
+    ];
+
+    const tarjeta = (pref, titulo, color) => `
       <div class="card inicio-dash-card" style="border-left:4px solid ${color}">
-        <div class="card-title">⚡ Indicador N2-1 · 📍 ${zona}</div>
+        <div class="card-title">⚡ ${titulo}</div>
         <div class="inicio-dash-grid">
           <div class="inicio-mes-panel">
             <div class="inicio-mes-titulo">Mes anterior · <span id="${pref}-mes-ant"></span></div>
@@ -3433,12 +3401,13 @@ async function cargarDashboardN21Zonas(){
           </div>
         </div>
       </div>`;
-    }).join('');
+
+    cont.innerHTML = tarjeta('ini-n21-tot', 'Indicador N2-1 -- Total', 'var(--accent)')
+      + zonas.map(zona => tarjeta(`ini-n21-z-${zona}`, `Indicador N2-1 · 📍 ${zona}`, colorParaZona(zona))).join('');
 
     const fmtPct = v => v==null ? 'Sin datos' : `${v.toFixed(2)}%`;
-    zonas.forEach(zona => {
-      const pref = `ini-n21-z-${zona}`;
-      const p = _iniCalcularPanelesN21(new Set([zona]));
+    const pintar = (pref, zonaSet) => {
+      const p = _iniCalcularPanelesN21(zonaSet);
       if(!p) return;
       document.getElementById(`${pref}-mes-ant`).textContent = p.mesAntNombre;
       document.getElementById(`${pref}-mes-act`).textContent = p.mesActNombre;
@@ -3448,7 +3417,9 @@ async function cargarDashboardN21Zonas(){
       document.getElementById(`${pref}-act-anual`).textContent = _iniFmtKwhPct(p.anualActKwh, p.anualAct);
       _iniRenderVariacion(`${pref}-var-mensual`, p.mensualAnt, p.mensualAct);
       _iniRenderVariacion(`${pref}-var-anual`, p.anualAnt, p.anualAct);
-    });
+    };
+    pintar('ini-n21-tot', new Set());
+    zonas.forEach(zona => pintar(`ini-n21-z-${zona}`, new Set([zona])));
   }catch(e){
     cont.innerHTML = '';
   }
@@ -3916,10 +3887,17 @@ function mapaZonasRenderLeaflet(contId, features, zonaDeMunicipio, onClickMunici
       }
     },
   }).addTo(mapa);
-  mapa.fitBounds(capa.getBounds(), {padding:[10,10]});
-  // El contenedor puede estar recién destapado (display:none -> visible) --
-  // sin esto Leaflet mide 0x0 y el mapa queda cortado/gris.
-  setTimeout(()=>mapa.invalidateSize(), 80);
+  // El contenedor puede estar recién destapado (display:none -> visible)
+  // -- si fitBounds() corre ANTES de que Leaflet vuelva a medir el
+  // contenedor (invalidateSize), lo hace con un tamaño viejo/0x0 y el
+  // zoom queda clavado rarísimo (muy metido o muy alejado, sin mostrar
+  // bien el croquis) -- invalidateSize primero, fitBounds recién después,
+  // los dos adentro del mismo setTimeout para que ya corran con el
+  // tamaño real ya asentado.
+  setTimeout(() => {
+    mapa.invalidateSize();
+    mapa.fitBounds(capa.getBounds(), {padding:[10,10]});
+  }, 80);
   return {mapa, capa, estiloDe, zonaDeMunicipio};
 }
 
