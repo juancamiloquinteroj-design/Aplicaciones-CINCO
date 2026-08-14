@@ -2079,13 +2079,29 @@ tfoot td:first-child{text-align:left}
         <button type="button" class="btn-theme" style="width:auto;padding:0 14px;margin-left:auto" onclick="alimSubDescargarCsv()">⬇ Descargar CSV</button>
       </div>
 
-      <div class="fbar" style="justify-content:center;margin-bottom:8px">
-        <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Entrada / Salida / Pérdida por Subestación</div>
-        <button type="button" class="be-modo-btn" id="alim-sub-btn-metrica-entrada" onclick="alimSubCambiarMetrica('entrada')">Entrada</button>
-        <button type="button" class="be-modo-btn" id="alim-sub-btn-metrica-salida" onclick="alimSubCambiarMetrica('salida')">Salida</button>
-        <button type="button" class="be-modo-btn activo" id="alim-sub-btn-metrica-perdida" onclick="alimSubCambiarMetrica('perdida')">Pérdida</button>
+      <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">
+        <div style="flex:1;min-width:360px">
+          <div class="fbar" style="justify-content:center;margin-bottom:8px">
+            <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Entrada / Salida / Pérdida por Subestación</div>
+            <button type="button" class="be-modo-btn" id="alim-sub-btn-metrica-entrada" onclick="alimSubCambiarMetrica('entrada')">Entrada</button>
+            <button type="button" class="be-modo-btn" id="alim-sub-btn-metrica-salida" onclick="alimSubCambiarMetrica('salida')">Salida</button>
+            <button type="button" class="be-modo-btn activo" id="alim-sub-btn-metrica-perdida" onclick="alimSubCambiarMetrica('perdida')">Pérdida</button>
+          </div>
+          <div class="chart-wrap" style="height:420px"><canvas id="ch-alim-sub-subestaciones"></canvas></div>
+        </div>
+        <div style="flex:0 0 480px;max-width:480px">
+          <div style="text-align:center;margin-bottom:8px">
+            <div style="font-size:13px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Top Subestaciones por Pérdida</div>
+            <div style="font-size:10.5px;color:var(--text3);margin-top:2px">Click en una fila para verla abajo en "Pérdida % por Alimentador"</div>
+          </div>
+          <div class="tbl-wrap" style="max-height:420px;overflow-y:auto">
+            <table>
+              <thead><tr><th style="text-align:left">Subestación</th><th>Zona</th><th>Entrada</th><th>Salida</th><th>Pérd. Mensual</th><th>Pérd. Anual</th></tr></thead>
+              <tbody id="alim-sub-tabla-top"></tbody>
+            </table>
+          </div>
+        </div>
       </div>
-      <div class="chart-wrap" style="height:420px"><canvas id="ch-alim-sub-subestaciones"></canvas></div>
     </div>
 
     <div class="card">
@@ -3383,6 +3399,7 @@ function _iniCalcularPanelesN21(zonaSet){
   return {
     mesAntNombre: labelMesLargo(anterior.clave), mesActNombre: labelMesLargo(actual.clave),
     mensualAnt: anterior.pct, mensualAct: actual.pct,
+    mensualAntKwh: anterior.perdida, mensualActKwh: actual.perdida,
     anualAnt: anterior12 ? anterior12.pct12 : null, anualAct: actual12 ? actual12.pct12 : null,
     anualAntKwh: anterior12 ? anterior12.perdida12 : null, anualActKwh: actual12 ? actual12.perdida12 : null,
   };
@@ -9182,10 +9199,12 @@ async function alimSubCargar(){
 function alimSubRenderAlimentadoresYCards(){
   alimSubRenderChartAlimentadores();
   alimSubRenderAlimentadorCards();
+  alimSubRenderTablaTop();  // refresca el resaltado de la fila elegida
 }
 
 function alimSubRenderTodo(){
   alimSubRenderChartSubestaciones();
+  alimSubRenderTablaTop();
   alimSubRenderChartAlimentadores();
   alimSubRenderZonaPanel();
   alimSubRenderAlimentadorCards();
@@ -9267,6 +9286,57 @@ function alimSubDescargarCsv(){
   a.href = url; a.download = `subestaciones_${zonasTxt}_${OPERADOR.slug}.csv`;
   document.body.appendChild(a); a.click(); a.remove();
   URL.revokeObjectURL(url);
+}
+
+// Tabla "Top Subestaciones por Pérdida" -- al lado del gráfico 1, pedido
+// explícito ("que la gráfica no ocupe toda la pantalla, que al lado
+// muestre una tabla"). Ordenada de mayor a menor Pérdida Mensual (%) --
+// "TOP de pérdida". Click en una fila selecciona esa subestación en el
+// multiselect de abajo (mismo que alimenta "Pérdida % por Alimentador" y
+// las tarjetas de comportamiento) -- pedido explícito.
+function alimSubRenderTablaTop(){
+  const cont = document.getElementById('alim-sub-tabla-top');
+  if(!cont) return;
+  const porGrupo = alimSubAgregarPorGrupo('subestacion', null);
+  const subestaciones = Object.keys(porGrupo);
+  if(!subestaciones.length){ cont.innerHTML = ''; return; }
+  const seleccionadas = new Set(mselValores('msel-alim-sub-subestacion'));
+
+  const filas = subestaciones.map(sub => {
+    const serie = alimSubVisibles(porGrupo[sub]).filter(f => f.pct != null);
+    if(!serie.length) return null;
+    const actual = serie[serie.length-1];
+    const anual = alimN21Con12Meses(porGrupo[sub]);
+    const actual12 = anual.find(f => f.clave === actual.clave && f.pct12 != null) || null;
+    const filaZona = ALIM_FILAS.find(f => f.subestacion === sub && f.zona);
+    return {
+      sub, zona: filaZona ? filaZona.zona : '--',
+      entrada: actual.entrada, salida: actual.salida,
+      pctMensual: actual.pct, pctAnual: actual12 ? actual12.pct12 : null,
+    };
+  }).filter(Boolean);
+  filas.sort((a,b) => (b.pctMensual ?? -Infinity) - (a.pctMensual ?? -Infinity));
+
+  const fmtPct = v => v==null ? '--' : `${v.toFixed(2)}%`;
+  const fmtKwh = v => v==null ? '--' : v.toLocaleString('es-CO',{maximumFractionDigits:0});
+
+  cont.innerHTML = filas.map(f => {
+    const color = colorParaZona(f.zona);
+    const activa = seleccionadas.has(f.sub);
+    return `<tr onclick="alimSubSeleccionarSubestacionTabla('${f.sub}')" style="cursor:pointer${activa?';background:var(--bg3)':''}">
+      <td style="text-align:left;font-weight:700">${f.sub}</td>
+      <td><span class="zb" style="background:${color}22;color:${color}">${f.zona}</span></td>
+      <td>${fmtKwh(f.entrada)}</td>
+      <td>${fmtKwh(f.salida)}</td>
+      <td>${fmtPct(f.pctMensual)}</td>
+      <td>${fmtPct(f.pctAnual)}</td>
+    </tr>`;
+  }).join('');
+}
+
+function alimSubSeleccionarSubestacionTabla(sub){
+  mselSetSeleccion('msel-alim-sub-subestacion', [sub]);
+  alimSubRenderTablaTop();
 }
 
 // Gráfico 2 -- Pérdida % por Alimentador (Nemónico), acotado a las
@@ -9499,7 +9569,8 @@ function alimSubRenderZonaPanel(){
       </div>`;
     }
     const valorAct = esAnual ? p.anualAct : p.mensualAct;
-    const kwhTexto = esAnual && p.anualActKwh!=null ? `${p.anualActKwh.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh` : '';
+    const kwhAct = esAnual ? p.anualActKwh : p.mensualActKwh;
+    const kwhTexto = kwhAct!=null ? `${kwhAct.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh` : '';
     return `<div class="card inicio-dash-card" style="border-left:4px solid ${color}">
       <div class="card-title">${icono} ${titulo} · ${esAnual?'Anual (12M)':'Mensual'}</div>
       <div style="font-size:10px;color:var(--text3);margin-bottom:2px">${p.mesActNombre}</div>
