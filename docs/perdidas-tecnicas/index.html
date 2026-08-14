@@ -98,6 +98,12 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(
    borde de acento para que se note que es la que manda. */
 .alim-n21-resumen-grupos{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px;margin-top:22px}
 .alim-n21-grupo-tarjetas{border:1px solid var(--border);border-radius:10px;padding:14px;background:var(--bg)}
+/* Las tarjetas de cada grupo SIEMPRE en una sola fila (pedido explícito) --
+   mismo patrón que #ip-resumen-principal: flex+nowrap en vez de grid
+   auto-fit (que las manda a una 2da fila apenas no entran todas), con
+   scroll horizontal como salvavidas en pantallas angostas. */
+.alim-n21-grupo-tarjetas .be-resumen-cards{display:flex;flex-wrap:nowrap;overflow-x:auto;margin:0}
+.alim-n21-grupo-tarjetas .be-resumen-tile{flex:1 1 0;min-width:110px}
 .alim-n21-grupo-anual{border-color:var(--accent)}
 .alim-n21-grupo-anual .be-tabla-creadas-titulo{color:var(--accent)}
 /* La tarjeta del % Anual (12M) resalta más que sus vecinas -- es el
@@ -1027,7 +1033,11 @@ tfoot td:first-child{text-align:left}
       <select id="pz-departamento" onchange="pzCambiarDepartamento(this.value)"><option value="">Cargando…</option></select>
       <label style="margin-left:10px">Zona activa</label>
       <div id="pz-zonas-activas" style="display:flex;gap:6px;flex-wrap:wrap"></div>
-      <span style="font-size:11px;color:var(--text3);margin-left:auto;max-width:280px">Click en un municipio para asignarle la zona activa -- click de nuevo para quitársela.</span>
+      <input type="text" id="pz-zona-nueva" placeholder="o escribí una zona nueva" maxlength="20"
+        style="width:150px;padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg)"
+        onkeydown="if(event.key==='Enter'){ event.preventDefault(); pzUsarZonaEscrita(); }">
+      <button type="button" class="btn-theme" style="width:auto;padding:0 12px" onclick="pzUsarZonaEscrita()">Usar</button>
+      <span style="font-size:11px;color:var(--text3);margin-left:auto;max-width:260px">Click en un municipio para asignarle la zona activa -- click de nuevo para quitársela.</span>
     </div>
     <div id="pz-mapa-leaflet" style="height:560px;width:100%;border-radius:10px;overflow:hidden;background:var(--bg3)"></div>
   </div>
@@ -3475,7 +3485,7 @@ function pzRenderZonasActivas(){
   const cont = document.getElementById('pz-zonas-activas');
   if(!cont) return;
   if(!PZ_ZONAS_DISPONIBLES.length){
-    cont.innerHTML = '<span style="font-size:11px;color:var(--text3)">Asigná colores de zona arriba primero.</span>';
+    cont.innerHTML = '<span style="font-size:11px;color:var(--text3)">Todavía no hay ninguna -- escribí una zona a la derecha.</span>';
     return;
   }
   cont.innerHTML = PZ_ZONAS_DISPONIBLES.map(z => {
@@ -3490,6 +3500,20 @@ function pzRenderZonasActivas(){
 
 function pzElegirZonaActiva(z){
   PZ_ZONA_ACTIVA = z;
+  pzRenderZonasActivas();
+}
+
+// El usuario relaciona zonas con municipios a mano -- no toda zona
+// geográfica del croquis tiene por qué existir todavía como zona de
+// circuito (Color por zona/Circuito.zona), así que además de los chips ya
+// conocidos, puede ESCRIBIR cualquier código de zona nuevo acá.
+function pzUsarZonaEscrita(){
+  const input = document.getElementById('pz-zona-nueva');
+  const zona = (input.value || '').trim().toUpperCase();
+  if(!zona) return;
+  if(!PZ_ZONAS_DISPONIBLES.includes(zona)) PZ_ZONAS_DISPONIBLES.push(zona);
+  PZ_ZONA_ACTIVA = zona;
+  input.value = '';
   pzRenderZonasActivas();
 }
 
@@ -8173,12 +8197,17 @@ function ipComercialDescargarCsv(){
 let ALIM_FILAS = null;
 async function _alimAsegurarDatosCargados(){
   if(ALIM_FILAS) return ALIM_FILAS;
-  // Sin filtro de fecha -- trae TODO el histórico (14k+ filas en electrohuila)
-  // para que la ventana de 12 meses móvil de N2-1 sea correcta desde el
-  // primer punto visible. Con el timeout genérico de 2.5s (FETCH_TIMEOUT_MS)
-  // se abortaba a mitad de camino ("signal is aborted without reason") --
-  // usa el mismo timeout largo que login/export (AUTH_TIMEOUT_MS).
-  ALIM_FILAS = DEMO ? [] : (await apiGet('/api/alimentadores', AUTH_TIMEOUT_MS)).filas;
+  // Acotado a los últimos 30 meses (no TODO el histórico -- 14k+ filas en
+  // electrohuila tardaban 10-15s en bajar por el túnel) -- alcanza de
+  // sobra para los 12 meses visibles por defecto + los 11 de atrás que
+  // necesita el primer punto de la ventana móvil de 12 meses de N2-1.
+  // Con el timeout genérico de 2.5s (FETCH_TIMEOUT_MS) esto se abortaba a
+  // mitad de camino ("signal is aborted without reason") -- usa el mismo
+  // timeout largo que login/export (AUTH_TIMEOUT_MS).
+  const hoy = new Date();
+  const idx = hoy.getFullYear()*12 + hoy.getMonth() - 29;
+  const desde = `${Math.floor(idx/12)}-${String(idx%12+1).padStart(2,'0')}`;
+  ALIM_FILAS = DEMO ? [] : (await apiGet(`/api/alimentadores?desde=${desde}`, AUTH_TIMEOUT_MS)).filas;
   return ALIM_FILAS;
 }
 
