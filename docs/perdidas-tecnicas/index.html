@@ -1040,6 +1040,10 @@ tfoot td:first-child{text-align:left}
       <span id="pz-guardado-st" style="font-size:11px;font-weight:700;color:#06d6a0;min-width:70px"></span>
       <span style="font-size:11px;color:var(--text3);margin-left:auto;max-width:260px">Click en un municipio para asignarle la zona activa (se guarda solo) -- click de nuevo para quitársela.</span>
     </div>
+    <div class="fbar" style="justify-content:center;margin-bottom:10px">
+      <label>Opacidad de colores</label>
+      <input type="range" min="0" max="0.9" step="0.05" value="0.7" oninput="pzCambiarOpacidad(this.value)" style="width:140px" title="Bajala para ver el terreno/vías debajo">
+    </div>
     <div id="pz-mapa-leaflet" style="height:560px;max-width:760px;margin:0 auto;border-radius:10px;overflow:hidden;background:var(--bg3)"></div>
   </div>
 
@@ -1961,6 +1965,8 @@ tfoot td:first-child{text-align:left}
         <div style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Croquis por Zona</div>
         <button type="button" class="be-modo-btn activo" id="alim-n21-btn-mapa-mensual" style="margin-left:12px" onclick="alimN21ToggleMapaModo('mensual')">Mensual</button>
         <button type="button" class="be-modo-btn" id="alim-n21-btn-mapa-anual" onclick="alimN21ToggleMapaModo('anual')">Anual (12M)</button>
+        <label style="margin-left:16px">Opacidad</label>
+        <input type="range" min="0" max="0.9" step="0.05" value="0.7" oninput="alimN21CambiarOpacidad(this.value)" style="width:120px" title="Bajala para ver el terreno/vías debajo">
       </div>
       <div id="alim-n21-mapa-leaflet" style="height:560px;max-width:760px;margin:0 auto;border-radius:10px;overflow:hidden;background:var(--bg3)"></div>
     </div>
@@ -3441,13 +3447,27 @@ function mapaZonasColorVacio(){
   return document.documentElement.getAttribute('data-theme')==='dark' ? '#3a4356' : '#c7cedb';
 }
 
+// Cambia la opacidad del relleno de zona sin volver a dibujar el mapa
+// entero -- usado por el slider "Opacidad de colores" de cada mapa.
+function mapaZonasAplicarOpacidad(capa, zonaDeMunicipio, opacidad){
+  if(!capa) return;
+  capa.eachLayer(layer => {
+    const zona = zonaDeMunicipio(mapaZonasIdMunicipio(layer.feature));
+    layer.setStyle({fillOpacity: zona ? opacidad : opacidad*0.45});
+  });
+}
+
 // Dibuja `features` (municipios ya decodificados de topojson) en el
 // contenedor `contId`, coloreados según zonaDeMunicipio(id) con
 // colorParaZona (los mismos colores de Parametrización > Color por zona).
-// onClickMunicipio ausente => solo lectura (croquis del N2-1).
-function mapaZonasRenderLeaflet(contId, features, zonaDeMunicipio, onClickMunicipio){
+// onClickMunicipio ausente => solo lectura (croquis del N2-1). `opacidad`
+// (0-0.9) es la opacidad del relleno -- bajarla (o llevarla a 0, "borrar
+// los colores") deja ver el terreno/vías de la capa base debajo, pedido
+// explícito del usuario.
+function mapaZonasRenderLeaflet(contId, features, zonaDeMunicipio, onClickMunicipio, opacidad){
   const cont = document.getElementById(contId);
   if(!cont || typeof L === 'undefined' || !features.length) return null;
+  if(opacidad == null) opacidad = 0.7;
   cont.innerHTML = '';
   const mapa = L.map(contId, {zoomControl:true, attributionControl:false});
   const capasBase = mapaZonasCapasBase();
@@ -3456,7 +3476,7 @@ function mapaZonasRenderLeaflet(contId, features, zonaDeMunicipio, onClickMunici
   const estiloDe = f => {
     const zona = zonaDeMunicipio(mapaZonasIdMunicipio(f));
     const color = zona ? colorParaZona(zona) : mapaZonasColorVacio();
-    return {color:'#ffffff', weight:1, opacity:0.85, fillColor:color, fillOpacity: zona?0.75:0.35};
+    return {color:'#ffffff', weight:1, opacity:0.85, fillColor:color, fillOpacity: zona ? opacidad : opacidad*0.45};
   };
   const capa = L.geoJSON(features, {
     style: estiloDe,
@@ -3485,8 +3505,15 @@ let PZ_MUNICIPIOS_ZONA = {};
 let PZ_ZONAS_REALES = [];      // vienen de Color por zona/Circuito.zona -- no se borran acá
 let PZ_ZONAS_EXTRA = [];       // escritas a mano solo para este mapa -- sí se pueden borrar
 let PZ_ZONA_ACTIVA = null;
+let PZ_MAPA_REF = null;   // {mapa, capa, zonaDeMunicipio} del render actual -- para el slider de opacidad
+let PZ_MAPA_OPACIDAD = 0.7;
 
 function pzZonasDisponibles(){ return [...PZ_ZONAS_REALES, ...PZ_ZONAS_EXTRA]; }
+
+function pzCambiarOpacidad(v){
+  PZ_MAPA_OPACIDAD = Number(v);
+  if(PZ_MAPA_REF) mapaZonasAplicarOpacidad(PZ_MAPA_REF.capa, PZ_MAPA_REF.zonaDeMunicipio, PZ_MAPA_OPACIDAD);
+}
 
 // Confirmación visual de guardado -- todo en este mapa se guarda solo,
 // al toque (click en municipio / cambio de departamento), sin botón
@@ -3598,7 +3625,7 @@ async function pzCambiarDepartamento(depto){
 
 function pzRenderMapaDepto(topo, depto){
   const features = mapaZonasFeaturesDeDepto(topo, depto);
-  mapaZonasRenderLeaflet('pz-mapa-leaflet', features, id => PZ_MUNICIPIOS_ZONA[id], pzClickMunicipio);
+  PZ_MAPA_REF = mapaZonasRenderLeaflet('pz-mapa-leaflet', features, id => PZ_MUNICIPIOS_ZONA[id], pzClickMunicipio, PZ_MAPA_OPACIDAD);
 }
 
 // Click en un municipio: si ya tiene la zona activa, se la quita (toggle);
@@ -8438,8 +8465,14 @@ async function alimN21Cargar(){
 // (no depende de los filtros Rango/Zona de arriba, si depende del botón
 // Mensual/Anual de acá al lado).
 let ALIM_N21_MAPA_MODO = 'mensual';
-let ALIM_N21_MAPA_REF = null;       // {resp, features, mapa} del último croquis cargado
+let ALIM_N21_MAPA_REF = null;       // {resp, features, mapa, capa, zonaDeMunicipio} del último croquis cargado
 let ALIM_N21_MAPA_MARCADORES = [];  // tarjetas flotantes activas -- se destruyen y recrean al togglear modo
+let ALIM_N21_MAPA_OPACIDAD = 0.7;
+
+function alimN21CambiarOpacidad(v){
+  ALIM_N21_MAPA_OPACIDAD = Number(v);
+  if(ALIM_N21_MAPA_REF) mapaZonasAplicarOpacidad(ALIM_N21_MAPA_REF.capa, ALIM_N21_MAPA_REF.zonaDeMunicipio, ALIM_N21_MAPA_OPACIDAD);
+}
 
 async function alimN21CargarMapa(){
   const cont = document.getElementById('alim-n21-mapa-leaflet');
@@ -8454,9 +8487,9 @@ async function alimN21CargarMapa(){
       return;
     }
     const features = mapaZonasFeaturesDeDepto(topo, resp.departamento);
-    const render = mapaZonasRenderLeaflet('alim-n21-mapa-leaflet', features, id => resp.municipios[id], null);
+    const render = mapaZonasRenderLeaflet('alim-n21-mapa-leaflet', features, id => resp.municipios[id], null, ALIM_N21_MAPA_OPACIDAD);
     if(!render) return;
-    ALIM_N21_MAPA_REF = {resp, features, mapa: render.mapa};
+    ALIM_N21_MAPA_REF = {resp, features, mapa: render.mapa, capa: render.capa, zonaDeMunicipio: render.zonaDeMunicipio};
     alimN21RenderMarcadoresZona();
   }catch(e){
     cont.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#ef476f;font-size:12px">${e.message || 'No se pudo cargar el croquis.'}</div>`;
