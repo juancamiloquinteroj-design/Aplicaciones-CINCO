@@ -2076,6 +2076,7 @@ tfoot td:first-child{text-align:left}
         <input type="date" id="alim-sub-hasta" onchange="alimSubRenderTodo()">
         <label style="margin-left:10px">Zona</label>
         <div id="alim-sub-zonas" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+        <button type="button" class="btn-theme" style="width:auto;padding:0 14px;margin-left:auto" onclick="alimSubDescargarCsv()">⬇ Descargar CSV</button>
       </div>
 
       <div class="fbar" style="justify-content:center;margin-bottom:8px">
@@ -9241,6 +9242,33 @@ function alimSubRenderChartSubestaciones(){
   });
 }
 
+// Descarga Entrada/Salida/Pérdida por Subestación y mes -- respeta el
+// Rango y la Zona activa (chips de arriba), igual que el gráfico. Pedido
+// explícito del usuario ("no veo el botón para descargar los datos en CSV").
+function alimSubDescargarCsv(){
+  const porGrupo = alimSubAgregarPorGrupo('subestacion', null);
+  const subestaciones = Object.keys(porGrupo).sort();
+  const encabezado = ['Subestación','Mes','Entrada Total (kWh)','Salida Total (kWh)','Pérdida (kWh)','Pérdida (%)'];
+  const filas = [];
+  subestaciones.forEach(sub => {
+    alimSubVisibles(porGrupo[sub]).forEach(f => {
+      filas.push([sub, labelMesLargo(f.clave), f.entrada, f.salida, f.perdida, f.pct]);
+    });
+  });
+  const linea = fila => fila.map(v => {
+    if(v==null||v===undefined) return '';
+    return typeof v === 'number' ? String(v).replace('.',',') : String(v);
+  }).join(';');
+  const zonasTxt = ALIM_SUB_ZONAS_SEL.size ? [...ALIM_SUB_ZONAS_SEL].join('-') : 'todas';
+  const csv = [linea(encabezado), ...filas.map(linea)].join('\r\n');
+  const blob = new Blob(['﻿'+csv], {type:'text/csv;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `subestaciones_${zonasTxt}_${OPERADOR.slug}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+
 // Gráfico 2 -- Pérdida % por Alimentador (Nemónico), acotado a las
 // subestaciones elegidas en el multiselect -- vacío = no muestra nada
 // (164 nemonicos juntos no se puede leer). Reusa alimSubAgregarPorGrupo
@@ -9347,7 +9375,11 @@ function alimSubRenderChartAlimentadores(){
       },
       ...estiloVar,
     } : {
-      display:(ctx)=> ctx.dataIndex === pctDatos.length-1,
+      // Sin "Δ Variación" la etiqueta es una sola línea chica -- se
+      // puede dejar en TODOS los meses (pedido explícito: "quiero que sí
+      // se vea el porcentaje de meses hacia atrás"); el que se
+      // superponía era el cartel de 3 renglones de Variación, no este.
+      display:true,
       anchor:'end', align:'top', offset:4, formatter:v=>v==null?'':v.toFixed(2)+'%',
       font:{size:10, weight:'700'}, color,
       backgroundColor: dark?'rgba(30,30,40,.85)':'rgba(255,255,255,.85)', borderRadius:3, padding:{left:4,right:4,top:1,bottom:1},
@@ -9449,33 +9481,42 @@ function alimSubRenderZonaPanel(){
   if(!ALIM_SUB_ZONAS.length){ cont.innerHTML = ''; return; }
   const esAnual = ALIM_SUB_ZONA_PANEL_MODO === 'anual';
   const fmtPct = v => v==null ? 'Sin datos' : `${v.toFixed(2)}%`;
-  cont.innerHTML = ALIM_SUB_ZONAS.map(zona => {
-    const color = colorParaZona(zona);
-    const p = _iniCalcularPanelesN21(new Set([zona]));
+
+  // Total primero + una por zona -- con 5 zonas (impar) la grilla de 2
+  // columnas dejaba una celda vacía; el Total la llena (mismo criterio ya
+  // usado en Inicio) -- pedido explícito ("donde están las tarjetas de
+  // pérdida por zona hay un espacio, ahí quiero ver el total de N2-1").
+  const items = [{clave:null, titulo:'Total', icono:'⚡', color:'var(--accent)'}]
+    .concat(ALIM_SUB_ZONAS.map(zona => ({clave:zona, titulo:zona, icono:'📍', color:colorParaZona(zona)})));
+
+  cont.innerHTML = items.map(({clave, titulo, icono, color}) => {
+    const p = _iniCalcularPanelesN21(clave ? new Set([clave]) : new Set());
+    const idPref = `alim-sub-z-${clave || 'total'}`;
     if(!p){
       return `<div class="card inicio-dash-card" style="border-left:4px solid ${color}">
-        <div class="card-title">📍 ${zona}</div>
+        <div class="card-title">${icono} ${titulo}</div>
         <div style="font-size:11px;color:var(--text3)">Sin datos suficientes</div>
       </div>`;
     }
     const valorAct = esAnual ? p.anualAct : p.mensualAct;
     const kwhTexto = esAnual && p.anualActKwh!=null ? `${p.anualActKwh.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh` : '';
     return `<div class="card inicio-dash-card" style="border-left:4px solid ${color}">
-      <div class="card-title">📍 ${zona} · ${esAnual?'Anual (12M)':'Mensual'}</div>
+      <div class="card-title">${icono} ${titulo} · ${esAnual?'Anual (12M)':'Mensual'}</div>
       <div style="font-size:10px;color:var(--text3);margin-bottom:2px">${p.mesActNombre}</div>
       <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">
         <div style="font-size:20px;font-weight:800;color:${color}">${fmtPct(valorAct)}</div>
-        <span id="alim-sub-z-${zona}-var" class="inicio-variacion"></span>
+        <span id="${idPref}-var" class="inicio-variacion"></span>
       </div>
       <div style="font-size:10px;color:var(--text3)">${kwhTexto}</div>
     </div>`;
   }).join('');
-  ALIM_SUB_ZONAS.forEach(zona => {
-    const p = _iniCalcularPanelesN21(new Set([zona]));
+
+  items.forEach(({clave}) => {
+    const p = _iniCalcularPanelesN21(clave ? new Set([clave]) : new Set());
     if(!p) return;
     const valorAnt = esAnual ? p.anualAnt : p.mensualAnt;
     const valorAct = esAnual ? p.anualAct : p.mensualAct;
-    _iniRenderVariacion(`alim-sub-z-${zona}-var`, valorAnt, valorAct);
+    _iniRenderVariacion(`alim-sub-z-${clave || 'total'}-var`, valorAnt, valorAct);
   });
 }
 
@@ -9509,7 +9550,7 @@ function _alimSubTarjetaComportamiento(pref, titulo, color){
 // Entrada/Salida (pedido explícito: "también quiero que hagas mención de
 // la energía de entrada y salida").
 function _alimSubTextoAnalisis(nem, anterior, actual){
-  const signo = v => v >= 0 ? '+' : '';
+  const signo = v => v >= 0 ? '+' : '-';  // con Math.abs(v) después -- si no, un delta negativo queda sin signo
   const fKwh = v => Math.round(v).toLocaleString('es-CO');
   const delta = actual.pct - anterior.pct;
   const sube = delta > 0;
@@ -10519,7 +10560,7 @@ function ipComercialGenerarAnalisis(){
   const [anioAct, mesAct] = claveActual.split('-').map(Number);
   const mesActualLargo = labelMesLargo(claveActual);
   const mesAnteriorLargo = labelMesLargo(claveAnterior);
-  const signo = v => v >= 0 ? '+' : '';
+  const signo = v => v >= 0 ? '+' : '-';  // con Math.abs(v) después -- si no, un delta negativo queda sin signo
 
   const pctActual = actual.perdida_pct_12, pctAnterior = anterior.perdida_pct_12;
   const deltaMensual = pctActual - pctAnterior;
@@ -10742,7 +10783,7 @@ function ipGenerarAnalisisPrincipal(){
   const mesActualLargo = labelMesLargo(claveActual);
   const mesAnteriorLargo = labelMesLargo(claveAnterior);
   const mesActualCorto = labelMesLargo(claveActual, false);
-  const signo = v => v >= 0 ? '+' : '';
+  const signo = v => v >= 0 ? '+' : '-';  // con Math.abs(v) después -- si no, un delta negativo queda sin signo
 
   const ipt = f => f.ipt_pct * 100;
   const iptActual = ipt(actual), iptAnterior = ipt(anterior);
@@ -10803,7 +10844,7 @@ function ipGenerarAnalisisInicio(){
   const mesActualLargo = labelMesLargo(claveActual);
   const mesAnteriorLargo = labelMesLargo(claveAnterior);
   const mesActualCorto = labelMesLargo(claveActual, false);
-  const signo = v => v >= 0 ? '+' : '';
+  const signo = v => v >= 0 ? '+' : '-';  // con Math.abs(v) después -- si no, un delta negativo queda sin signo
 
   const ipt = f => f.ipt_pct * 100;
   const iptActual = ipt(actual), iptAnterior = ipt(anterior);
@@ -10864,7 +10905,7 @@ function ipGenerarAnalisisNivel1(){
   const mesActualTitulo = labelMes(claveActual);
   const mesActualLargo = labelMesLargo(claveActual);
   const mesAnteriorLargo = labelMesLargo(claveAnterior);
-  const signo = v => v >= 0 ? '+' : '';
+  const signo = v => v >= 0 ? '+' : '-';  // con Math.abs(v) después -- si no, un delta negativo queda sin signo
 
   if(actual.iptj1t_pct == null || anterior.iptj1t_pct == null){
     cont.innerHTML = `<div class="ip-comentario-titulo">Análisis IPTj,1,t -- ${mesActualTitulo}</div><p>Todavía no hay suficiente histórico de Nivel 1 para ese mes.</p>`;
