@@ -2097,7 +2097,9 @@ tfoot td:first-child{text-align:left}
         <div style="flex:1;min-width:360px">
           <div class="fbar" style="justify-content:center;margin-bottom:8px">
             <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Pérdida % por Alimentador</div>
-            <button type="button" class="be-modo-btn" id="alim-sub-al-btn-es" style="margin-left:12px" onclick="alimSubToggleAlEntradaSalida()" title="Agrega Entrada/Salida (kWh) al mismo gráfico">Entrada / Salida</button>
+            <button type="button" class="be-modo-btn activo" id="alim-sub-al-btn-mensual" style="margin-left:12px" onclick="alimSubToggleAlModo('mensual')">Mensual</button>
+            <button type="button" class="be-modo-btn" id="alim-sub-al-btn-anual" onclick="alimSubToggleAlModo('anual')">Anual (12M)</button>
+            <button type="button" class="be-modo-btn" id="alim-sub-al-btn-es" style="margin-left:10px" onclick="alimSubToggleAlEntradaSalida()" title="Agrega Entrada/Salida (kWh) al mismo gráfico">Entrada / Salida</button>
             <button type="button" class="be-modo-btn" id="alim-sub-al-btn-var" onclick="alimSubToggleAlVariacion()" title="Agrega el delta vs. el mes anterior a la etiqueta de Pérdida %">Δ Variación</button>
           </div>
           <div class="chart-wrap" style="height:420px"><canvas id="ch-alim-sub-alimentadores"></canvas></div>
@@ -9243,6 +9245,13 @@ function alimSubRenderChartSubestaciones(){
 // subestaciones elegidas en el multiselect -- vacío = no muestra nada
 // (164 nemonicos juntos no se puede leer). Reusa alimSubAgregarPorGrupo
 // pero agrupando por "nemonico" en vez de "subestacion".
+let ALIM_SUB_AL_MODO = 'mensual';  // 'mensual' | 'anual' -- gráfico "Pérdida % por Alimentador"
+
+function alimSubToggleAlModo(modo){
+  ALIM_SUB_AL_MODO = modo;
+  alimSubRenderChartAlimentadores();
+}
+
 function alimSubToggleAlEntradaSalida(){
   ALIM_SUB_AL_MOSTRAR_ES = !ALIM_SUB_AL_MOSTRAR_ES;
   alimSubRenderChartAlimentadores();
@@ -9257,6 +9266,8 @@ function alimSubRenderChartAlimentadores(){
   const cv = document.getElementById('ch-alim-sub-alimentadores');
   if(!cv) return;
   if(chAlimSubAlimentadores){ chAlimSubAlimentadores.destroy(); chAlimSubAlimentadores = null; }
+  document.getElementById('alim-sub-al-btn-mensual').classList.toggle('activo', ALIM_SUB_AL_MODO==='mensual');
+  document.getElementById('alim-sub-al-btn-anual').classList.toggle('activo', ALIM_SUB_AL_MODO==='anual');
   const btnEs = document.getElementById('alim-sub-al-btn-es');
   const btnVar = document.getElementById('alim-sub-al-btn-var');
   if(btnEs) btnEs.classList.toggle('activo', ALIM_SUB_AL_MOSTRAR_ES);
@@ -9270,40 +9281,67 @@ function alimSubRenderChartAlimentadores(){
   )].sort();
   if(!nemonicos.length) return;
   const porGrupo = alimSubAgregarPorGrupo('nemonico', new Set(nemonicos));
+  const esAnual = ALIM_SUB_AL_MODO === 'anual';
   const dark = document.documentElement.getAttribute('data-theme')==='dark';
   const tickC = dark ? '#aab8d1' : '#4b5e7a';
   const tickXFuerte = dark ? '#ffffff' : '#000000';
   const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
-  const etiquetaFondo = dark ? 'rgba(30,30,40,.85)' : 'rgba(255,255,255,.85)';
+  // "Que se vea más bonita" -- misma tarjetita gris de IP_Reg/Indicador
+  // N2-1 (fondo + borde + esquinas redondeadas) en vez de un cartel chico
+  // plano -- se le agrega un 3er renglón para el delta en kWh (pedido
+  // explícito: "que también vea la variación en esa tarjetica en energía kWh").
+  const estiloVar = {...ipEstiloTarjetaVariacion(dark), font:[{size:11, weight:'800'}, {size:9.5, weight:'800'}, {size:9, weight:'700'}]};
 
   let etiquetas = null;
   const datasets = [];
   nemonicos.forEach((nem, i) => {
-    const visibles = alimSubVisibles(porGrupo[nem] || []);
-    if(!etiquetas) etiquetas = visibles.map(f => labelMesLargo(f.clave));
+    // La ventana de 12 meses móvil se calcula sobre el HISTÓRICO COMPLETO
+    // de este alimentador (no solo lo visible en el rango Desde/Hasta) --
+    // mismo criterio que Indicador N2-1/IP_Reg -- y recién ahí se acota al
+    // rango visible.
+    const serieCompleta = porGrupo[nem] || [];
+    const filas = esAnual
+      ? alimSubVisibles(alimN21Con12Meses(serieCompleta)).filter(f => f.pct12 != null)
+      : alimSubVisibles(serieCompleta);
+    if(!etiquetas) etiquetas = filas.map(f => labelMesLargo(f.clave));
     const color = alimSubColor(i, nemonicos.length);
-    const pctDatos = visibles.map(f => f.pct);
+    const pctDatos = filas.map(f => esAnual ? f.pct12 : f.pct);
+    const perdidaDatos = filas.map(f => esAnual ? f.perdida12 : f.perdida);
+    const entradaDatos = filas.map(f => esAnual ? f.entrada12 : f.entrada);
+    const salidaDatos = filas.map(f => esAnual ? f.salida12 : f.salida);
 
     // "La línea de % de pérdida por alimentador debe aparecer con la
-    // etiqueta de %" -- siempre visible; "Δ Variación" (toggle) agrega el
-    // delta vs. el mes anterior, mismo patrón que Indicador N2-1.
+    // etiqueta de %" -- siempre visible, un poco más grande (pedido
+    // explícito); "Δ Variación" (toggle) agrega el delta vs. el mes/12M
+    // anterior en pp Y en kWh, mismo patrón que Indicador N2-1.
     const datalabelsPct = ALIM_SUB_AL_VAR ? {
-      display:true, anchor:'end', align:'top', offset:5,
+      display:true, anchor:'end', align:'top', offset:6,
       formatter:(v,ctx)=>{
         if(v==null) return '';
         const base = v.toFixed(2)+'%';
-        const anterior = pctDatos[ctx.dataIndex-1];
-        if(anterior==null) return [base, ''];
-        const delta = v - anterior;
-        const icono = delta>=0 ? '▲' : '▼';
-        return [base, `${icono} ${Math.abs(delta).toFixed(2)}pp`];
+        const pctAnt = pctDatos[ctx.dataIndex-1];
+        if(pctAnt==null) return [base, '', ''];
+        const deltaPct = v - pctAnt;
+        const iconoPct = deltaPct>=0 ? '▲' : '▼';
+        const lineaPct = `${iconoPct} ${Math.abs(deltaPct).toFixed(2)}pp`;
+        const perdidaAnt = perdidaDatos[ctx.dataIndex-1], perdidaAct = perdidaDatos[ctx.dataIndex];
+        let lineaKwh = '';
+        if(perdidaAnt!=null && perdidaAct!=null){
+          const deltaKwh = perdidaAct - perdidaAnt;
+          const iconoKwh = deltaKwh>=0 ? '▲' : '▼';
+          lineaKwh = `${iconoKwh} ${Math.abs(deltaKwh).toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`;
+        }
+        return [base, lineaPct, lineaKwh];
       },
-      font:{size:8, weight:'700'}, color,
-      backgroundColor: etiquetaFondo, borderRadius:3, padding:{left:3,right:3,top:1,bottom:1},
+      color:(ctx)=>{
+        const colorDelta = ipColorVariacion(pctDatos[ctx.dataIndex], pctDatos[ctx.dataIndex-1], dark?'#aab8d1':'#6b7280');
+        return [color, colorDelta, colorDelta];
+      },
+      ...estiloVar,
     } : {
       display:true, anchor:'end', align:'top', offset:4, formatter:v=>v==null?'':v.toFixed(2)+'%',
-      font:{size:8, weight:'700'}, color,
-      backgroundColor: etiquetaFondo, borderRadius:3, padding:{left:3,right:3,top:1,bottom:1},
+      font:{size:10, weight:'700'}, color,
+      backgroundColor: dark?'rgba(30,30,40,.85)':'rgba(255,255,255,.85)', borderRadius:3, padding:{left:4,right:4,top:1,bottom:1},
     };
 
     datasets.push({
@@ -9319,12 +9357,12 @@ function alimSubRenderChartAlimentadores(){
     if(ALIM_SUB_AL_MOSTRAR_ES){
       datasets.push({
         type:'line', label: `${nem} · Entrada`, yAxisID:'y', order:3,
-        data: visibles.map(f=>f.entrada), borderColor: color, backgroundColor:'transparent',
+        data: entradaDatos, borderColor: color, backgroundColor:'transparent',
         borderWidth:1, borderDash:[6,3], pointRadius:0, spanGaps:true, tension:.2, datalabels:{display:false},
       });
       datasets.push({
         type:'line', label: `${nem} · Salida`, yAxisID:'y', order:2,
-        data: visibles.map(f=>f.salida), borderColor: color, backgroundColor:'transparent',
+        data: salidaDatos, borderColor: color, backgroundColor:'transparent',
         borderWidth:1, borderDash:[2,2], pointRadius:0, spanGaps:true, tension:.2, datalabels:{display:false},
       });
     }
@@ -9334,7 +9372,7 @@ function alimSubRenderChartAlimentadores(){
   const scales = {
     x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:45, minRotation:45}},
     yPct:{type:'linear', position:'left', grid:{color:gridC}, ticks:{color:tickC, font:{size:11}, callback:v=>v.toFixed(0)+'%'},
-      title:{display:true, text:'Pérdida (%)', color:tickC, font:{size:11}}},
+      title:{display:true, text: esAnual ? 'Pérdida Anual 12M (%)' : 'Pérdida (%)', color:tickC, font:{size:11}}},
   };
   if(ALIM_SUB_AL_MOSTRAR_ES){
     scales.y = {type:'linear', position:'right', grid:{drawOnChartArea:false},
@@ -9436,7 +9474,22 @@ function _alimSubTarjetaComportamiento(pref, titulo, color){
         <div class="inicio-mes-fila"><span>Anual (móvil)</span><span><span id="${pref}-act-anual">--</span> <span id="${pref}-var-anual" class="inicio-variacion"></span></span></div>
       </div>
     </div>
+    <div id="${pref}-analisis" class="ip-comentario-caja" style="margin-top:10px;font-size:11px;padding:10px 12px"></div>
   </div>`;
+}
+
+// Mismo estilo de redacción que el análisis de IP_Reg (ipGenerarAnalisisInicio)
+// -- "El X pasó de A% en mes-ant a B% en mes-act, lo que equivale a pasar
+// de una pérdida de C kWh a D kWh -- un incremento/descenso de E pp,
+// equivalente a +/-F kWh" -- pedido explícito del usuario ("así como fue
+// el texto del indicador total IP_reg").
+function _alimSubTextoAnalisis(nem, anterior, actual){
+  const signo = v => v >= 0 ? '+' : '';
+  const fKwh = v => Math.round(v).toLocaleString('es-CO');
+  const delta = actual.pct - anterior.pct;
+  const sube = delta > 0;
+  const deltaKwh = actual.perdida - anterior.perdida;
+  return `<p style="margin:0">El alimentador <b>${nem}</b> pasó de <b>${anterior.pct.toFixed(2)}%</b> en ${labelMesLargo(anterior.clave)} a <b>${actual.pct.toFixed(2)}%</b> en ${labelMesLargo(actual.clave)}, lo que equivale a pasar de una pérdida de <b>${fKwh(anterior.perdida)} kWh</b> a <b>${fKwh(actual.perdida)} kWh</b> -- un ${sube?'incremento':'descenso'} de <b>${Math.abs(delta).toFixed(2)} pp</b>, equivalente a <b>${signo(deltaKwh)}${fKwh(Math.abs(deltaKwh))} kWh</b>.</p>`;
 }
 
 // Una tarjeta por alimentador (nemónico) de las subestaciones elegidas en
@@ -9482,6 +9535,8 @@ function alimSubRenderAlimentadorCards(){
     document.getElementById(`${pref}-act-anual`).textContent = _iniFmtKwhPct(actual12 ? actual12.perdida12 : null, actual12 ? actual12.pct12 : null);
     _iniRenderVariacion(`${pref}-var-mensual`, anterior.pct, actual.pct);
     _iniRenderVariacion(`${pref}-var-anual`, anterior12 ? anterior12.pct12 : null, actual12 ? actual12.pct12 : null);
+    const cajaAnalisis = document.getElementById(`${pref}-analisis`);
+    if(cajaAnalisis) cajaAnalisis.innerHTML = _alimSubTextoAnalisis(nem, anterior, actual);
   });
 }
 
