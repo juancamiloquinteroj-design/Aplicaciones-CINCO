@@ -1044,7 +1044,15 @@ tfoot td:first-child{text-align:left}
       <label>Opacidad de colores</label>
       <input type="range" min="0" max="0.9" step="0.05" value="0.7" oninput="pzCambiarOpacidad(this.value)" style="width:140px" title="Bajala para ver el terreno/vías debajo">
     </div>
-    <div id="pz-mapa-leaflet" style="height:560px;max-width:760px;margin:0 auto;border-radius:10px;overflow:hidden;background:var(--bg3)"></div>
+    <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">
+      <div style="flex:1;min-width:320px;max-width:760px;margin:0 auto">
+        <div id="pz-mapa-leaflet" style="height:560px;border-radius:10px;overflow:hidden;background:var(--bg3)"></div>
+      </div>
+      <div style="width:220px;flex-shrink:0">
+        <div class="be-tabla-creadas-titulo">Mapas creados</div>
+        <div id="pz-mapas-creados"></div>
+      </div>
+    </div>
   </div>
 
   <div class="card">
@@ -1962,13 +1970,22 @@ tfoot td:first-child{text-align:left}
 
     <div class="card">
       <div class="fbar" style="justify-content:center;margin-bottom:8px">
-        <div style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Croquis por Zona</div>
+        <div style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Pérdida por Zona</div>
         <button type="button" class="be-modo-btn activo" id="alim-n21-btn-mapa-mensual" style="margin-left:12px" onclick="alimN21ToggleMapaModo('mensual')">Mensual</button>
         <button type="button" class="be-modo-btn" id="alim-n21-btn-mapa-anual" onclick="alimN21ToggleMapaModo('anual')">Anual (12M)</button>
         <label style="margin-left:16px">Opacidad</label>
         <input type="range" min="0" max="0.9" step="0.05" value="0.7" oninput="alimN21CambiarOpacidad(this.value)" style="width:120px" title="Bajala para ver el terreno/vías debajo">
       </div>
-      <div id="alim-n21-mapa-leaflet" style="height:560px;max-width:760px;margin:0 auto;border-radius:10px;overflow:hidden;background:var(--bg3)"></div>
+      <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">
+        <div style="flex:1;min-width:320px;max-width:760px;margin:0 auto">
+          <div id="alim-n21-mapa-leaflet" style="height:560px;border-radius:10px;overflow:hidden;background:var(--bg3)"></div>
+        </div>
+        <div style="width:220px;flex-shrink:0">
+          <div class="be-tabla-creadas-titulo" style="text-align:center">Pérdida por Zona</div>
+          <div class="chart-wrap" style="height:220px"><canvas id="ch-alim-n21-dona-zonas"></canvas></div>
+          <div id="alim-n21-dona-leyenda" style="display:flex;flex-direction:column;gap:4px;margin-top:10px"></div>
+        </div>
+      </div>
     </div>
 
   </div>
@@ -3067,6 +3084,12 @@ async function mostrarVista(nombre){
   if(nombre==='alim-n21' && !vistaCargada.alimN21){
     vistaCargada.alimN21 = true;
     await cargarAlimentadoresModulo('alim-n21');
+  }else if(nombre==='alim-n21'){
+    // El resto del módulo (gráficos/tarjetas) solo se carga una vez por
+    // sesión, pero el croquis SÍ tiene que reflejar lo último que se haya
+    // guardado en Parametrización > Mapa de zonas -- si no, queda mostrando
+    // el departamento/colores viejos aunque el usuario ya los haya cambiado.
+    alimN21CargarMapa();
   }
   if(nombre==='alim-subestaciones' && !vistaCargada.alimSubestaciones){
     vistaCargada.alimSubestaciones = true;
@@ -3415,6 +3438,19 @@ function mapaZonasListaDeptos(topo){
   return [...nombres].sort();
 }
 
+// municipio_id (DIVIPOLA) -> departamento -- para armar "Mapas creados"
+// (agrupar las asignaciones ya guardadas por departamento) sin tener que
+// guardar esa relación en el backend.
+let MAPA_ZONAS_DEPTO_POR_MUNICIPIO = null;
+function mapaZonasIndiceDepto(topo){
+  if(MAPA_ZONAS_DEPTO_POR_MUNICIPIO) return MAPA_ZONAS_DEPTO_POR_MUNICIPIO;
+  MAPA_ZONAS_DEPTO_POR_MUNICIPIO = {};
+  topo.objects.MGN_MPIO_POLITICO.geometries.forEach(g => {
+    MAPA_ZONAS_DEPTO_POR_MUNICIPIO[g.properties.MPIO_CCNCT] = g.properties.DPTO_CNMBR;
+  });
+  return MAPA_ZONAS_DEPTO_POR_MUNICIPIO;
+}
+
 function mapaZonasFeaturesDeDepto(topo, depto){
   const geo = topojson.feature(topo, topo.objects.MGN_MPIO_POLITICO);
   return geo.features.filter(f => f.properties.DPTO_CNMBR === depto);
@@ -3457,6 +3493,13 @@ function mapaZonasAplicarOpacidad(capa, zonaDeMunicipio, opacidad){
   });
 }
 
+// Un mapa Leaflet por contId -- Leaflet tira "Map container is already
+// initialized" si se llama L.map() de nuevo sobre el MISMO elemento sin
+// destruir antes la instancia previa (pasaba al cambiar de departamento:
+// quedaba en blanco, sin ningún error visible porque nadie mostraba la
+// excepción). Este registro permite limpiar bien antes de redibujar.
+const MAPA_ZONAS_INSTANCIAS = {};
+
 // Dibuja `features` (municipios ya decodificados de topojson) en el
 // contenedor `contId`, coloreados según zonaDeMunicipio(id) con
 // colorParaZona (los mismos colores de Parametrización > Color por zona).
@@ -3468,8 +3511,13 @@ function mapaZonasRenderLeaflet(contId, features, zonaDeMunicipio, onClickMunici
   const cont = document.getElementById(contId);
   if(!cont || typeof L === 'undefined' || !features.length) return null;
   if(opacidad == null) opacidad = 0.7;
+  if(MAPA_ZONAS_INSTANCIAS[contId]){
+    MAPA_ZONAS_INSTANCIAS[contId].remove();
+    delete MAPA_ZONAS_INSTANCIAS[contId];
+  }
   cont.innerHTML = '';
   const mapa = L.map(contId, {zoomControl:true, attributionControl:false});
+  MAPA_ZONAS_INSTANCIAS[contId] = mapa;
   const capasBase = mapaZonasCapasBase();
   capasBase['Calles'].addTo(mapa);
   L.control.layers(capasBase, {'Vías y nombres (sobre Satélite)': mapaZonasCapaVias()}, {position:'topright', collapsed:true}).addTo(mapa);
@@ -3553,10 +3601,66 @@ async function pzCargarMapa(datosZonas){
     selDepto.innerHTML = '<option value="">-- Elegir --</option>' +
       deptos.map(d => `<option value="${d}"${d===PZ_DEPARTAMENTO?' selected':''}>${d.charAt(0)+d.slice(1).toLowerCase()}</option>`).join('');
 
+    mapaZonasIndiceDepto(topo);
+    pzRenderMapasCreados();
+
     if(PZ_DEPARTAMENTO) pzRenderMapaDepto(topo, PZ_DEPARTAMENTO);
     else contMapa.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text3);font-size:12px;text-align:center;padding:20px">Elegí un departamento arriba para empezar a parametrizar.</div>';
   }catch(e){
     contMapa.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#ef476f;font-size:12px;text-align:center;padding:20px">${e.message || 'No se pudo cargar el mapa.'}</div>`;
+  }
+}
+
+// "Mapas creados" -- departamentos con al menos un municipio ya asignado
+// (no hace falta guardarlo aparte en el backend: se agrupa PZ_MUNICIPIOS_ZONA
+// por departamento usando el índice armado del topojson). Reemplaza tener
+// que adivinar en qué departamento se había trabajado antes -- pedido
+// explícito ("es mejor que acá aparezca un listado de mapas creados y
+// poderlos borrar").
+function pzMapasCreados(){
+  const porDepto = {};
+  Object.keys(PZ_MUNICIPIOS_ZONA).forEach(id => {
+    const depto = MAPA_ZONAS_DEPTO_POR_MUNICIPIO ? MAPA_ZONAS_DEPTO_POR_MUNICIPIO[id] : null;
+    if(!depto) return;
+    porDepto[depto] = (porDepto[depto]||0) + 1;
+  });
+  return Object.entries(porDepto).sort((a,b) => a[0].localeCompare(b[0]));
+}
+
+function pzRenderMapasCreados(){
+  const cont = document.getElementById('pz-mapas-creados');
+  if(!cont) return;
+  const lista = pzMapasCreados();
+  if(!lista.length){
+    cont.innerHTML = '<div style="font-size:11px;color:var(--text3)">Todavía no hay ninguno -- asigná al menos un municipio.</div>';
+    return;
+  }
+  cont.innerHTML = lista.map(([depto, n]) => {
+    const activo = depto === PZ_DEPARTAMENTO;
+    return `<div style="display:flex;align-items:center;gap:6px;padding:7px 9px;border:1px solid ${activo?'var(--accent)':'var(--border)'};border-radius:8px;margin-bottom:6px">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12px;font-weight:700;color:${activo?'var(--accent)':'var(--text)'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${depto.charAt(0)+depto.slice(1).toLowerCase()}</div>
+        <div style="font-size:10px;color:var(--text3)">${n} municipio${n===1?'':'s'}</div>
+      </div>
+      <button type="button" class="btn-theme" style="width:auto;padding:0 8px;font-size:10.5px" onclick="pzCambiarDepartamento('${depto}')" title="Ver este mapa">${activo?'Viendo':'Ver'}</button>
+      <button type="button" class="btn-theme" style="width:auto;padding:0 8px;font-size:10.5px;color:#ef476f" onclick="pzBorrarMapaCreado('${depto}')" title="Borra todas las zonas asignadas de este departamento">🗑</button>
+    </div>`;
+  }).join('');
+}
+
+async function pzBorrarMapaCreado(depto){
+  if(!requiereEditor()) return;
+  if(!confirm(`¿Borrar todas las asignaciones de zona de ${depto.charAt(0)+depto.slice(1).toLowerCase()}? No se puede deshacer.`)) return;
+  const ids = Object.keys(PZ_MUNICIPIOS_ZONA).filter(id => MAPA_ZONAS_DEPTO_POR_MUNICIPIO[id] === depto);
+  try{
+    if(!DEMO) await apiPost('/api/mapa-zonas/borrar-municipios', {municipio_ids: ids});
+    ids.forEach(id => delete PZ_MUNICIPIOS_ZONA[id]);
+    pzMostrarGuardado();
+    pzRenderMapasCreados();
+    // Si era el que se estaba viendo, redibuja el mapa para que se vea sin colores.
+    if(depto === PZ_DEPARTAMENTO && MAPA_ZONAS_TOPO) pzRenderMapaDepto(MAPA_ZONAS_TOPO, PZ_DEPARTAMENTO);
+  }catch(e){
+    alert(e.message || 'No se pudo borrar.');
   }
 }
 
@@ -3640,8 +3744,9 @@ async function pzClickMunicipio(f, layer){
     if(!DEMO) await apiPost('/api/mapa-zonas/municipio', {municipio_id: id, zona: nuevaZona});
     pzMostrarGuardado();
     if(nuevaZona) PZ_MUNICIPIOS_ZONA[id] = nuevaZona; else delete PZ_MUNICIPIOS_ZONA[id];
+    pzRenderMapasCreados();
     const color = nuevaZona ? colorParaZona(nuevaZona) : mapaZonasColorVacio();
-    layer.setStyle({fillColor:color, fillOpacity: nuevaZona?0.75:0.35});
+    layer.setStyle({fillColor:color, fillOpacity: nuevaZona?PZ_MAPA_OPACIDAD:PZ_MAPA_OPACIDAD*0.45});
     const nombreCrudo = mapaZonasNombreMunicipio(f);
     const nombre = nombreCrudo.charAt(0)+nombreCrudo.slice(1).toLowerCase();
     layer.unbindTooltip();
@@ -8548,15 +8653,19 @@ function alimN21RenderMarcadoresZona(){
     datosPorZona[zona] = datos;
   });
   const zonasConDatos = Object.keys(datosPorZona);
+  alimN21RenderDonutZonas(datosPorZona);
   if(!zonasConDatos.length) return;
 
   // Centro de referencia = el de TODO el departamento (no solo las zonas
   // con datos), para que las flechas salgan siempre desde el mismo punto
-  // sin importar cuáles zonas terminan mostrando tarjeta.
-  const centroGeneral = L.geoJSON(features).getBounds().getCenter();
-  const bounds = mapa.getBounds();
-  const radioLat = (bounds.getNorth()-bounds.getSouth())/2 * 1.25;
-  const radioLng = (bounds.getEast()-bounds.getWest())/2 * 1.25;
+  // sin importar cuáles zonas terminan mostrando tarjeta. El radio se saca
+  // del tamaño del DEPARTAMENTO, no del mapa/viewport (que por el padding
+  // del fitBounds es bastante más grande) -- si no, las tarjetas quedaban
+  // lejísimos, encima de otros departamentos.
+  const deptoBounds = L.geoJSON(features).getBounds();
+  const centroGeneral = deptoBounds.getCenter();
+  const radioLat = (deptoBounds.getNorth()-deptoBounds.getSouth())/2 * 0.75;
+  const radioLng = (deptoBounds.getEast()-deptoBounds.getWest())/2 * 0.75;
 
   // Ordenadas por su ángulo REAL respecto al centro (arriba=0, horario) --
   // después se reparten parejas en el círculo en ESE mismo orden, así
@@ -8607,6 +8716,53 @@ function alimN21RenderMarcadoresZona(){
     marker.addTo(mapa);
     ALIM_N21_MAPA_MARCADORES.push(marker);
   });
+}
+
+// Dona comparando cuánto aporta cada zona a la Pérdida total (kWh, mismo
+// modo Mensual/Anual que las tarjetas) -- mismos colores que
+// Parametrización > Color por zona (colorParaZona), pedido explícito.
+let chAlimN21DonaZonas = null;
+function alimN21RenderDonutZonas(datosPorZona){
+  const cv = document.getElementById('ch-alim-n21-dona-zonas');
+  const leyenda = document.getElementById('alim-n21-dona-leyenda');
+  if(!cv) return;
+  const zonas = Object.keys(datosPorZona).sort();
+  if(chAlimN21DonaZonas){ chAlimN21DonaZonas.destroy(); chAlimN21DonaZonas = null; }
+  if(!zonas.length){
+    if(leyenda) leyenda.innerHTML = '<div style="font-size:11px;color:var(--text3);text-align:center">Sin datos.</div>';
+    return;
+  }
+  const colores = zonas.map(z => colorParaZona(z));
+  const valores = zonas.map(z => Math.max(0, datosPorZona[z].perdida || 0));
+  const total = valores.reduce((s,v)=>s+v, 0);
+  const dark = document.documentElement.getAttribute('data-theme')==='dark';
+
+  chAlimN21DonaZonas = new Chart(cv, {
+    type: 'doughnut',
+    data:{ labels: zonas, datasets:[{ data: valores, backgroundColor: colores, borderColor: dark?'#161b27':'#ffffff', borderWidth:2 }] },
+    options:{
+      responsive:true, maintainAspectRatio:false, cutout:'62%',
+      plugins:{
+        legend:{display:false},
+        tooltip:{callbacks:{label:c=>{
+          const pct = total ? (c.raw/total*100) : 0;
+          return `Zona ${c.label}: ${Math.round(c.raw).toLocaleString('es-CO')} kWh (${pct.toFixed(1)}%)`;
+        }}},
+        datalabels:{display:false},
+      },
+    },
+  });
+
+  if(leyenda){
+    leyenda.innerHTML = zonas.map((z,i) => {
+      const pct = total ? (valores[i]/total*100) : 0;
+      return `<div style="display:flex;align-items:center;gap:6px;font-size:11px">
+        <span style="width:10px;height:10px;border-radius:50%;background:${colores[i]};flex-shrink:0"></span>
+        <span style="flex:1;color:var(--text2)">Zona ${z}</span>
+        <b style="color:var(--text)">${pct.toFixed(1)}%</b>
+      </div>`;
+    }).join('');
+  }
 }
 
 function alimN21RenderTodo(){
