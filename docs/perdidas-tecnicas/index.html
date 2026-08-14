@@ -836,7 +836,7 @@ tfoot td:first-child{text-align:left}
       <label style="margin-left:16px">Opacidad</label>
       <input type="range" min="0" max="0.9" step="0.05" value="0.7" oninput="iniMapaZonaCambiarOpacidad(this.value)" style="width:120px" title="Bajala para ver el terreno/vías debajo">
     </div>
-    <div id="ini-mapa-zona-debug" style="font-size:10px;color:#ef476f;text-align:center;margin-bottom:6px"></div>
+    <div id="ini-mapa-zona-debug" style="font-size:14px;font-weight:800;color:#ffffff;background:#ef476f;text-align:center;padding:8px;margin-bottom:8px;border-radius:6px">(esperando datos…)</div>
     <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:stretch">
       <div id="ini-mapa-zona-wrap" class="hidden" style="flex:1;min-width:360px;display:flex">
         <div id="ini-mapa-zona-leaflet" style="flex:1;min-height:560px;border-radius:10px;overflow:hidden;background:var(--bg3)"></div>
@@ -3270,31 +3270,33 @@ function iniMapaZonaToggleModo(modo){
 }
 
 async function cargarDashboardMapaZona(){
+  // DEBUG TEMPORAL -- diagnosticando por qué el mapa de Inicio sale sin
+  // zonas/tarjetas y con zoom muy alejado -- marca en QUÉ paso se detiene
+  // esta función cada vez que corre. Quitar este bloque completo (y el
+  // <div id="ini-mapa-zona-debug"> del HTML) una vez resuelto.
+  const dbg = document.getElementById('ini-mapa-zona-debug');
+  if(dbg) dbg.textContent = 'DEBUG -- cargarDashboardMapaZona() arrancó';
   const wrap = document.getElementById('ini-mapa-zona-wrap');
-  if(!wrap) return;
+  if(!wrap){ if(dbg) dbg.textContent = 'DEBUG -- no existe #ini-mapa-zona-wrap'; return; }
   INI_MAPA_ZONA_REF = null;
-  if(DEMO){ wrap.classList.add('hidden'); return; }
+  if(DEMO){ if(dbg) dbg.textContent = 'DEBUG -- DEMO=true, no carga'; wrap.classList.add('hidden'); return; }
   try{
     const filas = await _alimAsegurarDatosCargados();
-    if(!filas.length){ wrap.classList.add('hidden'); return; }
+    if(!filas.length){ if(dbg) dbg.textContent = 'DEBUG -- _alimAsegurarDatosCargados() devolvió 0 filas'; wrap.classList.add('hidden'); return; }
+    if(dbg) dbg.textContent = `DEBUG -- ${filas.length} filas OK, pidiendo topojson…`;
     const topo = await mapaZonasCargarTopo();
+    if(dbg) dbg.textContent = 'DEBUG -- topojson OK, pidiendo /api/mapa-zonas…';
     const resp = await apiGet('/api/mapa-zonas');
-    if(!resp.departamento){ wrap.classList.add('hidden'); return; }
+    if(!resp.departamento){ if(dbg) dbg.textContent = `DEBUG -- /api/mapa-zonas respondió sin departamento: ${JSON.stringify(resp)}`; wrap.classList.add('hidden'); return; }
     const features = mapaZonasFeaturesDeDepto(topo, resp.departamento);
-    // DEBUG TEMPORAL -- diagnosticando por qué el mapa de Inicio sale sin
-    // zonas/tarjetas y con zoom muy alejado pese a que los datos en la BD
-    // están correctos -- quitar este bloque (y el <div id="ini-mapa-zona-debug">
-    // del HTML) una vez resuelto.
-    const dbg = document.getElementById('ini-mapa-zona-debug');
-    if(dbg) dbg.textContent = `DEBUG -- depto:"${resp.departamento}" · municipios asignados:${Object.keys(resp.municipios||{}).length} · features filtradas:${features.length} · topo cargado:${!!topo}`;
+    if(dbg) dbg.textContent = `DEBUG -- depto:"${resp.departamento}" · municipios asignados:${Object.keys(resp.municipios||{}).length} · features filtradas:${features.length}`;
     const render = mapaZonasRenderLeaflet('ini-mapa-zona-leaflet', features, id => resp.municipios[id], null, INI_MAPA_ZONA_OPACIDAD);
-    if(!render){ wrap.classList.add('hidden'); if(dbg) dbg.textContent += ' · render:NULL'; return; }
+    if(!render){ wrap.classList.add('hidden'); if(dbg) dbg.textContent += ' · render:NULL (mapaZonasRenderLeaflet devolvió null)'; return; }
     wrap.classList.remove('hidden');
     INI_MAPA_ZONA_REF = {resp, features, mapa: render.mapa, capa: render.capa, zonaDeMunicipio: render.zonaDeMunicipio};
     iniRenderMarcadoresMapaZona();
     if(dbg) dbg.textContent += ` · bounds:${JSON.stringify(render.capa.getBounds())}`;
   }catch(e){
-    const dbg = document.getElementById('ini-mapa-zona-debug');
     if(dbg) dbg.textContent = `DEBUG -- excepción: ${e && e.message}`;
     wrap.classList.add('hidden');
   }
