@@ -3895,6 +3895,14 @@ function mapaZonasRenderLeaflet(contId, features, zonaDeMunicipio, onClickMunici
   // los dos adentro del mismo setTimeout para que ya corran con el
   // tamaño real ya asentado.
   setTimeout(() => {
+    // Si en estos 80ms el mismo contId se volvió a renderizar (ej. el
+    // usuario cambió rápido de mes/vista), MAPA_ZONAS_INSTANCIAS[contId]
+    // ya apunta a OTRA instancia y esta ("mapa") ya fue destruida con
+    // .remove() -- llamar invalidateSize/fitBounds sobre una instancia ya
+    // removida revienta con "Cannot read properties of undefined
+    // (reading 'parentNode')" adentro de Leaflet. Si ya no es la vigente,
+    // no hay nada que hacer acá, el render nuevo se encarga de lo suyo.
+    if(MAPA_ZONAS_INSTANCIAS[contId] !== mapa) return;
     mapa.invalidateSize();
     mapa.fitBounds(capa.getBounds(), {padding:[10,10]});
   }, 80);
