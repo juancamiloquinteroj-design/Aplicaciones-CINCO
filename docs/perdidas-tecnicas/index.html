@@ -1957,11 +1957,12 @@ tfoot td:first-child{text-align:left}
     </div>
 
     <div class="card">
-      <div style="text-align:center;margin-bottom:8px">
+      <div class="fbar" style="justify-content:center;margin-bottom:8px">
         <div style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Croquis por Zona</div>
+        <button type="button" class="be-modo-btn activo" id="alim-n21-btn-mapa-mensual" style="margin-left:12px" onclick="alimN21ToggleMapaModo('mensual')">Mensual</button>
+        <button type="button" class="be-modo-btn" id="alim-n21-btn-mapa-anual" onclick="alimN21ToggleMapaModo('anual')">Anual (12M)</button>
       </div>
-      <div id="alim-n21-mapa-leaflet" style="height:520px;width:100%;border-radius:10px;overflow:hidden;background:var(--bg3)"></div>
-      <div class="be-resumen-cards" id="alim-n21-resumen-zonas" style="margin-top:16px"></div>
+      <div id="alim-n21-mapa-leaflet" style="height:560px;width:100%;border-radius:10px;overflow:hidden;background:var(--bg3)"></div>
     </div>
 
   </div>
@@ -3413,11 +3414,27 @@ function mapaZonasFeaturesDeDepto(topo, depto){
   return geo.features.filter(f => f.properties.DPTO_CNMBR === depto);
 }
 
-function mapaZonasTiles(){
+// Varias bases (pedido explícito: "que se pueda cambiar la geografía así
+// como Bing, que se vean árboles o vías") -- Satélite/Terreno vía Esri
+// (no piden API key, a diferencia de Bing/Google). El control de capas de
+// Leaflet las deja elegir a mano; arranca en la que combina con el tema
+// (claro/oscuro) pero después el usuario manda.
+function mapaZonasCapasBase(){
   const dark = document.documentElement.getAttribute('data-theme')==='dark';
-  return dark
-    ? L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {attribution:'© OpenStreetMap © CARTO', maxZoom:19})
-    : L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {attribution:'© OpenStreetMap', maxZoom:19});
+  return {
+    'Calles': dark
+      ? L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {attribution:'© OpenStreetMap © CARTO', maxZoom:19})
+      : L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {attribution:'© OpenStreetMap', maxZoom:19}),
+    'Satélite': L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {attribution:'© Esri', maxZoom:19}),
+    'Terreno': L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {attribution:'© OpenTopoMap (CC-BY-SA)', maxZoom:17}),
+  };
+}
+
+// Superpuesta a "Satélite" para que se vean vías/nombres de lugares sobre
+// la imagen aérea (lo que en Satélite solo trae el terreno/árboles, sin
+// rótulos).
+function mapaZonasCapaVias(){
+  return L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {attribution:'© Esri', maxZoom:19});
 }
 
 function mapaZonasColorVacio(){
@@ -3433,7 +3450,9 @@ function mapaZonasRenderLeaflet(contId, features, zonaDeMunicipio, onClickMunici
   if(!cont || typeof L === 'undefined' || !features.length) return null;
   cont.innerHTML = '';
   const mapa = L.map(contId, {zoomControl:true, attributionControl:false});
-  mapaZonasTiles().addTo(mapa);
+  const capasBase = mapaZonasCapasBase();
+  capasBase['Calles'].addTo(mapa);
+  L.control.layers(capasBase, {'Vías y nombres (sobre Satélite)': mapaZonasCapaVias()}, {position:'topright', collapsed:true}).addTo(mapa);
   const estiloDe = f => {
     const zona = zonaDeMunicipio(mapaZonasIdMunicipio(f));
     const color = zona ? colorParaZona(zona) : mapaZonasColorVacio();
@@ -8407,12 +8426,20 @@ async function alimN21Cargar(){
 }
 
 // Croquis por zona -- solo lectura, mismo mapa/colores que Parametrización
-// > Mapa de zonas por municipio, pero sin clicks. Se carga una sola vez
-// (no depende de los filtros Rango/Zona de arriba).
+// > Mapa de zonas por municipio, pero sin clicks, MÁS una tarjeta flotante
+// por zona (estilo "zcard", igual al mapa hardcodeado de Huila en
+// Pérdidas Técnicas) con Entrada/Salida/Pérdida/%. Se carga una sola vez
+// (no depende de los filtros Rango/Zona de arriba, si depende del botón
+// Mensual/Anual de acá al lado).
+let ALIM_N21_MAPA_MODO = 'mensual';
+let ALIM_N21_MAPA_REF = null;       // {resp, features, mapa} del último croquis cargado
+let ALIM_N21_MAPA_MARCADORES = [];  // tarjetas flotantes activas -- se destruyen y recrean al togglear modo
+
 async function alimN21CargarMapa(){
   const cont = document.getElementById('alim-n21-mapa-leaflet');
   if(!cont) return;
   cont.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text3);font-size:12px">Cargando…</div>';
+  ALIM_N21_MAPA_REF = null;
   try{
     const topo = await mapaZonasCargarTopo();
     const resp = DEMO ? {departamento:null, municipios:{}} : await apiGet('/api/mapa-zonas');
@@ -8421,10 +8448,74 @@ async function alimN21CargarMapa(){
       return;
     }
     const features = mapaZonasFeaturesDeDepto(topo, resp.departamento);
-    mapaZonasRenderLeaflet('alim-n21-mapa-leaflet', features, id => resp.municipios[id], null);
+    const render = mapaZonasRenderLeaflet('alim-n21-mapa-leaflet', features, id => resp.municipios[id], null);
+    if(!render) return;
+    ALIM_N21_MAPA_REF = {resp, features, mapa: render.mapa};
+    alimN21RenderMarcadoresZona();
   }catch(e){
     cont.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#ef476f;font-size:12px">${e.message || 'No se pudo cargar el croquis.'}</div>`;
   }
+}
+
+function alimN21ToggleMapaModo(modo){
+  ALIM_N21_MAPA_MODO = modo;
+  document.getElementById('alim-n21-btn-mapa-mensual').classList.toggle('activo', modo==='mensual');
+  document.getElementById('alim-n21-btn-mapa-anual').classList.toggle('activo', modo==='anual');
+  alimN21RenderMarcadoresZona();
+}
+
+// Una tarjeta flotante por zona, centrada en el centroide de SUS
+// municipios (no hay posiciones hardcodeadas como en el mapa viejo de
+// Huila -- así funciona para cualquier departamento). Solo aparecen las
+// zonas que: (a) tienen al menos un municipio asignado en este
+// departamento, y (b) tienen datos reales en Alimentadores con ese mismo
+// código de zona (si el usuario tipeó una zona que no existe en los
+// circuitos, no hay con qué llenar la tarjeta y se omite en silencio).
+function alimN21RenderMarcadoresZona(){
+  if(!ALIM_N21_MAPA_REF || !ALIM_N21_MAPA_REF.mapa) return;
+  const {resp, features, mapa} = ALIM_N21_MAPA_REF;
+  ALIM_N21_MAPA_MARCADORES.forEach(m => mapa.removeLayer(m));
+  ALIM_N21_MAPA_MARCADORES = [];
+
+  const porZona = {};
+  features.forEach(f => {
+    const zona = resp.municipios[mapaZonasIdMunicipio(f)];
+    if(!zona) return;
+    (porZona[zona] = porZona[zona] || []).push(f);
+  });
+
+  const fmt = v => v==null ? '--' : Math.round(v).toLocaleString('es-CO');
+  Object.keys(porZona).forEach(zona => {
+    const serieMensual = alimN21AgregarMensual(new Set([zona])).filter(f => f.pct != null);
+    if(!serieMensual.length) return;
+    let datos;
+    if(ALIM_N21_MAPA_MODO === 'anual'){
+      const serieAnual = alimN21Con12Meses(serieMensual).filter(f => f.pct12 != null);
+      if(!serieAnual.length) return;
+      const u = serieAnual[serieAnual.length-1];
+      datos = {entrada:u.entrada12, salida:u.salida12, perdida:u.perdida12, pct:u.pct12};
+    }else{
+      const u = serieMensual[serieMensual.length-1];
+      datos = {entrada:u.entrada, salida:u.salida, perdida:u.perdida, pct:u.pct};
+    }
+    const color = colorParaZona(zona);
+    const centro = L.geoJSON(porZona[zona]).getBounds().getCenter();
+    const html = `<div class="zcard" style="border-top:4px solid ${color}">
+      <div class="zc-h">Zona ${zona}</div>
+      <div class="zc-pct" style="color:${color}">${datos.pct.toFixed(2)}%</div>
+      <div class="zc-rows">
+        <div><span>Entrada</span><b>${fmt(datos.entrada)}</b></div>
+        <div><span>Salida</span><b>${fmt(datos.salida)}</b></div>
+        <div><span>Pérdida</span><b style="color:${color}">${fmt(datos.perdida)}</b></div>
+      </div>
+    </div>`;
+    const marker = L.marker(centro, {
+      icon: L.divIcon({className:'', iconSize:[152,0], iconAnchor:[76,20], html}),
+      interactive:false, zIndexOffset:4000,
+    });
+    marker.addTo(mapa);
+    ALIM_N21_MAPA_MARCADORES.push(marker);
+  });
 }
 
 function alimN21RenderTodo(){
@@ -8433,28 +8524,6 @@ function alimN21RenderTodo(){
   alimN21RenderChartAnual(datos12);
   alimN21RenderChartZonas();
   alimN21RenderResumen(datos12);
-  alimN21RenderResumenZonas();
-}
-
-// Tarjetas de Pérdida % por zona (último mes real) al lado del croquis --
-// mismo dato que "Comparativo Pérdidas por Zona", versión tarjeta en vez
-// de línea. Ignora el filtro de Zona de arriba (siempre las 5), igual que
-// el gráfico comparativo.
-function alimN21RenderResumenZonas(){
-  const cont = document.getElementById('alim-n21-resumen-zonas');
-  if(!cont) return;
-  const tarjetas = ALIM_N21_ZONAS.map(z => {
-    const serie = alimN21AgregarMensual(new Set([z])).filter(f => f.pct != null);
-    if(!serie.length) return '';
-    const ultimo = serie[serie.length-1];
-    const color = colorParaZona(z);
-    return `<div class="be-resumen-tile" style="border-color:${color}">
-      <div class="etiqueta" style="color:${color}">Zona ${z}</div>
-      <div class="valor">${ultimo.pct.toFixed(2)}%</div>
-      <div class="sub">${labelMes(ultimo.clave)}</div>
-    </div>`;
-  }).join('');
-  cont.innerHTML = tarjetas;
 }
 
 function alimN21ToggleVariacion(){
