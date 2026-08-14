@@ -2095,8 +2095,10 @@ tfoot td:first-child{text-align:left}
       </div>
       <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">
         <div style="flex:1;min-width:360px">
-          <div style="text-align:center;margin-bottom:8px">
+          <div class="fbar" style="justify-content:center;margin-bottom:8px">
             <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Pérdida % por Alimentador</div>
+            <button type="button" class="be-modo-btn" id="alim-sub-al-btn-es" style="margin-left:12px" onclick="alimSubToggleAlEntradaSalida()" title="Agrega Entrada/Salida (kWh) al mismo gráfico">Entrada / Salida</button>
+            <button type="button" class="be-modo-btn" id="alim-sub-al-btn-var" onclick="alimSubToggleAlVariacion()" title="Agrega el delta vs. el mes anterior a la etiqueta de Pérdida %">Δ Variación</button>
           </div>
           <div class="chart-wrap" style="height:420px"><canvas id="ch-alim-sub-alimentadores"></canvas></div>
         </div>
@@ -9026,8 +9028,19 @@ let ALIM_SUB_ZONAS = [];
 let ALIM_SUB_ZONAS_SEL = new Set();
 let ALIM_SUB_METRICA = 'perdida';  // 'entrada' | 'salida' | 'perdida'
 let ALIM_SUB_ZONA_PANEL_MODO = 'mensual';  // 'mensual' | 'anual' -- panel "Pérdida por Zona"
+let ALIM_SUB_AL_MOSTRAR_ES = false;  // gráfico "Pérdida % por Alimentador" -- agrega Entrada/Salida (kWh)
+let ALIM_SUB_AL_VAR = false;         // gráfico "Pérdida % por Alimentador" -- Δ Variación en las etiquetas
 let chAlimSubSubestaciones = null;
 let chAlimSubAlimentadores = null;
+
+// Subestaciones disponibles para el multiselect -- acotadas a la Zona
+// activa (chips de arriba) para que no se pueda elegir una subestación de
+// otra zona y quedar con los gráficos en blanco (pedido explícito).
+function alimSubSubestacionesDisponibles(){
+  return [...new Set(
+    ALIM_FILAS.filter(f => !ALIM_SUB_ZONAS_SEL.size || ALIM_SUB_ZONAS_SEL.has(f.zona)).map(f => f.subestacion)
+  )].filter(Boolean).sort();
+}
 
 // Click en una zona del croquis (N2-1 o Inicio, solo lectura) -- salta a
 // Subestaciones con esa zona ya filtrada (pedido explícito del usuario:
@@ -9041,6 +9054,7 @@ async function irASubestacionesConZona(zona){
   // para que la zona nueva se refleje.
   if(vistaCargada.alimSubestaciones){
     alimSubRenderZonasChips();
+    mselSetOpciones('msel-alim-sub-subestacion', alimSubSubestacionesDisponibles().map(s => ({value:s, label:s})));
     alimSubRenderTodo();
   }
 }
@@ -9105,6 +9119,11 @@ function alimSubRenderZonasChips(){
 function alimSubToggleZona(zona){
   if(ALIM_SUB_ZONAS_SEL.has(zona)) ALIM_SUB_ZONAS_SEL.delete(zona); else ALIM_SUB_ZONAS_SEL.add(zona);
   alimSubRenderZonasChips();
+  // mselSetOpciones ya descarta sola cualquier subestación elegida que no
+  // pertenezca a la zona nueva (y dispara su propio onChange si hizo
+  // falta) -- evita quedar con una subestación de otra zona seleccionada
+  // y los gráficos en blanco.
+  mselSetOpciones('msel-alim-sub-subestacion', alimSubSubestacionesDisponibles().map(s => ({value:s, label:s})));
   alimSubRenderTodo();
 }
 
@@ -9149,8 +9168,7 @@ async function alimSubCargar(){
     }
   }
 
-  const subestaciones = [...new Set(ALIM_FILAS.map(f => f.subestacion).filter(Boolean))].sort();
-  mselInit('msel-alim-sub-subestacion', 'Subestación', 'Ninguna', subestaciones.map(s => ({value:s, label:s})), alimSubRenderAlimentadoresYCards, []);
+  mselInit('msel-alim-sub-subestacion', 'Subestación', 'Ninguna', alimSubSubestacionesDisponibles().map(s => ({value:s, label:s})), alimSubRenderAlimentadoresYCards, []);
 
   alimSubRenderTodo();
 }
@@ -9225,10 +9243,25 @@ function alimSubRenderChartSubestaciones(){
 // subestaciones elegidas en el multiselect -- vacío = no muestra nada
 // (164 nemonicos juntos no se puede leer). Reusa alimSubAgregarPorGrupo
 // pero agrupando por "nemonico" en vez de "subestacion".
+function alimSubToggleAlEntradaSalida(){
+  ALIM_SUB_AL_MOSTRAR_ES = !ALIM_SUB_AL_MOSTRAR_ES;
+  alimSubRenderChartAlimentadores();
+}
+
+function alimSubToggleAlVariacion(){
+  ALIM_SUB_AL_VAR = !ALIM_SUB_AL_VAR;
+  alimSubRenderChartAlimentadores();
+}
+
 function alimSubRenderChartAlimentadores(){
   const cv = document.getElementById('ch-alim-sub-alimentadores');
   if(!cv) return;
   if(chAlimSubAlimentadores){ chAlimSubAlimentadores.destroy(); chAlimSubAlimentadores = null; }
+  const btnEs = document.getElementById('alim-sub-al-btn-es');
+  const btnVar = document.getElementById('alim-sub-al-btn-var');
+  if(btnEs) btnEs.classList.toggle('activo', ALIM_SUB_AL_MOSTRAR_ES);
+  if(btnVar) btnVar.classList.toggle('activo', ALIM_SUB_AL_VAR);
+
   const subestacionesElegidas = new Set(mselValores('msel-alim-sub-subestacion'));
   if(!subestacionesElegidas.size) return;
 
@@ -9241,18 +9274,73 @@ function alimSubRenderChartAlimentadores(){
   const tickC = dark ? '#aab8d1' : '#4b5e7a';
   const tickXFuerte = dark ? '#ffffff' : '#000000';
   const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
+  const etiquetaFondo = dark ? 'rgba(30,30,40,.85)' : 'rgba(255,255,255,.85)';
 
   let etiquetas = null;
-  const datasets = nemonicos.map((nem, i) => {
+  const datasets = [];
+  nemonicos.forEach((nem, i) => {
     const visibles = alimSubVisibles(porGrupo[nem] || []);
     if(!etiquetas) etiquetas = visibles.map(f => labelMesLargo(f.clave));
-    return {
-      type:'line', label: nem, data: visibles.map(f => f.pct),
-      borderColor: alimSubColor(i, nemonicos.length), backgroundColor:'transparent',
-      borderWidth:1.75, pointRadius:1, spanGaps:true, tension:.2, datalabels:{display:false},
+    const color = alimSubColor(i, nemonicos.length);
+    const pctDatos = visibles.map(f => f.pct);
+
+    // "La línea de % de pérdida por alimentador debe aparecer con la
+    // etiqueta de %" -- siempre visible; "Δ Variación" (toggle) agrega el
+    // delta vs. el mes anterior, mismo patrón que Indicador N2-1.
+    const datalabelsPct = ALIM_SUB_AL_VAR ? {
+      display:true, anchor:'end', align:'top', offset:5,
+      formatter:(v,ctx)=>{
+        if(v==null) return '';
+        const base = v.toFixed(2)+'%';
+        const anterior = pctDatos[ctx.dataIndex-1];
+        if(anterior==null) return [base, ''];
+        const delta = v - anterior;
+        const icono = delta>=0 ? '▲' : '▼';
+        return [base, `${icono} ${Math.abs(delta).toFixed(2)}pp`];
+      },
+      font:{size:8, weight:'700'}, color,
+      backgroundColor: etiquetaFondo, borderRadius:3, padding:{left:3,right:3,top:1,bottom:1},
+    } : {
+      display:true, anchor:'end', align:'top', offset:4, formatter:v=>v==null?'':v.toFixed(2)+'%',
+      font:{size:8, weight:'700'}, color,
+      backgroundColor: etiquetaFondo, borderRadius:3, padding:{left:3,right:3,top:1,bottom:1},
     };
+
+    datasets.push({
+      type:'line', label: nem, yAxisID:'yPct', order:1,
+      data: pctDatos, borderColor: color, backgroundColor:'transparent',
+      borderWidth:1.75, pointRadius:1, spanGaps:true, tension:.2, datalabels: datalabelsPct,
+    });
+
+    // "Poder graficar Entrada/Salida en el mismo gráfico" (toggle) -- una
+    // línea punteada por alimentador, mismo color que su % (identidad),
+    // en un eje kWh secundario -- nunca dual-eje "porque sí": acá el
+    // segundo eje solo aparece cuando el usuario lo pide explícitamente.
+    if(ALIM_SUB_AL_MOSTRAR_ES){
+      datasets.push({
+        type:'line', label: `${nem} · Entrada`, yAxisID:'y', order:3,
+        data: visibles.map(f=>f.entrada), borderColor: color, backgroundColor:'transparent',
+        borderWidth:1, borderDash:[6,3], pointRadius:0, spanGaps:true, tension:.2, datalabels:{display:false},
+      });
+      datasets.push({
+        type:'line', label: `${nem} · Salida`, yAxisID:'y', order:2,
+        data: visibles.map(f=>f.salida), borderColor: color, backgroundColor:'transparent',
+        borderWidth:1, borderDash:[2,2], pointRadius:0, spanGaps:true, tension:.2, datalabels:{display:false},
+      });
+    }
   });
   if(!etiquetas || !etiquetas.length) return;
+
+  const scales = {
+    x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:45, minRotation:45}},
+    yPct:{type:'linear', position:'left', grid:{color:gridC}, ticks:{color:tickC, font:{size:11}, callback:v=>v.toFixed(0)+'%'},
+      title:{display:true, text:'Pérdida (%)', color:tickC, font:{size:11}}},
+  };
+  if(ALIM_SUB_AL_MOSTRAR_ES){
+    scales.y = {type:'linear', position:'right', grid:{drawOnChartArea:false},
+      ticks:{color:tickC, font:{size:10}, callback:v=>v.toLocaleString('es-CO')},
+      title:{display:true, text:'Energía (kWh)', color:tickC, font:{size:10}}};
+  }
 
   chAlimSubAlimentadores = new Chart(cv, {
     plugins:[tmPluginCrosshair],
@@ -9263,22 +9351,21 @@ function alimSubRenderChartAlimentadores(){
       interaction:{mode:'index', intersect:false},
       plugins:{
         legend:{display:true, position:'bottom', labels:{boxWidth:10, font:{size:9}, color:tickC}},
-        tooltip:{callbacks:{label:c => c.raw==null ? null : `${c.dataset.label}: ${c.raw.toFixed(2)}%`}},
+        tooltip:{callbacks:{label:c => {
+          if(c.raw==null) return null;
+          return c.dataset.yAxisID==='y' ? `${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh` : `${c.dataset.label}: ${c.raw.toFixed(2)}%`;
+        }}},
         zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:3}}},
       },
-      scales:{
-        x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:45, minRotation:45}},
-        y:{grid:{color:gridC}, ticks:{color:tickC, font:{size:11}, callback:v=>v.toFixed(0)+'%'},
-          title:{display:true, text:'Pérdida (%)', color:tickC, font:{size:11}}},
-      },
+      scales,
     },
   });
-  // El canvas ahora vive en una fila flex nueva (al lado del panel
-  // "Pérdida por Zona") -- si Chart.js mide el contenedor ANTES de que el
-  // navegador termine de asentar el ancho final de ese flex item, el
-  // canvas se queda en 0x0 y el gráfico no se ve (mismo tipo de problema
-  // que tuvo el mapa Leaflet). Forzar un resize() en el siguiente frame
-  // lo corrige sin apostar a un setTimeout con un número fijo de ms.
+  // El canvas vive en una fila flex (al lado del panel "Pérdida por
+  // Zona") -- si Chart.js mide el contenedor ANTES de que el navegador
+  // termine de asentar el ancho final de ese flex item, el canvas se
+  // queda en 0x0 y el gráfico no se ve (mismo tipo de problema que tuvo
+  // el mapa Leaflet). Forzar un resize() en el siguiente frame lo
+  // corrige sin apostar a un setTimeout con un número fijo de ms.
   requestAnimationFrame(() => { if(chAlimSubAlimentadores) chAlimSubAlimentadores.resize(); });
 }
 
