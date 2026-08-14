@@ -15,6 +15,9 @@
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<!-- topojson-client decodifica geo/colombia-municipios.json (arcs cuantizados,
+     ver la carpeta geo/) a GeoJSON en el navegador -- solo eso, ~5KB. -->
+<script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
 <style>
 :root{
   --accent:#00b4d8;--accent2:#0096c7;--amber:#f4a261;--green:#06d6a0;--red:#ef476f;--purple:#7b2fff;
@@ -1017,6 +1020,19 @@ tfoot td:first-child{text-align:left}
   </div>
 
   <div class="card">
+    <div class="card-title">Mapa de zonas por municipio</div>
+    <div class="card-sub">Elegí el departamento y asigná cada municipio a una zona -- el croquis se dibuja solo con esto en el Indicador N2-1 (Alimentadores).</div>
+    <div class="fbar" style="margin:14px 0 10px">
+      <label>Departamento</label>
+      <select id="pz-departamento" onchange="pzCambiarDepartamento(this.value)"><option value="">Cargando…</option></select>
+      <label style="margin-left:10px">Zona activa</label>
+      <div id="pz-zonas-activas" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+      <span style="font-size:11px;color:var(--text3);margin-left:auto;max-width:280px">Click en un municipio para asignarle la zona activa -- click de nuevo para quitársela.</span>
+    </div>
+    <div id="pz-mapa-leaflet" style="height:560px;width:100%;border-radius:10px;overflow:hidden;background:var(--bg3)"></div>
+  </div>
+
+  <div class="card">
     <div class="card-title">Límites de consumo esperado (Usuarios Telemedidos)</div>
     <div class="param-confianza-row">
       <input type="range" id="param-confianza-slider" min="50" max="99.9" step="0.1" oninput="onCambiaConfianzaSlider(this.value)">
@@ -1927,6 +1943,13 @@ tfoot td:first-child{text-align:left}
         <div style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Comparativo Pérdidas por Zona</div>
       </div>
       <div class="chart-wrap" style="height:380px"><canvas id="ch-alim-n21-zonas"></canvas></div>
+    </div>
+
+    <div class="card">
+      <div style="text-align:center;margin-bottom:8px">
+        <div style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Croquis por Zona</div>
+      </div>
+      <div id="alim-n21-mapa-leaflet" style="height:520px;width:100%;border-radius:10px;overflow:hidden;background:var(--bg3)"></div>
     </div>
 
   </div>
@@ -3340,6 +3363,175 @@ async function cargarZonaColoresPersonalizados(){
   }
 }
 
+/* ==========================================================================
+   MAPA DE ZONAS POR MUNICIPIO -- genérico para cualquier departamento de
+   Colombia (no como el mapa hardcodeado de Huila en vista-perdidas, ver
+   MUNI_GEO más abajo). Fuente geográfica: geo/colombia-municipios.json
+   (topojson, DANE MGN simplificado vía finiterank/mapa-colombia-js --
+   1122 municipios + 33 departamentos, sin licencia explícita en el repo
+   pero deriva de cartografía oficial pública). El backend (router
+   parametrizacion.py, /api/mapa-zonas*) solo guarda "qué departamento" y
+   "zona por municipio (DIVIPOLA)" -- la geometría es 100% del frontend.
+   Usado por Parametrización (interactivo, pz*) y por el croquis de
+   Indicador N2-1 (solo lectura, alimN21CargarMapa). ========================== */
+let MAPA_ZONAS_TOPO = null;
+async function mapaZonasCargarTopo(){
+  if(MAPA_ZONAS_TOPO) return MAPA_ZONAS_TOPO;
+  const res = await fetch('geo/colombia-municipios.json');
+  if(!res.ok) throw new Error('No se pudo cargar el mapa de municipios de Colombia.');
+  MAPA_ZONAS_TOPO = await res.json();
+  return MAPA_ZONAS_TOPO;
+}
+
+function mapaZonasListaDeptos(topo){
+  const nombres = new Set();
+  topo.objects.depts.geometries.forEach(g => { if(g.properties && g.properties.dpt) nombres.add(g.properties.dpt); });
+  return [...nombres].sort();
+}
+
+function mapaZonasFeaturesDeDepto(topo, depto){
+  const geo = topojson.feature(topo, topo.objects.mpios);
+  return geo.features.filter(f => f.properties.dpt === depto);
+}
+
+function mapaZonasTiles(){
+  const dark = document.documentElement.getAttribute('data-theme')==='dark';
+  return dark
+    ? L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {attribution:'© OpenStreetMap © CARTO', maxZoom:19})
+    : L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {attribution:'© OpenStreetMap', maxZoom:19});
+}
+
+function mapaZonasColorVacio(){
+  return document.documentElement.getAttribute('data-theme')==='dark' ? '#3a4356' : '#c7cedb';
+}
+
+// Dibuja `features` (municipios ya decodificados de topojson) en el
+// contenedor `contId`, coloreados según zonaDeMunicipio(id) con
+// colorParaZona (los mismos colores de Parametrización > Color por zona).
+// onClickMunicipio ausente => solo lectura (croquis del N2-1).
+function mapaZonasRenderLeaflet(contId, features, zonaDeMunicipio, onClickMunicipio){
+  const cont = document.getElementById(contId);
+  if(!cont || typeof L === 'undefined' || !features.length) return null;
+  cont.innerHTML = '';
+  const mapa = L.map(contId, {zoomControl:true, attributionControl:false});
+  mapaZonasTiles().addTo(mapa);
+  const estiloDe = f => {
+    const zona = zonaDeMunicipio(f.id);
+    const color = zona ? colorParaZona(zona) : mapaZonasColorVacio();
+    return {color:'#ffffff', weight:1, opacity:0.85, fillColor:color, fillOpacity: zona?0.75:0.35};
+  };
+  const capa = L.geoJSON(features, {
+    style: estiloDe,
+    onEachFeature: (f, layer) => {
+      const zona = zonaDeMunicipio(f.id);
+      const nombre = f.properties.name.charAt(0)+f.properties.name.slice(1).toLowerCase();
+      layer.bindTooltip(`<b>${nombre}</b>${zona?' -- Zona '+zona:''}`, {sticky:true, direction:'top'});
+      if(onClickMunicipio){
+        layer.on('mouseover', ()=>layer.setStyle({weight:2.4}));
+        layer.on('mouseout', ()=>layer.setStyle({weight:1}));
+        layer.on('click', () => onClickMunicipio(f, layer));
+      }
+    },
+  }).addTo(mapa);
+  mapa.fitBounds(capa.getBounds(), {padding:[10,10]});
+  // El contenedor puede estar recién destapado (display:none -> visible) --
+  // sin esto Leaflet mide 0x0 y el mapa queda cortado/gris.
+  setTimeout(()=>mapa.invalidateSize(), 80);
+  return {mapa, capa, estiloDe, zonaDeMunicipio};
+}
+
+/* ---- Parametrización: mapa interactivo (click = asigna la zona activa) ---- */
+let PZ_DEPARTAMENTO = null;
+let PZ_MUNICIPIOS_ZONA = {};
+let PZ_ZONAS_DISPONIBLES = [];
+let PZ_ZONA_ACTIVA = null;
+
+async function pzCargarMapa(datosZonas){
+  const selDepto = document.getElementById('pz-departamento');
+  const contMapa = document.getElementById('pz-mapa-leaflet');
+  PZ_ZONAS_DISPONIBLES = (datosZonas || []).map(d => d.zona);
+  if(!PZ_ZONA_ACTIVA || !PZ_ZONAS_DISPONIBLES.includes(PZ_ZONA_ACTIVA)) PZ_ZONA_ACTIVA = PZ_ZONAS_DISPONIBLES[0] || null;
+  pzRenderZonasActivas();
+
+  try{
+    const topo = await mapaZonasCargarTopo();
+    const deptos = mapaZonasListaDeptos(topo);
+    let resp = {departamento:null, municipios:{}};
+    try{ resp = DEMO ? resp : await apiGet('/api/mapa-zonas'); }catch(e){ /* arranca vacío */ }
+    PZ_DEPARTAMENTO = resp.departamento;
+    PZ_MUNICIPIOS_ZONA = resp.municipios || {};
+
+    selDepto.innerHTML = '<option value="">-- Elegir --</option>' +
+      deptos.map(d => `<option value="${d}"${d===PZ_DEPARTAMENTO?' selected':''}>${d.charAt(0)+d.slice(1).toLowerCase()}</option>`).join('');
+
+    if(PZ_DEPARTAMENTO) pzRenderMapaDepto(topo, PZ_DEPARTAMENTO);
+    else contMapa.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text3);font-size:12px;text-align:center;padding:20px">Elegí un departamento arriba para empezar a parametrizar.</div>';
+  }catch(e){
+    contMapa.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#ef476f;font-size:12px;text-align:center;padding:20px">${e.message || 'No se pudo cargar el mapa.'}</div>`;
+  }
+}
+
+function pzRenderZonasActivas(){
+  const cont = document.getElementById('pz-zonas-activas');
+  if(!cont) return;
+  if(!PZ_ZONAS_DISPONIBLES.length){
+    cont.innerHTML = '<span style="font-size:11px;color:var(--text3)">Asigná colores de zona arriba primero.</span>';
+    return;
+  }
+  cont.innerHTML = PZ_ZONAS_DISPONIBLES.map(z => {
+    const color = colorParaZona(z);
+    const activa = z === PZ_ZONA_ACTIVA;
+    const estilo = activa
+      ? `background:${color};border-color:${color};color:#fff`
+      : `border-color:${color};color:${color};background:transparent`;
+    return `<button type="button" class="be-modo-btn" style="${estilo}" onclick="pzElegirZonaActiva('${z}')">${z}</button>`;
+  }).join('');
+}
+
+function pzElegirZonaActiva(z){
+  PZ_ZONA_ACTIVA = z;
+  pzRenderZonasActivas();
+}
+
+async function pzCambiarDepartamento(depto){
+  if(!depto) return;
+  if(!requiereEditor()){ document.getElementById('pz-departamento').value = PZ_DEPARTAMENTO || ''; return; }
+  try{
+    if(!DEMO) await apiPost('/api/mapa-zonas/departamento', {departamento: depto});
+    PZ_DEPARTAMENTO = depto;
+    const topo = await mapaZonasCargarTopo();
+    pzRenderMapaDepto(topo, depto);
+  }catch(e){
+    alert(e.message || 'No se pudo guardar el departamento.');
+  }
+}
+
+function pzRenderMapaDepto(topo, depto){
+  const features = mapaZonasFeaturesDeDepto(topo, depto);
+  mapaZonasRenderLeaflet('pz-mapa-leaflet', features, id => PZ_MUNICIPIOS_ZONA[id], pzClickMunicipio);
+}
+
+// Click en un municipio: si ya tiene la zona activa, se la quita (toggle);
+// si no, se la asigna -- reemplazando lo que tuviera antes.
+async function pzClickMunicipio(f, layer){
+  if(!requiereEditor()) return;
+  if(!PZ_ZONA_ACTIVA){ alert('Elegí primero una zona activa (arriba a la derecha).'); return; }
+  const id = f.id;
+  const actual = PZ_MUNICIPIOS_ZONA[id];
+  const nuevaZona = actual === PZ_ZONA_ACTIVA ? null : PZ_ZONA_ACTIVA;
+  try{
+    if(!DEMO) await apiPost('/api/mapa-zonas/municipio', {municipio_id: id, zona: nuevaZona});
+    if(nuevaZona) PZ_MUNICIPIOS_ZONA[id] = nuevaZona; else delete PZ_MUNICIPIOS_ZONA[id];
+    const color = nuevaZona ? colorParaZona(nuevaZona) : mapaZonasColorVacio();
+    layer.setStyle({fillColor:color, fillOpacity: nuevaZona?0.75:0.35});
+    const nombre = f.properties.name.charAt(0)+f.properties.name.slice(1).toLowerCase();
+    layer.unbindTooltip();
+    layer.bindTooltip(`<b>${nombre}</b>${nuevaZona?' -- Zona '+nuevaZona:''}`, {sticky:true, direction:'top'});
+  }catch(e){
+    alert(e.message || 'No se pudo guardar la zona.');
+  }
+}
+
 /* ---- Parametrización: color por zona ---- */
 async function cargarParametrizacion(){
   const cont = document.getElementById('parametrizacion-zonas');
@@ -3351,6 +3543,7 @@ async function cargarParametrizacion(){
     return;
   }
   renderParametrizacionZonas(datos);
+  await pzCargarMapa(datos);
   await cargarConfianzaEstadistica();
   await cargarDiasAtrasoBalance();
 
@@ -8132,6 +8325,28 @@ async function alimN21Cargar(){
   }
 
   alimN21RenderTodo();
+  alimN21CargarMapa();
+}
+
+// Croquis por zona -- solo lectura, mismo mapa/colores que Parametrización
+// > Mapa de zonas por municipio, pero sin clicks. Se carga una sola vez
+// (no depende de los filtros Rango/Zona de arriba).
+async function alimN21CargarMapa(){
+  const cont = document.getElementById('alim-n21-mapa-leaflet');
+  if(!cont) return;
+  cont.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text3);font-size:12px">Cargando…</div>';
+  try{
+    const topo = await mapaZonasCargarTopo();
+    const resp = DEMO ? {departamento:null, municipios:{}} : await apiGet('/api/mapa-zonas');
+    if(!resp.departamento){
+      cont.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text3);font-size:12px;text-align:center;padding:20px">Todavía no se parametrizó el departamento ni las zonas -- hacelo en Parametrización → Mapa de zonas por municipio.</div>';
+      return;
+    }
+    const features = mapaZonasFeaturesDeDepto(topo, resp.departamento);
+    mapaZonasRenderLeaflet('alim-n21-mapa-leaflet', features, id => resp.municipios[id], null);
+  }catch(e){
+    cont.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#ef476f;font-size:12px">${e.message || 'No se pudo cargar el croquis.'}</div>`;
+  }
 }
 
 function alimN21RenderTodo(){
