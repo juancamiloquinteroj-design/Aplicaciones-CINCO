@@ -836,7 +836,6 @@ tfoot td:first-child{text-align:left}
       <label style="margin-left:16px">Opacidad</label>
       <input type="range" min="0" max="0.9" step="0.05" value="0.7" oninput="iniMapaZonaCambiarOpacidad(this.value)" style="width:120px" title="Bajala para ver el terreno/vías debajo">
     </div>
-    <div id="ini-mapa-zona-debug" style="font-size:14px;font-weight:800;color:#ffffff;background:#ef476f;text-align:center;padding:8px;margin-bottom:8px;border-radius:6px">(esperando datos…)</div>
     <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:stretch">
       <div id="ini-mapa-zona-wrap" class="hidden" style="flex:1;min-width:360px;display:flex">
         <div id="ini-mapa-zona-leaflet" style="flex:1;min-height:560px;border-radius:10px;overflow:hidden;background:var(--bg3)"></div>
@@ -3270,34 +3269,23 @@ function iniMapaZonaToggleModo(modo){
 }
 
 async function cargarDashboardMapaZona(){
-  // DEBUG TEMPORAL -- diagnosticando por qué el mapa de Inicio sale sin
-  // zonas/tarjetas y con zoom muy alejado -- marca en QUÉ paso se detiene
-  // esta función cada vez que corre. Quitar este bloque completo (y el
-  // <div id="ini-mapa-zona-debug"> del HTML) una vez resuelto.
-  const dbg = document.getElementById('ini-mapa-zona-debug');
-  if(dbg) dbg.textContent = 'DEBUG -- cargarDashboardMapaZona() arrancó';
   const wrap = document.getElementById('ini-mapa-zona-wrap');
-  if(!wrap){ if(dbg) dbg.textContent = 'DEBUG -- no existe #ini-mapa-zona-wrap'; return; }
+  if(!wrap) return;
   INI_MAPA_ZONA_REF = null;
-  if(DEMO){ if(dbg) dbg.textContent = 'DEBUG -- DEMO=true, no carga'; wrap.classList.add('hidden'); return; }
+  if(DEMO){ wrap.classList.add('hidden'); return; }
   try{
     const filas = await _alimAsegurarDatosCargados();
-    if(!filas.length){ if(dbg) dbg.textContent = 'DEBUG -- _alimAsegurarDatosCargados() devolvió 0 filas'; wrap.classList.add('hidden'); return; }
-    if(dbg) dbg.textContent = `DEBUG -- ${filas.length} filas OK, pidiendo topojson…`;
+    if(!filas.length){ wrap.classList.add('hidden'); return; }
     const topo = await mapaZonasCargarTopo();
-    if(dbg) dbg.textContent = 'DEBUG -- topojson OK, pidiendo /api/mapa-zonas…';
     const resp = await apiGet('/api/mapa-zonas');
-    if(!resp.departamento){ if(dbg) dbg.textContent = `DEBUG -- /api/mapa-zonas respondió sin departamento: ${JSON.stringify(resp)}`; wrap.classList.add('hidden'); return; }
+    if(!resp.departamento){ wrap.classList.add('hidden'); return; }
     const features = mapaZonasFeaturesDeDepto(topo, resp.departamento);
-    if(dbg) dbg.textContent = `DEBUG -- depto:"${resp.departamento}" · municipios asignados:${Object.keys(resp.municipios||{}).length} · features filtradas:${features.length}`;
     const render = mapaZonasRenderLeaflet('ini-mapa-zona-leaflet', features, id => resp.municipios[id], null, INI_MAPA_ZONA_OPACIDAD);
-    if(!render){ wrap.classList.add('hidden'); if(dbg) dbg.textContent += ' · render:NULL (mapaZonasRenderLeaflet devolvió null)'; return; }
+    if(!render){ wrap.classList.add('hidden'); return; }
     wrap.classList.remove('hidden');
     INI_MAPA_ZONA_REF = {resp, features, mapa: render.mapa, capa: render.capa, zonaDeMunicipio: render.zonaDeMunicipio};
     iniRenderMarcadoresMapaZona();
-    if(dbg) dbg.textContent += ` · bounds:${JSON.stringify(render.capa.getBounds())}`;
   }catch(e){
-    if(dbg) dbg.textContent = `DEBUG -- excepción: ${e && e.message}`;
     wrap.classList.add('hidden');
   }
 }
@@ -3860,6 +3848,7 @@ function mapaZonasDibujarFlecha(mapa, box, tip){
 // quedaba en blanco, sin ningún error visible porque nadie mostraba la
 // excepción). Este registro permite limpiar bien antes de redibujar.
 const MAPA_ZONAS_INSTANCIAS = {};
+const MAPA_ZONAS_RESIZE_OBS = {};  // ResizeObserver por contId -- ver mapaZonasRenderLeaflet
 
 // Dibuja `features` (municipios ya decodificados de topojson) en el
 // contenedor `contId`, coloreados según zonaDeMunicipio(id) con
@@ -3876,6 +3865,7 @@ function mapaZonasRenderLeaflet(contId, features, zonaDeMunicipio, onClickMunici
     try{ MAPA_ZONAS_INSTANCIAS[contId].remove(); }catch(e){ /* instancia ya corrupta -- igual seguimos, ver abajo */ }
     delete MAPA_ZONAS_INSTANCIAS[contId];
   }
+  if(MAPA_ZONAS_RESIZE_OBS[contId]){ MAPA_ZONAS_RESIZE_OBS[contId].disconnect(); delete MAPA_ZONAS_RESIZE_OBS[contId]; }
   cont.innerHTML = '';
   // .remove() debería borrar esta marca interna de Leaflet, pero si venía
   // corrupta (remove() tiró arriba) puede quedar pegada -- sin esto, el
@@ -3906,25 +3896,28 @@ function mapaZonasRenderLeaflet(contId, features, zonaDeMunicipio, onClickMunici
       }
     },
   }).addTo(mapa);
-  // El contenedor puede estar recién destapado (display:none -> visible)
-  // -- si fitBounds() corre ANTES de que Leaflet vuelva a medir el
-  // contenedor (invalidateSize), lo hace con un tamaño viejo/0x0 y el
-  // zoom queda clavado rarísimo (muy metido o muy alejado, sin mostrar
-  // bien el croquis) -- invalidateSize primero, fitBounds recién después,
-  // los dos adentro del mismo setTimeout para que ya corran con el
-  // tamaño real ya asentado.
-  setTimeout(() => {
-    // Si en estos 80ms el mismo contId se volvió a renderizar (ej. el
-    // usuario cambió rápido de mes/vista), MAPA_ZONAS_INSTANCIAS[contId]
-    // ya apunta a OTRA instancia y esta ("mapa") ya fue destruida con
-    // .remove() -- llamar invalidateSize/fitBounds sobre una instancia ya
-    // removida revienta con "Cannot read properties of undefined
-    // (reading 'parentNode')" adentro de Leaflet. Si ya no es la vigente,
-    // no hay nada que hacer acá, el render nuevo se encarga de lo suyo.
-    if(MAPA_ZONAS_INSTANCIAS[contId] !== mapa) return;
+  // El contenedor puede estar recién destapado (display:none -> visible) o
+  // dentro de una fila flex "align-items:stretch" cuyo alto final depende
+  // de sus hermanos -- un setTimeout con un número fijo de ms era una
+  // apuesta (a veces el layout tarda más en asentarse que esa espera, y
+  // fitBounds() terminaba midiendo un contenedor todavía chico/0x0, dando
+  // un zoom clavado rarísimo). ResizeObserver es la forma correcta: reacciona
+  // a la PRIMERA vez que el contenedor tiene un tamaño real ya asentado,
+  // sin importar cuánto tarde, y sigue llamando invalidateSize() en
+  // cualquier resize posterior (ventana, sidebar, etc.) sin volver a
+  // fitBounds (para no pisarle el zoom/pan manual al usuario).
+  let yaAjustado = false;
+  const ro = new ResizeObserver(() => {
+    if(MAPA_ZONAS_INSTANCIAS[contId] !== mapa) { ro.disconnect(); return; }
+    if(!cont.offsetWidth || !cont.offsetHeight) return;
     mapa.invalidateSize();
-    mapa.fitBounds(capa.getBounds(), {padding:[10,10]});
-  }, 80);
+    if(!yaAjustado){
+      yaAjustado = true;
+      mapa.fitBounds(capa.getBounds(), {padding:[10,10]});
+    }
+  });
+  ro.observe(cont);
+  MAPA_ZONAS_RESIZE_OBS[contId] = ro;
   return {mapa, capa, estiloDe, zonaDeMunicipio};
 }
 
