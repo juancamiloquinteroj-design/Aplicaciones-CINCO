@@ -1040,7 +1040,7 @@ tfoot td:first-child{text-align:left}
       <span id="pz-guardado-st" style="font-size:11px;font-weight:700;color:#06d6a0;min-width:70px"></span>
       <span style="font-size:11px;color:var(--text3);margin-left:auto;max-width:260px">Click en un municipio para asignarle la zona activa (se guarda solo) -- click de nuevo para quitársela.</span>
     </div>
-    <div id="pz-mapa-leaflet" style="height:560px;width:100%;border-radius:10px;overflow:hidden;background:var(--bg3)"></div>
+    <div id="pz-mapa-leaflet" style="height:560px;max-width:760px;margin:0 auto;border-radius:10px;overflow:hidden;background:var(--bg3)"></div>
   </div>
 
   <div class="card">
@@ -1962,7 +1962,7 @@ tfoot td:first-child{text-align:left}
         <button type="button" class="be-modo-btn activo" id="alim-n21-btn-mapa-mensual" style="margin-left:12px" onclick="alimN21ToggleMapaModo('mensual')">Mensual</button>
         <button type="button" class="be-modo-btn" id="alim-n21-btn-mapa-anual" onclick="alimN21ToggleMapaModo('anual')">Anual (12M)</button>
       </div>
-      <div id="alim-n21-mapa-leaflet" style="height:560px;width:100%;border-radius:10px;overflow:hidden;background:var(--bg3)"></div>
+      <div id="alim-n21-mapa-leaflet" style="height:560px;max-width:760px;margin:0 auto;border-radius:10px;overflow:hidden;background:var(--bg3)"></div>
     </div>
 
   </div>
@@ -8477,6 +8477,13 @@ function alimN21ToggleMapaModo(modo){
 // departamento, y (b) tienen datos reales en Alimentadores con ese mismo
 // código de zona (si el usuario tipeó una zona que no existe en los
 // circuitos, no hay con qué llenar la tarjeta y se omite en silencio).
+// Las tarjetas NO van encima del territorio (se superponían cuando 2+
+// zonas quedan cerca, ej. varias zonas chicas juntas) -- van repartidas en
+// círculo alrededor del mapa, cada una unida a SU zona con una línea +
+// flecha (mismo recurso visual que el mapa hardcodeado de Huila en
+// Pérdidas Técnicas, pero la posición se calcula sola por ángulo real
+// desde el centro del departamento -- funciona para cualquier geografía,
+// no hay coordenadas fijas por zona).
 function alimN21RenderMarcadoresZona(){
   if(!ALIM_N21_MAPA_REF || !ALIM_N21_MAPA_REF.mapa) return;
   const {resp, features, mapa} = ALIM_N21_MAPA_REF;
@@ -8490,7 +8497,7 @@ function alimN21RenderMarcadoresZona(){
     (porZona[zona] = porZona[zona] || []).push(f);
   });
 
-  const fmt = v => v==null ? '--' : Math.round(v).toLocaleString('es-CO');
+  const centros = {}, datosPorZona = {};
   Object.keys(porZona).forEach(zona => {
     const serieMensual = alimN21AgregarMensual(new Set([zona])).filter(f => f.pct != null);
     if(!serieMensual.length) return;
@@ -8504,8 +8511,53 @@ function alimN21RenderMarcadoresZona(){
       const u = serieMensual[serieMensual.length-1];
       datos = {entrada:u.entrada, salida:u.salida, perdida:u.perdida, pct:u.pct};
     }
+    centros[zona] = L.geoJSON(porZona[zona]).getBounds().getCenter();
+    datosPorZona[zona] = datos;
+  });
+  const zonasConDatos = Object.keys(datosPorZona);
+  if(!zonasConDatos.length) return;
+
+  // Centro de referencia = el de TODO el departamento (no solo las zonas
+  // con datos), para que las flechas salgan siempre desde el mismo punto
+  // sin importar cuáles zonas terminan mostrando tarjeta.
+  const centroGeneral = L.geoJSON(features).getBounds().getCenter();
+  const bounds = mapa.getBounds();
+  const radioLat = (bounds.getNorth()-bounds.getSouth())/2 * 1.25;
+  const radioLng = (bounds.getEast()-bounds.getWest())/2 * 1.25;
+
+  // Ordenadas por su ángulo REAL respecto al centro (arriba=0, horario) --
+  // después se reparten parejas en el círculo en ESE mismo orden, así
+  // ninguna caja se superpone y las líneas no se cruzan entre sí.
+  const conAngulo = zonasConDatos.map(z => {
+    const c = centros[z];
+    return {z, ang: Math.atan2(c.lng-centroGeneral.lng, c.lat-centroGeneral.lat)};
+  }).sort((a,b) => a.ang-b.ang);
+
+  const n = conAngulo.length;
+  const fmt = v => v==null ? '--' : Math.round(v).toLocaleString('es-CO');
+
+  conAngulo.forEach((item, i) => {
+    const zona = item.z;
+    const datos = datosPorZona[zona];
     const color = colorParaZona(zona);
-    const centro = L.geoJSON(porZona[zona]).getBounds().getCenter();
+    const tip = centros[zona];
+    const ang = (i/n) * 2*Math.PI;
+    const box = L.latLng(centroGeneral.lat + Math.cos(ang)*radioLat, centroGeneral.lng + Math.sin(ang)*radioLng);
+
+    const line = L.polyline([box, tip], {color:'#2c3e50', weight:2, opacity:0.85, interactive:false});
+    line.addTo(mapa); ALIM_N21_MAPA_MARCADORES.push(line);
+
+    // Flechita en la punta (mismo cálculo que renderMapaZonas/Huila): dos
+    // "alas" giradas ±th respecto a la dirección de la línea, del lado del tip.
+    const dLat=tip.lat-box.lat, dLng=tip.lng-box.lng, len=Math.hypot(dLat,dLng)||1;
+    const rl=-dLat/len, rg=-dLng/len, a=len*0.15, th=0.45;
+    const rot=(la,lo,angRot)=>[la*Math.cos(angRot)-lo*Math.sin(angRot), la*Math.sin(angRot)+lo*Math.cos(angRot)];
+    const b1=rot(rl,rg,th), b2=rot(rl,rg,-th);
+    const arrow = L.polyline([
+      [tip.lat+a*b1[0], tip.lng+a*b1[1]], [tip.lat, tip.lng], [tip.lat+a*b2[0], tip.lng+a*b2[1]],
+    ], {color:'#2c3e50', weight:2, opacity:0.9, interactive:false});
+    arrow.addTo(mapa); ALIM_N21_MAPA_MARCADORES.push(arrow);
+
     const html = `<div class="zcard" style="border-top:4px solid ${color}">
       <div class="zc-h">Zona ${zona}</div>
       <div class="zc-pct" style="color:${color}">${datos.pct.toFixed(2)}%</div>
@@ -8515,8 +8567,8 @@ function alimN21RenderMarcadoresZona(){
         <div><span>Pérdida</span><b style="color:${color}">${fmt(datos.perdida)}</b></div>
       </div>
     </div>`;
-    const marker = L.marker(centro, {
-      icon: L.divIcon({className:'', iconSize:[152,0], iconAnchor:[76,20], html}),
+    const marker = L.marker(box, {
+      icon: L.divIcon({className:'', iconSize:[152,0], iconAnchor:[76,42], html}),
       interactive:false, zIndexOffset:4000,
     });
     marker.addTo(mapa);
