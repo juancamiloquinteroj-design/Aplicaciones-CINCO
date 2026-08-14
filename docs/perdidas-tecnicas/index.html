@@ -3859,10 +3859,15 @@ function mapaZonasRenderLeaflet(contId, features, zonaDeMunicipio, onClickMunici
   if(!cont || typeof L === 'undefined' || !features.length) return null;
   if(opacidad == null) opacidad = 0.7;
   if(MAPA_ZONAS_INSTANCIAS[contId]){
-    MAPA_ZONAS_INSTANCIAS[contId].remove();
+    try{ MAPA_ZONAS_INSTANCIAS[contId].remove(); }catch(e){ /* instancia ya corrupta -- igual seguimos, ver abajo */ }
     delete MAPA_ZONAS_INSTANCIAS[contId];
   }
   cont.innerHTML = '';
+  // .remove() debería borrar esta marca interna de Leaflet, pero si venía
+  // corrupta (remove() tiró arriba) puede quedar pegada -- sin esto, el
+  // próximo L.map() de esta misma línea revienta con "Map container is
+  // being reused by another instance" aunque el contenedor esté vacío.
+  delete cont._leaflet_id;
   const mapa = L.map(contId, {zoomControl:true, attributionControl:false});
   MAPA_ZONAS_INSTANCIAS[contId] = mapa;
   const capasBase = mapaZonasCapasBase();
@@ -9340,6 +9345,7 @@ let ALIM_N21_MAPA_MARCADORES = [];  // tarjetas flotantes activas -- se destruye
 let ALIM_N21_MAPA_OPACIDAD = 0.7;
 let ALIM_N21_MAPA_MES = null;       // mes elegido (modo Mensual + gráfica Entrada/Salida) -- arranca en el último real
 let chAlimN21BarrasZonas = null;
+let ALIM_N21_MAPA_GEN = 0;  // ver alimN21CargarMapa
 
 function alimN21CambiarOpacidad(v){
   ALIM_N21_MAPA_OPACIDAD = Number(v);
@@ -9367,23 +9373,41 @@ function alimN21CambiarMesMapa(clave){
 async function alimN21CargarMapa(){
   const cont = document.getElementById('alim-n21-mapa-leaflet');
   if(!cont) return;
-  cont.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text3);font-size:12px">Cargando…</div>';
-  ALIM_N21_MAPA_REF = null;
+  // Si esta función se dispara dos veces seguidas (doble click en el
+  // módulo, o togglear rápido antes de que termine la primera carga), la
+  // segunda pisaba con este innerHTML el DOM del mapa que la primera ya
+  // había armado, SIN pasar por mapaZonasRenderLeaflet -- eso le arranca
+  // los panes a Leaflet por debajo sin llamar remove(), y el contenedor
+  // queda marcado como "ya inicializado" -- el siguiente L.map() revienta
+  // con "Map container is being reused by another instance". Si ya hay un
+  // mapa vivo acá, no lo pisamos con el cartel de "Cargando…"; y el
+  // contador de generación de abajo hace que cualquier llamada vieja que
+  // siga en vuelo se aborte sola apenas una más nueva arranca, sin tocar
+  // el DOM ni el estado (ALIM_N21_MAPA_REF).
+  const miGen = ++ALIM_N21_MAPA_GEN;
+  if(!MAPA_ZONAS_INSTANCIAS['alim-n21-mapa-leaflet']){
+    cont.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text3);font-size:12px">Cargando…</div>';
+  }
   try{
     const topo = await mapaZonasCargarTopo();
     const resp = DEMO ? {departamento:null, municipios:{}, posiciones:{}} : await apiGet('/api/mapa-zonas');
+    if(miGen !== ALIM_N21_MAPA_GEN) return;
     if(!resp.departamento){
       cont.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text3);font-size:12px;text-align:center;padding:20px">Todavía no se parametrizó el departamento ni las zonas -- hacelo en Parametrización → Mapa de zonas por municipio.</div>';
+      ALIM_N21_MAPA_REF = null;
       return;
     }
     const features = mapaZonasFeaturesDeDepto(topo, resp.departamento);
+    if(miGen !== ALIM_N21_MAPA_GEN) return;
     const render = mapaZonasRenderLeaflet('alim-n21-mapa-leaflet', features, id => resp.municipios[id], null, ALIM_N21_MAPA_OPACIDAD);
-    if(!render) return;
+    if(!render || miGen !== ALIM_N21_MAPA_GEN) return;
     ALIM_N21_MAPA_REF = {resp, features, mapa: render.mapa, capa: render.capa, zonaDeMunicipio: render.zonaDeMunicipio};
     alimN21PoblarSelectorMesMapa();
     alimN21RenderMarcadoresZona();
     alimN21RenderBarrasZonas();
   }catch(e){
+    if(miGen !== ALIM_N21_MAPA_GEN) return;
+    ALIM_N21_MAPA_REF = null;
     cont.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#ef476f;font-size:12px">${e.message || 'No se pudo cargar el croquis.'}</div>`;
   }
 }
