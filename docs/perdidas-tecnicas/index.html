@@ -1861,7 +1861,7 @@ tfoot td:first-child{text-align:left}
     <div class="sec-sub">Pérdidas de energía a Nivel de Tensión 2-1 (Entrada Total - Salida Total), por circuito/alimentador.</div>
   </div>
 
-  <div id="alim-n21-vacio" class="card hidden"><div style="color:var(--text3)">Sin datos cargados todavía.</div></div>
+  <div id="alim-n21-vacio" class="card"><div style="color:var(--text3)">Cargando…</div></div>
 
   <div id="alim-n21-contenido" class="hidden">
 
@@ -7950,7 +7950,12 @@ function ipComercialDescargarCsv(){
 let ALIM_FILAS = null;
 async function _alimAsegurarDatosCargados(){
   if(ALIM_FILAS) return ALIM_FILAS;
-  ALIM_FILAS = DEMO ? [] : (await apiGet('/api/alimentadores')).filas;
+  // Sin filtro de fecha -- trae TODO el histórico (14k+ filas en electrohuila)
+  // para que la ventana de 12 meses móvil de N2-1 sea correcta desde el
+  // primer punto visible. Con el timeout genérico de 2.5s (FETCH_TIMEOUT_MS)
+  // se abortaba a mitad de camino ("signal is aborted without reason") --
+  // usa el mismo timeout largo que login/export (AUTH_TIMEOUT_MS).
+  ALIM_FILAS = DEMO ? [] : (await apiGet('/api/alimentadores', AUTH_TIMEOUT_MS)).filas;
   return ALIM_FILAS;
 }
 
@@ -8048,6 +8053,7 @@ async function alimN21Cargar(){
     if(!filas.length){
       vacio.classList.remove('hidden');
       contenido.classList.add('hidden');
+      vacio.querySelector('div').textContent = 'Sin datos cargados todavía.';
       return;
     }
   }catch(e){
