@@ -1037,7 +1037,8 @@ tfoot td:first-child{text-align:left}
         style="width:150px;padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg)"
         onkeydown="if(event.key==='Enter'){ event.preventDefault(); pzUsarZonaEscrita(); }">
       <button type="button" class="btn-theme" style="width:auto;padding:0 12px" onclick="pzUsarZonaEscrita()">Usar</button>
-      <span style="font-size:11px;color:var(--text3);margin-left:auto;max-width:260px">Click en un municipio para asignarle la zona activa -- click de nuevo para quitársela.</span>
+      <span id="pz-guardado-st" style="font-size:11px;font-weight:700;color:#06d6a0;min-width:70px"></span>
+      <span style="font-size:11px;color:var(--text3);margin-left:auto;max-width:260px">Click en un municipio para asignarle la zona activa (se guarda solo) -- click de nuevo para quitársela.</span>
     </div>
     <div id="pz-mapa-leaflet" style="height:560px;width:100%;border-radius:10px;overflow:hidden;background:var(--bg3)"></div>
   </div>
@@ -1960,6 +1961,7 @@ tfoot td:first-child{text-align:left}
         <div style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Croquis por Zona</div>
       </div>
       <div id="alim-n21-mapa-leaflet" style="height:520px;width:100%;border-radius:10px;overflow:hidden;background:var(--bg3)"></div>
+      <div class="be-resumen-cards" id="alim-n21-resumen-zonas" style="margin-top:16px"></div>
     </div>
 
   </div>
@@ -3393,15 +3395,22 @@ async function mapaZonasCargarTopo(){
   return MAPA_ZONAS_TOPO;
 }
 
+// Municipio: id único = código DIVIPOLA (MPIO_CCNCT, 5 dígitos) y nombre
+// (MPIO_CNMBR) -- centralizado acá para no repetir los nombres de campo
+// del geojson fuente (DANE MGN 2018 vía caticoa3/colombia_mapa) en cada
+// lugar que toca un municipio.
+function mapaZonasIdMunicipio(f){ return f.properties.MPIO_CCNCT; }
+function mapaZonasNombreMunicipio(f){ return f.properties.MPIO_CNMBR; }
+
 function mapaZonasListaDeptos(topo){
   const nombres = new Set();
-  topo.objects.depts.geometries.forEach(g => { if(g.properties && g.properties.dpt) nombres.add(g.properties.dpt); });
+  topo.objects.MGN_DPTO_POLITICO.geometries.forEach(g => { if(g.properties && g.properties.DPTO_CNMBR) nombres.add(g.properties.DPTO_CNMBR); });
   return [...nombres].sort();
 }
 
 function mapaZonasFeaturesDeDepto(topo, depto){
-  const geo = topojson.feature(topo, topo.objects.mpios);
-  return geo.features.filter(f => f.properties.dpt === depto);
+  const geo = topojson.feature(topo, topo.objects.MGN_MPIO_POLITICO);
+  return geo.features.filter(f => f.properties.DPTO_CNMBR === depto);
 }
 
 function mapaZonasTiles(){
@@ -3426,15 +3435,16 @@ function mapaZonasRenderLeaflet(contId, features, zonaDeMunicipio, onClickMunici
   const mapa = L.map(contId, {zoomControl:true, attributionControl:false});
   mapaZonasTiles().addTo(mapa);
   const estiloDe = f => {
-    const zona = zonaDeMunicipio(f.id);
+    const zona = zonaDeMunicipio(mapaZonasIdMunicipio(f));
     const color = zona ? colorParaZona(zona) : mapaZonasColorVacio();
     return {color:'#ffffff', weight:1, opacity:0.85, fillColor:color, fillOpacity: zona?0.75:0.35};
   };
   const capa = L.geoJSON(features, {
     style: estiloDe,
     onEachFeature: (f, layer) => {
-      const zona = zonaDeMunicipio(f.id);
-      const nombre = f.properties.name.charAt(0)+f.properties.name.slice(1).toLowerCase();
+      const zona = zonaDeMunicipio(mapaZonasIdMunicipio(f));
+      const nombreCrudo = mapaZonasNombreMunicipio(f);
+      const nombre = nombreCrudo.charAt(0)+nombreCrudo.slice(1).toLowerCase();
       layer.bindTooltip(`<b>${nombre}</b>${zona?' -- Zona '+zona:''}`, {sticky:true, direction:'top'});
       if(onClickMunicipio){
         layer.on('mouseover', ()=>layer.setStyle({weight:2.4}));
@@ -3453,14 +3463,29 @@ function mapaZonasRenderLeaflet(contId, features, zonaDeMunicipio, onClickMunici
 /* ---- Parametrización: mapa interactivo (click = asigna la zona activa) ---- */
 let PZ_DEPARTAMENTO = null;
 let PZ_MUNICIPIOS_ZONA = {};
-let PZ_ZONAS_DISPONIBLES = [];
+let PZ_ZONAS_REALES = [];      // vienen de Color por zona/Circuito.zona -- no se borran acá
+let PZ_ZONAS_EXTRA = [];       // escritas a mano solo para este mapa -- sí se pueden borrar
 let PZ_ZONA_ACTIVA = null;
+
+function pzZonasDisponibles(){ return [...PZ_ZONAS_REALES, ...PZ_ZONAS_EXTRA]; }
+
+// Confirmación visual de guardado -- todo en este mapa se guarda solo,
+// al toque (click en municipio / cambio de departamento), sin botón
+// "Guardar" -- mismo criterio que el resto de Parametrización (color por
+// zona, días de atraso). Este ✓ es solo para que se note que ya quedó.
+function pzMostrarGuardado(){
+  const st = document.getElementById('pz-guardado-st');
+  if(!st) return;
+  st.textContent = '✓ Guardado';
+  clearTimeout(pzMostrarGuardado._t);
+  pzMostrarGuardado._t = setTimeout(()=>{ if(st.textContent==='✓ Guardado') st.textContent=''; }, 2000);
+}
 
 async function pzCargarMapa(datosZonas){
   const selDepto = document.getElementById('pz-departamento');
   const contMapa = document.getElementById('pz-mapa-leaflet');
-  PZ_ZONAS_DISPONIBLES = (datosZonas || []).map(d => d.zona);
-  if(!PZ_ZONA_ACTIVA || !PZ_ZONAS_DISPONIBLES.includes(PZ_ZONA_ACTIVA)) PZ_ZONA_ACTIVA = PZ_ZONAS_DISPONIBLES[0] || null;
+  PZ_ZONAS_REALES = (datosZonas || []).map(d => d.zona);
+  if(!PZ_ZONA_ACTIVA || !pzZonasDisponibles().includes(PZ_ZONA_ACTIVA)) PZ_ZONA_ACTIVA = pzZonasDisponibles()[0] || null;
   pzRenderZonasActivas();
 
   try{
@@ -3470,6 +3495,14 @@ async function pzCargarMapa(datosZonas){
     try{ resp = DEMO ? resp : await apiGet('/api/mapa-zonas'); }catch(e){ /* arranca vacío */ }
     PZ_DEPARTAMENTO = resp.departamento;
     PZ_MUNICIPIOS_ZONA = resp.municipios || {};
+    // Zonas que ya estaban guardadas en municipios pero no están ni en
+    // Color por zona ni escritas todavía -- se recuperan como "extra" para
+    // que sigan siendo editables/visibles (ej. se escribieron en otra sesión).
+    Object.values(PZ_MUNICIPIOS_ZONA).forEach(z => {
+      if(!PZ_ZONAS_REALES.includes(z) && !PZ_ZONAS_EXTRA.includes(z)) PZ_ZONAS_EXTRA.push(z);
+    });
+    if(!PZ_ZONA_ACTIVA) PZ_ZONA_ACTIVA = pzZonasDisponibles()[0] || null;
+    pzRenderZonasActivas();
 
     selDepto.innerHTML = '<option value="">-- Elegir --</option>' +
       deptos.map(d => `<option value="${d}"${d===PZ_DEPARTAMENTO?' selected':''}>${d.charAt(0)+d.slice(1).toLowerCase()}</option>`).join('');
@@ -3484,18 +3517,20 @@ async function pzCargarMapa(datosZonas){
 function pzRenderZonasActivas(){
   const cont = document.getElementById('pz-zonas-activas');
   if(!cont) return;
-  if(!PZ_ZONAS_DISPONIBLES.length){
+  if(!pzZonasDisponibles().length){
     cont.innerHTML = '<span style="font-size:11px;color:var(--text3)">Todavía no hay ninguna -- escribí una zona a la derecha.</span>';
     return;
   }
-  cont.innerHTML = PZ_ZONAS_DISPONIBLES.map(z => {
+  const chip = (z, borrable) => {
     const color = colorParaZona(z);
     const activa = z === PZ_ZONA_ACTIVA;
     const estilo = activa
       ? `background:${color};border-color:${color};color:#fff`
       : `border-color:${color};color:${color};background:transparent`;
-    return `<button type="button" class="be-modo-btn" style="${estilo}" onclick="pzElegirZonaActiva('${z}')">${z}</button>`;
-  }).join('');
+    const equis = borrable ? `<span onclick="event.stopPropagation();pzBorrarZonaExtra('${z}')" title="Quitar esta zona" style="margin-left:5px;font-weight:800">✕</span>` : '';
+    return `<button type="button" class="be-modo-btn" style="${estilo};display:inline-flex;align-items:center" onclick="pzElegirZonaActiva('${z}')">${z}${equis}</button>`;
+  };
+  cont.innerHTML = PZ_ZONAS_REALES.map(z => chip(z, false)).join('') + PZ_ZONAS_EXTRA.map(z => chip(z, true)).join('');
 }
 
 function pzElegirZonaActiva(z){
@@ -3511,9 +3546,20 @@ function pzUsarZonaEscrita(){
   const input = document.getElementById('pz-zona-nueva');
   const zona = (input.value || '').trim().toUpperCase();
   if(!zona) return;
-  if(!PZ_ZONAS_DISPONIBLES.includes(zona)) PZ_ZONAS_DISPONIBLES.push(zona);
+  if(!PZ_ZONAS_REALES.includes(zona) && !PZ_ZONAS_EXTRA.includes(zona)) PZ_ZONAS_EXTRA.push(zona);
   PZ_ZONA_ACTIVA = zona;
   input.value = '';
+  pzRenderZonasActivas();
+}
+
+// Solo se pueden borrar las escritas a mano (PZ_ZONAS_EXTRA) -- las
+// "reales" vienen de Color por zona y esa es la única forma de tocarlas.
+// No borra las asignaciones de municipio ya guardadas con esa zona (se
+// pueden seguir viendo/reasignando en el mapa); solo la saca de la lista
+// de chips para no ensuciarla con zonas que ya no se van a usar más.
+function pzBorrarZonaExtra(z){
+  PZ_ZONAS_EXTRA = PZ_ZONAS_EXTRA.filter(x => x !== z);
+  if(PZ_ZONA_ACTIVA === z) PZ_ZONA_ACTIVA = pzZonasDisponibles()[0] || null;
   pzRenderZonasActivas();
 }
 
@@ -3523,6 +3569,7 @@ async function pzCambiarDepartamento(depto){
   try{
     if(!DEMO) await apiPost('/api/mapa-zonas/departamento', {departamento: depto});
     PZ_DEPARTAMENTO = depto;
+    pzMostrarGuardado();
     const topo = await mapaZonasCargarTopo();
     pzRenderMapaDepto(topo, depto);
   }catch(e){
@@ -3540,15 +3587,17 @@ function pzRenderMapaDepto(topo, depto){
 async function pzClickMunicipio(f, layer){
   if(!requiereEditor()) return;
   if(!PZ_ZONA_ACTIVA){ alert('Elegí primero una zona activa (arriba a la derecha).'); return; }
-  const id = f.id;
+  const id = mapaZonasIdMunicipio(f);
   const actual = PZ_MUNICIPIOS_ZONA[id];
   const nuevaZona = actual === PZ_ZONA_ACTIVA ? null : PZ_ZONA_ACTIVA;
   try{
     if(!DEMO) await apiPost('/api/mapa-zonas/municipio', {municipio_id: id, zona: nuevaZona});
+    pzMostrarGuardado();
     if(nuevaZona) PZ_MUNICIPIOS_ZONA[id] = nuevaZona; else delete PZ_MUNICIPIOS_ZONA[id];
     const color = nuevaZona ? colorParaZona(nuevaZona) : mapaZonasColorVacio();
     layer.setStyle({fillColor:color, fillOpacity: nuevaZona?0.75:0.35});
-    const nombre = f.properties.name.charAt(0)+f.properties.name.slice(1).toLowerCase();
+    const nombreCrudo = mapaZonasNombreMunicipio(f);
+    const nombre = nombreCrudo.charAt(0)+nombreCrudo.slice(1).toLowerCase();
     layer.unbindTooltip();
     layer.bindTooltip(`<b>${nombre}</b>${nuevaZona?' -- Zona '+nuevaZona:''}`, {sticky:true, direction:'top'});
   }catch(e){
@@ -8384,6 +8433,28 @@ function alimN21RenderTodo(){
   alimN21RenderChartAnual(datos12);
   alimN21RenderChartZonas();
   alimN21RenderResumen(datos12);
+  alimN21RenderResumenZonas();
+}
+
+// Tarjetas de Pérdida % por zona (último mes real) al lado del croquis --
+// mismo dato que "Comparativo Pérdidas por Zona", versión tarjeta en vez
+// de línea. Ignora el filtro de Zona de arriba (siempre las 5), igual que
+// el gráfico comparativo.
+function alimN21RenderResumenZonas(){
+  const cont = document.getElementById('alim-n21-resumen-zonas');
+  if(!cont) return;
+  const tarjetas = ALIM_N21_ZONAS.map(z => {
+    const serie = alimN21AgregarMensual(new Set([z])).filter(f => f.pct != null);
+    if(!serie.length) return '';
+    const ultimo = serie[serie.length-1];
+    const color = colorParaZona(z);
+    return `<div class="be-resumen-tile" style="border-color:${color}">
+      <div class="etiqueta" style="color:${color}">Zona ${z}</div>
+      <div class="valor">${ultimo.pct.toFixed(2)}%</div>
+      <div class="sub">${labelMes(ultimo.clave)}</div>
+    </div>`;
+  }).join('');
+  cont.innerHTML = tarjetas;
 }
 
 function alimN21ToggleVariacion(){
