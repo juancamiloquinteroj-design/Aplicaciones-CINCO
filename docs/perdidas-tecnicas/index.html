@@ -2093,10 +2093,29 @@ tfoot td:first-child{text-align:left}
         <div class="msel" id="msel-alim-sub-subestacion" style="min-width:260px"></div>
         <span style="font-size:11px;color:var(--text3);margin-left:auto;max-width:320px">Elegí una o más subestaciones para ver sus alimentadores -- vacío no muestra nada (son muchos alimentadores para verlos todos juntos).</span>
       </div>
-      <div style="text-align:center;margin-bottom:8px">
-        <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Pérdida % por Alimentador</div>
+      <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">
+        <div style="flex:1;min-width:360px">
+          <div style="text-align:center;margin-bottom:8px">
+            <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Pérdida % por Alimentador</div>
+          </div>
+          <div class="chart-wrap" style="height:420px"><canvas id="ch-alim-sub-alimentadores"></canvas></div>
+        </div>
+        <div style="flex:0 0 500px;max-width:500px">
+          <div class="fbar" style="justify-content:center;margin-bottom:8px">
+            <div style="font-size:13px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Pérdida por Zona</div>
+            <button type="button" class="be-modo-btn activo" id="alim-sub-zona-btn-mensual" style="margin-left:10px" onclick="alimSubToggleModoZona('mensual')">Mensual</button>
+            <button type="button" class="be-modo-btn" id="alim-sub-zona-btn-anual" onclick="alimSubToggleModoZona('anual')">Anual (12M)</button>
+          </div>
+          <div id="alim-sub-zonas-cards" class="inicio-dash-fila" style="margin-bottom:0"></div>
+        </div>
       </div>
-      <div class="chart-wrap" style="height:420px"><canvas id="ch-alim-sub-alimentadores"></canvas></div>
+
+      <div style="margin-top:18px">
+        <div style="text-align:center;margin-bottom:8px">
+          <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Alimentadores -- Cómo se están comportando</div>
+        </div>
+        <div id="alim-sub-alimentador-cards" class="inicio-dash-fila" style="margin-bottom:0"></div>
+      </div>
     </div>
 
   </div>
@@ -3280,7 +3299,7 @@ async function cargarDashboardMapaZona(){
     const resp = await apiGet('/api/mapa-zonas');
     if(!resp.departamento){ wrap.classList.add('hidden'); return; }
     const features = mapaZonasFeaturesDeDepto(topo, resp.departamento);
-    const render = mapaZonasRenderLeaflet('ini-mapa-zona-leaflet', features, id => resp.municipios[id], null, INI_MAPA_ZONA_OPACIDAD);
+    const render = mapaZonasRenderLeaflet('ini-mapa-zona-leaflet', features, id => resp.municipios[id], null, INI_MAPA_ZONA_OPACIDAD, irASubestacionesConZona);
     if(!render){ wrap.classList.add('hidden'); return; }
     wrap.classList.remove('hidden');
     INI_MAPA_ZONA_REF = {resp, features, mapa: render.mapa, capa: render.capa, zonaDeMunicipio: render.zonaDeMunicipio};
@@ -3857,7 +3876,7 @@ const MAPA_ZONAS_RESIZE_OBS = {};  // ResizeObserver por contId -- ver mapaZonas
 // (0-0.9) es la opacidad del relleno -- bajarla (o llevarla a 0, "borrar
 // los colores") deja ver el terreno/vías de la capa base debajo, pedido
 // explícito del usuario.
-function mapaZonasRenderLeaflet(contId, features, zonaDeMunicipio, onClickMunicipio, opacidad){
+function mapaZonasRenderLeaflet(contId, features, zonaDeMunicipio, onClickMunicipio, opacidad, onClickZona){
   const cont = document.getElementById(contId);
   if(!cont || typeof L === 'undefined' || !features.length) return null;
   if(opacidad == null) opacidad = 0.7;
@@ -3906,6 +3925,13 @@ function mapaZonasRenderLeaflet(contId, features, zonaDeMunicipio, onClickMunici
         layer.on('mouseover', ()=>layer.setStyle({weight:2.4}));
         layer.on('mouseout', ()=>layer.setStyle({weight:1}));
         layer.on('click', () => onClickMunicipio(f, layer));
+      }else if(onClickZona && zona){
+        // Croquis de solo lectura (N2-1/Inicio) -- click en un municipio
+        // CON zona asignada salta directo a Subestaciones ya filtrado por
+        // esa zona (pedido explícito del usuario).
+        layer.on('mouseover', ()=>layer.setStyle({weight:2.4}));
+        layer.on('mouseout', ()=>layer.setStyle({weight:1}));
+        layer.on('click', () => onClickZona(zona));
       }
     },
   }).addTo(mapa);
@@ -8999,8 +9025,25 @@ async function cargarAlimentadoresModulo(nombreVista){
 let ALIM_SUB_ZONAS = [];
 let ALIM_SUB_ZONAS_SEL = new Set();
 let ALIM_SUB_METRICA = 'perdida';  // 'entrada' | 'salida' | 'perdida'
+let ALIM_SUB_ZONA_PANEL_MODO = 'mensual';  // 'mensual' | 'anual' -- panel "Pérdida por Zona"
 let chAlimSubSubestaciones = null;
 let chAlimSubAlimentadores = null;
+
+// Click en una zona del croquis (N2-1 o Inicio, solo lectura) -- salta a
+// Subestaciones con esa zona ya filtrada (pedido explícito del usuario:
+// "cuando yo de click en el mapa en alguna zona específico me debe llevar
+// al módulo de subestaciones y ya con los filtros activos de la zona").
+async function irASubestacionesConZona(zona){
+  ALIM_SUB_ZONAS_SEL = new Set([zona]);
+  await mostrarVista('alim-subestaciones');
+  // Si el módulo ya se había cargado antes en esta sesión, mostrarVista()
+  // no lo vuelve a pedir (se carga una sola vez) -- hay que refrescar acá
+  // para que la zona nueva se refleje.
+  if(vistaCargada.alimSubestaciones){
+    alimSubRenderZonasChips();
+    alimSubRenderTodo();
+  }
+}
 
 function alimSubClave(anio, mes){ return alimN21Clave(anio, mes); }
 
@@ -9107,14 +9150,24 @@ async function alimSubCargar(){
   }
 
   const subestaciones = [...new Set(ALIM_FILAS.map(f => f.subestacion).filter(Boolean))].sort();
-  mselInit('msel-alim-sub-subestacion', 'Subestación', 'Ninguna', subestaciones.map(s => ({value:s, label:s})), alimSubRenderChartAlimentadores, []);
+  mselInit('msel-alim-sub-subestacion', 'Subestación', 'Ninguna', subestaciones.map(s => ({value:s, label:s})), alimSubRenderAlimentadoresYCards, []);
 
   alimSubRenderTodo();
+}
+
+// El multiselect de Subestación maneja el gráfico "Pérdida % por
+// Alimentador" Y las tarjetas de comportamiento de abajo -- van siempre
+// juntos (mismas subestaciones elegidas).
+function alimSubRenderAlimentadoresYCards(){
+  alimSubRenderChartAlimentadores();
+  alimSubRenderAlimentadorCards();
 }
 
 function alimSubRenderTodo(){
   alimSubRenderChartSubestaciones();
   alimSubRenderChartAlimentadores();
+  alimSubRenderZonaPanel();
+  alimSubRenderAlimentadorCards();
 }
 
 // Gráfico 1 -- una línea por Subestación, con la métrica elegida
@@ -9219,6 +9272,122 @@ function alimSubRenderChartAlimentadores(){
           title:{display:true, text:'Pérdida (%)', color:tickC, font:{size:11}}},
       },
     },
+  });
+}
+
+function alimSubToggleModoZona(modo){
+  ALIM_SUB_ZONA_PANEL_MODO = modo;
+  document.getElementById('alim-sub-zona-btn-mensual').classList.toggle('activo', modo==='mensual');
+  document.getElementById('alim-sub-zona-btn-anual').classList.toggle('activo', modo==='anual');
+  alimSubRenderZonaPanel();
+}
+
+// Panel de referencia rápida "Pérdida por Zona" al lado de "Pérdida % por
+// Alimentador" -- reusa el mismo indicador N2-1 de Inicio (_iniCalcularPanelesN21),
+// SIEMPRE sobre todas las zonas del operador (no depende de los chips de
+// Zona de arriba, es solo referencia) -- a diferencia de las tarjetas de
+// Inicio, acá el botón Mensual/Anual CAMBIA qué valor se ve (uno a la vez,
+// no los dos juntos), pedido explícito del usuario.
+function alimSubRenderZonaPanel(){
+  const cont = document.getElementById('alim-sub-zonas-cards');
+  if(!cont) return;
+  if(!ALIM_SUB_ZONAS.length){ cont.innerHTML = ''; return; }
+  const esAnual = ALIM_SUB_ZONA_PANEL_MODO === 'anual';
+  const fmtPct = v => v==null ? 'Sin datos' : `${v.toFixed(2)}%`;
+  cont.innerHTML = ALIM_SUB_ZONAS.map(zona => {
+    const color = colorParaZona(zona);
+    const p = _iniCalcularPanelesN21(new Set([zona]));
+    if(!p){
+      return `<div class="card inicio-dash-card" style="border-left:4px solid ${color}">
+        <div class="card-title">📍 ${zona}</div>
+        <div style="font-size:11px;color:var(--text3)">Sin datos suficientes</div>
+      </div>`;
+    }
+    const valorAct = esAnual ? p.anualAct : p.mensualAct;
+    const kwhTexto = esAnual && p.anualActKwh!=null ? `${p.anualActKwh.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh` : '';
+    return `<div class="card inicio-dash-card" style="border-left:4px solid ${color}">
+      <div class="card-title">📍 ${zona} · ${esAnual?'Anual (12M)':'Mensual'}</div>
+      <div style="font-size:10px;color:var(--text3);margin-bottom:2px">${p.mesActNombre}</div>
+      <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">
+        <div style="font-size:20px;font-weight:800;color:${color}">${fmtPct(valorAct)}</div>
+        <span id="alim-sub-z-${zona}-var" class="inicio-variacion"></span>
+      </div>
+      <div style="font-size:10px;color:var(--text3)">${kwhTexto}</div>
+    </div>`;
+  }).join('');
+  ALIM_SUB_ZONAS.forEach(zona => {
+    const p = _iniCalcularPanelesN21(new Set([zona]));
+    if(!p) return;
+    const valorAnt = esAnual ? p.anualAnt : p.mensualAnt;
+    const valorAct = esAnual ? p.anualAct : p.mensualAct;
+    _iniRenderVariacion(`alim-sub-z-${zona}-var`, valorAnt, valorAct);
+  });
+}
+
+// Misma plantilla visual de tarjeta que las de zona de Inicio (Mes
+// anterior/Mes actual x Mensual/Anual con variación) -- "usa el modelo de
+// los existentes" es el criterio ya seguido en toda la app.
+function _alimSubTarjetaComportamiento(pref, titulo, color){
+  return `<div class="card inicio-dash-card" style="border-left:4px solid ${color}">
+    <div class="card-title">⚡ ${titulo}</div>
+    <div class="inicio-dash-grid">
+      <div class="inicio-mes-panel">
+        <div class="inicio-mes-titulo">Mes anterior · <span id="${pref}-mes-ant"></span></div>
+        <div class="inicio-mes-fila"><span>Mensual</span><span id="${pref}-ant-mensual">--</span></div>
+        <div class="inicio-mes-fila"><span>Anual (móvil)</span><span id="${pref}-ant-anual">--</span></div>
+      </div>
+      <div class="inicio-mes-panel actual">
+        <div class="inicio-mes-titulo">Mes actual · <span id="${pref}-mes-act"></span></div>
+        <div class="inicio-mes-fila"><span>Mensual</span><span><span id="${pref}-act-mensual">--</span> <span id="${pref}-var-mensual" class="inicio-variacion"></span></span></div>
+        <div class="inicio-mes-fila"><span>Anual (móvil)</span><span><span id="${pref}-act-anual">--</span> <span id="${pref}-var-anual" class="inicio-variacion"></span></span></div>
+      </div>
+    </div>
+  </div>`;
+}
+
+// Una tarjeta por alimentador (nemónico) de las subestaciones elegidas en
+// el multiselect de arriba -- mismos datos que el gráfico "Pérdida % por
+// Alimentador" pero como comparación mes anterior/actual, "cómo se están
+// comportando" (pedido explícito). Los ids usan el ÍNDICE del nemónico
+// (no el nombre) porque un nemónico puede traer espacios/puntos, inválidos
+// como id/selector CSS.
+function alimSubRenderAlimentadorCards(){
+  const cont = document.getElementById('alim-sub-alimentador-cards');
+  if(!cont) return;
+  const subestacionesElegidas = new Set(mselValores('msel-alim-sub-subestacion'));
+  if(!subestacionesElegidas.size){
+    cont.innerHTML = '<div style="font-size:11px;color:var(--text3);padding:8px">Elegí una o más subestaciones arriba para ver sus alimentadores.</div>';
+    return;
+  }
+  const nemonicos = [...new Set(
+    ALIM_FILAS.filter(f => subestacionesElegidas.has(f.subestacion)).map(f => f.nemonico)
+  )].sort();
+  if(!nemonicos.length){ cont.innerHTML = ''; return; }
+  const porGrupo = alimSubAgregarPorGrupo('nemonico', new Set(nemonicos));
+  const fmtPct = v => v==null ? 'Sin datos' : `${v.toFixed(2)}%`;
+
+  cont.innerHTML = nemonicos.map((nem, i) => _alimSubTarjetaComportamiento(`alim-sub-al-${i}`, nem, alimSubColor(i, nemonicos.length))).join('');
+
+  nemonicos.forEach((nem, i) => {
+    const pref = `alim-sub-al-${i}`;
+    const serie = (porGrupo[nem] || []).filter(f => f.pct != null);
+    if(serie.length < 2){
+      document.getElementById(`${pref}-mes-act`).textContent = 'Sin datos suficientes';
+      return;
+    }
+    const anual = alimN21Con12Meses(serie);
+    const actual = serie[serie.length-1];
+    const anterior = serie[serie.length-2];
+    const actual12 = anual.find(f => f.clave === actual.clave && f.pct12 != null) || null;
+    const anterior12 = anual.find(f => f.clave === anterior.clave && f.pct12 != null) || null;
+    document.getElementById(`${pref}-mes-ant`).textContent = labelMesLargo(anterior.clave);
+    document.getElementById(`${pref}-mes-act`).textContent = labelMesLargo(actual.clave);
+    document.getElementById(`${pref}-ant-mensual`).textContent = fmtPct(anterior.pct);
+    document.getElementById(`${pref}-act-mensual`).textContent = fmtPct(actual.pct);
+    document.getElementById(`${pref}-ant-anual`).textContent = _iniFmtKwhPct(anterior12 ? anterior12.perdida12 : null, anterior12 ? anterior12.pct12 : null);
+    document.getElementById(`${pref}-act-anual`).textContent = _iniFmtKwhPct(actual12 ? actual12.perdida12 : null, actual12 ? actual12.pct12 : null);
+    _iniRenderVariacion(`${pref}-var-mensual`, anterior.pct, actual.pct);
+    _iniRenderVariacion(`${pref}-var-anual`, anterior12 ? anterior12.pct12 : null, actual12 ? actual12.pct12 : null);
   });
 }
 
@@ -9419,7 +9588,7 @@ async function alimN21CargarMapa(){
     }
     const features = mapaZonasFeaturesDeDepto(topo, resp.departamento);
     if(miGen !== ALIM_N21_MAPA_GEN) return;
-    const render = mapaZonasRenderLeaflet('alim-n21-mapa-leaflet', features, id => resp.municipios[id], null, ALIM_N21_MAPA_OPACIDAD);
+    const render = mapaZonasRenderLeaflet('alim-n21-mapa-leaflet', features, id => resp.municipios[id], null, ALIM_N21_MAPA_OPACIDAD, irASubestacionesConZona);
     if(!render || miGen !== ALIM_N21_MAPA_GEN) return;
     ALIM_N21_MAPA_REF = {resp, features, mapa: render.mapa, capa: render.capa, zonaDeMunicipio: render.zonaDeMunicipio};
     alimN21PoblarSelectorMesMapa();
