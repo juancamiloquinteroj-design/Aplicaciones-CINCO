@@ -1043,6 +1043,8 @@ tfoot td:first-child{text-align:left}
     <div class="fbar" style="justify-content:center;margin-bottom:10px">
       <label>Opacidad de colores</label>
       <input type="range" min="0" max="0.9" step="0.05" value="0.7" oninput="pzCambiarOpacidad(this.value)" style="width:140px" title="Bajala para ver el terreno/vías debajo">
+      <span style="font-size:11px;color:var(--text3);margin-left:16px">Arrastrá las tarjetas a donde quieras</span>
+      <button type="button" class="btn-theme" id="pz-btn-guardar-mapa" style="width:auto;padding:0 14px" onclick="pzGuardarMapa()">💾 Guardar mapa</button>
     </div>
     <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">
       <div style="flex:1;min-width:320px;max-width:760px;margin:0 auto">
@@ -1977,13 +1979,15 @@ tfoot td:first-child{text-align:left}
         <input type="range" min="0" max="0.9" step="0.05" value="0.7" oninput="alimN21CambiarOpacidad(this.value)" style="width:120px" title="Bajala para ver el terreno/vías debajo">
       </div>
       <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">
-        <div style="flex:1;min-width:320px;max-width:760px;margin:0 auto">
-          <div id="alim-n21-mapa-leaflet" style="height:560px;border-radius:10px;overflow:hidden;background:var(--bg3)"></div>
-        </div>
-        <div style="width:220px;flex-shrink:0">
+        <div style="width:300px;flex-shrink:0">
           <div class="be-tabla-creadas-titulo" style="text-align:center">Pérdida por Zona</div>
-          <div class="chart-wrap" style="height:220px"><canvas id="ch-alim-n21-dona-zonas"></canvas></div>
-          <div id="alim-n21-dona-leyenda" style="display:flex;flex-direction:column;gap:4px;margin-top:10px"></div>
+          <div class="chart-wrap" style="height:200px"><canvas id="ch-alim-n21-dona-zonas"></canvas></div>
+          <div id="alim-n21-dona-leyenda" style="display:flex;flex-direction:column;gap:4px;margin:10px 0 16px"></div>
+          <div class="be-tabla-creadas-titulo" style="text-align:center">Mensual / Anual por zona</div>
+          <div id="alim-n21-tarjetas-lista" style="display:flex;flex-direction:column;gap:6px"></div>
+        </div>
+        <div style="flex:1;min-width:360px">
+          <div id="alim-n21-mapa-leaflet" style="height:620px;border-radius:10px;overflow:hidden;background:var(--bg3)"></div>
         </div>
       </div>
     </div>
@@ -3493,6 +3497,60 @@ function mapaZonasAplicarOpacidad(capa, zonaDeMunicipio, opacidad){
   });
 }
 
+/* ---- Posición de las tarjetas flotantes por zona -- compartido entre
+   Parametrización (donde se arrastran a mano) e Indicador N2-1 (donde se
+   dibujan solo lectura). ---- */
+
+// Centroide de los municipios de CADA zona (agrupa `features` según
+// `municipiosZona`, id -> zona).
+function mapaZonasCentroPorZona(features, municipiosZona){
+  const porZona = {};
+  features.forEach(f => {
+    const zona = municipiosZona[mapaZonasIdMunicipio(f)];
+    if(!zona) return;
+    (porZona[zona] = porZona[zona] || []).push(f);
+  });
+  const centros = {};
+  Object.keys(porZona).forEach(zona => { centros[zona] = L.geoJSON(porZona[zona]).getBounds().getCenter(); });
+  return centros;
+}
+
+// Reparto automático en círculo (fallback para las zonas que todavía no
+// tienen una posición guardada a mano) -- radio chico, atado al tamaño
+// del DEPARTAMENTO (no del viewport) para que quede cerca.
+function mapaZonasPosicionesAutomaticas(centros, deptoBounds){
+  const centroGeneral = deptoBounds.getCenter();
+  const radioLat = (deptoBounds.getNorth()-deptoBounds.getSouth())/2 * 0.55;
+  const radioLng = (deptoBounds.getEast()-deptoBounds.getWest())/2 * 0.55;
+  const zonas = Object.keys(centros);
+  const conAngulo = zonas.map(z => ({z, ang: Math.atan2(centros[z].lng-centroGeneral.lng, centros[z].lat-centroGeneral.lat)})).sort((a,b)=>a.ang-b.ang);
+  const n = conAngulo.length;
+  const resultado = {};
+  conAngulo.forEach((item,i) => {
+    const ang = (i/n) * 2*Math.PI;
+    resultado[item.z] = L.latLng(centroGeneral.lat + Math.cos(ang)*radioLat, centroGeneral.lng + Math.sin(ang)*radioLng);
+  });
+  return resultado;
+}
+
+// Línea fina + punta de flecha chica desde `box` (la tarjeta) hasta `tip`
+// (el territorio) -- antes eran gruesas y con una flecha enorme ("se ven
+// muy grandes, feas"); ahora proporcional y sutil.
+function mapaZonasDibujarFlecha(mapa, box, tip){
+  const capas = [];
+  const line = L.polyline([box, tip], {color:'#2c3e50', weight:1.25, opacity:0.65, interactive:false});
+  line.addTo(mapa); capas.push(line);
+  const dLat=tip.lat-box.lat, dLng=tip.lng-box.lng, len=Math.hypot(dLat,dLng)||1;
+  const rl=-dLat/len, rg=-dLng/len, a=Math.min(len*0.12, (Math.abs(dLat)+Math.abs(dLng))*0.06), th=0.4;
+  const rot=(la,lo,angRot)=>[la*Math.cos(angRot)-lo*Math.sin(angRot), la*Math.sin(angRot)+lo*Math.cos(angRot)];
+  const b1=rot(rl,rg,th), b2=rot(rl,rg,-th);
+  const arrow = L.polyline([
+    [tip.lat+a*b1[0], tip.lng+a*b1[1]], [tip.lat, tip.lng], [tip.lat+a*b2[0], tip.lng+a*b2[1]],
+  ], {color:'#2c3e50', weight:1.25, opacity:0.7, interactive:false});
+  arrow.addTo(mapa); capas.push(arrow);
+  return {line, capas, actualizar(nuevoBox){ line.setLatLngs([nuevoBox, tip]); }};
+}
+
 // Un mapa Leaflet por contId -- Leaflet tira "Map container is already
 // initialized" si se llama L.map() de nuevo sobre el MISMO elemento sin
 // destruir antes la instancia previa (pasaba al cambiar de departamento:
@@ -3553,8 +3611,9 @@ let PZ_MUNICIPIOS_ZONA = {};
 let PZ_ZONAS_REALES = [];      // vienen de Color por zona/Circuito.zona -- no se borran acá
 let PZ_ZONAS_EXTRA = [];       // escritas a mano solo para este mapa -- sí se pueden borrar
 let PZ_ZONA_ACTIVA = null;
-let PZ_MAPA_REF = null;   // {mapa, capa, zonaDeMunicipio} del render actual -- para el slider de opacidad
+let PZ_MAPA_REF = null;   // {mapa, capa, zonaDeMunicipio, features} del render actual
 let PZ_MAPA_OPACIDAD = 0.7;
+let PZ_POSICIONES_GUARDADAS = {};  // zona -> {lat,lng} -- posición de la tarjeta ya guardada en el backend
 
 function pzZonasDisponibles(){ return [...PZ_ZONAS_REALES, ...PZ_ZONAS_EXTRA]; }
 
@@ -3585,10 +3644,11 @@ async function pzCargarMapa(datosZonas){
   try{
     const topo = await mapaZonasCargarTopo();
     const deptos = mapaZonasListaDeptos(topo);
-    let resp = {departamento:null, municipios:{}};
+    let resp = {departamento:null, municipios:{}, posiciones:{}};
     try{ resp = DEMO ? resp : await apiGet('/api/mapa-zonas'); }catch(e){ /* arranca vacío */ }
     PZ_DEPARTAMENTO = resp.departamento;
     PZ_MUNICIPIOS_ZONA = resp.municipios || {};
+    PZ_POSICIONES_GUARDADAS = resp.posiciones || {};
     // Zonas que ya estaban guardadas en municipios pero no están ni en
     // Color por zona ni escritas todavía -- se recuperan como "extra" para
     // que sigan siendo editables/visibles (ej. se escribieron en otra sesión).
@@ -3730,6 +3790,126 @@ async function pzCambiarDepartamento(depto){
 function pzRenderMapaDepto(topo, depto){
   const features = mapaZonasFeaturesDeDepto(topo, depto);
   PZ_MAPA_REF = mapaZonasRenderLeaflet('pz-mapa-leaflet', features, id => PZ_MUNICIPIOS_ZONA[id], pzClickMunicipio, PZ_MAPA_OPACIDAD);
+  if(PZ_MAPA_REF) PZ_MAPA_REF.features = features;
+  pzRenderTarjetasArrastrables();
+}
+
+/* ---- Tarjetas flotantes ARRASTRABLES -- el usuario las ubica a mano acá
+   (Parametrización) y el croquis de Indicador N2-1 las dibuja en esa
+   misma posición, solo lectura. "Guardar mapa" sube TODAS las posiciones
+   actuales de una sola vez (POST /api/mapa-zonas/posiciones). ---- */
+let PZ_TARJETAS = {};  // zona -> {marker, flecha, tip}
+
+function pzRenderTarjetasArrastrables(){
+  if(!PZ_MAPA_REF || !PZ_MAPA_REF.mapa) return;
+  const mapa = PZ_MAPA_REF.mapa, features = PZ_MAPA_REF.features;
+  Object.values(PZ_TARJETAS).forEach(t => { mapa.removeLayer(t.marker); t.flecha.capas.forEach(c=>mapa.removeLayer(c)); });
+  PZ_TARJETAS = {};
+
+  const centros = mapaZonasCentroPorZona(features, PZ_MUNICIPIOS_ZONA);
+  const zonas = Object.keys(centros);
+  if(!zonas.length) return;
+  const deptoBounds = L.geoJSON(features).getBounds();
+  const auto = mapaZonasPosicionesAutomaticas(centros, deptoBounds);
+
+  zonas.forEach(zona => {
+    const tip = centros[zona];
+    const guardada = PZ_POSICIONES_GUARDADAS[zona];
+    const box = guardada ? L.latLng(guardada.lat, guardada.lng) : auto[zona];
+    const color = colorParaZona(zona);
+    const flecha = mapaZonasDibujarFlecha(mapa, box, tip);
+    const html = `<div class="zcard" style="border-top:4px solid ${color};cursor:move;user-select:none">
+      <div class="zc-h">Zona ${zona}</div>
+      <div style="font-size:9.5px;color:#8a95a3;margin-top:2px">arrastrame</div>
+    </div>`;
+    const marker = L.marker(box, {
+      icon: L.divIcon({className:'', iconSize:[152,0], iconAnchor:[76,26], html}),
+      draggable: true, zIndexOffset:5000,
+    });
+    marker.on('drag', () => flecha.actualizar(marker.getLatLng()));
+    marker.addTo(mapa);
+    PZ_TARJETAS[zona] = {marker, flecha, tip};
+  });
+}
+
+// Versión incremental -- se usa después de asignar/quitar UN municipio
+// (no al cambiar de departamento entero): agrega tarjeta a las zonas
+// nuevas, saca la de las que se quedaron sin municipios, y solo re-dibuja
+// la flecha (no la tarjeta) de las que cambiaron de centroide. A
+// diferencia de pzRenderTarjetasArrastrables (que reconstruye todo), esto
+// NO pisa una tarjeta que el usuario ya haya arrastrado y todavía no
+// guardó -- perdía la posición en el medio de acomodar el mapa.
+function pzActualizarTarjetasArrastrables(){
+  if(!PZ_MAPA_REF || !PZ_MAPA_REF.mapa) return;
+  const mapa = PZ_MAPA_REF.mapa, features = PZ_MAPA_REF.features;
+  const centros = mapaZonasCentroPorZona(features, PZ_MUNICIPIOS_ZONA);
+  const zonasActuales = new Set(Object.keys(centros));
+
+  Object.keys(PZ_TARJETAS).forEach(zona => {
+    if(zonasActuales.has(zona)) return;
+    mapa.removeLayer(PZ_TARJETAS[zona].marker);
+    PZ_TARJETAS[zona].flecha.capas.forEach(c => mapa.removeLayer(c));
+    delete PZ_TARJETAS[zona];
+  });
+
+  Object.keys(PZ_TARJETAS).forEach(zona => {
+    const nuevoTip = centros[zona];
+    const t = PZ_TARJETAS[zona];
+    if(!t.tip.equals(nuevoTip)){
+      t.flecha.capas.forEach(c => mapa.removeLayer(c));
+      t.flecha = mapaZonasDibujarFlecha(mapa, t.marker.getLatLng(), nuevoTip);
+      t.marker.off('drag').on('drag', () => t.flecha.actualizar(t.marker.getLatLng()));
+      t.tip = nuevoTip;
+    }
+  });
+
+  const nuevas = [...zonasActuales].filter(z => !PZ_TARJETAS[z]);
+  if(!nuevas.length) return;
+  const deptoBounds = L.geoJSON(features).getBounds();
+  const auto = mapaZonasPosicionesAutomaticas(centros, deptoBounds);
+  nuevas.forEach(zona => {
+    const tip = centros[zona];
+    const guardada = PZ_POSICIONES_GUARDADAS[zona];
+    const box = guardada ? L.latLng(guardada.lat, guardada.lng) : auto[zona];
+    const color = colorParaZona(zona);
+    const flecha = mapaZonasDibujarFlecha(mapa, box, tip);
+    const html = `<div class="zcard" style="border-top:4px solid ${color};cursor:move;user-select:none">
+      <div class="zc-h">Zona ${zona}</div>
+      <div style="font-size:9.5px;color:#8a95a3;margin-top:2px">arrastrame</div>
+    </div>`;
+    const marker = L.marker(box, {
+      icon: L.divIcon({className:'', iconSize:[152,0], iconAnchor:[76,26], html}),
+      draggable: true, zIndexOffset:5000,
+    });
+    marker.on('drag', () => flecha.actualizar(marker.getLatLng()));
+    marker.addTo(mapa);
+    PZ_TARJETAS[zona] = {marker, flecha, tip};
+  });
+}
+
+// Sube de una sola vez dónde quedó cada tarjeta -- botón explícito (a
+// diferencia del resto del mapa, que se guarda solo en cada click) porque
+// acomodar las tarjetas es un ajuste visual que tiene sentido confirmar
+// de una, no ir subiendo posición intermedia mientras se arrastra.
+async function pzGuardarMapa(){
+  if(!requiereEditor()) return;
+  const zonas = Object.keys(PZ_TARJETAS);
+  if(!zonas.length){ alert('Todavía no hay tarjetas para guardar -- asigná municipios a alguna zona primero.'); return; }
+  const posiciones = zonas.map(z => {
+    const p = PZ_TARJETAS[z].marker.getLatLng();
+    return {zona:z, lat:p.lat, lng:p.lng};
+  });
+  const btn = document.getElementById('pz-btn-guardar-mapa');
+  if(btn){ btn.disabled = true; btn.textContent = 'Guardando…'; }
+  try{
+    if(!DEMO) await apiPost('/api/mapa-zonas/posiciones', {posiciones});
+    posiciones.forEach(p => { PZ_POSICIONES_GUARDADAS[p.zona] = {lat:p.lat, lng:p.lng}; });
+    pzMostrarGuardado();
+  }catch(e){
+    alert(e.message || 'No se pudo guardar el mapa.');
+  }finally{
+    if(btn){ btn.disabled = false; btn.textContent = '💾 Guardar mapa'; }
+  }
 }
 
 // Click en un municipio: si ya tiene la zona activa, se la quita (toggle);
@@ -3745,6 +3925,7 @@ async function pzClickMunicipio(f, layer){
     pzMostrarGuardado();
     if(nuevaZona) PZ_MUNICIPIOS_ZONA[id] = nuevaZona; else delete PZ_MUNICIPIOS_ZONA[id];
     pzRenderMapasCreados();
+    pzActualizarTarjetasArrastrables();
     const color = nuevaZona ? colorParaZona(nuevaZona) : mapaZonasColorVacio();
     layer.setStyle({fillColor:color, fillOpacity: nuevaZona?PZ_MAPA_OPACIDAD:PZ_MAPA_OPACIDAD*0.45});
     const nombreCrudo = mapaZonasNombreMunicipio(f);
@@ -8586,7 +8767,7 @@ async function alimN21CargarMapa(){
   ALIM_N21_MAPA_REF = null;
   try{
     const topo = await mapaZonasCargarTopo();
-    const resp = DEMO ? {departamento:null, municipios:{}} : await apiGet('/api/mapa-zonas');
+    const resp = DEMO ? {departamento:null, municipios:{}, posiciones:{}} : await apiGet('/api/mapa-zonas');
     if(!resp.departamento){
       cont.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text3);font-size:12px;text-align:center;padding:20px">Todavía no se parametrizó el departamento ni las zonas -- hacelo en Parametrización → Mapa de zonas por municipio.</div>';
       return;
@@ -8608,97 +8789,79 @@ function alimN21ToggleMapaModo(modo){
   alimN21RenderMarcadoresZona();
 }
 
-// Una tarjeta flotante por zona, centrada en el centroide de SUS
-// municipios (no hay posiciones hardcodeadas como en el mapa viejo de
-// Huila -- así funciona para cualquier departamento). Solo aparecen las
-// zonas que: (a) tienen al menos un municipio asignado en este
-// departamento, y (b) tienen datos reales en Alimentadores con ese mismo
-// código de zona (si el usuario tipeó una zona que no existe en los
-// circuitos, no hay con qué llenar la tarjeta y se omite en silencio).
-// Las tarjetas NO van encima del territorio (se superponían cuando 2+
-// zonas quedan cerca, ej. varias zonas chicas juntas) -- van repartidas en
-// círculo alrededor del mapa, cada una unida a SU zona con una línea +
-// flecha (mismo recurso visual que el mapa hardcodeado de Huila en
-// Pérdidas Técnicas, pero la posición se calcula sola por ángulo real
-// desde el centro del departamento -- funciona para cualquier geografía,
-// no hay coordenadas fijas por zona).
+// Lista compacta Mensual + Anual por zona, al lado de la dona -- a
+// diferencia de las tarjetas flotantes (que solo muestran el modo activo),
+// ACÁ se ven los 2 números siempre juntos, pedido explícito.
+function alimN21RenderTarjetasLista(){
+  const cont = document.getElementById('alim-n21-tarjetas-lista');
+  if(!cont || !ALIM_N21_MAPA_REF) return;
+  const {resp, features} = ALIM_N21_MAPA_REF;
+  const zonas = Object.keys(mapaZonasCentroPorZona(features, resp.municipios)).sort();
+  const filas = zonas.map(zona => {
+    const serieMensual = alimN21AgregarMensual(new Set([zona])).filter(f => f.pct != null);
+    if(!serieMensual.length) return '';
+    const um = serieMensual[serieMensual.length-1];
+    const serieAnual = alimN21Con12Meses(serieMensual).filter(f => f.pct12 != null);
+    const ua = serieAnual.length ? serieAnual[serieAnual.length-1] : null;
+    const color = colorParaZona(zona);
+    return `<div style="display:flex;align-items:center;gap:6px;padding:6px 8px;border:1px solid var(--border);border-radius:7px">
+      <span style="width:9px;height:9px;border-radius:50%;background:${color};flex-shrink:0"></span>
+      <span style="flex:1;font-size:11.5px;font-weight:700;color:var(--text)">Zona ${zona}</span>
+      <span style="font-size:9.5px;color:var(--text3)">Mes</span><b style="font-size:11px;min-width:44px;text-align:right">${um.pct.toFixed(2)}%</b>
+      <span style="font-size:9.5px;color:var(--text3);margin-left:4px">12M</span><b style="font-size:11px;min-width:44px;text-align:right">${ua ? ua.pct12.toFixed(2)+'%' : '--'}</b>
+    </div>`;
+  }).join('');
+  cont.innerHTML = filas || '<div style="font-size:11px;color:var(--text3)">Sin datos.</div>';
+}
+
+// Una tarjeta flotante por zona -- en la posición que el usuario haya
+// guardado a mano en Parametrización ("Guardar mapa"); si una zona
+// todavía no tiene posición guardada, cae al reparto automático en
+// círculo (mapaZonasPosicionesAutomaticas). Solo aparecen las zonas que:
+// (a) tienen al menos un municipio asignado en este departamento, y (b)
+// tienen datos reales en Alimentadores con ese mismo código de zona (si
+// el usuario tipeó una zona que no existe en los circuitos, no hay con
+// qué llenar la tarjeta y se omite en silencio).
 function alimN21RenderMarcadoresZona(){
   if(!ALIM_N21_MAPA_REF || !ALIM_N21_MAPA_REF.mapa) return;
   const {resp, features, mapa} = ALIM_N21_MAPA_REF;
   ALIM_N21_MAPA_MARCADORES.forEach(m => mapa.removeLayer(m));
   ALIM_N21_MAPA_MARCADORES = [];
 
-  const porZona = {};
-  features.forEach(f => {
-    const zona = resp.municipios[mapaZonasIdMunicipio(f)];
-    if(!zona) return;
-    (porZona[zona] = porZona[zona] || []).push(f);
-  });
-
-  const centros = {}, datosPorZona = {};
-  Object.keys(porZona).forEach(zona => {
+  const centros = mapaZonasCentroPorZona(features, resp.municipios);
+  const datosPorZona = {};
+  Object.keys(centros).forEach(zona => {
     const serieMensual = alimN21AgregarMensual(new Set([zona])).filter(f => f.pct != null);
     if(!serieMensual.length) return;
-    let datos;
     if(ALIM_N21_MAPA_MODO === 'anual'){
       const serieAnual = alimN21Con12Meses(serieMensual).filter(f => f.pct12 != null);
       if(!serieAnual.length) return;
       const u = serieAnual[serieAnual.length-1];
-      datos = {entrada:u.entrada12, salida:u.salida12, perdida:u.perdida12, pct:u.pct12};
+      datosPorZona[zona] = {entrada:u.entrada12, salida:u.salida12, perdida:u.perdida12, pct:u.pct12};
     }else{
       const u = serieMensual[serieMensual.length-1];
-      datos = {entrada:u.entrada, salida:u.salida, perdida:u.perdida, pct:u.pct};
+      datosPorZona[zona] = {entrada:u.entrada, salida:u.salida, perdida:u.perdida, pct:u.pct};
     }
-    centros[zona] = L.geoJSON(porZona[zona]).getBounds().getCenter();
-    datosPorZona[zona] = datos;
   });
-  const zonasConDatos = Object.keys(datosPorZona);
   alimN21RenderDonutZonas(datosPorZona);
+  alimN21RenderTarjetasLista();
+  const zonasConDatos = Object.keys(datosPorZona);
   if(!zonasConDatos.length) return;
 
-  // Centro de referencia = el de TODO el departamento (no solo las zonas
-  // con datos), para que las flechas salgan siempre desde el mismo punto
-  // sin importar cuáles zonas terminan mostrando tarjeta. El radio se saca
-  // del tamaño del DEPARTAMENTO, no del mapa/viewport (que por el padding
-  // del fitBounds es bastante más grande) -- si no, las tarjetas quedaban
-  // lejísimos, encima de otros departamentos.
   const deptoBounds = L.geoJSON(features).getBounds();
-  const centroGeneral = deptoBounds.getCenter();
-  const radioLat = (deptoBounds.getNorth()-deptoBounds.getSouth())/2 * 0.75;
-  const radioLng = (deptoBounds.getEast()-deptoBounds.getWest())/2 * 0.75;
-
-  // Ordenadas por su ángulo REAL respecto al centro (arriba=0, horario) --
-  // después se reparten parejas en el círculo en ESE mismo orden, así
-  // ninguna caja se superpone y las líneas no se cruzan entre sí.
-  const conAngulo = zonasConDatos.map(z => {
-    const c = centros[z];
-    return {z, ang: Math.atan2(c.lng-centroGeneral.lng, c.lat-centroGeneral.lat)};
-  }).sort((a,b) => a.ang-b.ang);
-
-  const n = conAngulo.length;
+  const posicionesGuardadas = resp.posiciones || {};
+  const auto = mapaZonasPosicionesAutomaticas(centros, deptoBounds);
   const fmt = v => v==null ? '--' : Math.round(v).toLocaleString('es-CO');
 
-  conAngulo.forEach((item, i) => {
-    const zona = item.z;
+  zonasConDatos.forEach(zona => {
     const datos = datosPorZona[zona];
     const color = colorParaZona(zona);
     const tip = centros[zona];
-    const ang = (i/n) * 2*Math.PI;
-    const box = L.latLng(centroGeneral.lat + Math.cos(ang)*radioLat, centroGeneral.lng + Math.sin(ang)*radioLng);
+    const guardada = posicionesGuardadas[zona];
+    const box = guardada ? L.latLng(guardada.lat, guardada.lng) : auto[zona];
 
-    const line = L.polyline([box, tip], {color:'#2c3e50', weight:2, opacity:0.85, interactive:false});
-    line.addTo(mapa); ALIM_N21_MAPA_MARCADORES.push(line);
-
-    // Flechita en la punta (mismo cálculo que renderMapaZonas/Huila): dos
-    // "alas" giradas ±th respecto a la dirección de la línea, del lado del tip.
-    const dLat=tip.lat-box.lat, dLng=tip.lng-box.lng, len=Math.hypot(dLat,dLng)||1;
-    const rl=-dLat/len, rg=-dLng/len, a=len*0.15, th=0.45;
-    const rot=(la,lo,angRot)=>[la*Math.cos(angRot)-lo*Math.sin(angRot), la*Math.sin(angRot)+lo*Math.cos(angRot)];
-    const b1=rot(rl,rg,th), b2=rot(rl,rg,-th);
-    const arrow = L.polyline([
-      [tip.lat+a*b1[0], tip.lng+a*b1[1]], [tip.lat, tip.lng], [tip.lat+a*b2[0], tip.lng+a*b2[1]],
-    ], {color:'#2c3e50', weight:2, opacity:0.9, interactive:false});
-    arrow.addTo(mapa); ALIM_N21_MAPA_MARCADORES.push(arrow);
+    const flecha = mapaZonasDibujarFlecha(mapa, box, tip);
+    ALIM_N21_MAPA_MARCADORES.push(...flecha.capas);
 
     const html = `<div class="zcard" style="border-top:4px solid ${color}">
       <div class="zc-h">Zona ${zona}</div>
