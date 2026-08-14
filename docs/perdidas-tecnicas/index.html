@@ -9294,6 +9294,7 @@ function alimSubRenderChartAlimentadores(){
 
   let etiquetas = null;
   const datasets = [];
+  const metaPorLabel = {};  // nem -> {pctDatos} -- variación en el tooltip al pasar el mouse
   nemonicos.forEach((nem, i) => {
     // La ventana de 12 meses móvil se calcula sobre el HISTÓRICO COMPLETO
     // de este alimentador (no solo lo visible en el rango Desde/Hasta) --
@@ -9310,12 +9311,19 @@ function alimSubRenderChartAlimentadores(){
     const entradaDatos = filas.map(f => esAnual ? f.entrada12 : f.entrada);
     const salidaDatos = filas.map(f => esAnual ? f.salida12 : f.salida);
 
+    metaPorLabel[nem] = {pctDatos};
+
     // "La línea de % de pérdida por alimentador debe aparecer con la
-    // etiqueta de %" -- siempre visible, un poco más grande (pedido
-    // explícito); "Δ Variación" (toggle) agrega el delta vs. el mes/12M
-    // anterior en pp Y en kWh, mismo patrón que Indicador N2-1.
+    // etiqueta de %" -- pero con VARIOS alimentadores a la vez, una
+    // etiqueta en CADA punto de CADA línea se superpone y queda
+    // ilegible (pasaba de verdad con "Δ Variación", que encima ocupa 3
+    // renglones) -- solo se muestra en el ÚLTIMO punto de cada línea
+    // (el valor vigente), que es el que importa de un vistazo; el resto
+    // del historial sigue disponible al pasar el mouse (tooltip, ver
+    // abajo, con la variación incluida ahí también).
     const datalabelsPct = ALIM_SUB_AL_VAR ? {
-      display:true, anchor:'end', align:'top', offset:6,
+      display:(ctx)=> ctx.dataIndex === pctDatos.length-1,
+      anchor:'end', align:'top', offset:6,
       formatter:(v,ctx)=>{
         if(v==null) return '';
         const base = v.toFixed(2)+'%';
@@ -9339,7 +9347,8 @@ function alimSubRenderChartAlimentadores(){
       },
       ...estiloVar,
     } : {
-      display:true, anchor:'end', align:'top', offset:4, formatter:v=>v==null?'':v.toFixed(2)+'%',
+      display:(ctx)=> ctx.dataIndex === pctDatos.length-1,
+      anchor:'end', align:'top', offset:4, formatter:v=>v==null?'':v.toFixed(2)+'%',
       font:{size:10, weight:'700'}, color,
       backgroundColor: dark?'rgba(30,30,40,.85)':'rgba(255,255,255,.85)', borderRadius:3, padding:{left:4,right:4,top:1,bottom:1},
     };
@@ -9391,7 +9400,21 @@ function alimSubRenderChartAlimentadores(){
         legend:{display:true, position:'bottom', labels:{boxWidth:10, font:{size:9}, color:tickC}},
         tooltip:{callbacks:{label:c => {
           if(c.raw==null) return null;
-          return c.dataset.yAxisID==='y' ? `${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh` : `${c.dataset.label}: ${c.raw.toFixed(2)}%`;
+          if(c.dataset.yAxisID==='y') return `${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`;
+          // Al pasar el mouse siempre se ve la variación vs. el punto
+          // anterior, esté prendido o no el botón "Δ Variación" (ese
+          // botón solo controla la etiqueta fija sobre el gráfico).
+          const meta = metaPorLabel[c.dataset.label];
+          let extra = '';
+          if(meta){
+            const ant = meta.pctDatos[c.dataIndex-1];
+            if(ant!=null){
+              const delta = c.raw - ant;
+              const icono = delta>=0 ? '▲' : '▼';
+              extra = ` (${icono} ${Math.abs(delta).toFixed(2)}pp)`;
+            }
+          }
+          return `${c.dataset.label}: ${c.raw.toFixed(2)}%${extra}`;
         }}},
         zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:3}}},
       },
@@ -9482,14 +9505,19 @@ function _alimSubTarjetaComportamiento(pref, titulo, color){
 // -- "El X pasó de A% en mes-ant a B% en mes-act, lo que equivale a pasar
 // de una pérdida de C kWh a D kWh -- un incremento/descenso de E pp,
 // equivalente a +/-F kWh" -- pedido explícito del usuario ("así como fue
-// el texto del indicador total IP_reg").
+// el texto del indicador total IP_reg"), más un segundo párrafo con
+// Entrada/Salida (pedido explícito: "también quiero que hagas mención de
+// la energía de entrada y salida").
 function _alimSubTextoAnalisis(nem, anterior, actual){
   const signo = v => v >= 0 ? '+' : '';
   const fKwh = v => Math.round(v).toLocaleString('es-CO');
   const delta = actual.pct - anterior.pct;
   const sube = delta > 0;
   const deltaKwh = actual.perdida - anterior.perdida;
-  return `<p style="margin:0">El alimentador <b>${nem}</b> pasó de <b>${anterior.pct.toFixed(2)}%</b> en ${labelMesLargo(anterior.clave)} a <b>${actual.pct.toFixed(2)}%</b> en ${labelMesLargo(actual.clave)}, lo que equivale a pasar de una pérdida de <b>${fKwh(anterior.perdida)} kWh</b> a <b>${fKwh(actual.perdida)} kWh</b> -- un ${sube?'incremento':'descenso'} de <b>${Math.abs(delta).toFixed(2)} pp</b>, equivalente a <b>${signo(deltaKwh)}${fKwh(Math.abs(deltaKwh))} kWh</b>.</p>`;
+  const deltaEntrada = actual.entrada - anterior.entrada;
+  const deltaSalida = actual.salida - anterior.salida;
+  return `<p style="margin:0">El alimentador <b>${nem}</b> pasó de <b>${anterior.pct.toFixed(2)}%</b> en ${labelMesLargo(anterior.clave)} a <b>${actual.pct.toFixed(2)}%</b> en ${labelMesLargo(actual.clave)}, lo que equivale a pasar de una pérdida de <b>${fKwh(anterior.perdida)} kWh</b> a <b>${fKwh(actual.perdida)} kWh</b> -- un ${sube?'incremento':'descenso'} de <b>${Math.abs(delta).toFixed(2)} pp</b>, equivalente a <b>${signo(deltaKwh)}${fKwh(Math.abs(deltaKwh))} kWh</b>.</p>
+    <p style="margin:0">La energía de <b>entrada</b> pasó de ${fKwh(anterior.entrada)} kWh a ${fKwh(actual.entrada)} kWh (${signo(deltaEntrada)}${fKwh(Math.abs(deltaEntrada))} kWh), y la de <b>salida</b> de ${fKwh(anterior.salida)} kWh a ${fKwh(actual.salida)} kWh (${signo(deltaSalida)}${fKwh(Math.abs(deltaSalida))} kWh).</p>`;
 }
 
 // Una tarjeta por alimentador (nemónico) de las subestaciones elegidas en
