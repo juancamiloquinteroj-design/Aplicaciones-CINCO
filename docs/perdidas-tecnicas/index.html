@@ -4630,9 +4630,16 @@ async function paramIdeamBuscar(){
     if(!resultados.length){ cont.innerHTML = '<div style="color:var(--text3);font-size:11px">Sin resultados.</div>'; return; }
     cont.innerHTML = resultados.map(e => {
       const datos = JSON.stringify({codigo:e.codigo, nombre:e.nombre, departamento:e.departamento, municipio:e.municipio}).replace(/"/g, '&quot;');
+      // El dataset de temperatura en tiempo real SOLO lo alimentan
+      // estaciones con telemetría automática -- una "Convencional" (manual)
+      // se ve en el catálogo pero nunca va a traer datos acá. Este aviso
+      // es una PISTA (según el texto de tecnología), no una garantía -- el
+      // chequeo real pasa recién al elegirla (paramIdeamElegir).
+      const esAutomatica = (e.tecnologia || '').toLowerCase().includes('autom');
+      const avisoTec = esAutomatica ? '' : ' <span style="color:#f4a261">⚠ sin telemetría automática -- puede no tener datos</span>';
       return `<div onclick='paramIdeamElegir(${datos})' style="padding:8px 10px;font-size:12px;cursor:pointer;border-bottom:1px solid var(--border);color:var(--text2)">
         <b>${e.nombre}</b><br>
-        <span style="font-size:10.5px;color:var(--text3)">${e.municipio || ''}${e.departamento ? ', '+e.departamento : ''} · ${e.categoria || ''} · ${e.estado || ''}</span>
+        <span style="font-size:10.5px;color:var(--text3)">${e.municipio || ''}${e.departamento ? ', '+e.departamento : ''} · ${e.categoria || ''} · ${e.tecnologia || ''} · ${e.estado || ''}${avisoTec}</span>
       </div>`;
     }).join('');
   }catch(e){
@@ -4643,7 +4650,7 @@ async function paramIdeamBuscar(){
 async function paramIdeamElegir(datos){
   if(!requiereEditor()) return;
   try{
-    await apiPost('/api/ideam/estacion', {
+    const resp = await apiPost('/api/ideam/estacion', {
       codigo_estacion: datos.codigo, nombre_estacion: datos.nombre,
       departamento: datos.departamento, municipio: datos.municipio,
     });
@@ -4651,6 +4658,11 @@ async function paramIdeamElegir(datos){
     paramIdeamRenderActual();
     document.getElementById('param-ideam-buscar').value = '';
     document.getElementById('param-ideam-resultados').innerHTML = '';
+    // Chequeo real (no solo la pista de "tecnología") -- avisa al toque en
+    // vez de que el usuario se entere recién al entrar al módulo.
+    if(resp && resp.tiene_datos === false){
+      alert(`Ojo: "${datos.nombre}" quedó guardada, pero el IDEAM todavía no le tiene ninguna lectura de temperatura cargada en su dataset en tiempo real (pasa con estaciones sin telemetría automática) -- probá buscar otra, ojalá "Automática", cerca de la misma zona.`);
+    }
   }catch(e){
     alert(e.message || 'No se pudo guardar la estación.');
   }
