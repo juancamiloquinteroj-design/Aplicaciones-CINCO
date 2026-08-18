@@ -2340,7 +2340,7 @@ tfoot td:first-child{text-align:left}
         <div id="temp-mapa-contenido" class="hidden">
           <div id="temp-mapa-leaflet-wrap" style="position:relative;margin-bottom:12px">
             <div id="temp-mapa-leaflet" style="height:420px;border-radius:10px;overflow:hidden;background:var(--bg3)"></div>
-            <div id="temp-mapa-etiqueta" style="position:absolute;top:10px;left:10px;z-index:600;pointer-events:none;font-size:30px;font-weight:800;color:#ffffff;text-shadow:0 1px 3px rgba(0,0,0,.85), 0 0 10px rgba(0,0,0,.5)"></div>
+            <div id="temp-mapa-etiqueta" style="position:absolute;bottom:10px;left:10px;z-index:600;pointer-events:none;font-size:30px;font-weight:800;color:#ffffff;text-shadow:0 1px 3px rgba(0,0,0,.85), 0 0 10px rgba(0,0,0,.5)"></div>
           </div>
           <div class="fbar" style="justify-content:center;gap:14px;margin-bottom:8px">
             <button type="button" id="temp-mapa-btn-play" onclick="tempMapaTogglePlay()" style="font-size:16px;line-height:1;padding:6px 12px" class="be-modo-btn">▶</button>
@@ -2352,7 +2352,7 @@ tfoot td:first-child{text-align:left}
           </div>
           <div style="display:flex;align-items:center;justify-content:center;gap:8px;font-size:10px;color:var(--text3)">
             <span id="temp-mapa-leyenda-min"></span>
-            <div style="width:160px;height:10px;border-radius:5px;background:linear-gradient(90deg, #ffe066, #f4a261, #d62828)"></div>
+            <div style="width:160px;height:10px;border-radius:5px;background:linear-gradient(90deg, #fff7bc, #ffe066, #f4a261, #d62828, #800020)"></div>
             <span id="temp-mapa-leyenda-max"></span>
           </div>
         </div>
@@ -2368,7 +2368,7 @@ tfoot td:first-child{text-align:left}
       <div id="temp-nac-contenido" class="hidden">
         <div id="temp-nac-leaflet-wrap" style="position:relative;margin-bottom:12px">
           <div id="temp-nac-leaflet" style="height:560px;border-radius:10px;overflow:hidden;background:var(--bg3)"></div>
-          <div id="temp-nac-etiqueta" style="position:absolute;top:10px;left:10px;z-index:600;pointer-events:none;font-size:22px;font-weight:800;color:#ffffff;text-shadow:0 1px 3px rgba(0,0,0,.85), 0 0 10px rgba(0,0,0,.5)"></div>
+          <div id="temp-nac-etiqueta" style="position:absolute;bottom:10px;left:10px;z-index:600;pointer-events:none;font-size:22px;font-weight:800;color:#ffffff;text-shadow:0 1px 3px rgba(0,0,0,.85), 0 0 10px rgba(0,0,0,.5)"></div>
         </div>
         <div class="fbar" style="justify-content:center;gap:14px;margin-bottom:8px">
           <button type="button" id="temp-nac-btn-play" onclick="tempNacTogglePlay()" style="font-size:16px;line-height:1;padding:6px 12px" class="be-modo-btn">▶</button>
@@ -2380,7 +2380,7 @@ tfoot td:first-child{text-align:left}
         </div>
         <div style="display:flex;align-items:center;justify-content:center;gap:8px;font-size:10px;color:var(--text3)">
           <span id="temp-nac-leyenda-min"></span>
-          <div style="width:160px;height:10px;border-radius:5px;background:linear-gradient(90deg, #ffe066, #f4a261, #d62828)"></div>
+          <div style="width:160px;height:10px;border-radius:5px;background:linear-gradient(90deg, #fff7bc, #ffe066, #f4a261, #d62828, #800020)"></div>
           <span id="temp-nac-leyenda-max"></span>
         </div>
       </div>
@@ -11121,11 +11121,13 @@ let TEMP_MAPA_PLAYING = false;
 let TEMP_MAPA_INTERVAL = null;
 let TEMP_MAPA_RANGO = {min:null, max:null};
 
-// Rampa cálida de 3 paradas (amarillo -> naranja -> rojo), estilo mapas de
-// isotermas tipo AccuWeather -- referencia explícita del usuario. Con 2
-// tramos en vez de un solo degradé lineal, el extremo caliente se nota
-// más "rojo intenso" en vez de licuarse hacia un naranja parejo.
-const TEMP_MAPA_PARADAS = [[255,224,102], [244,162,97], [214,40,40]];
+// Rampa cálida de 5 paradas (amarillo pálido -> amarillo -> naranja -> rojo
+// -> rojo oscuro), estilo mapas de isotermas tipo AccuWeather. Con más
+// paradas que antes (eran 3) el tramo cálido (donde cae la mayoría de
+// Colombia casi todo el año) queda más desglosado en vez de licuarse todo
+// a rojo parejo -- pedido explícito ("la gran mayoría se ve rojo y no se
+// ve cambio").
+const TEMP_MAPA_PARADAS = [[255,247,188], [255,224,102], [244,162,97], [214,40,40], [128,0,32]];
 function _tempMapaColor(v, min, max){
   if(v==null || min==null || max==null || max<=min) return '#999';
   const t = Math.max(0, Math.min(1, (v-min)/(max-min)));
@@ -11458,7 +11460,17 @@ function _tempNacRecalcularRango(){
   const valores = [];
   Object.values(TEMP_NAC_DATOS).forEach(filas => filas.forEach(f => { if(f[metrica.campo]!=null) valores.push(f[metrica.campo]); }));
   if(!valores.length) return;
-  TEMP_NAC_RANGO = {min: Math.min(...valores), max: Math.max(...valores)};
+  // Percentiles 5/95 en vez de mín/máx crudos -- pedido explícito ("la
+  // gran mayoría se ve rojo y no se ve cambio"): con mín/máx puros, UNA
+  // sola lectura fría (ej. Bogotá de madrugada) o caliente extrema estira
+  // el rango tanto que casi todo el resto de Colombia (que sí se mueve en
+  // una banda angosta, 22-34°C la mayor parte del año) queda apachurrado
+  // en el mismo tramo del degradé. Los percentiles ignoran esos extremos
+  // raros y usan el rango donde REALMENTE se mueven los datos -- los
+  // días/lugares fuera de ese rango simplemente saturan en la punta.
+  valores.sort((a,b) => a-b);
+  const p = q => valores[Math.min(valores.length-1, Math.max(0, Math.round(q*(valores.length-1))))];
+  TEMP_NAC_RANGO = {min: p(0.05), max: p(0.95)};
   document.getElementById('temp-nac-leyenda-min').textContent = TEMP_NAC_RANGO.min.toFixed(0)+'°C';
   document.getElementById('temp-nac-leyenda-max').textContent = TEMP_NAC_RANGO.max.toFixed(0)+'°C';
 }
