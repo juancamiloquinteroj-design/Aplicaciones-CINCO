@@ -2334,7 +2334,7 @@ tfoot td:first-child{text-align:left}
       <div class="fbar" style="justify-content:center;margin-bottom:10px">
         <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Mapa de Temperatura</div>
       </div>
-      <div class="sec-sub" style="text-align:center;margin-bottom:12px">Recorré las fechas para ver cómo cambia la temperatura en la ubicación de la estación -- incluye pronóstico (Open-Meteo) para los próximos días.</div>
+      <div class="sec-sub" style="text-align:center;margin-bottom:12px">Recorré las fechas para ver cómo cambia la temperatura de la estación configurada, aplicada a todo el territorio -- incluye pronóstico (Open-Meteo) para los próximos días.</div>
       <div id="temp-mapa-vacio" style="color:var(--text3);font-size:12px;text-align:center;padding:20px">Cargando…</div>
       <div id="temp-mapa-contenido" class="hidden">
         <div id="temp-mapa-leaflet" style="height:420px;border-radius:10px;overflow:hidden;background:var(--bg3);margin-bottom:12px"></div>
@@ -2348,7 +2348,7 @@ tfoot td:first-child{text-align:left}
         </div>
         <div style="display:flex;align-items:center;justify-content:center;gap:8px;font-size:10px;color:var(--text3)">
           <span id="temp-mapa-leyenda-min"></span>
-          <div style="width:160px;height:10px;border-radius:5px;background:linear-gradient(90deg, #4361ee, #ef476f)"></div>
+          <div style="width:160px;height:10px;border-radius:5px;background:linear-gradient(90deg, #ffe066, #f4a261, #d62828)"></div>
           <span id="temp-mapa-leyenda-max"></span>
         </div>
       </div>
@@ -11044,48 +11044,55 @@ function tempHorariaRender(filas){
 /* ==========================================================================
    MAPA DE TEMPERATURA -- pedido explícito ("ver en un mapa el
    comportamiento de la temperatura... ir avanzando en fechas... y
-   proyecciones"). Un solo marcador (la estación configurada) sobre el
-   mismo croquis de zonas, con un slider (+ play/pausa) para recorrer la
+   proyecciones"). Como solo hay UNA estación configurada (no una red de
+   estaciones por zona), el "mapa de calor" no interpola espacialmente --
+   colorea TODO el departamento con el mismo color, según la temperatura de
+   esa única estación en la fecha elegida (pedido explícito: "todo el
+   departamento con esa estación"). Un slider (+ play/pausa) recorre la
    serie HISTÓRICA (TEMP_ENTRADA_DIAS, ya cargada) seguida del PRONÓSTICO
    real de Open-Meteo (/api/ideam/pronostico -- el IDEAM/datos.gov.co NO
-   tiene pronóstico, solo histórico). El color del marcador interpola
-   frío→cálido según el rango [mín,máx] de TODA la serie visible, para que
-   el color sea comparable entre fechas.
+   tiene pronóstico, solo histórico). El color interpola frío→cálido según
+   el rango [mín,máx] de TODA la serie visible, para que sea comparable
+   entre fechas.
    ========================================================================== */
 let TEMP_MAPA_SERIE = [];      // [{fecha, temp_promedio, temp_max, temp_min, pronostico}, ...]
 let TEMP_MAPA_IDX = 0;
 let TEMP_MAPA_MAPA = null;
-let TEMP_MAPA_MARCADOR = null;
+let TEMP_MAPA_CAPA = null;       // capa GeoJSON de municipios -- se recolorea ENTERA en cada fecha
+let TEMP_MAPA_MARCADOR = null;   // pin chico -- solo referencia de dónde está la estación, no lleva el color
 let TEMP_MAPA_PLAYING = false;
 let TEMP_MAPA_INTERVAL = null;
 let TEMP_MAPA_RANGO = {min:null, max:null};
 
+// Rampa cálida de 3 paradas (amarillo -> naranja -> rojo), estilo mapas de
+// isotermas tipo AccuWeather -- referencia explícita del usuario. Con 2
+// tramos en vez de un solo degradé lineal, el extremo caliente se nota
+// más "rojo intenso" en vez de licuarse hacia un naranja parejo.
+const TEMP_MAPA_PARADAS = [[255,224,102], [244,162,97], [214,40,40]];
 function _tempMapaColor(v, min, max){
   if(v==null || min==null || max==null || max<=min) return '#999';
   const t = Math.max(0, Math.min(1, (v-min)/(max-min)));
-  const fria = [67,97,238], calida = [239,71,111];   // mismos #4361ee/#ef476f del resto del módulo
-  const rgb = fria.map((c,i)=> Math.round(c + (calida[i]-c)*t));
+  const seg = t * (TEMP_MAPA_PARADAS.length - 1);
+  const i = Math.min(TEMP_MAPA_PARADAS.length - 2, Math.floor(seg));
+  const lt = seg - i;
+  const rgb = TEMP_MAPA_PARADAS[i].map((c,k) => Math.round(c + (TEMP_MAPA_PARADAS[i+1][k]-c)*lt));
   return `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`;
 }
 
-// Reusa el croquis de zonas si el operador ya lo tiene parametrizado (para
-// dar contexto geográfico); si no, arma un mapa simple centrado en la
-// estación -- el marcador de temperatura no debe depender de que Parametrización
-// tenga zonas cargadas. Comparte el MISMO registro (MAPA_ZONAS_INSTANCIAS/
-// MAPA_ZONAS_RESIZE_OBS) que mapaZonasRenderLeaflet para poder reusar su
-// misma limpieza si esta vista se vuelve a cargar.
+// Arma el mapa desde cero (no reusa mapaZonasRenderLeaflet -- esa colorea
+// por ZONA; acá el relleno lo maneja tempMapaActualizar según temperatura,
+// parejo en todo el departamento). Si el operador no tiene departamento
+// parametrizado, cae a un mapa simple centrado en la estación. Comparte el
+// MISMO registro (MAPA_ZONAS_INSTANCIAS/MAPA_ZONAS_RESIZE_OBS) que
+// mapaZonasRenderLeaflet para poder reusar su misma limpieza si esta vista
+// se vuelve a cargar.
 async function _tempMapaInicializarMapa(contId, lat, lon){
-  let mapa = null;
+  let topo = null, resp = null;
   try{
-    const topo = await mapaZonasCargarTopo();
-    const resp = await apiGet('/api/mapa-zonas');
-    if(resp.departamento){
-      const features = mapaZonasFeaturesDeDepto(topo, resp.departamento);
-      const render = mapaZonasRenderLeaflet(contId, features, id => resp.municipios[id], null, 0.5, null);
-      if(render) mapa = render.mapa;
-    }
-  }catch(e){ /* sin zonas parametrizadas -- sigue con el mapa simple de abajo */ }
-  if(mapa) return mapa;
+    topo = await mapaZonasCargarTopo();
+    resp = await apiGet('/api/mapa-zonas');
+  }catch(e){ /* sin zonas parametrizadas -- sigue con el mapa simple */ }
+  const features = (resp && resp.departamento) ? mapaZonasFeaturesDeDepto(topo, resp.departamento) : [];
 
   if(MAPA_ZONAS_INSTANCIAS[contId]){ try{ MAPA_ZONAS_INSTANCIAS[contId].remove(); }catch(e){} delete MAPA_ZONAS_INSTANCIAS[contId]; }
   if(MAPA_ZONAS_RESIZE_OBS[contId]){ MAPA_ZONAS_RESIZE_OBS[contId].disconnect(); delete MAPA_ZONAS_RESIZE_OBS[contId]; }
@@ -11093,20 +11100,50 @@ async function _tempMapaInicializarMapa(contId, lat, lon){
   if(!cont) return null;
   cont.innerHTML = '';
   delete cont._leaflet_id;
-  mapa = L.map(contId, {zoomControl:true, attributionControl:false});
+
+  const mapa = L.map(contId, {zoomControl:true, attributionControl:false});
   MAPA_ZONAS_INSTANCIAS[contId] = mapa;
-  mapa.setView([lat, lon], 9);   // vista fijada ANTES de agregar capas -- ver nota del mismo bug en mapaZonasRenderLeaflet
+  // Vista fijada SINCRÓNICAMENTE antes de agregar cualquier capa -- mismo
+  // bug real de Leaflet documentado en mapaZonasRenderLeaflet (agregar un
+  // polígono antes de que el mapa tenga una vista revienta el renderer SVG).
+  if(features.length) mapa.fitBounds(L.geoJSON(features).getBounds(), {padding:[10,10]});
+  else mapa.setView([lat, lon], 9);
   mapaZonasCapasBase()['Calles'].addTo(mapa);
-  let ajustado = false;
+
+  // Pane PROPIO para la capa de calor -- así el filtro CSS blur/saturate
+  // (pedido explícito: "estilo así como el de nubosidad, que se vea muy
+  // bonito") queda AISLADO ahí adentro y no difumina también el pin de la
+  // estación ni las capas base/controles (que viven en otros panes).
+  if(!mapa.getPane('tempHeatPane')){
+    const pane = mapa.createPane('tempHeatPane');
+    // Un poco por debajo de overlayPane (400, donde cae el marcador de la
+    // estación al no tener pane propio) -- así el pin siempre queda ENCIMA
+    // del blob de calor, nítido, sin heredar su blur.
+    pane.style.zIndex = 395;
+    pane.style.filter = 'blur(9px) saturate(1.35)';
+    pane.style.mixBlendMode = document.documentElement.getAttribute('data-theme')==='dark' ? 'screen' : 'multiply';
+  }
+
+  let capa = null;
+  if(features.length){
+    capa = L.geoJSON(features, {
+      pane: 'tempHeatPane',
+      style: () => ({stroke:false, fillColor:'#999', fillOpacity:0.85}),
+    }).addTo(mapa);
+  }
+  const marcador = L.circleMarker([lat, lon], {radius:5, weight:2, color:'#111111', fillColor:'#ffffff', fillOpacity:1})
+    .bindTooltip('Estación', {direction:'top'}).addTo(mapa);
+
+  let ajustado = !features.length;
   const ro = new ResizeObserver(() => {
     if(MAPA_ZONAS_INSTANCIAS[contId] !== mapa){ ro.disconnect(); return; }
     if(!cont.offsetWidth || !cont.offsetHeight) return;
     mapa.invalidateSize();
-    if(!ajustado){ ajustado = true; mapa.setView([lat, lon], 9); }
+    if(!ajustado && capa){ ajustado = true; mapa.fitBounds(capa.getBounds(), {padding:[10,10]}); }
   });
   ro.observe(cont);
   MAPA_ZONAS_RESIZE_OBS[contId] = ro;
-  return mapa;
+  return {mapa, capa, marcador};
 }
 
 async function tempMapaCargar(){
@@ -11138,11 +11175,11 @@ async function tempMapaCargar(){
     return;
   }
 
-  TEMP_MAPA_MAPA = await _tempMapaInicializarMapa('temp-mapa-leaflet', est.latitud, est.longitud);
-  if(!TEMP_MAPA_MAPA){ vacio.textContent = 'No se pudo cargar el mapa.'; return; }
-  if(TEMP_MAPA_MARCADOR){ try{ TEMP_MAPA_MAPA.removeLayer(TEMP_MAPA_MARCADOR); }catch(e){} TEMP_MAPA_MARCADOR = null; }
-  TEMP_MAPA_MARCADOR = L.circleMarker([est.latitud, est.longitud], {radius:16, weight:2.5, color:'#ffffff', fillOpacity:0.92})
-    .addTo(TEMP_MAPA_MAPA);
+  const ref = await _tempMapaInicializarMapa('temp-mapa-leaflet', est.latitud, est.longitud);
+  if(!ref){ vacio.textContent = 'No se pudo cargar el mapa.'; return; }
+  TEMP_MAPA_MAPA = ref.mapa;
+  TEMP_MAPA_CAPA = ref.capa;
+  TEMP_MAPA_MARCADOR = ref.marcador;
 
   vacio.classList.add('hidden'); contenido.classList.remove('hidden');
   const slider = document.getElementById('temp-mapa-slider');
@@ -11170,14 +11207,17 @@ function _tempMapaRecalcularRango(){
 }
 
 function tempMapaActualizar(idx){
-  if(!TEMP_MAPA_SERIE.length || !TEMP_MAPA_MARCADOR) return;
+  if(!TEMP_MAPA_SERIE.length) return;
   TEMP_MAPA_IDX = Math.max(0, Math.min(TEMP_MAPA_SERIE.length-1, idx));
   const fila = TEMP_MAPA_SERIE[TEMP_MAPA_IDX];
   const metrica = TEMP_ENTRADA_METRICA_INFO[TEMP_ENTRADA_METRICA];
   const valor = fila[metrica.campo];
   const color = _tempMapaColor(valor, TEMP_MAPA_RANGO.min, TEMP_MAPA_RANGO.max);
-  TEMP_MAPA_MARCADOR.setStyle({fillColor: color});
-  TEMP_MAPA_MARCADOR.bindTooltip(valor!=null ? `${valor.toFixed(1)}°C` : 'Sin dato', {sticky:true});
+  // TODO el departamento se recolorea parejo -- una sola estación no
+  // permite interpolar espacialmente, así que el "mapa de calor" es la
+  // misma temperatura aplicada a los municipios enteros del croquis.
+  if(TEMP_MAPA_CAPA) TEMP_MAPA_CAPA.setStyle({fillColor: color});
+  if(TEMP_MAPA_MARCADOR) TEMP_MAPA_MARCADOR.setTooltipContent(valor!=null ? `Estación: ${valor.toFixed(1)}°C` : 'Estación: sin dato');
 
   const slider = document.getElementById('temp-mapa-slider');
   if(slider) slider.value = TEMP_MAPA_IDX;
