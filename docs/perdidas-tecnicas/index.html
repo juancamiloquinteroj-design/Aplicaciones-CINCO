@@ -3792,6 +3792,24 @@ function _iniRenderVariacion(elId, valorAnt, valorAct){
   el.className = `inicio-variacion ${clase}`;
 }
 
+// Variante para deltas en energía (kWh) -- _iniRenderVariacion asume
+// SIEMPRE puntos porcentuales ("pp") sin separador de miles; reusarla
+// para Entrada/Salida/Pérdida en kWh mostraba números crudos gigantes
+// mal etiquetados como "pp" (bug real detectado por el usuario). Acá
+// `esPerdida` decide si un aumento se pinta como "empeora" (rojo) -- solo
+// tiene sentido para Pérdida, no para Entrada/Salida (más energía
+// entregada no es "bueno" ni "malo" en sí mismo).
+function _iniRenderVariacionKwh(elId, valorAnt, valorAct, esPerdida){
+  const el = document.getElementById(elId);
+  if(!el) return;
+  if(valorAnt==null || valorAct==null){ el.textContent=''; el.className='inicio-variacion'; return; }
+  const diff = valorAct - valorAnt;
+  const signo = diff>0.5 ? '▲' : diff<-0.5 ? '▼' : '■';
+  const clase = Math.abs(diff)<0.5 ? 'igual' : (esPerdida ? (diff>0?'empeora':'mejora') : 'igual');
+  el.textContent = `${signo} ${Math.abs(diff).toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`;
+  el.className = `inicio-variacion ${clase}`;
+}
+
 function cerrarSesion(){
   TOKEN=null; OPERADOR=null; PERSONA=null; DEMO=false;
   vistaCargada = {perdidas:false, parametrizacion:false, telemedidos:false, balancesEstructura:false, ipReg:false, ipComercial:false, ipNivel1:false, reportesSspd:false, tridevanados:false};
@@ -9233,6 +9251,29 @@ async function irASubestacionesConZona(zona){
   }
 }
 
+// Click en una curva de "Pérdida % por Alimentador" (Subestaciones) o en
+// una tarjeta de zona de "Pérdida por Zona" salta a Alimentadores, ya
+// filtrado -- pedido explícito. Con nemonico, además elige ESE
+// alimentador puntual (muestra su detalle); sin nemonico, deja el módulo
+// mostrando el TOTAL de la zona.
+async function irAAlimentadores(zonasSet, nemonico){
+  ALIM3_ZONAS_SEL = new Set(zonasSet || []);
+  ALIM3_NEMONICO_SEL = nemonico || null;
+  await mostrarVista('alim-alimentadores');
+  if(vistaCargada.alimAlimentadores){
+    alim3RenderZonasChips();
+    alim3RecalcularListaCache();
+    alim3RenderListaAlimentadores();
+    alim3RenderSeleccion();
+    alim3RenderTablaTop();
+    alim3RenderScatter();
+  }
+}
+
+function irAAlimentadoresDesdeSubestaciones(zona){
+  irAAlimentadores(new Set([zona]), null);
+}
+
 function alimSubClave(anio, mes){ return alimN21Clave(anio, mes); }
 
 // Agrega ALIM_FILAS por mes Y por un campo de agrupación (subestacion o
@@ -9610,7 +9651,7 @@ function alimSubRenderChartAlimentadores(){
     };
 
     datasets.push({
-      type:'line', label: nem, yAxisID:'yPct', order:1,
+      type:'line', label: nem, yAxisID:'yPct', order:1, nemonico: nem,
       data: pctDatos, borderColor: color, backgroundColor:'transparent',
       borderWidth:1.75, pointRadius:1, spanGaps:true, tension:.2, datalabels: datalabelsPct,
     });
@@ -9621,12 +9662,12 @@ function alimSubRenderChartAlimentadores(){
     // segundo eje solo aparece cuando el usuario lo pide explícitamente.
     if(ALIM_SUB_AL_MOSTRAR_ES){
       datasets.push({
-        type:'line', label: `${nem} · Entrada`, yAxisID:'y', order:3,
+        type:'line', label: `${nem} · Entrada`, yAxisID:'y', order:3, nemonico: nem,
         data: entradaDatos, borderColor: color, backgroundColor:'transparent',
         borderWidth:1, borderDash:[6,3], pointRadius:0, spanGaps:true, tension:.2, datalabels:{display:false},
       });
       datasets.push({
-        type:'line', label: `${nem} · Salida`, yAxisID:'y', order:2,
+        type:'line', label: `${nem} · Salida`, yAxisID:'y', order:2, nemonico: nem,
         data: salidaDatos, borderColor: color, backgroundColor:'transparent',
         borderWidth:1, borderDash:[2,2], pointRadius:0, spanGaps:true, tension:.2, datalabels:{display:false},
       });
@@ -9652,6 +9693,17 @@ function alimSubRenderChartAlimentadores(){
       responsive:true, maintainAspectRatio:false,
       layout:{padding:{top:20, right:20}},
       interaction:{mode:'index', intersect:false},
+      // Click en la curva de un alimentador salta a Alimentadores con ese
+      // circuito puntual ya elegido -- pedido explícito. Se usa 'nearest'
+      // + intersect:true (a diferencia del hover, que es por índice) para
+      // que el click identifique la línea concreta bajo el mouse.
+      onClick:(evt, _elementos, chart) => {
+        const cercanos = chart.getElementsAtEventForMode(evt, 'nearest', {intersect:true}, true);
+        if(!cercanos.length) return;
+        const nem = chart.data.datasets[cercanos[0].datasetIndex].nemonico;
+        if(nem) irAAlimentadores(new Set(ALIM_SUB_ZONAS_SEL), nem);
+      },
+      onHover:(evt, elementos) => { evt.native.target.style.cursor = elementos.length ? 'pointer' : 'default'; },
       plugins:{
         legend:{display:true, position:'bottom', labels:{boxWidth:10, font:{size:9}, color:tickC}},
         tooltip:{callbacks:{label:c => {
@@ -9713,11 +9765,15 @@ function alimSubRenderZonaPanel(){
   const items = [{clave:null, titulo:'Total', icono:'⚡', color:'var(--accent)'}]
     .concat(ALIM_SUB_ZONAS.map(zona => ({clave:zona, titulo:zona, icono:'📍', color:colorParaZona(zona)})));
 
+  // Click en "Total" salta a Indicador N2-1; click en una zona puntual
+  // salta a Alimentadores ya filtrado por esa zona -- pedido explícito.
   cont.innerHTML = items.map(({clave, titulo, icono, color}) => {
     const p = _iniCalcularPanelesN21(clave ? new Set([clave]) : new Set());
     const idPref = `alim-sub-z-${clave || 'total'}`;
+    const onclick = clave ? `irAAlimentadoresDesdeSubestaciones('${clave}')` : `mostrarVista('alim-n21')`;
+    const titleAttr = clave ? `title="Ver zona ${clave} en Alimentadores"` : `title="Ver Indicador N2-1"`;
     if(!p){
-      return `<div class="card inicio-dash-card" style="border-left:4px solid ${color}">
+      return `<div class="card inicio-dash-card" style="border-left:4px solid ${color};cursor:pointer" onclick="${onclick}" ${titleAttr}>
         <div class="card-title">${icono} ${titulo}</div>
         <div style="font-size:11px;color:var(--text3)">Sin datos suficientes</div>
       </div>`;
@@ -9725,7 +9781,7 @@ function alimSubRenderZonaPanel(){
     const valorAct = esAnual ? p.anualAct : p.mensualAct;
     const kwhAct = esAnual ? p.anualActKwh : p.mensualActKwh;
     const kwhTexto = kwhAct!=null ? `${kwhAct.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh` : '';
-    return `<div class="card inicio-dash-card" style="border-left:4px solid ${color}">
+    return `<div class="card inicio-dash-card" style="border-left:4px solid ${color};cursor:pointer" onclick="${onclick}" ${titleAttr}>
       <div class="card-title">${icono} ${titulo} · ${esAnual?'Anual (12M)':'Mensual'}</div>
       <div style="font-size:10px;color:var(--text3);margin-bottom:2px">${p.mesActNombre}</div>
       <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">
@@ -10082,12 +10138,12 @@ function alim3RenderTarjetas(filasConClave){
     _alim3Tarjeta('alim3-t-per', '⚡', 'Pérdida', actual.perdida, actual12?actual12.perdida12:null, fmtKwh) +
     _alim3Tarjeta('alim3-t-pct', '📉', 'Pérdida %', actual.pct, actual12?actual12.pct12:null, fmtPct);
 
-  _iniRenderVariacion('alim3-t-ent-var-m', anterior.entrada, actual.entrada);
-  _iniRenderVariacion('alim3-t-ent-var-a', anterior12?anterior12.entrada12:null, actual12?actual12.entrada12:null);
-  _iniRenderVariacion('alim3-t-sal-var-m', anterior.salida, actual.salida);
-  _iniRenderVariacion('alim3-t-sal-var-a', anterior12?anterior12.salida12:null, actual12?actual12.salida12:null);
-  _iniRenderVariacion('alim3-t-per-var-m', anterior.perdida, actual.perdida);
-  _iniRenderVariacion('alim3-t-per-var-a', anterior12?anterior12.perdida12:null, actual12?actual12.perdida12:null);
+  _iniRenderVariacionKwh('alim3-t-ent-var-m', anterior.entrada, actual.entrada, false);
+  _iniRenderVariacionKwh('alim3-t-ent-var-a', anterior12?anterior12.entrada12:null, actual12?actual12.entrada12:null, false);
+  _iniRenderVariacionKwh('alim3-t-sal-var-m', anterior.salida, actual.salida, false);
+  _iniRenderVariacionKwh('alim3-t-sal-var-a', anterior12?anterior12.salida12:null, actual12?actual12.salida12:null, false);
+  _iniRenderVariacionKwh('alim3-t-per-var-m', anterior.perdida, actual.perdida, true);
+  _iniRenderVariacionKwh('alim3-t-per-var-a', anterior12?anterior12.perdida12:null, actual12?actual12.perdida12:null, true);
   _iniRenderVariacion('alim3-t-pct-var-m', anterior.pct, actual.pct);
   _iniRenderVariacion('alim3-t-pct-var-a', anterior12?anterior12.pct12:null, actual12?actual12.pct12:null);
 }
