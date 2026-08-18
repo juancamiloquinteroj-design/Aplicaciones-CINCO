@@ -755,6 +755,35 @@ tfoot td:first-child{text-align:left}
   </div>
 </div>
 
+<!-- ==================== SELECTOR DE SUITE ==================== -->
+<!-- Pantalla intermedia entre el login y el Visualizador -- pedido
+     explícito del usuario: al iniciar sesión aparecen los módulos de la
+     suite (Código Python y Motor de Cálculo, ambos "Próximamente";
+     Visualización de Datos = todo lo ya construido), en ESE orden. -->
+<div id="suite-screen" class="hidden" style="max-width:920px;margin:0 auto;padding:48px 20px">
+  <div style="text-align:center;margin-bottom:34px">
+    <div style="font-size:22px;font-weight:800;color:var(--text)">¿Qué querés abrir?</div>
+    <div style="font-size:13px;color:var(--text3);margin-top:6px">Elegí un módulo de la suite</div>
+  </div>
+  <div class="mod-grid">
+    <div class="mod-card disabled" title="Próximamente">
+      <span class="mc-icon">🐍</span>
+      <div class="mc-title">Código Python</div>
+      <div class="mc-desc">Próximamente</div>
+    </div>
+    <div class="mod-card disabled" title="Próximamente">
+      <span class="mc-icon">🧮</span>
+      <div class="mc-title">Motor de Cálculo</div>
+      <div class="mc-desc">Próximamente</div>
+    </div>
+    <div class="mod-card active" onclick="entrarVisualizador()">
+      <span class="mc-icon">📊</span>
+      <div class="mc-title">Visualización de Datos</div>
+      <div class="mc-desc">Indicadores, pérdidas técnicas y balances de tu operador.</div>
+    </div>
+  </div>
+</div>
+
 <!-- ==================== DASHBOARD ==================== -->
 <div class="app-shell">
 <div id="sidebar-overlay" class="sidebar-overlay hidden" onclick="toggleSidebar()"></div>
@@ -2974,6 +3003,35 @@ function toggleTheme(){
   const next = html.getAttribute('data-theme')==='dark' ? 'light':'dark';
   html.setAttribute('data-theme', next);
   localStorage.setItem('pt_theme', next);
+  _actualizarTemaCharts();
+}
+
+// Cada gráfico calcula sus colores (ejes/cuadrícula) UNA vez, al crearse,
+// leyendo el tema de ESE momento -- toggleTheme() nunca volvía a tocar
+// los charts ya dibujados, así que quedaban con los colores del tema
+// viejo (texto negro sobre fondo oscuro, cuadrícula gris clara invisible)
+// hasta recargar la página entera. Esto recorre TODOS los canvas de la
+// página (visibles o no -- un módulo ya visitado sigue vivo en memoria
+// aunque esté oculto) y les repinta ejes/cuadrícula/leyenda con el color
+// del tema nuevo, sin necesidad de tocar cada función de render una por
+// una (son decenas en toda la app).
+function _actualizarTemaCharts(){
+  if(typeof Chart === 'undefined') return;
+  const dark = document.documentElement.getAttribute('data-theme')==='dark';
+  const tickC = dark ? '#aab8d1' : '#4b5e7a';
+  const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
+  document.querySelectorAll('canvas').forEach(cv => {
+    const chart = Chart.getChart(cv);
+    if(!chart) return;
+    Object.values(chart.options.scales || {}).forEach(escala => {
+      if(escala.grid) escala.grid.color = gridC;
+      if(escala.ticks) escala.ticks.color = tickC;
+      if(escala.title) escala.title.color = tickC;
+    });
+    const leyenda = chart.options.plugins && chart.options.plugins.legend;
+    if(leyenda && leyenda.labels) leyenda.labels.color = tickC;
+    chart.update('none');
+  });
 }
 (function(){ const t=localStorage.getItem('pt_theme'); if(t) document.documentElement.setAttribute('data-theme',t); })();
 
@@ -3652,6 +3710,7 @@ function cerrarSesion(){
   TOKEN=null; OPERADOR=null; PERSONA=null; DEMO=false;
   vistaCargada = {perdidas:false, parametrizacion:false, telemedidos:false, balancesEstructura:false, ipReg:false, ipComercial:false, ipNivel1:false, reportesSspd:false, tridevanados:false};
   document.getElementById('app-screen').classList.add('hidden');
+  document.getElementById('suite-screen').classList.add('hidden');
   document.getElementById('login-screen').classList.remove('hidden');
   document.getElementById('badge-op').classList.add('hidden');
   document.getElementById('badge-demo').classList.add('hidden');
@@ -3674,11 +3733,19 @@ function textoVigenciaAcceso(){
   return vencido ? `⛔ Acceso vencido el <b>${fmt}</b>` : `⏳ Acceso vigente hasta <b>${fmt}</b>`;
 }
 
-async function entrarDashboard(){
+// Login exitoso -- ANTES entraba directo al Visualizador, ahora primero
+// muestra el selector de la suite (Código Python / Motor de Cálculo,
+// "Próximamente" / Visualización de Datos) -- pedido explícito.
+function entrarDashboard(){
   document.getElementById('login-screen').classList.add('hidden');
   document.getElementById('cambio-screen').classList.add('hidden');
-  document.getElementById('app-screen').classList.remove('hidden');
+  document.getElementById('suite-screen').classList.remove('hidden');
   document.getElementById('btn-logout').classList.remove('hidden');
+}
+
+async function entrarVisualizador(){
+  document.getElementById('suite-screen').classList.add('hidden');
+  document.getElementById('app-screen').classList.remove('hidden');
   document.getElementById('btn-menu').classList.remove('hidden');
   document.getElementById('badge-op').textContent = OPERADOR.nombre;
   document.getElementById('badge-op').classList.remove('hidden');
