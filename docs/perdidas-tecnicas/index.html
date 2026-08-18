@@ -2305,6 +2305,9 @@ tfoot td:first-child{text-align:left}
         <input type="date" id="temp-entrada-desde" onchange="tempEntradaRender()">
         <span style="font-size:11px;color:var(--text3)">→</span>
         <input type="date" id="temp-entrada-hasta" onchange="tempEntradaRender()">
+        <button type="button" class="be-modo-btn" id="temp-entrada-btn-min" style="margin-left:16px" onclick="tempEntradaToggleMetrica('min')">Mínima</button>
+        <button type="button" class="be-modo-btn" id="temp-entrada-btn-max" onclick="tempEntradaToggleMetrica('max')">Máxima</button>
+        <button type="button" class="be-modo-btn activo" id="temp-entrada-btn-promedio" onclick="tempEntradaToggleMetrica('promedio')">Promedio</button>
         <span id="temp-entrada-estacion-txt" style="font-size:11px;color:var(--text3);margin-left:auto"></span>
       </div>
       <div class="chart-wrap" style="height:460px"><canvas id="ch-temp-entrada"></canvas></div>
@@ -10715,16 +10718,49 @@ function alim3RenderScatter(){
 /* ==========================================================================
    TEMPERATURA VS ENTRADA -- temperatura DIARIA de la estación IDEAM
    elegida en Parametrización (backend/app/routers/ideam.py, datos
-   abiertos de datos.gov.co) comparada con la Entrada de energía (todas
-   las zonas). La Entrada NO es diaria en los datos del operador -- es
-   mensual -- así que se repite el valor de cada mes en todos sus días
-   visibles (línea "escalón") para poder verla junto a la temperatura
-   diaria en el mismo eje de tiempo -- pedido explícito ("debe ser diaria
-   la temperatura").
+   abiertos de datos.gov.co) comparada con la Entrada DIARIA real de
+   energía (todas las zonas), tomada de la estructura Nivel 4 -- Balance
+   por Nivel de Tensión (misma fuente/endpoint que "Ver Balance":
+   /api/balances-estructura/{id}/consumo, que ya trae entrada_kwh día a
+   día -- ver renderChartBalanceEstructura). Antes se usaba la Entrada
+   MENSUAL repetida en cada día del mes (línea "escalón") porque no se
+   tenía identificado el dato diario real; ya no hace falta ese hack.
    ========================================================================== */
-let TEMP_ENTRADA_DIAS = [];   // [{fecha:'YYYY-MM-DD', temp_promedio}, ...] de /api/ideam/temperatura
+let TEMP_ENTRADA_DIAS = [];   // [{fecha, temp_promedio, temp_max, temp_min}, ...] de /api/ideam/temperatura
 let TEMP_ENTRADA_ESTACION = null;
+let TEMP_ENTRADA_METRICA = 'promedio';   // 'min' | 'max' | 'promedio'
+let TEMP_ENTRADA_NIVEL4_ID = null;       // cacheado tras la 1ra carga (ver cargarDashboardInicio, mismo patrón)
+let TEMP_ENTRADA_BALANCE_DIARIO = {};    // {fecha: entrada_kwh} de /api/balances-estructura/{id}/consumo
 let chTempEntrada = null;
+
+// Trae la Entrada DIARIA real (Nivel 4 -- Balance por Nivel de Tensión) para
+// el rango que cubre TODO TEMP_ENTRADA_DIAS -- se pide una sola vez por
+// carga del módulo (no en cada cambio de Rango, que solo filtra lo ya
+// cacheado) porque es el mismo rango amplio (hasta DIAS_HISTORIA días) que
+// ya se usa para pedir la temperatura.
+async function _tempEntradaCargarBalanceDiario(desde, hasta){
+  TEMP_ENTRADA_BALANCE_DIARIO = {};
+  if(TEMP_ENTRADA_NIVEL4_ID === null){
+    let nivel4;
+    try{ nivel4 = await apiGet('/api/balances-estructura?nivel_tension=4&tipo=Z'); }
+    catch(e){ return; }
+    if(!nivel4.length) return;
+    TEMP_ENTRADA_NIVEL4_ID = nivel4[0].id;   // siempre hay a lo sumo uno -- Nivel 4 no tiene zona
+  }
+  let datos;
+  try{
+    datos = await apiGet(`/api/balances-estructura/${TEMP_ENTRADA_NIVEL4_ID}/consumo?desde=${desde}&hasta=${hasta}`, BALANCE_TIMEOUT_MS);
+  }catch(e){ return; }
+  (datos.fechas || []).forEach((f,i) => { TEMP_ENTRADA_BALANCE_DIARIO[f] = datos.entrada_kwh?.[i] ?? null; });
+}
+
+function tempEntradaToggleMetrica(m){
+  TEMP_ENTRADA_METRICA = m;
+  document.getElementById('temp-entrada-btn-min').classList.toggle('activo', m==='min');
+  document.getElementById('temp-entrada-btn-max').classList.toggle('activo', m==='max');
+  document.getElementById('temp-entrada-btn-promedio').classList.toggle('activo', m==='promedio');
+  tempEntradaRender();
+}
 
 async function tempEntradaCargar(){
   const vacio = document.getElementById('temp-entrada-vacio');
@@ -10732,13 +10768,6 @@ async function tempEntradaCargar(){
   if(DEMO){
     vacio.classList.remove('hidden'); contenido.classList.add('hidden');
     vacio.querySelector('div').textContent = 'No disponible en modo demo (sin conexión al servidor).';
-    return;
-  }
-  try{
-    await _alimAsegurarDatosCargados();
-  }catch(e){
-    vacio.classList.remove('hidden'); contenido.classList.add('hidden');
-    vacio.querySelector('div').textContent = e.message || 'No se pudieron cargar los datos de Entrada.';
     return;
   }
   try{
@@ -10774,12 +10803,22 @@ async function tempEntradaCargar(){
       inDesde.value = desdeStr > primeraFecha ? desdeStr : primeraFecha;
     }
   }
+  // Se pide UNA vez, cubriendo TODO el rango disponible de temperatura
+  // (no solo lo visible ahora) -- así cambiar el filtro "Rango" más
+  // adelante solo filtra lo ya cacheado, sin pedidos nuevos.
+  await _tempEntradaCargarBalanceDiario(TEMP_ENTRADA_DIAS[0].fecha, TEMP_ENTRADA_DIAS[TEMP_ENTRADA_DIAS.length-1].fecha);
   tempEntradaRender();
 
   const inFechaHoraria = document.getElementById('temp-horaria-fecha');
   if(!inFechaHoraria.value) inFechaHoraria.value = TEMP_ENTRADA_DIAS[TEMP_ENTRADA_DIAS.length-1].fecha;
   tempHorariaCargar();
 }
+
+const TEMP_ENTRADA_METRICA_INFO = {
+  min: {campo:'temp_min', etiqueta:'Temperatura Mínima °C (diaria)'},
+  max: {campo:'temp_max', etiqueta:'Temperatura Máxima °C (diaria)'},
+  promedio: {campo:'temp_promedio', etiqueta:'Temperatura Promedio °C (diaria)'},
+};
 
 function tempEntradaRender(){
   const cv = document.getElementById('ch-temp-entrada');
@@ -10790,12 +10829,10 @@ function tempEntradaRender(){
   if(chTempEntrada){ chTempEntrada.destroy(); chTempEntrada = null; }
   if(!visibles.length) return;
 
-  const entradaPorMes = {};
-  alimN21AgregarMensual(new Set()).forEach(f => { entradaPorMes[f.clave] = f.entrada; });
-
+  const metrica = TEMP_ENTRADA_METRICA_INFO[TEMP_ENTRADA_METRICA];
   const etiquetas = visibles.map(f => f.fecha);
-  const tempDatos = visibles.map(f => f.temp_promedio);
-  const entradaDatos = visibles.map(f => entradaPorMes[f.fecha.slice(0,7)] ?? null);
+  const tempDatos = visibles.map(f => f[metrica.campo]);
+  const entradaDatos = visibles.map(f => TEMP_ENTRADA_BALANCE_DIARIO[f.fecha] ?? null);
 
   const dark = document.documentElement.getAttribute('data-theme')==='dark';
   const tickC = dark ? '#aab8d1' : '#4b5e7a';
@@ -10807,10 +10844,10 @@ function tempEntradaRender(){
     data:{
       labels: etiquetas,
       datasets:[
-        {type:'line', label:'Entrada Total kWh (mensual)', yAxisID:'y', order:2, stepped:'before',
+        {type:'line', label:'Entrada Total kWh (diaria)', yAxisID:'y', order:2,
           data: entradaDatos, borderColor:'#4361ee', backgroundColor:'rgba(67,97,238,.15)', fill:'origin',
-          borderWidth:1.5, pointRadius:0, spanGaps:false, datalabels:{display:false}},
-        {type:'line', label:'Temperatura °C (diaria)', yAxisID:'yTemp', order:1,
+          borderWidth:1.5, pointRadius:0, spanGaps:true, tension:.2, datalabels:{display:false}},
+        {type:'line', label:metrica.etiqueta, yAxisID:'yTemp', order:1,
           data: tempDatos, borderColor:'#ef476f', backgroundColor:'transparent',
           borderWidth:1.75, pointRadius:0, spanGaps:true, tension:.3, datalabels:{display:false}},
       ],
@@ -10830,7 +10867,7 @@ function tempEntradaRender(){
       scales:{
         x:{grid:{display:false}, ticks:{color:tickXFuerte, font:{size:9, weight:'600'}, maxRotation:45, minRotation:45, autoSkip:true, maxTicksLimit:24}},
         y:{position:'left', grid:{color:gridC}, ticks:{color:tickC, font:{size:10}, callback:v=>v.toLocaleString('es-CO')},
-          title:{display:true, text:'Entrada (kWh, mensual)', color:tickC, font:{size:10}}},
+          title:{display:true, text:'Entrada (kWh, diaria)', color:tickC, font:{size:10}}},
         yTemp:{type:'linear', position:'right', grid:{drawOnChartArea:false}, ticks:{color:'#ef476f', font:{size:10}, callback:v=>v.toFixed(0)+'°C'},
           title:{display:true, text:'Temperatura (°C)', color:'#ef476f', font:{size:10}}},
       },
