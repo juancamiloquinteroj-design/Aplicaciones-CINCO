@@ -2309,6 +2309,15 @@ tfoot td:first-child{text-align:left}
       </div>
       <div class="chart-wrap" style="height:460px"><canvas id="ch-temp-entrada"></canvas></div>
     </div>
+
+    <div class="card">
+      <div class="fbar" style="justify-content:center;margin-bottom:10px">
+        <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Temperatura Horaria</div>
+        <label style="margin-left:16px">Día</label>
+        <input type="date" id="temp-horaria-fecha" onchange="tempHorariaCargar()">
+      </div>
+      <div class="chart-wrap" style="height:320px"><canvas id="ch-temp-horaria"></canvas></div>
+    </div>
   </div>
 </div>
 <!-- fin vista-temp-entrada -->
@@ -10766,6 +10775,10 @@ async function tempEntradaCargar(){
     }
   }
   tempEntradaRender();
+
+  const inFechaHoraria = document.getElementById('temp-horaria-fecha');
+  if(!inFechaHoraria.value) inFechaHoraria.value = TEMP_ENTRADA_DIAS[TEMP_ENTRADA_DIAS.length-1].fecha;
+  tempHorariaCargar();
 }
 
 function tempEntradaRender(){
@@ -10820,6 +10833,65 @@ function tempEntradaRender(){
           title:{display:true, text:'Entrada (kWh, mensual)', color:tickC, font:{size:10}}},
         yTemp:{type:'linear', position:'right', grid:{drawOnChartArea:false}, ticks:{color:'#ef476f', font:{size:10}, callback:v=>v.toFixed(0)+'°C'},
           title:{display:true, text:'Temperatura (°C)', color:'#ef476f', font:{size:10}}},
+      },
+    },
+  });
+}
+
+// Temperatura HORARIA de un día puntual -- pedido explícito ("mostrar un
+// gráfico horario de temperatura"). Trae lecturas crudas de ESE día nada
+// más (no todo el histórico), así que no hace falta acotar/agregar nada
+// más allá de lo que ya hace el backend.
+let chTempHoraria = null;
+
+async function tempHorariaCargar(){
+  const cv = document.getElementById('ch-temp-horaria');
+  const fecha = document.getElementById('temp-horaria-fecha').value;
+  if(!cv || !fecha) return;
+  let filas = [];
+  try{
+    const resp = await apiGet(`/api/ideam/temperatura-horaria?fecha=${fecha}`, AUTH_TIMEOUT_MS);
+    filas = resp.filas || [];
+  }catch(e){
+    if(chTempHoraria){ chTempHoraria.destroy(); chTempHoraria = null; }
+    return;
+  }
+  tempHorariaRender(filas);
+}
+
+function tempHorariaRender(filas){
+  const cv = document.getElementById('ch-temp-horaria');
+  if(!cv) return;
+  if(chTempHoraria){ chTempHoraria.destroy(); chTempHoraria = null; }
+  if(!filas.length) return;
+
+  const dark = document.documentElement.getAttribute('data-theme')==='dark';
+  const tickC = dark ? '#aab8d1' : '#4b5e7a';
+  const tickXFuerte = dark ? '#ffffff' : '#000000';
+  const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
+
+  chTempHoraria = new Chart(cv, {
+    plugins:[tmPluginCrosshair],
+    data:{
+      labels: filas.map(f => f.hora),
+      datasets:[
+        {type:'line', label:'Temperatura °C', data: filas.map(f => f.temperatura),
+          borderColor:'#ef476f', backgroundColor:'rgba(239,71,111,.15)', fill:'origin',
+          borderWidth:1.75, pointRadius:filas.length>60?0:2, spanGaps:true, tension:.3, datalabels:{display:false}},
+      ],
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      layout:{padding:{top:20, right:20}},
+      interaction:{mode:'index', intersect:false},
+      plugins:{
+        legend:{display:false},
+        tooltip:{callbacks:{label:c => c.raw==null?null:`Temperatura: ${c.raw.toFixed(1)}°C`}},
+      },
+      scales:{
+        x:{grid:{display:false}, ticks:{color:tickXFuerte, font:{size:9, weight:'600'}, maxRotation:45, minRotation:45, autoSkip:true, maxTicksLimit:24}},
+        y:{grid:{color:gridC}, ticks:{color:tickC, font:{size:10}, callback:v=>v.toFixed(0)+'°C'},
+          title:{display:true, text:'Temperatura (°C)', color:tickC, font:{size:10}}},
       },
     },
   });
