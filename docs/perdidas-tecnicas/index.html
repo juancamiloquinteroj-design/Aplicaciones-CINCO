@@ -2241,23 +2241,25 @@ tfoot td:first-child{text-align:left}
     <div class="card">
       <div class="fbar" style="justify-content:center;margin-bottom:10px">
         <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Top Alimentadores</div>
+        <button type="button" class="be-modo-btn activo" id="alim3-top-btn-mensual" style="margin-left:12px" onclick="alim3ToggleTopModo('mensual')">Mensual</button>
+        <button type="button" class="be-modo-btn" id="alim3-top-btn-anual" onclick="alim3ToggleTopModo('anual')" title="Suma los 12 meses hasta el AñoMes elegido">Anual (12M)</button>
         <label style="margin-left:16px">AñoMes</label>
         <select id="alim3-mes-top" onchange="alim3CambiarMesTop(this.value)"></select>
       </div>
       <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">
         <div style="flex:1;min-width:360px">
-          <div class="tbl-wrap" style="max-height:420px;overflow-y:auto">
+          <div class="tbl-wrap" style="max-height:520px;overflow-y:auto">
             <table>
               <thead><tr><th style="text-align:left">Nombre Spard</th><th>Zona</th><th>Gest x Longitud</th><th>Gestionable (kWh)</th><th>Gestionable % Top</th><th>Longitud (Km)</th></tr></thead>
               <tbody id="alim3-tabla-top"></tbody>
             </table>
           </div>
         </div>
-        <div style="flex:0 0 480px;max-width:480px">
+        <div style="flex:0 0 640px;max-width:640px">
           <div style="text-align:center;margin-bottom:8px">
             <div style="font-size:13px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Gest x Longitud Vs Gestionable % Top</div>
           </div>
-          <div class="chart-wrap" style="height:360px"><canvas id="ch-alim3-scatter"></canvas></div>
+          <div class="chart-wrap" style="height:520px"><canvas id="ch-alim3-scatter"></canvas></div>
         </div>
       </div>
     </div>
@@ -9853,6 +9855,7 @@ let ALIM3_NEMONICO_SEL = null;
 let ALIM3_MES_TOP = null;
 let ALIM3_ESP_MODO = 'mensual';  // 'mensual' | 'anual' -- gráfico Entradas/Salidas/Pérdida
 let ALIM3_ESP_VAR = false;       // Δ Variación en la etiqueta de Pérdida %
+let ALIM3_TOP_MODO = 'mensual';  // 'mensual' | 'anual' -- tabla/scatter Top Alimentadores
 let chAlim3Esp = null, chAlim3Tecnica = null, chAlim3Agpe = null, chAlim3Scatter = null;
 
 async function alim3Cargar(){
@@ -9889,6 +9892,7 @@ async function alim3Cargar(){
   }
 
   alim3PoblarSelectorMesTop(claves);
+  alim3RecalcularListaCache();
   alim3RenderListaAlimentadores();
   alim3RenderSeleccion();
   alim3RenderTablaTop();
@@ -9917,6 +9921,7 @@ function alim3ToggleZona(zona){
     const sigueDisponible = ALIM_FILAS.some(f => f.nemonico === ALIM3_NEMONICO_SEL && (!ALIM3_ZONAS_SEL.size || ALIM3_ZONAS_SEL.has(f.zona)));
     if(!sigueDisponible) ALIM3_NEMONICO_SEL = null;
   }
+  alim3RecalcularListaCache();
   alim3RenderListaAlimentadores();
   alim3RenderSeleccion();
   alim3RenderTablaTop();
@@ -9932,16 +9937,25 @@ function alim3VisiblesRango(serie){
 // Lista "Nombre Spard" -- un renglón por circuito (nemónico), buscador +
 // filtro de Zona -- click elige el alimentador para el indicador, los
 // comentarios y los 3 gráficos de tendencia.
-function alim3RenderListaAlimentadores(){
-  const cont = document.getElementById('alim3-lista');
-  if(!cont) return;
-  const texto = (document.getElementById('alim3-buscar').value || '').trim().toUpperCase();
-  const vistos = new Map();  // nemonico -> nombre_spard más reciente
+// Lista base (nemonico -> nombre_spard) ya filtrada por Zona -- se
+// recalcula SOLO cuando cambia la zona o cargan los datos, no en cada
+// tecla del buscador (antes recorría las 14k+ filas de ALIM_FILAS por
+// cada letra escrita -- pedido explícito: "mejorar la velocidad").
+let ALIM3_LISTA_CACHE = [];
+function alim3RecalcularListaCache(){
+  const vistos = new Map();
   ALIM_FILAS.forEach(f => {
     if(ALIM3_ZONAS_SEL.size && !ALIM3_ZONAS_SEL.has(f.zona)) return;
     vistos.set(f.nemonico, f.nombre_spard || f.nemonico);
   });
-  let opciones = [...vistos.entries()].sort((a,b) => a[1].localeCompare(b[1]));
+  ALIM3_LISTA_CACHE = [...vistos.entries()].sort((a,b) => a[1].localeCompare(b[1]));
+}
+
+function alim3RenderListaAlimentadores(){
+  const cont = document.getElementById('alim3-lista');
+  if(!cont) return;
+  const texto = (document.getElementById('alim3-buscar').value || '').trim().toUpperCase();
+  let opciones = ALIM3_LISTA_CACHE;
   if(texto) opciones = opciones.filter(([nem, nombre]) => nombre.toUpperCase().includes(texto) || nem.toUpperCase().includes(texto));
   if(!opciones.length){ cont.innerHTML = '<div style="padding:10px;font-size:11px;color:var(--text3)">Sin resultados.</div>'; return; }
   cont.innerHTML = opciones.map(([nem, nombre]) => {
@@ -9966,15 +9980,51 @@ function alim3ToggleEspVariacion(){
   alim3RenderSeleccion();
 }
 
+// Suma cruda de Entrada/Salida/Pérdida/Pérdida Técnica/AGPE de TODOS los
+// alimentadores de la(s) zona(s) elegida(s) (o de TODOS si no hay zona) --
+// mismo criterio de suma simple que usa Indicador N2-1 (alimN21AgregarMensual),
+// para que este total coincida con esa otra pantalla en la misma zona --
+// pedido explícito ("debería coincidir con Indicador N2-1 en ZC"). Devuelve
+// el mismo shape que las filas crudas de ALIM_FILAS (entrada_total,
+// salida_total, perdida_kwh, perdida_pct, perdida_tecnica_kwh,
+// entrada_agpe, clave) para poder reusar TAL CUAL las funciones de
+// tarjetas/gráficos ya construidas para un alimentador individual.
+function alim3AgregarZonaMensual(zonaSet){
+  const mapa = new Map();
+  for(const f of ALIM_FILAS){
+    if(zonaSet && zonaSet.size && !zonaSet.has(f.zona)) continue;
+    const clave = alimN21Clave(f.anio, f.mes);
+    if(!mapa.has(clave)) mapa.set(clave, {anio:f.anio, mes:f.mes, clave, entrada_total:0, salida_total:0, perdida_kwh:0, perdida_tecnica_kwh:0, entrada_agpe:0});
+    const a = mapa.get(clave);
+    a.entrada_total += f.entrada_total || 0;
+    a.salida_total += f.salida_total || 0;
+    a.perdida_kwh += f.perdida_kwh || 0;
+    a.perdida_tecnica_kwh += f.perdida_tecnica_kwh || 0;
+    a.entrada_agpe += f.entrada_agpe || 0;
+  }
+  return [...mapa.values()]
+    .sort((a,b) => (a.anio*12+a.mes)-(b.anio*12+b.mes))
+    .map(a => ({...a, perdida_pct: a.entrada_total ? a.perdida_kwh/a.entrada_total*100 : null}));
+}
+
 function alim3RenderSeleccion(){
   const titulo = document.getElementById('alim3-titulo-seleccion');
   if(!ALIM3_NEMONICO_SEL){
-    if(titulo) titulo.textContent = 'Elegí un alimentador';
-    document.getElementById('alim3-indicador').innerHTML = '';
-    document.getElementById('alim3-comentarios').innerHTML = '<p style="margin:0;color:var(--text3)">Elegí un alimentador de la lista.</p>';
-    document.getElementById('alim3-tarjetas').innerHTML = '';
-    [chAlim3Esp, chAlim3Tecnica, chAlim3Agpe].forEach(c => c && c.destroy());
-    chAlim3Esp = chAlim3Tecnica = chAlim3Agpe = null;
+    // Sin un alimentador puntual elegido -- muestra el TOTAL (suma) de
+    // todos los alimentadores de la zona activa (o de todas si no hay
+    // zona elegida), como en PowerBI, en vez de dejar todo en blanco --
+    // pedido explícito.
+    const zonasTxt = ALIM3_ZONAS_SEL.size ? [...ALIM3_ZONAS_SEL].sort().join(' + ') : 'Todas las zonas';
+    const nCircuitos = new Set(ALIM_FILAS.filter(f => !ALIM3_ZONAS_SEL.size || ALIM3_ZONAS_SEL.has(f.zona)).map(f => f.nemonico)).size;
+    if(titulo) titulo.textContent = `Total -- ${zonasTxt}`;
+    document.getElementById('alim3-indicador').innerHTML = `<div style="font-size:11px;color:var(--text3);line-height:1.6">Suma de <b style="color:var(--text)">${nCircuitos}</b> alimentadores.<br>Elegí uno de la lista para ver su detalle individual.</div>`;
+    document.getElementById('alim3-comentarios').innerHTML = '<p style="margin:0;color:var(--text3)">Elegí un alimentador puntual para ver sus comentarios.</p>';
+
+    const conClave = alim3AgregarZonaMensual(ALIM3_ZONAS_SEL);
+    alim3RenderTarjetas(conClave);
+    alim3RenderChartEsp(conClave);
+    alim3RenderChartTecnica(conClave);
+    alim3RenderChartAgpe(conClave);
     return;
   }
   const filas = ALIM_FILAS.filter(f => f.nemonico === ALIM3_NEMONICO_SEL).sort((a,b) => (a.anio*12+a.mes)-(b.anio*12+b.mes));
@@ -10098,7 +10148,7 @@ function alim3RenderChartEsp(filasConClave){
   // "Que también vea la variación en Energía" -- la etiqueta de Pérdida %
   // agrega el delta en pp Y en kWh (mismo patrón ya usado en Subestaciones),
   // con la "tarjetita" prolija de IP_Reg/N2-1 en vez de un cartel plano.
-  const estiloVar = {...ipEstiloTarjetaVariacion(dark), font:[{size:10, weight:'800'}, {size:9, weight:'800'}, {size:8.5, weight:'700'}]};
+  const estiloVar = {...ipEstiloTarjetaVariacion(dark), font:[{size:13, weight:'800'}, {size:11, weight:'800'}, {size:10, weight:'700'}]};
   const datalabelsPct = ALIM3_ESP_VAR ? {
     display:true, anchor:'end', align:'top', offset:6,
     formatter:(v,ctx)=>{
@@ -10125,8 +10175,8 @@ function alim3RenderChartEsp(filasConClave){
     ...estiloVar,
   } : {
     display:true, anchor:'end', align:'top', offset:4, formatter:v=>v==null?'':v.toFixed(2)+'%',
-    font:{size:9,weight:'700'}, color:'#ffc300',
-    backgroundColor: dark?'rgba(30,30,40,.85)':'rgba(255,255,255,.85)', borderRadius:3, padding:{left:3,right:3,top:1,bottom:1},
+    font:{size:13,weight:'800'}, color:'#ffc300',
+    backgroundColor: dark?'rgba(30,30,40,.85)':'rgba(255,255,255,.85)', borderRadius:4, padding:{left:4,right:4,top:2,bottom:2},
   };
 
   if(chAlim3Esp) chAlim3Esp.destroy();
@@ -10274,31 +10324,65 @@ function alim3CambiarMesTop(clave){
   alim3RenderScatter();
 }
 
+function alim3ToggleTopModo(modo){
+  ALIM3_TOP_MODO = modo;
+  document.getElementById('alim3-top-btn-mensual').classList.toggle('activo', modo==='mensual');
+  document.getElementById('alim3-top-btn-anual').classList.toggle('activo', modo==='anual');
+  alim3RenderTablaTop();
+  alim3RenderScatter();
+}
+
 function alim3FilasDelMes(clave){
   return ALIM_FILAS.filter(f => alimN21Clave(f.anio, f.mes) === clave
     && (!ALIM3_ZONAS_SEL.size || ALIM3_ZONAS_SEL.has(f.zona)));
 }
 
-// "Top Alimentadores" -- una fila por circuito, snapshot del AñoMes
-// elegido. Gest x Longitud = Gestionable(kWh) / Longitud(Km) -- fórmula
-// verificada contra la referencia PowerBI (883,95 kWh / 1,18 km ≈ 749,49,
-// coincide con el "Gest x Longitud" mostrado ahí). Gestionable % Top =
-// Gestionable / Pérdida Total -- ordenado de mayor a menor Gest x
-// Longitud (más accionable por km de circuito, "TOP de pérdida").
+// Para el modo "Anual (12M)" de Top Alimentadores -- suma Gestionable y
+// Pérdida de los 12 meses terminando en claveFinal (inclusive) por cada
+// alimentador (respeta el filtro de Zona); exige los 12 meses reales
+// (mismo criterio que el resto de la app) -- Longitud/Zona/Leyenda no se
+// suman (son atributos físicos, se toma el valor del mes más reciente
+// dentro de la ventana).
+function alim3AgregarAnualPorAlimentador(claveFinal){
+  const [anioFin, mesFin] = claveFinal.split('-').map(Number);
+  const idxFin = anioFin*12 + (mesFin-1);
+  const idxIni = idxFin - 11;
+  const porNemonico = new Map();
+  for(const f of ALIM_FILAS){
+    if(ALIM3_ZONAS_SEL.size && !ALIM3_ZONAS_SEL.has(f.zona)) continue;
+    const idx = f.anio*12 + (f.mes-1);
+    if(idx < idxIni || idx > idxFin) continue;
+    if(!porNemonico.has(f.nemonico)) porNemonico.set(f.nemonico, {gestionable:0, perdida:0, meses:0});
+    const a = porNemonico.get(f.nemonico);
+    a.gestionable += f.gestionable_kwh || 0;
+    a.perdida += f.perdida_kwh || 0;
+    a.meses++;
+    a.nombre = f.nombre_spard || f.nemonico; a.zona = f.zona; a.longitud = f.longitud_total; a.leyenda = f.leyenda;
+  }
+  return [...porNemonico.values()].filter(a => a.meses === 12);
+}
+
+// "Top Alimentadores" -- una fila por circuito, del AñoMes elegido
+// (Mensual) o de los 12 meses terminando ahí (Anual). Gest x Longitud =
+// Gestionable(kWh) / Longitud(Km) -- fórmula verificada contra la
+// referencia PowerBI (883,95 kWh / 1,18 km ≈ 749,49, coincide con el
+// "Gest x Longitud" mostrado ahí). Gestionable % Top = Gestionable /
+// Pérdida Total -- ordenado de mayor a menor Gest x Longitud (más
+// accionable por km de circuito, "TOP de pérdida").
 function alim3RenderTablaTop(){
   const cont = document.getElementById('alim3-tabla-top');
   if(!cont || !ALIM3_MES_TOP) return;
-  const filas = alim3FilasDelMes(ALIM3_MES_TOP)
-    .filter(f => f.longitud_total > 0 && f.gestionable_kwh != null)
-    .map(f => ({
-      nombre: f.nombre_spard || f.nemonico, zona: f.zona,
-      gestLongitud: f.gestionable_kwh / f.longitud_total,
-      gestionable: f.gestionable_kwh,
-      gestPct: f.perdida_kwh ? f.gestionable_kwh / f.perdida_kwh * 100 : null,
-      longitud: f.longitud_total,
-    }));
+  const esAnual = ALIM3_TOP_MODO === 'anual';
+  const filas = (esAnual
+    ? alim3AgregarAnualPorAlimentador(ALIM3_MES_TOP).filter(a => a.longitud > 0)
+      .map(a => ({nombre:a.nombre, zona:a.zona, gestLongitud:a.gestionable/a.longitud, gestionable:a.gestionable,
+        gestPct: a.perdida ? a.gestionable/a.perdida*100 : null, longitud:a.longitud}))
+    : alim3FilasDelMes(ALIM3_MES_TOP).filter(f => f.longitud_total > 0 && f.gestionable_kwh != null)
+      .map(f => ({nombre:f.nombre_spard || f.nemonico, zona:f.zona, gestLongitud:f.gestionable_kwh/f.longitud_total, gestionable:f.gestionable_kwh,
+        gestPct: f.perdida_kwh ? f.gestionable_kwh/f.perdida_kwh*100 : null, longitud:f.longitud_total}))
+  );
   filas.sort((a,b) => b.gestLongitud - a.gestLongitud);
-  if(!filas.length){ cont.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text3)">Sin datos para este mes.</td></tr>'; return; }
+  if(!filas.length){ cont.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text3)">Sin datos ${esAnual?'para los 12 meses hasta este AñoMes':'para este mes'}.</td></tr>`; return; }
   const fmt = v => v==null ? '--' : v.toLocaleString('es-CO',{maximumFractionDigits:2});
   const fmtPct = v => v==null ? '--' : `${v.toFixed(2)}%`;
   cont.innerHTML = filas.map(f => {
@@ -10320,13 +10404,16 @@ const ALIM3_COLOR_LEYENDA = {'ok':'#06d6a0', 'Asociación':'#ef476f', 'Orden Pú
 function alim3ColorLeyenda(leyenda){ return ALIM3_COLOR_LEYENDA[leyenda] || '#8a9ab5'; }
 
 // Scatter "Gest x Longitud Vs Gestionable % Top" -- un punto por
-// alimentador del AñoMes elegido (mismas 2 métricas de la tabla de al
-// lado), coloreado por Leyenda.
+// alimentador (Mensual del AñoMes elegido, o Anual/12M -- mismo toggle
+// que la tabla de al lado), coloreado por Leyenda.
 function alim3RenderScatter(){
   const cv = document.getElementById('ch-alim3-scatter');
   if(!cv || !ALIM3_MES_TOP) return;
-  const filas = alim3FilasDelMes(ALIM3_MES_TOP)
-    .filter(f => f.longitud_total > 0 && f.gestionable_kwh != null && f.perdida_kwh);
+  const esAnual = ALIM3_TOP_MODO === 'anual';
+  const filas = esAnual
+    ? alim3AgregarAnualPorAlimentador(ALIM3_MES_TOP).filter(a => a.longitud > 0 && a.perdida)
+      .map(a => ({gestionable_kwh:a.gestionable, longitud_total:a.longitud, perdida_kwh:a.perdida, leyenda:a.leyenda, nombre_spard:a.nombre}))
+    : alim3FilasDelMes(ALIM3_MES_TOP).filter(f => f.longitud_total > 0 && f.gestionable_kwh != null && f.perdida_kwh);
   const dark = document.documentElement.getAttribute('data-theme')==='dark';
   const tickC = dark ? '#aab8d1' : '#4b5e7a';
   const tickXFuerte = dark ? '#ffffff' : '#000000';
@@ -10338,13 +10425,14 @@ function alim3RenderScatter(){
     data: filas.filter(f => f.leyenda === ley).map(f => ({
       x: f.gestionable_kwh / f.perdida_kwh * 100,
       y: f.gestionable_kwh / f.longitud_total,
-      nombre: f.nombre_spard || f.nemonico,
+      nombre: f.nombre_spard || f.nemonico || '',
     })),
     backgroundColor: alim3ColorLeyenda(ley), borderColor: alim3ColorLeyenda(ley),
-    pointRadius:4, pointHoverRadius:6, datalabels:{display:false},
+    pointRadius:5, pointHoverRadius:7, datalabels:{display:false},
   }));
 
   if(chAlim3Scatter) chAlim3Scatter.destroy();
+  chAlim3Scatter = null;
   if(!datasets.length){ return; }
   chAlim3Scatter = new Chart(cv, {
     data:{datasets},
