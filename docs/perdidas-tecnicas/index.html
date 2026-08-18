@@ -2335,7 +2335,12 @@ tfoot td:first-child{text-align:left}
         <div class="fbar" style="justify-content:center;margin-bottom:10px">
           <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Mapa de Temperatura</div>
         </div>
-        <div class="sec-sub" style="text-align:center;margin-bottom:12px">Recorré las fechas para ver cómo cambia la temperatura de la estación configurada, aplicada a todo el territorio -- incluye pronóstico (Open-Meteo) para los próximos días.</div>
+        <div class="sec-sub" style="text-align:center;margin-bottom:8px">Recorré las fechas para ver cómo cambia la estación configurada, aplicada a todo el territorio -- incluye pronóstico (Open-Meteo) para los próximos días.</div>
+        <div class="fbar" style="justify-content:center;margin-bottom:12px">
+          <button type="button" class="be-modo-btn activo" id="temp-mapa-btn-var-temperatura" onclick="tempMapaToggleVariable('temperatura')">🌡️ Temperatura</button>
+          <button type="button" class="be-modo-btn" id="temp-mapa-btn-var-precipitacion" onclick="tempMapaToggleVariable('precipitacion')">🌧️ Precipitación</button>
+          <button type="button" class="be-modo-btn" id="temp-mapa-btn-var-humedad" onclick="tempMapaToggleVariable('humedad')">💧 Humedad</button>
+        </div>
         <div id="temp-mapa-vacio" style="color:var(--text3);font-size:12px;text-align:center;padding:20px">Cargando…</div>
         <div id="temp-mapa-contenido" class="hidden">
           <div id="temp-mapa-leaflet-wrap" style="position:relative;margin-bottom:12px">
@@ -2363,7 +2368,12 @@ tfoot td:first-child{text-align:left}
       <div class="fbar" style="justify-content:center;margin-bottom:6px">
         <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Mapa Nacional de Temperatura</div>
       </div>
-      <div class="sec-sub" style="text-align:center;margin-bottom:12px">Una estación automática por departamento, para seguir la tendencia de temperatura del país -- útil para ver la temporada del fenómeno de El Niño.</div>
+      <div class="sec-sub" style="text-align:center;margin-bottom:8px">Una estación automática por departamento, para seguir la tendencia del país -- útil para ver la temporada del fenómeno de El Niño.</div>
+      <div class="fbar" style="justify-content:center;margin-bottom:12px">
+        <button type="button" class="be-modo-btn activo" id="temp-nac-btn-var-temperatura" onclick="tempNacToggleVariable('temperatura')">🌡️ Temperatura</button>
+        <button type="button" class="be-modo-btn" id="temp-nac-btn-var-precipitacion" onclick="tempNacToggleVariable('precipitacion')">🌧️ Precipitación</button>
+        <button type="button" class="be-modo-btn" id="temp-nac-btn-var-humedad" onclick="tempNacToggleVariable('humedad')">💧 Humedad</button>
+      </div>
       <div id="temp-nac-vacio" style="color:var(--text3);font-size:12px;text-align:center;padding:20px">Cargando…</div>
       <div id="temp-nac-contenido" class="hidden">
         <div id="temp-nac-leaflet-wrap" style="position:relative;margin-bottom:12px">
@@ -3127,6 +3137,12 @@ const BALANCE_TIMEOUT_MS = 15000;   // consumo/comparacion/movil-anual de Balanc
                                      // dia por dia con TODOS los puntos de la estructura (ajustes, respaldo,
                                      // etc.) -- con rangos de varios años y estructuras de muchos puntos (ej.
                                      // Balance por Nivel de Tension con 14+) 2.5s no siempre alcanza.
+const CLIMA_TIMEOUT_MS = 30000;     // /api/ideam/temperatura|pronostico|temperatura-nacional: el backend
+                                     // espera hasta 25s a Socrata (algunas variables, ej. Precipitación,
+                                     // rinden mucho más lento que Temperatura para la MISMA ventana -- ver
+                                     // nota en ideam.py) -- con el timeout genérico de 15s el frontend
+                                     // abortaba el fetch ANTES de que el backend terminara, mostrando un
+                                     // error falso aunque el dato sí hubiera llegado a tiempo.
 // ngrok (plan gratis) muestra una página de aviso antes de dejar pasar el tráfico
 // salvo que venga este header -- sin esto, todas las llamadas a la API fallarían.
 const NGROK_HEADERS = {'ngrok-skip-browser-warning':'true'};
@@ -11207,6 +11223,25 @@ async function _tempMapaInicializarMapa(contId, lat, lon){
   return {mapa, capa, marcador};
 }
 
+// Nombre/emoji/unidad de cada variable -- comparte texto con el Mapa
+// Nacional (ver TEMP_VARIABLE_INFO más abajo, usado por ambos mapas).
+const TEMP_VARIABLE_INFO = {
+  temperatura: {nombre:'Temperatura', unidadFallback:'°C', conMetrica:true},
+  precipitacion: {nombre:'Precipitación', unidadFallback:'mm', conMetrica:false},
+  humedad: {nombre:'Humedad', unidadFallback:'%', conMetrica:true},
+};
+let TEMP_MAPA_VARIABLE = 'temperatura';
+let TEMP_MAPA_UNIDAD = '°C';
+let TEMP_MAPA_ESTACION = null;   // propia del mapa -- NO comparte TEMP_ENTRADA_ESTACION (esa alimenta el gráfico de arriba, que sigue siendo solo temperatura)
+let TEMP_MAPA_DIAS = [];
+
+function tempMapaToggleVariable(v){
+  TEMP_MAPA_VARIABLE = v;
+  ['temperatura','precipitacion','humedad'].forEach(x =>
+    document.getElementById(`temp-mapa-btn-var-${x}`).classList.toggle('activo', x===v));
+  tempMapaCargar();
+}
+
 async function tempMapaCargar(){
   const vacio = document.getElementById('temp-mapa-vacio');
   const contenido = document.getElementById('temp-mapa-contenido');
@@ -11215,7 +11250,18 @@ async function tempMapaCargar(){
   vacio.classList.remove('hidden'); contenido.classList.add('hidden');
   vacio.textContent = 'Cargando…';
 
-  const est = TEMP_ENTRADA_ESTACION;
+  let resp;
+  try{
+    resp = await apiGet(`/api/ideam/temperatura?variable=${TEMP_MAPA_VARIABLE}`, CLIMA_TIMEOUT_MS);
+  }catch(e){
+    vacio.textContent = e.message || 'No se pudo cargar el mapa.';
+    return;
+  }
+  TEMP_MAPA_ESTACION = resp.estacion;
+  TEMP_MAPA_DIAS = resp.filas || [];
+  TEMP_MAPA_UNIDAD = resp.unidad || TEMP_VARIABLE_INFO[TEMP_MAPA_VARIABLE].unidadFallback;
+
+  const est = TEMP_MAPA_ESTACION;
   if(!est || est.latitud==null || est.longitud==null){
     vacio.textContent = 'La estación configurada no tiene coordenadas guardadas -- volvé a elegirla en Parametrización para habilitar el mapa.';
     return;
@@ -11223,16 +11269,16 @@ async function tempMapaCargar(){
 
   let pronostico = [];
   try{
-    const resp = await apiGet('/api/ideam/pronostico', AUTH_TIMEOUT_MS);
-    pronostico = (resp.filas || []).map(f => ({...f, pronostico:true}));
+    const respP = await apiGet(`/api/ideam/pronostico?variable=${TEMP_MAPA_VARIABLE}`, CLIMA_TIMEOUT_MS);
+    pronostico = (respP.filas || []).map(f => ({...f, pronostico:true}));
   }catch(e){ /* sin pronóstico disponible -- se sigue solo con lo histórico */ }
 
   const porFecha = new Map();
-  TEMP_ENTRADA_DIAS.forEach(f => porFecha.set(f.fecha, {...f, pronostico:false}));
+  TEMP_MAPA_DIAS.forEach(f => porFecha.set(f.fecha, {...f, pronostico:false}));
   pronostico.forEach(f => { if(!porFecha.has(f.fecha)) porFecha.set(f.fecha, f); });
   TEMP_MAPA_SERIE = [...porFecha.values()].sort((a,b)=> a.fecha < b.fecha ? -1 : 1);
   if(!TEMP_MAPA_SERIE.length){
-    vacio.textContent = 'No hay datos de temperatura para mostrar en el mapa.';
+    vacio.textContent = `No hay datos de ${TEMP_VARIABLE_INFO[TEMP_MAPA_VARIABLE].nombre.toLowerCase()} para mostrar en el mapa.`;
     return;
   }
 
@@ -11263,32 +11309,36 @@ function _tempMapaRecalcularRango(){
   const valores = TEMP_MAPA_SERIE.map(f => f[metrica.campo]).filter(v => v!=null);
   if(!valores.length) return;
   TEMP_MAPA_RANGO = {min: Math.min(...valores), max: Math.max(...valores)};
-  document.getElementById('temp-mapa-leyenda-min').textContent = TEMP_MAPA_RANGO.min.toFixed(0)+'°C';
-  document.getElementById('temp-mapa-leyenda-max').textContent = TEMP_MAPA_RANGO.max.toFixed(0)+'°C';
+  document.getElementById('temp-mapa-leyenda-min').textContent = TEMP_MAPA_RANGO.min.toFixed(0)+TEMP_MAPA_UNIDAD;
+  document.getElementById('temp-mapa-leyenda-max').textContent = TEMP_MAPA_RANGO.max.toFixed(0)+TEMP_MAPA_UNIDAD;
 }
 
 function tempMapaActualizar(idx){
   if(!TEMP_MAPA_SERIE.length) return;
   TEMP_MAPA_IDX = Math.max(0, Math.min(TEMP_MAPA_SERIE.length-1, idx));
   const fila = TEMP_MAPA_SERIE[TEMP_MAPA_IDX];
+  const infoVar = TEMP_VARIABLE_INFO[TEMP_MAPA_VARIABLE];
   const metrica = TEMP_ENTRADA_METRICA_INFO[TEMP_ENTRADA_METRICA];
   const valor = fila[metrica.campo];
   const color = _tempMapaColor(valor, TEMP_MAPA_RANGO.min, TEMP_MAPA_RANGO.max);
   // TODO el departamento se recolorea parejo -- una sola estación no
   // permite interpolar espacialmente, así que el "mapa de calor" es la
-  // misma temperatura aplicada a los municipios enteros del croquis.
+  // misma variable aplicada a los municipios enteros del croquis.
   if(TEMP_MAPA_CAPA) TEMP_MAPA_CAPA.setStyle({fillColor: color});
-  if(TEMP_MAPA_MARCADOR) TEMP_MAPA_MARCADOR.setTooltipContent(valor!=null ? `Estación: ${valor.toFixed(1)}°C` : 'Estación: sin dato');
+  if(TEMP_MAPA_MARCADOR) TEMP_MAPA_MARCADOR.setTooltipContent(valor!=null ? `Estación: ${valor.toFixed(1)}${TEMP_MAPA_UNIDAD}` : 'Estación: sin dato');
   // Pedido explícito: "el mapa debe mostrar la temperatura DENTRO del
   // gráfico" -- número grande superpuesto al mapa (estilo AccuWeather),
   // no solo en el texto de abajo.
   const etiqueta = document.getElementById('temp-mapa-etiqueta');
-  if(etiqueta) etiqueta.textContent = valor!=null ? `${valor.toFixed(1)}°C` : '--';
+  if(etiqueta) etiqueta.textContent = valor!=null ? `${valor.toFixed(1)}${TEMP_MAPA_UNIDAD}` : '--';
 
   const slider = document.getElementById('temp-mapa-slider');
   if(slider) slider.value = TEMP_MAPA_IDX;
   const [anio,mes,dia] = fila.fecha.split('-');
-  document.getElementById('temp-mapa-fecha').textContent = `${dia}/${mes}/${anio} -- ${metrica.nombre}: ${valor!=null ? valor.toFixed(1)+'°C' : 'Sin dato'}`;
+  // La precipitación es un TOTAL diario, no tiene Mínimo/Máximo/Promedio
+  // con sentido -- se muestra solo el nombre de la variable.
+  const etiquetaMetrica = infoVar.conMetrica ? `${infoVar.nombre} ${metrica.nombre}` : infoVar.nombre;
+  document.getElementById('temp-mapa-fecha').textContent = `${dia}/${mes}/${anio} -- ${etiquetaMetrica}: ${valor!=null ? valor.toFixed(1)+TEMP_MAPA_UNIDAD : 'Sin dato'}`;
   const badge = document.getElementById('temp-mapa-badge');
   if(fila.pronostico){
     badge.textContent = 'PRONÓSTICO'; badge.style.background = 'rgba(244,162,97,.18)'; badge.style.color = '#f4a261';
@@ -11342,6 +11392,15 @@ let TEMP_NAC_MARCADORES = [];
 let TEMP_NAC_PLAYING = false;
 let TEMP_NAC_INTERVAL = null;
 let TEMP_NAC_RANGO = {min:null, max:null};
+let TEMP_NAC_VARIABLE = 'temperatura';
+let TEMP_NAC_UNIDAD = '°C';
+
+function tempNacToggleVariable(v){
+  TEMP_NAC_VARIABLE = v;
+  ['temperatura','precipitacion','humedad'].forEach(x =>
+    document.getElementById(`temp-nac-btn-var-${x}`).classList.toggle('activo', x===v));
+  tempNacCargar();
+}
 
 // departamento (tal como viene en ESTACIONES_NACIONALES) -> DPTO_CNMBR
 // EXACTO del topojson (geo/colombia-municipios.json, DANE MGN) -- leído
@@ -11383,17 +11442,18 @@ async function tempNacCargar(){
 
   let resp;
   try{
-    resp = await apiGet('/api/ideam/temperatura-nacional', AUTH_TIMEOUT_MS);
+    resp = await apiGet(`/api/ideam/temperatura-nacional?variable=${TEMP_NAC_VARIABLE}`, CLIMA_TIMEOUT_MS);
   }catch(e){
     vacio.textContent = e.message || 'No se pudo cargar el mapa nacional.';
     return;
   }
   TEMP_NAC_ESTACIONES = resp.estaciones || [];
   TEMP_NAC_DATOS = resp.datos || {};
+  TEMP_NAC_UNIDAD = resp.unidad || TEMP_VARIABLE_INFO[TEMP_NAC_VARIABLE].unidadFallback;
   const conDatos = Object.values(TEMP_NAC_DATOS).find(f => f.length);
   TEMP_NAC_FECHAS = conDatos ? conDatos.map(f => f.fecha) : [];
   if(!TEMP_NAC_FECHAS.length){
-    vacio.textContent = 'No hay datos nacionales de temperatura disponibles.';
+    vacio.textContent = `No hay datos nacionales de ${TEMP_VARIABLE_INFO[TEMP_NAC_VARIABLE].nombre.toLowerCase()} disponibles.`;
     return;
   }
 
@@ -11471,14 +11531,15 @@ function _tempNacRecalcularRango(){
   valores.sort((a,b) => a-b);
   const p = q => valores[Math.min(valores.length-1, Math.max(0, Math.round(q*(valores.length-1))))];
   TEMP_NAC_RANGO = {min: p(0.05), max: p(0.95)};
-  document.getElementById('temp-nac-leyenda-min').textContent = TEMP_NAC_RANGO.min.toFixed(0)+'°C';
-  document.getElementById('temp-nac-leyenda-max').textContent = TEMP_NAC_RANGO.max.toFixed(0)+'°C';
+  document.getElementById('temp-nac-leyenda-min').textContent = TEMP_NAC_RANGO.min.toFixed(0)+TEMP_NAC_UNIDAD;
+  document.getElementById('temp-nac-leyenda-max').textContent = TEMP_NAC_RANGO.max.toFixed(0)+TEMP_NAC_UNIDAD;
 }
 
 function tempNacActualizar(idx){
   if(!TEMP_NAC_FECHAS.length) return;
   TEMP_NAC_IDX = Math.max(0, Math.min(TEMP_NAC_FECHAS.length-1, idx));
   const fecha = TEMP_NAC_FECHAS[TEMP_NAC_IDX];
+  const infoVar = TEMP_VARIABLE_INFO[TEMP_NAC_VARIABLE];
   const metrica = TEMP_ENTRADA_METRICA_INFO[TEMP_ENTRADA_METRICA];
 
   if(TEMP_NAC_CAPA){
@@ -11493,16 +11554,17 @@ function tempNacActualizar(idx){
     const est = TEMP_NAC_ESTACIONES.find(e => e.codigo === m._tempNacCodigo);
     const valor = est && !est.sin_datos ? _tempNacValor(m._tempNacCodigo, fecha, metrica.campo) : null;
     if(valor!=null) valores.push(valor);
-    m.bindTooltip(`${est ? est.departamento : ''} (${est ? est.municipio : ''}): ${valor!=null ? valor.toFixed(1)+'°C' : 'sin dato'}`);
+    m.bindTooltip(`${est ? est.departamento : ''} (${est ? est.municipio : ''}): ${valor!=null ? valor.toFixed(1)+TEMP_NAC_UNIDAD : 'sin dato'}`);
   });
 
   const slider = document.getElementById('temp-nac-slider');
   if(slider) slider.value = TEMP_NAC_IDX;
   const promedioNacional = valores.length ? valores.reduce((a,b)=>a+b,0)/valores.length : null;
   const [anio,mes,dia] = fecha.split('-');
-  document.getElementById('temp-nac-fecha').textContent = `${dia}/${mes}/${anio} -- ${metrica.nombre} nacional: ${promedioNacional!=null ? promedioNacional.toFixed(1)+'°C' : 'Sin dato'}`;
+  const etiquetaMetrica = infoVar.conMetrica ? `${infoVar.nombre} ${metrica.nombre}` : infoVar.nombre;
+  document.getElementById('temp-nac-fecha').textContent = `${dia}/${mes}/${anio} -- ${etiquetaMetrica} nacional: ${promedioNacional!=null ? promedioNacional.toFixed(1)+TEMP_NAC_UNIDAD : 'Sin dato'}`;
   const etiqueta = document.getElementById('temp-nac-etiqueta');
-  if(etiqueta) etiqueta.textContent = promedioNacional!=null ? `${promedioNacional.toFixed(1)}°C` : '--';
+  if(etiqueta) etiqueta.textContent = promedioNacional!=null ? `${promedioNacional.toFixed(1)}${TEMP_NAC_UNIDAD}` : '--';
 
   const hoyIso = new Date().toISOString().slice(0,10);
   const badge = document.getElementById('temp-nac-badge');
