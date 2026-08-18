@@ -822,6 +822,7 @@ tfoot td:first-child{text-align:left}
     <button class="sidebar-sublink" data-vista="alim-subestaciones" onclick="mostrarVista('alim-subestaciones')">Subestaciones</button>
     <button class="sidebar-sublink" data-vista="alim-alimentadores" onclick="mostrarVista('alim-alimentadores')">Alimentadores</button>
   </div>
+  <button class="sidebar-link" data-vista="temp-entrada" onclick="mostrarVista('temp-entrada')">🌡️ Temperatura vs Entrada</button>
   <button class="sidebar-link sidebar-link-padre" id="sidebar-be-padre" onclick="toggleSubmenuBE()">
     <span>🧮 Balances por Estructura</span>
     <span class="sidebar-caret" id="sidebar-be-caret">▾</span>
@@ -1139,6 +1140,17 @@ tfoot td:first-child{text-align:left}
         <div id="pz-mapas-creados"></div>
       </div>
     </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Estación de Temperatura (IDEAM)</div>
+    <div class="card-sub">Buscá y elegí la estación meteorológica de referencia para el módulo "Temperatura vs Entrada" -- datos abiertos oficiales de <a href="https://www.datos.gov.co" target="_blank" rel="noopener">datos.gov.co</a>.</div>
+    <div id="param-ideam-actual" style="font-size:12px;margin:12px 0"></div>
+    <div class="fbar">
+      <input type="text" id="param-ideam-buscar" placeholder="Buscar estación (ej. Neiva, aeropuerto, nombre de municipio...)" oninput="paramIdeamBuscarDebounce()"
+        style="flex:1;min-width:280px;padding:7px 10px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg)">
+    </div>
+    <div id="param-ideam-resultados" style="margin-top:10px;max-height:280px;overflow-y:auto"></div>
   </div>
 
   <div class="card">
@@ -2277,6 +2289,30 @@ tfoot td:first-child{text-align:left}
 </div>
 <!-- fin vista-alim-alimentadores -->
 
+<!-- ---------------- TEMPERATURA VS ENTRADA ---------------- -->
+<div id="vista-temp-entrada" class="vista-modulo hidden">
+  <div class="sec-hdr">
+    <div class="sec-title">Temperatura vs Entrada</div>
+    <div class="sec-sub">Temperatura diaria de la estación IDEAM elegida en Parametrización, comparada con la Entrada de energía (todas las zonas).</div>
+  </div>
+
+  <div id="temp-entrada-vacio" class="card"><div style="color:var(--text3)">Cargando…</div></div>
+
+  <div id="temp-entrada-contenido" class="hidden">
+    <div class="card">
+      <div class="fbar" style="margin-bottom:14px">
+        <label>Rango</label>
+        <input type="date" id="temp-entrada-desde" onchange="tempEntradaRender()">
+        <span style="font-size:11px;color:var(--text3)">→</span>
+        <input type="date" id="temp-entrada-hasta" onchange="tempEntradaRender()">
+        <span id="temp-entrada-estacion-txt" style="font-size:11px;color:var(--text3);margin-left:auto"></span>
+      </div>
+      <div class="chart-wrap" style="height:460px"><canvas id="ch-temp-entrada"></canvas></div>
+    </div>
+  </div>
+</div>
+<!-- fin vista-temp-entrada -->
+
 <!-- ---------------- BALANCES POR ESTRUCTURA · CREAR ---------------- -->
 <div id="vista-be-crear" class="vista-modulo hidden">
 
@@ -3312,7 +3348,7 @@ function toggleSubmenuAlim(){
   }
 }
 
-let vistaCargada = {perdidas:false, parametrizacion:false, telemedidos:false, balancesEstructura:false, ipReg:false, ipComercial:false, ipNivel1:false, reportesSspd:false, tridevanados:false, alimN21:false, alimSubestaciones:false, alimAlimentadores:false};
+let vistaCargada = {perdidas:false, parametrizacion:false, telemedidos:false, balancesEstructura:false, ipReg:false, ipComercial:false, ipNivel1:false, reportesSspd:false, tridevanados:false, alimN21:false, alimSubestaciones:false, alimAlimentadores:false, tempEntrada:false};
 
 async function mostrarVista(nombre){
   document.querySelectorAll('.vista-modulo').forEach(v=>v.classList.add('hidden'));
@@ -3394,6 +3430,10 @@ async function mostrarVista(nombre){
   if(nombre==='alim-alimentadores' && !vistaCargada.alimAlimentadores){
     vistaCargada.alimAlimentadores = true;
     await cargarAlimentadoresModulo('alim-alimentadores');
+  }
+  if(nombre==='temp-entrada' && !vistaCargada.tempEntrada){
+    vistaCargada.tempEntrada = true;
+    await tempEntradaCargar();
   }
   // Las alertas se piden de nuevo cada vez que se entra a esta vista puntual
   // (no solo la primera vez) -- son datos que cambian seguido (atraso día a
@@ -4522,6 +4562,7 @@ async function cargarParametrizacion(){
   }
   renderParametrizacionZonas(datos);
   await pzCargarMapa(datos);
+  await paramIdeamCargarActual();
   await cargarConfianzaEstadistica();
   await cargarDiasAtrasoBalance();
 
@@ -4536,6 +4577,94 @@ async function cargarParametrizacion(){
     const valor = `${mesPasado.getFullYear()}-${String(mesPasado.getMonth()+1).padStart(2,'0')}`;
     desdeInput.value = valor;
     hastaInput.value = valor;
+  }
+}
+
+/* ---- Estación de Temperatura (IDEAM) -- datos abiertos de datos.gov.co,
+   ver backend/app/routers/ideam.py. Una estación por operador; el módulo
+   "Temperatura vs Entrada" la usa para traer la serie diaria. ---- */
+let PARAM_IDEAM_ACTUAL = null;
+
+async function paramIdeamCargarActual(){
+  const cont = document.getElementById('param-ideam-actual');
+  if(!cont) return;
+  if(DEMO){ cont.innerHTML = '<div style="color:var(--text3)">No disponible en modo demo (sin conexión al servidor).</div>'; return; }
+  try{
+    PARAM_IDEAM_ACTUAL = await apiGet('/api/ideam/estacion');
+  }catch(e){
+    PARAM_IDEAM_ACTUAL = null;
+  }
+  paramIdeamRenderActual();
+}
+
+function paramIdeamRenderActual(){
+  const cont = document.getElementById('param-ideam-actual');
+  if(!cont) return;
+  if(!PARAM_IDEAM_ACTUAL){
+    cont.innerHTML = '<div style="color:var(--text3)">Todavía no hay ninguna estación elegida -- buscá una abajo.</div>';
+    return;
+  }
+  const e = PARAM_IDEAM_ACTUAL;
+  cont.innerHTML = `<div class="zb" style="background:var(--accent)22;color:var(--accent);display:inline-flex">
+      📍 ${e.nombre_estacion} -- ${e.municipio || ''}${e.departamento ? ', '+e.departamento : ''}
+      <span onclick="paramIdeamBorrar()" title="Quitar esta estación" style="margin-left:8px;cursor:pointer;font-weight:800">✕</span>
+    </div>`;
+}
+
+let _paramIdeamBuscarTimeout = null;
+function paramIdeamBuscarDebounce(){
+  // Un fetch por letra escrita es innecesario (y le pega a una API
+  // externa) -- espera a que el usuario deje de tipear 350ms.
+  clearTimeout(_paramIdeamBuscarTimeout);
+  _paramIdeamBuscarTimeout = setTimeout(paramIdeamBuscar, 350);
+}
+
+async function paramIdeamBuscar(){
+  const cont = document.getElementById('param-ideam-resultados');
+  const texto = (document.getElementById('param-ideam-buscar').value || '').trim();
+  if(!cont) return;
+  if(texto.length < 3){ cont.innerHTML = ''; return; }
+  cont.innerHTML = '<div style="color:var(--text3);font-size:11px">Buscando…</div>';
+  try{
+    const resultados = await apiGet(`/api/ideam/estaciones?buscar=${encodeURIComponent(texto)}`, AUTH_TIMEOUT_MS);
+    if(!resultados.length){ cont.innerHTML = '<div style="color:var(--text3);font-size:11px">Sin resultados.</div>'; return; }
+    cont.innerHTML = resultados.map(e => {
+      const datos = JSON.stringify({codigo:e.codigo, nombre:e.nombre, departamento:e.departamento, municipio:e.municipio}).replace(/"/g, '&quot;');
+      return `<div onclick='paramIdeamElegir(${datos})' style="padding:8px 10px;font-size:12px;cursor:pointer;border-bottom:1px solid var(--border);color:var(--text2)">
+        <b>${e.nombre}</b><br>
+        <span style="font-size:10.5px;color:var(--text3)">${e.municipio || ''}${e.departamento ? ', '+e.departamento : ''} · ${e.categoria || ''} · ${e.estado || ''}</span>
+      </div>`;
+    }).join('');
+  }catch(e){
+    cont.innerHTML = `<div style="color:#ef476f;font-size:11px">${e.message || 'No se pudo buscar.'}</div>`;
+  }
+}
+
+async function paramIdeamElegir(datos){
+  if(!requiereEditor()) return;
+  try{
+    await apiPost('/api/ideam/estacion', {
+      codigo_estacion: datos.codigo, nombre_estacion: datos.nombre,
+      departamento: datos.departamento, municipio: datos.municipio,
+    });
+    PARAM_IDEAM_ACTUAL = {codigo_estacion:datos.codigo, nombre_estacion:datos.nombre, departamento:datos.departamento, municipio:datos.municipio};
+    paramIdeamRenderActual();
+    document.getElementById('param-ideam-buscar').value = '';
+    document.getElementById('param-ideam-resultados').innerHTML = '';
+  }catch(e){
+    alert(e.message || 'No se pudo guardar la estación.');
+  }
+}
+
+async function paramIdeamBorrar(){
+  if(!requiereEditor()) return;
+  if(!confirm('¿Quitar la estación de temperatura elegida?')) return;
+  try{
+    await apiDelete('/api/ideam/estacion');
+    PARAM_IDEAM_ACTUAL = null;
+    paramIdeamRenderActual();
+  }catch(e){
+    alert(e.message || 'No se pudo quitar la estación.');
   }
 }
 
@@ -10557,6 +10686,128 @@ function alim3RenderScatter(){
         x:{type:'linear', min:0, max:100, grid:{color:gridC}, ticks:{color:tickXFuerte, font:{size:10}, callback:v=>v+'%'},
           title:{display:true, text:'Gestionable % Top', color:tickC, font:{size:10}}},
         y:{grid:{color:gridC}, ticks:{color:tickC, font:{size:10}}, title:{display:true, text:'Gest x Longitud', color:tickC, font:{size:10}}},
+      },
+    },
+  });
+}
+
+/* ==========================================================================
+   TEMPERATURA VS ENTRADA -- temperatura DIARIA de la estación IDEAM
+   elegida en Parametrización (backend/app/routers/ideam.py, datos
+   abiertos de datos.gov.co) comparada con la Entrada de energía (todas
+   las zonas). La Entrada NO es diaria en los datos del operador -- es
+   mensual -- así que se repite el valor de cada mes en todos sus días
+   visibles (línea "escalón") para poder verla junto a la temperatura
+   diaria en el mismo eje de tiempo -- pedido explícito ("debe ser diaria
+   la temperatura").
+   ========================================================================== */
+let TEMP_ENTRADA_DIAS = [];   // [{fecha:'YYYY-MM-DD', temp_promedio}, ...] de /api/ideam/temperatura
+let TEMP_ENTRADA_ESTACION = null;
+let chTempEntrada = null;
+
+async function tempEntradaCargar(){
+  const vacio = document.getElementById('temp-entrada-vacio');
+  const contenido = document.getElementById('temp-entrada-contenido');
+  if(DEMO){
+    vacio.classList.remove('hidden'); contenido.classList.add('hidden');
+    vacio.querySelector('div').textContent = 'No disponible en modo demo (sin conexión al servidor).';
+    return;
+  }
+  try{
+    await _alimAsegurarDatosCargados();
+  }catch(e){
+    vacio.classList.remove('hidden'); contenido.classList.add('hidden');
+    vacio.querySelector('div').textContent = e.message || 'No se pudieron cargar los datos de Entrada.';
+    return;
+  }
+  try{
+    const resp = await apiGet('/api/ideam/temperatura', AUTH_TIMEOUT_MS);
+    TEMP_ENTRADA_ESTACION = resp.estacion;
+    TEMP_ENTRADA_DIAS = resp.filas || [];
+  }catch(e){
+    vacio.classList.remove('hidden'); contenido.classList.add('hidden');
+    vacio.querySelector('div').textContent = e.message || 'No se pudo cargar la temperatura -- elegí una estación en Parametrización.';
+    return;
+  }
+  if(!TEMP_ENTRADA_DIAS.length){
+    vacio.classList.remove('hidden'); contenido.classList.add('hidden');
+    vacio.querySelector('div').textContent = 'La estación elegida en Parametrización todavía no trae lecturas de temperatura.';
+    return;
+  }
+  vacio.classList.add('hidden');
+  contenido.classList.remove('hidden');
+  document.getElementById('temp-entrada-estacion-txt').textContent = `Estación: ${TEMP_ENTRADA_ESTACION.nombre}`;
+
+  const inDesde = document.getElementById('temp-entrada-desde');
+  const inHasta = document.getElementById('temp-entrada-hasta');
+  if(!inDesde.value || !inHasta.value){
+    const ultimaFecha = TEMP_ENTRADA_DIAS[TEMP_ENTRADA_DIAS.length-1].fecha;
+    const primeraFecha = TEMP_ENTRADA_DIAS[0].fecha;
+    if(!inHasta.value) inHasta.value = ultimaFecha;
+    if(!inDesde.value){
+      // Arranca en los últimos ~90 días -- ver años enteros día a día de
+      // una sola vez se pone ilegible; el usuario puede ampliar el rango.
+      const hasta = new Date(ultimaFecha);
+      const desde = new Date(hasta); desde.setDate(desde.getDate()-89);
+      const desdeStr = desde.toISOString().slice(0,10);
+      inDesde.value = desdeStr > primeraFecha ? desdeStr : primeraFecha;
+    }
+  }
+  tempEntradaRender();
+}
+
+function tempEntradaRender(){
+  const cv = document.getElementById('ch-temp-entrada');
+  if(!cv) return;
+  const desde = document.getElementById('temp-entrada-desde').value;
+  const hasta = document.getElementById('temp-entrada-hasta').value;
+  const visibles = TEMP_ENTRADA_DIAS.filter(f => (!desde || f.fecha >= desde) && (!hasta || f.fecha <= hasta));
+  if(chTempEntrada){ chTempEntrada.destroy(); chTempEntrada = null; }
+  if(!visibles.length) return;
+
+  const entradaPorMes = {};
+  alimN21AgregarMensual(new Set()).forEach(f => { entradaPorMes[f.clave] = f.entrada; });
+
+  const etiquetas = visibles.map(f => f.fecha);
+  const tempDatos = visibles.map(f => f.temp_promedio);
+  const entradaDatos = visibles.map(f => entradaPorMes[f.fecha.slice(0,7)] ?? null);
+
+  const dark = document.documentElement.getAttribute('data-theme')==='dark';
+  const tickC = dark ? '#aab8d1' : '#4b5e7a';
+  const tickXFuerte = dark ? '#ffffff' : '#000000';
+  const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
+
+  chTempEntrada = new Chart(cv, {
+    plugins:[tmPluginCrosshair],
+    data:{
+      labels: etiquetas,
+      datasets:[
+        {type:'line', label:'Entrada Total kWh (mensual)', yAxisID:'y', order:2, stepped:'before',
+          data: entradaDatos, borderColor:'#4361ee', backgroundColor:'rgba(67,97,238,.15)', fill:'origin',
+          borderWidth:1.5, pointRadius:0, spanGaps:false, datalabels:{display:false}},
+        {type:'line', label:'Temperatura °C (diaria)', yAxisID:'yTemp', order:1,
+          data: tempDatos, borderColor:'#ef476f', backgroundColor:'transparent',
+          borderWidth:1.75, pointRadius:0, spanGaps:true, tension:.3, datalabels:{display:false}},
+      ],
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      layout:{padding:{top:20, right:20}},
+      interaction:{mode:'index', intersect:false},
+      plugins:{
+        legend:{display:true, position:'bottom', labels:{boxWidth:10, font:{size:9}, color:tickC}},
+        tooltip:{callbacks:{label:c => {
+          if(c.raw==null) return null;
+          return c.dataset.yAxisID==='yTemp' ? `${c.dataset.label}: ${c.raw.toFixed(1)}°C` : `${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`;
+        }}},
+        zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:7}}},
+      },
+      scales:{
+        x:{grid:{display:false}, ticks:{color:tickXFuerte, font:{size:9, weight:'600'}, maxRotation:45, minRotation:45, autoSkip:true, maxTicksLimit:24}},
+        y:{position:'left', grid:{color:gridC}, ticks:{color:tickC, font:{size:10}, callback:v=>v.toLocaleString('es-CO')},
+          title:{display:true, text:'Entrada (kWh, mensual)', color:tickC, font:{size:10}}},
+        yTemp:{type:'linear', position:'right', grid:{drawOnChartArea:false}, ticks:{color:'#ef476f', font:{size:10}, callback:v=>v.toFixed(0)+'°C'},
+          title:{display:true, text:'Temperatura (°C)', color:'#ef476f', font:{size:10}}},
       },
     },
   });
