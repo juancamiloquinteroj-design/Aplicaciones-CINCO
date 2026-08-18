@@ -295,6 +295,8 @@ canvas[id^="ch-tride-"]:active{cursor:grabbing}
 @media(max-width:800px){.split-wrap>div{flex:1 1 100%}}
 
 .tbl-wrap{overflow-x:auto;border-radius:9px;border:1px solid var(--border)}
+.alim3-tabla-sticky thead th{position:sticky;top:0;z-index:2}
+.alim3-th-flecha{font-size:9px}
 table{width:100%;border-collapse:collapse;font-size:12px}
 thead th{padding:8px 12px;font-weight:700;text-align:right;background:var(--bg3);color:var(--text2);font-size:10px;text-transform:uppercase;border-bottom:1px solid var(--border);white-space:nowrap}
 thead th:first-child,tbody td:first-child{text-align:left}
@@ -687,6 +689,7 @@ tfoot td:first-child{text-align:left}
     <span id="badge-visualizador" class="badge-demo hidden" title="Tu usuario solo puede consultar y filtrar -- pedile a un administrador que te cambie el rol en Centro de Mando si necesitás editar">👁 SOLO LECTURA</span>
     <span id="badge-recarga" class="badge-recarga hidden" title="El servidor revisa los archivos y actualiza los datos solo, cada pocos minutos"></span>
     <span id="badge-op" class="badge-op hidden"></span>
+    <button class="btn-logout hidden" id="btn-suite" onclick="volverASuite()" title="Volver al selector de módulos">🧩 Módulos</button>
     <button class="btn-logout hidden" id="btn-logout" onclick="cerrarSesion()">Salir</button>
     <button class="btn-theme" onclick="toggleTheme()" title="Cambiar tema">🌓</button>
   </div>
@@ -2248,9 +2251,16 @@ tfoot td:first-child{text-align:left}
       </div>
       <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">
         <div style="flex:1;min-width:360px">
-          <div class="tbl-wrap" style="max-height:520px;overflow-y:auto">
+          <div class="tbl-wrap alim3-tabla-sticky" style="max-height:520px;overflow-y:auto">
             <table>
-              <thead><tr><th style="text-align:left">Nombre Spard</th><th>Zona</th><th>Gest x Longitud</th><th>Gestionable (kWh)</th><th>Gestionable % Top</th><th>Longitud (Km)</th></tr></thead>
+              <thead><tr>
+                <th style="text-align:left;cursor:pointer" onclick="alim3OrdenarTop('nombre')" title="Click para ordenar">Nombre Spard <span id="alim3-th-nombre" class="alim3-th-flecha"></span></th>
+                <th style="cursor:pointer" onclick="alim3OrdenarTop('zona')" title="Click para ordenar">Zona <span id="alim3-th-zona" class="alim3-th-flecha"></span></th>
+                <th style="cursor:pointer" onclick="alim3OrdenarTop('gestLongitud')" title="Click para ordenar">Gest x Longitud <span id="alim3-th-gestLongitud" class="alim3-th-flecha"></span></th>
+                <th style="cursor:pointer" onclick="alim3OrdenarTop('gestionable')" title="Click para ordenar">Gestionable (kWh) <span id="alim3-th-gestionable" class="alim3-th-flecha"></span></th>
+                <th style="cursor:pointer" onclick="alim3OrdenarTop('gestPct')" title="Click para ordenar">Gestionable % Top <span id="alim3-th-gestPct" class="alim3-th-flecha"></span></th>
+                <th style="cursor:pointer" onclick="alim3OrdenarTop('longitud')" title="Click para ordenar">Longitud (Km) <span id="alim3-th-longitud" class="alim3-th-flecha"></span></th>
+              </tr></thead>
               <tbody id="alim3-tabla-top"></tbody>
             </table>
           </div>
@@ -3821,6 +3831,7 @@ function cerrarSesion(){
   document.getElementById('badge-recarga').classList.add('hidden');
   if(_badgeRecargaInterval){ clearInterval(_badgeRecargaInterval); _badgeRecargaInterval = null; }
   document.getElementById('btn-logout').classList.add('hidden');
+  document.getElementById('btn-suite').classList.add('hidden');
   document.getElementById('btn-menu').classList.add('hidden');
   document.getElementById('login-form').reset();
   document.body.classList.remove('sidebar-fija');
@@ -3847,10 +3858,24 @@ function entrarDashboard(){
   document.getElementById('btn-logout').classList.remove('hidden');
 }
 
+// Vuelve al selector de la suite sin cerrar sesión -- pedido explícito
+// ("en el de visualización debe haber un botón para volver a esos
+// módulos"). No toca TOKEN/OPERADOR/vistaCargada -- al entrar de nuevo al
+// Visualizador (entrarVisualizador) sigue todo como estaba.
+function volverASuite(){
+  document.getElementById('app-screen').classList.add('hidden');
+  document.getElementById('suite-screen').classList.remove('hidden');
+  document.getElementById('btn-menu').classList.add('hidden');
+  document.getElementById('btn-suite').classList.add('hidden');
+  document.body.classList.remove('sidebar-fija');
+  document.getElementById('sidebar').classList.add('hidden');
+}
+
 async function entrarVisualizador(){
   document.getElementById('suite-screen').classList.add('hidden');
   document.getElementById('app-screen').classList.remove('hidden');
   document.getElementById('btn-menu').classList.remove('hidden');
+  document.getElementById('btn-suite').classList.remove('hidden');
   document.getElementById('badge-op').textContent = OPERADOR.nombre;
   document.getElementById('badge-op').classList.remove('hidden');
   document.getElementById('badge-demo').classList.toggle('hidden', !DEMO);
@@ -9912,6 +9937,8 @@ let ALIM3_MES_TOP = null;
 let ALIM3_ESP_MODO = 'mensual';  // 'mensual' | 'anual' -- gráfico Entradas/Salidas/Pérdida
 let ALIM3_ESP_VAR = false;       // Δ Variación en la etiqueta de Pérdida %
 let ALIM3_TOP_MODO = 'mensual';  // 'mensual' | 'anual' -- tabla/scatter Top Alimentadores
+let ALIM3_TOP_ORDEN_COL = 'gestLongitud';  // columna de orden de la tabla Top Alimentadores
+let ALIM3_TOP_ORDEN_DIR = 'desc';          // 'asc' | 'desc'
 let chAlim3Esp = null, chAlim3Tecnica = null, chAlim3Agpe = null, chAlim3Scatter = null;
 
 async function alim3Cargar(){
@@ -10437,21 +10464,48 @@ function alim3RenderTablaTop(){
       .map(f => ({nombre:f.nombre_spard || f.nemonico, zona:f.zona, gestLongitud:f.gestionable_kwh/f.longitud_total, gestionable:f.gestionable_kwh,
         gestPct: f.perdida_kwh ? f.gestionable_kwh/f.perdida_kwh*100 : null, longitud:f.longitud_total}))
   );
-  filas.sort((a,b) => b.gestLongitud - a.gestLongitud);
-  if(!filas.length){ cont.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text3)">Sin datos ${esAnual?'para los 12 meses hasta este AñoMes':'para este mes'}.</td></tr>`; return; }
-  const fmt = v => v==null ? '--' : v.toLocaleString('es-CO',{maximumFractionDigits:2});
-  const fmtPct = v => v==null ? '--' : `${v.toFixed(2)}%`;
-  cont.innerHTML = filas.map(f => {
-    const color = colorParaZona(f.zona);
-    return `<tr>
-      <td style="text-align:left;font-weight:700">${f.nombre}</td>
-      <td><span class="zb" style="background:${color}22;color:${color}">${f.zona}</span></td>
-      <td>${fmt(f.gestLongitud)}</td>
-      <td>${fmt(f.gestionable)}</td>
-      <td>${fmtPct(f.gestPct)}</td>
-      <td>${fmt(f.longitud)}</td>
-    </tr>`;
-  }).join('');
+  // Orden por la columna elegida en la cabecera (click, estilo PowerBI) --
+  // pedido explícito. Texto (nombre/zona) por localeCompare, números por
+  // resta -- los "Sin dato" (null) siempre quedan al final sin importar
+  // la dirección.
+  filas.sort((a,b) => {
+    const va = a[ALIM3_TOP_ORDEN_COL], vb = b[ALIM3_TOP_ORDEN_COL];
+    if(va==null && vb==null) return 0;
+    if(va==null) return 1;
+    if(vb==null) return -1;
+    const cmp = typeof va==='string' ? va.localeCompare(vb) : va-vb;
+    return ALIM3_TOP_ORDEN_DIR==='asc' ? cmp : -cmp;
+  });
+  if(!filas.length){ cont.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text3)">Sin datos ${esAnual?'para los 12 meses hasta este AñoMes':'para este mes'}.</td></tr>`; }
+  else{
+    const fmt = v => v==null ? '--' : v.toLocaleString('es-CO',{maximumFractionDigits:2});
+    const fmtPct = v => v==null ? '--' : `${v.toFixed(2)}%`;
+    cont.innerHTML = filas.map(f => {
+      const color = colorParaZona(f.zona);
+      return `<tr>
+        <td style="text-align:left;font-weight:700">${f.nombre}</td>
+        <td><span class="zb" style="background:${color}22;color:${color}">${f.zona}</span></td>
+        <td>${fmt(f.gestLongitud)}</td>
+        <td>${fmt(f.gestionable)}</td>
+        <td>${fmtPct(f.gestPct)}</td>
+        <td>${fmt(f.longitud)}</td>
+      </tr>`;
+    }).join('');
+  }
+  ['nombre','zona','gestLongitud','gestionable','gestPct','longitud'].forEach(col => {
+    const el = document.getElementById(`alim3-th-${col}`);
+    if(el) el.textContent = col===ALIM3_TOP_ORDEN_COL ? (ALIM3_TOP_ORDEN_DIR==='asc' ? '▲' : '▼') : '';
+  });
+}
+
+function alim3OrdenarTop(col){
+  if(ALIM3_TOP_ORDEN_COL === col){
+    ALIM3_TOP_ORDEN_DIR = ALIM3_TOP_ORDEN_DIR === 'desc' ? 'asc' : 'desc';
+  }else{
+    ALIM3_TOP_ORDEN_COL = col;
+    ALIM3_TOP_ORDEN_DIR = 'desc';
+  }
+  alim3RenderTablaTop();
 }
 
 // Colores fijos por Leyenda (categoría del circuito) -- no depende de
