@@ -2300,7 +2300,10 @@ tfoot td:first-child{text-align:left}
 
   <div id="temp-entrada-contenido" class="hidden">
     <div class="card">
-      <div class="fbar" style="margin-bottom:14px">
+      <div style="text-align:center;margin-bottom:8px">
+        <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Energía de Entrada Vs Temperatura</div>
+      </div>
+      <div class="fbar" style="margin-bottom:6px">
         <label>Rango</label>
         <input type="date" id="temp-entrada-desde" onchange="tempEntradaRender()">
         <span style="font-size:11px;color:var(--text3)">→</span>
@@ -2309,6 +2312,11 @@ tfoot td:first-child{text-align:left}
         <button type="button" class="be-modo-btn" id="temp-entrada-btn-max" onclick="tempEntradaToggleMetrica('max')">Máxima</button>
         <button type="button" class="be-modo-btn activo" id="temp-entrada-btn-promedio" onclick="tempEntradaToggleMetrica('promedio')">Promedio</button>
         <span id="temp-entrada-estacion-txt" style="font-size:11px;color:var(--text3);margin-left:auto"></span>
+      </div>
+      <div class="fbar" style="margin-bottom:14px">
+        <button type="button" class="be-modo-btn activo" id="temp-entrada-btn-diario" onclick="tempEntradaToggleGranularidad('diario')">Diario</button>
+        <button type="button" class="be-modo-btn" id="temp-entrada-btn-mensual" onclick="tempEntradaToggleGranularidad('mensual')">Mensual</button>
+        <button type="button" class="be-modo-btn hidden" id="temp-entrada-btn-ipreg" style="margin-left:10px" onclick="tempEntradaToggleIpReg()" title="Superpone la Pérdida Total (PT, kWh) de IP_Reg de cada mes">Superponer Pérdidas IP_Reg</button>
       </div>
       <div class="chart-wrap" style="height:460px"><canvas id="ch-temp-entrada"></canvas></div>
     </div>
@@ -2320,6 +2328,30 @@ tfoot td:first-child{text-align:left}
         <input type="date" id="temp-horaria-fecha" onchange="tempHorariaCargar()">
       </div>
       <div class="chart-wrap" style="height:320px"><canvas id="ch-temp-horaria"></canvas></div>
+    </div>
+
+    <div class="card">
+      <div class="fbar" style="justify-content:center;margin-bottom:10px">
+        <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Mapa de Temperatura</div>
+      </div>
+      <div class="sec-sub" style="text-align:center;margin-bottom:12px">Recorré las fechas para ver cómo cambia la temperatura en la ubicación de la estación -- incluye pronóstico (Open-Meteo) para los próximos días.</div>
+      <div id="temp-mapa-vacio" style="color:var(--text3);font-size:12px;text-align:center;padding:20px">Cargando…</div>
+      <div id="temp-mapa-contenido" class="hidden">
+        <div id="temp-mapa-leaflet" style="height:420px;border-radius:10px;overflow:hidden;background:var(--bg3);margin-bottom:12px"></div>
+        <div class="fbar" style="justify-content:center;gap:14px;margin-bottom:8px">
+          <button type="button" id="temp-mapa-btn-play" onclick="tempMapaTogglePlay()" style="font-size:16px;line-height:1;padding:6px 12px" class="be-modo-btn">▶</button>
+          <input type="range" id="temp-mapa-slider" min="0" max="0" value="0" style="flex:1;min-width:200px;max-width:520px" oninput="tempMapaActualizar(Number(this.value))">
+          <div style="min-width:220px;text-align:center">
+            <span id="temp-mapa-fecha" style="font-size:13px;font-weight:700;color:var(--text)"></span>
+            <span id="temp-mapa-badge" style="font-size:10px;font-weight:800;letter-spacing:.5px;padding:2px 7px;border-radius:8px;margin-left:6px"></span>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:center;gap:8px;font-size:10px;color:var(--text3)">
+          <span id="temp-mapa-leyenda-min"></span>
+          <div style="width:160px;height:10px;border-radius:5px;background:linear-gradient(90deg, #4361ee, #ef476f)"></div>
+          <span id="temp-mapa-leyenda-max"></span>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -4641,7 +4673,7 @@ async function paramIdeamBuscar(){
     const resultados = await apiGet(`/api/ideam/estaciones?buscar=${encodeURIComponent(texto)}`, AUTH_TIMEOUT_MS);
     if(!resultados.length){ cont.innerHTML = '<div style="color:var(--text3);font-size:11px">Sin resultados.</div>'; return; }
     cont.innerHTML = resultados.map(e => {
-      const datos = JSON.stringify({codigo:e.codigo, nombre:e.nombre, departamento:e.departamento, municipio:e.municipio}).replace(/"/g, '&quot;');
+      const datos = JSON.stringify({codigo:e.codigo, nombre:e.nombre, departamento:e.departamento, municipio:e.municipio, latitud:e.latitud, longitud:e.longitud}).replace(/"/g, '&quot;');
       // El dataset de temperatura en tiempo real SOLO lo alimentan
       // estaciones con telemetría automática -- una "Convencional" (manual)
       // se ve en el catálogo pero nunca va a traer datos acá. Este aviso
@@ -4665,6 +4697,7 @@ async function paramIdeamElegir(datos){
     const resp = await apiPost('/api/ideam/estacion', {
       codigo_estacion: datos.codigo, nombre_estacion: datos.nombre,
       departamento: datos.departamento, municipio: datos.municipio,
+      latitud: datos.latitud, longitud: datos.longitud,
     });
     PARAM_IDEAM_ACTUAL = {codigo_estacion:datos.codigo, nombre_estacion:datos.nombre, departamento:datos.departamento, municipio:datos.municipio};
     paramIdeamRenderActual();
@@ -10729,6 +10762,8 @@ function alim3RenderScatter(){
 let TEMP_ENTRADA_DIAS = [];   // [{fecha, temp_promedio, temp_max, temp_min}, ...] de /api/ideam/temperatura
 let TEMP_ENTRADA_ESTACION = null;
 let TEMP_ENTRADA_METRICA = 'promedio';   // 'min' | 'max' | 'promedio'
+let TEMP_ENTRADA_GRANULARIDAD = 'diario';   // 'diario' | 'mensual'
+let TEMP_ENTRADA_MOSTRAR_IPREG = false;     // solo aplica en 'mensual' -- superpone PT (kWh) de IP_Reg
 let TEMP_ENTRADA_NIVEL4_ID = null;       // cacheado tras la 1ra carga (ver cargarDashboardInicio, mismo patrón)
 let TEMP_ENTRADA_BALANCE_DIARIO = {};    // {fecha: entrada_kwh} de /api/balances-estructura/{id}/consumo
 let chTempEntrada = null;
@@ -10760,6 +10795,53 @@ function tempEntradaToggleMetrica(m){
   document.getElementById('temp-entrada-btn-max').classList.toggle('activo', m==='max');
   document.getElementById('temp-entrada-btn-promedio').classList.toggle('activo', m==='promedio');
   tempEntradaRender();
+  // El Mapa de Temperatura usa la MISMA métrica -- solo recolorea el
+  // marcador ya cargado, no vuelve a pedir datos ni pierde el slider.
+  _tempMapaRecalcularRango();
+  tempMapaActualizar(TEMP_MAPA_IDX);
+}
+
+function tempEntradaToggleGranularidad(g){
+  TEMP_ENTRADA_GRANULARIDAD = g;
+  document.getElementById('temp-entrada-btn-diario').classList.toggle('activo', g==='diario');
+  document.getElementById('temp-entrada-btn-mensual').classList.toggle('activo', g==='mensual');
+  // El overlay de IP_Reg solo tiene sentido en Mensual (IP_Reg no tiene
+  // dato diario) -- si se vuelve a Diario se apaga y se oculta el botón.
+  const btnIpReg = document.getElementById('temp-entrada-btn-ipreg');
+  btnIpReg.classList.toggle('hidden', g!=='mensual');
+  if(g!=='mensual' && TEMP_ENTRADA_MOSTRAR_IPREG){
+    TEMP_ENTRADA_MOSTRAR_IPREG = false;
+    btnIpReg.classList.remove('activo');
+  }
+  tempEntradaRender();
+}
+
+async function tempEntradaToggleIpReg(){
+  TEMP_ENTRADA_MOSTRAR_IPREG = !TEMP_ENTRADA_MOSTRAR_IPREG;
+  document.getElementById('temp-entrada-btn-ipreg').classList.toggle('activo', TEMP_ENTRADA_MOSTRAR_IPREG);
+  if(TEMP_ENTRADA_MOSTRAR_IPREG) await ipAsegurarDatosCargados();
+  tempEntradaRender();
+}
+
+// Agrupa la serie diaria visible por mes calendario: temperatura
+// PROMEDIADA (de la métrica elegida -- Mín/Máx/Promedio) y Entrada
+// SUMADA -- pedido explícito ("Promedia temperatura y suma Energía de
+// entrada"). Un mes solo aparece si tiene al menos un día con ese dato.
+function _tempEntradaAgruparMensual(visibles, campoTemp){
+  const porMes = new Map();
+  visibles.forEach(f => {
+    const clave = f.fecha.slice(0,7);
+    if(!porMes.has(clave)) porMes.set(clave, {clave, temps:[], entradaSuma:0, entradaTieneDato:false});
+    const g = porMes.get(clave);
+    if(f[campoTemp]!=null) g.temps.push(f[campoTemp]);
+    const entradaDia = TEMP_ENTRADA_BALANCE_DIARIO[f.fecha];
+    if(entradaDia!=null){ g.entradaSuma += entradaDia; g.entradaTieneDato = true; }
+  });
+  return [...porMes.values()].sort((a,b)=> a.clave < b.clave ? -1 : 1).map(g => ({
+    clave: g.clave,
+    temp: g.temps.length ? g.temps.reduce((a,b)=>a+b,0)/g.temps.length : null,
+    entrada: g.entradaTieneDato ? g.entradaSuma : null,
+  }));
 }
 
 async function tempEntradaCargar(){
@@ -10812,12 +10894,13 @@ async function tempEntradaCargar(){
   const inFechaHoraria = document.getElementById('temp-horaria-fecha');
   if(!inFechaHoraria.value) inFechaHoraria.value = TEMP_ENTRADA_DIAS[TEMP_ENTRADA_DIAS.length-1].fecha;
   tempHorariaCargar();
+  tempMapaCargar();
 }
 
 const TEMP_ENTRADA_METRICA_INFO = {
-  min: {campo:'temp_min', etiqueta:'Temperatura Mínima °C (diaria)'},
-  max: {campo:'temp_max', etiqueta:'Temperatura Máxima °C (diaria)'},
-  promedio: {campo:'temp_promedio', etiqueta:'Temperatura Promedio °C (diaria)'},
+  min: {campo:'temp_min', nombre:'Mínima'},
+  max: {campo:'temp_max', nombre:'Máxima'},
+  promedio: {campo:'temp_promedio', nombre:'Promedio'},
 };
 
 function tempEntradaRender(){
@@ -10830,27 +10913,51 @@ function tempEntradaRender(){
   if(!visibles.length) return;
 
   const metrica = TEMP_ENTRADA_METRICA_INFO[TEMP_ENTRADA_METRICA];
-  const etiquetas = visibles.map(f => f.fecha);
-  const tempDatos = visibles.map(f => f[metrica.campo]);
-  const entradaDatos = visibles.map(f => TEMP_ENTRADA_BALANCE_DIARIO[f.fecha] ?? null);
+  const esMensual = TEMP_ENTRADA_GRANULARIDAD === 'mensual';
+
+  let etiquetas, tempDatos, entradaDatos, entradaTitulo, agrupado;
+  if(esMensual){
+    agrupado = _tempEntradaAgruparMensual(visibles, metrica.campo);
+    etiquetas = agrupado.map(g => labelMesLargo(g.clave));
+    tempDatos = agrupado.map(g => g.temp);
+    entradaDatos = agrupado.map(g => g.entrada);
+    entradaTitulo = 'Entrada (kWh, mensual)';
+  }else{
+    etiquetas = visibles.map(f => f.fecha);
+    tempDatos = visibles.map(f => f[metrica.campo]);
+    entradaDatos = visibles.map(f => TEMP_ENTRADA_BALANCE_DIARIO[f.fecha] ?? null);
+    entradaTitulo = 'Entrada (kWh, diaria)';
+  }
+  const tempLabel = `Temperatura ${metrica.nombre} °C (${esMensual?'mensual':'diaria'})`;
 
   const dark = document.documentElement.getAttribute('data-theme')==='dark';
   const tickC = dark ? '#aab8d1' : '#4b5e7a';
   const tickXFuerte = dark ? '#ffffff' : '#000000';
   const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
 
+  const datasets = [
+    {type:'line', label:'Entrada Total kWh'+(esMensual?' (mensual)':' (diaria)'), yAxisID:'y', order:2,
+      data: entradaDatos, borderColor:'#4361ee', backgroundColor:'transparent',
+      borderWidth:1.5, pointRadius:0, spanGaps:true, tension:.2, datalabels:{display:false}},
+    {type:'line', label:tempLabel, yAxisID:'yTemp', order:1,
+      data: tempDatos, borderColor:'#ef476f', backgroundColor:'transparent',
+      borderWidth:1.75, pointRadius:0, spanGaps:true, tension:.3, datalabels:{display:false}},
+  ];
+  if(esMensual && TEMP_ENTRADA_MOSTRAR_IPREG){
+    const ptDatos = agrupado.map(g => {
+      const fila = IP_MAPA_POR_NORMAL && IP_MAPA_POR_NORMAL.get(g.clave);
+      return fila && fila.pt_kwh!=null ? fila.pt_kwh : null;
+    });
+    datasets.push({type:'line', label:'Pérdida IP_Reg -- PT (kWh)', yAxisID:'y', order:3,
+      data: ptDatos, borderColor:'#f4a261', backgroundColor:'transparent',
+      borderWidth:2, borderDash:[6,3], pointRadius:0, spanGaps:true, tension:.2, datalabels:{display:false}});
+  }
+
   chTempEntrada = new Chart(cv, {
     plugins:[tmPluginCrosshair],
     data:{
       labels: etiquetas,
-      datasets:[
-        {type:'line', label:'Entrada Total kWh (diaria)', yAxisID:'y', order:2,
-          data: entradaDatos, borderColor:'#4361ee', backgroundColor:'rgba(67,97,238,.15)', fill:'origin',
-          borderWidth:1.5, pointRadius:0, spanGaps:true, tension:.2, datalabels:{display:false}},
-        {type:'line', label:metrica.etiqueta, yAxisID:'yTemp', order:1,
-          data: tempDatos, borderColor:'#ef476f', backgroundColor:'transparent',
-          borderWidth:1.75, pointRadius:0, spanGaps:true, tension:.3, datalabels:{display:false}},
-      ],
+      datasets,
     },
     options:{
       responsive:true, maintainAspectRatio:false,
@@ -10867,7 +10974,7 @@ function tempEntradaRender(){
       scales:{
         x:{grid:{display:false}, ticks:{color:tickXFuerte, font:{size:9, weight:'600'}, maxRotation:45, minRotation:45, autoSkip:true, maxTicksLimit:24}},
         y:{position:'left', grid:{color:gridC}, ticks:{color:tickC, font:{size:10}, callback:v=>v.toLocaleString('es-CO')},
-          title:{display:true, text:'Entrada (kWh, diaria)', color:tickC, font:{size:10}}},
+          title:{display:true, text:entradaTitulo, color:tickC, font:{size:10}}},
         yTemp:{type:'linear', position:'right', grid:{drawOnChartArea:false}, ticks:{color:'#ef476f', font:{size:10}, callback:v=>v.toFixed(0)+'°C'},
           title:{display:true, text:'Temperatura (°C)', color:'#ef476f', font:{size:10}}},
       },
@@ -10932,6 +11039,179 @@ function tempHorariaRender(filas){
       },
     },
   });
+}
+
+/* ==========================================================================
+   MAPA DE TEMPERATURA -- pedido explícito ("ver en un mapa el
+   comportamiento de la temperatura... ir avanzando en fechas... y
+   proyecciones"). Un solo marcador (la estación configurada) sobre el
+   mismo croquis de zonas, con un slider (+ play/pausa) para recorrer la
+   serie HISTÓRICA (TEMP_ENTRADA_DIAS, ya cargada) seguida del PRONÓSTICO
+   real de Open-Meteo (/api/ideam/pronostico -- el IDEAM/datos.gov.co NO
+   tiene pronóstico, solo histórico). El color del marcador interpola
+   frío→cálido según el rango [mín,máx] de TODA la serie visible, para que
+   el color sea comparable entre fechas.
+   ========================================================================== */
+let TEMP_MAPA_SERIE = [];      // [{fecha, temp_promedio, temp_max, temp_min, pronostico}, ...]
+let TEMP_MAPA_IDX = 0;
+let TEMP_MAPA_MAPA = null;
+let TEMP_MAPA_MARCADOR = null;
+let TEMP_MAPA_PLAYING = false;
+let TEMP_MAPA_INTERVAL = null;
+let TEMP_MAPA_RANGO = {min:null, max:null};
+
+function _tempMapaColor(v, min, max){
+  if(v==null || min==null || max==null || max<=min) return '#999';
+  const t = Math.max(0, Math.min(1, (v-min)/(max-min)));
+  const fria = [67,97,238], calida = [239,71,111];   // mismos #4361ee/#ef476f del resto del módulo
+  const rgb = fria.map((c,i)=> Math.round(c + (calida[i]-c)*t));
+  return `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`;
+}
+
+// Reusa el croquis de zonas si el operador ya lo tiene parametrizado (para
+// dar contexto geográfico); si no, arma un mapa simple centrado en la
+// estación -- el marcador de temperatura no debe depender de que Parametrización
+// tenga zonas cargadas. Comparte el MISMO registro (MAPA_ZONAS_INSTANCIAS/
+// MAPA_ZONAS_RESIZE_OBS) que mapaZonasRenderLeaflet para poder reusar su
+// misma limpieza si esta vista se vuelve a cargar.
+async function _tempMapaInicializarMapa(contId, lat, lon){
+  let mapa = null;
+  try{
+    const topo = await mapaZonasCargarTopo();
+    const resp = await apiGet('/api/mapa-zonas');
+    if(resp.departamento){
+      const features = mapaZonasFeaturesDeDepto(topo, resp.departamento);
+      const render = mapaZonasRenderLeaflet(contId, features, id => resp.municipios[id], null, 0.5, null);
+      if(render) mapa = render.mapa;
+    }
+  }catch(e){ /* sin zonas parametrizadas -- sigue con el mapa simple de abajo */ }
+  if(mapa) return mapa;
+
+  if(MAPA_ZONAS_INSTANCIAS[contId]){ try{ MAPA_ZONAS_INSTANCIAS[contId].remove(); }catch(e){} delete MAPA_ZONAS_INSTANCIAS[contId]; }
+  if(MAPA_ZONAS_RESIZE_OBS[contId]){ MAPA_ZONAS_RESIZE_OBS[contId].disconnect(); delete MAPA_ZONAS_RESIZE_OBS[contId]; }
+  const cont = document.getElementById(contId);
+  if(!cont) return null;
+  cont.innerHTML = '';
+  delete cont._leaflet_id;
+  mapa = L.map(contId, {zoomControl:true, attributionControl:false});
+  MAPA_ZONAS_INSTANCIAS[contId] = mapa;
+  mapa.setView([lat, lon], 9);   // vista fijada ANTES de agregar capas -- ver nota del mismo bug en mapaZonasRenderLeaflet
+  mapaZonasCapasBase()['Calles'].addTo(mapa);
+  let ajustado = false;
+  const ro = new ResizeObserver(() => {
+    if(MAPA_ZONAS_INSTANCIAS[contId] !== mapa){ ro.disconnect(); return; }
+    if(!cont.offsetWidth || !cont.offsetHeight) return;
+    mapa.invalidateSize();
+    if(!ajustado){ ajustado = true; mapa.setView([lat, lon], 9); }
+  });
+  ro.observe(cont);
+  MAPA_ZONAS_RESIZE_OBS[contId] = ro;
+  return mapa;
+}
+
+async function tempMapaCargar(){
+  const vacio = document.getElementById('temp-mapa-vacio');
+  const contenido = document.getElementById('temp-mapa-contenido');
+  if(!vacio || !contenido) return;
+  tempMapaDetenerPlay();
+  vacio.classList.remove('hidden'); contenido.classList.add('hidden');
+  vacio.textContent = 'Cargando…';
+
+  const est = TEMP_ENTRADA_ESTACION;
+  if(!est || est.latitud==null || est.longitud==null){
+    vacio.textContent = 'La estación configurada no tiene coordenadas guardadas -- volvé a elegirla en Parametrización para habilitar el mapa.';
+    return;
+  }
+
+  let pronostico = [];
+  try{
+    const resp = await apiGet('/api/ideam/pronostico', AUTH_TIMEOUT_MS);
+    pronostico = (resp.filas || []).map(f => ({...f, pronostico:true}));
+  }catch(e){ /* sin pronóstico disponible -- se sigue solo con lo histórico */ }
+
+  const porFecha = new Map();
+  TEMP_ENTRADA_DIAS.forEach(f => porFecha.set(f.fecha, {...f, pronostico:false}));
+  pronostico.forEach(f => { if(!porFecha.has(f.fecha)) porFecha.set(f.fecha, f); });
+  TEMP_MAPA_SERIE = [...porFecha.values()].sort((a,b)=> a.fecha < b.fecha ? -1 : 1);
+  if(!TEMP_MAPA_SERIE.length){
+    vacio.textContent = 'No hay datos de temperatura para mostrar en el mapa.';
+    return;
+  }
+
+  TEMP_MAPA_MAPA = await _tempMapaInicializarMapa('temp-mapa-leaflet', est.latitud, est.longitud);
+  if(!TEMP_MAPA_MAPA){ vacio.textContent = 'No se pudo cargar el mapa.'; return; }
+  if(TEMP_MAPA_MARCADOR){ try{ TEMP_MAPA_MAPA.removeLayer(TEMP_MAPA_MARCADOR); }catch(e){} TEMP_MAPA_MARCADOR = null; }
+  TEMP_MAPA_MARCADOR = L.circleMarker([est.latitud, est.longitud], {radius:16, weight:2.5, color:'#ffffff', fillOpacity:0.92})
+    .addTo(TEMP_MAPA_MAPA);
+
+  vacio.classList.add('hidden'); contenido.classList.remove('hidden');
+  const slider = document.getElementById('temp-mapa-slider');
+  slider.min = 0; slider.max = TEMP_MAPA_SERIE.length - 1;
+
+  const hoyIso = new Date().toISOString().slice(0,10);
+  let idxInicial = TEMP_MAPA_SERIE.findIndex(f => f.fecha === hoyIso);
+  if(idxInicial < 0) idxInicial = TEMP_MAPA_SERIE.length - 1;
+  _tempMapaRecalcularRango();
+  tempMapaActualizar(idxInicial);
+}
+
+// Recalcula el rango de color [mín,máx] de TODA la serie (histórico +
+// pronóstico) según la métrica elegida (Mín/Máx/Promedio, mismo toggle
+// del gráfico de arriba) -- se llama al cargar y cada vez que esa métrica
+// cambia, sin recargar el mapa ni perder la posición del slider.
+function _tempMapaRecalcularRango(){
+  if(!TEMP_MAPA_SERIE.length) return;
+  const metrica = TEMP_ENTRADA_METRICA_INFO[TEMP_ENTRADA_METRICA];
+  const valores = TEMP_MAPA_SERIE.map(f => f[metrica.campo]).filter(v => v!=null);
+  if(!valores.length) return;
+  TEMP_MAPA_RANGO = {min: Math.min(...valores), max: Math.max(...valores)};
+  document.getElementById('temp-mapa-leyenda-min').textContent = TEMP_MAPA_RANGO.min.toFixed(0)+'°C';
+  document.getElementById('temp-mapa-leyenda-max').textContent = TEMP_MAPA_RANGO.max.toFixed(0)+'°C';
+}
+
+function tempMapaActualizar(idx){
+  if(!TEMP_MAPA_SERIE.length || !TEMP_MAPA_MARCADOR) return;
+  TEMP_MAPA_IDX = Math.max(0, Math.min(TEMP_MAPA_SERIE.length-1, idx));
+  const fila = TEMP_MAPA_SERIE[TEMP_MAPA_IDX];
+  const metrica = TEMP_ENTRADA_METRICA_INFO[TEMP_ENTRADA_METRICA];
+  const valor = fila[metrica.campo];
+  const color = _tempMapaColor(valor, TEMP_MAPA_RANGO.min, TEMP_MAPA_RANGO.max);
+  TEMP_MAPA_MARCADOR.setStyle({fillColor: color});
+  TEMP_MAPA_MARCADOR.bindTooltip(valor!=null ? `${valor.toFixed(1)}°C` : 'Sin dato', {sticky:true});
+
+  const slider = document.getElementById('temp-mapa-slider');
+  if(slider) slider.value = TEMP_MAPA_IDX;
+  const [anio,mes,dia] = fila.fecha.split('-');
+  document.getElementById('temp-mapa-fecha').textContent = `${dia}/${mes}/${anio} -- ${metrica.nombre}: ${valor!=null ? valor.toFixed(1)+'°C' : 'Sin dato'}`;
+  const badge = document.getElementById('temp-mapa-badge');
+  if(fila.pronostico){
+    badge.textContent = 'PRONÓSTICO'; badge.style.background = 'rgba(244,162,97,.18)'; badge.style.color = '#f4a261';
+  }else{
+    badge.textContent = 'HISTÓRICO'; badge.style.background = 'rgba(6,214,160,.18)'; badge.style.color = '#06d6a0';
+  }
+}
+
+function tempMapaTogglePlay(){
+  if(TEMP_MAPA_PLAYING){ tempMapaDetenerPlay(); return; }
+  if(!TEMP_MAPA_SERIE.length) return;
+  TEMP_MAPA_PLAYING = true;
+  const btn = document.getElementById('temp-mapa-btn-play');
+  if(btn) btn.textContent = '⏸';
+  // Si ya está en el último punto, arranca de nuevo desde el principio --
+  // más intuitivo que apretar Play y no ver que avanza nada.
+  if(TEMP_MAPA_IDX >= TEMP_MAPA_SERIE.length-1) tempMapaActualizar(0);
+  TEMP_MAPA_INTERVAL = setInterval(() => {
+    const siguiente = TEMP_MAPA_IDX + 1;
+    if(siguiente >= TEMP_MAPA_SERIE.length){ tempMapaDetenerPlay(); return; }
+    tempMapaActualizar(siguiente);
+  }, 550);
+}
+
+function tempMapaDetenerPlay(){
+  TEMP_MAPA_PLAYING = false;
+  if(TEMP_MAPA_INTERVAL){ clearInterval(TEMP_MAPA_INTERVAL); TEMP_MAPA_INTERVAL = null; }
+  const btn = document.getElementById('temp-mapa-btn-play');
+  if(btn) btn.textContent = '▶';
 }
 
 /* ---- Indicador N2-1 -- agregado mensual de TODAS las filas de Alimentadores
