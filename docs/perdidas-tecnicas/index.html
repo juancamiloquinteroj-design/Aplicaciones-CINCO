@@ -2301,7 +2301,12 @@ tfoot td:first-child{text-align:left}
   <div id="temp-entrada-contenido" class="hidden">
     <div class="card">
       <div style="text-align:center;margin-bottom:8px">
-        <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Energía de Entrada Vs Temperatura</div>
+        <div id="temp-entrada-titulo" style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Energía de Entrada Vs Temperatura</div>
+      </div>
+      <div class="fbar" style="margin-bottom:6px">
+        <button type="button" class="be-modo-btn activo" id="temp-entrada-btn-var-temperatura" onclick="tempEntradaToggleVariable('temperatura')">🌡️ Temperatura</button>
+        <button type="button" class="be-modo-btn" id="temp-entrada-btn-var-precipitacion" onclick="tempEntradaToggleVariable('precipitacion')">🌧️ Precipitación</button>
+        <button type="button" class="be-modo-btn" id="temp-entrada-btn-var-humedad" onclick="tempEntradaToggleVariable('humedad')">💧 Humedad</button>
       </div>
       <div class="fbar" style="margin-bottom:6px">
         <label>Rango</label>
@@ -2357,7 +2362,7 @@ tfoot td:first-child{text-align:left}
           </div>
           <div style="display:flex;align-items:center;justify-content:center;gap:8px;font-size:10px;color:var(--text3)">
             <span id="temp-mapa-leyenda-min"></span>
-            <div style="width:160px;height:10px;border-radius:5px;background:linear-gradient(90deg, #fff7bc, #ffe066, #f4a261, #d62828, #800020)"></div>
+            <div style="width:160px;height:10px;border-radius:5px;background:linear-gradient(90deg, #2166ac, #67a9cf, #f7f7f7, #ef8a62, #b2182b)"></div>
             <span id="temp-mapa-leyenda-max"></span>
           </div>
         </div>
@@ -2390,7 +2395,7 @@ tfoot td:first-child{text-align:left}
         </div>
         <div style="display:flex;align-items:center;justify-content:center;gap:8px;font-size:10px;color:var(--text3)">
           <span id="temp-nac-leyenda-min"></span>
-          <div style="width:160px;height:10px;border-radius:5px;background:linear-gradient(90deg, #fff7bc, #ffe066, #f4a261, #d62828, #800020)"></div>
+          <div style="width:160px;height:10px;border-radius:5px;background:linear-gradient(90deg, #2166ac, #67a9cf, #f7f7f7, #ef8a62, #b2182b)"></div>
           <span id="temp-nac-leyenda-max"></span>
         </div>
       </div>
@@ -10831,6 +10836,9 @@ function alim3RenderScatter(){
    ========================================================================== */
 let TEMP_ENTRADA_DIAS = [];   // [{fecha, temp_promedio, temp_max, temp_min}, ...] de /api/ideam/temperatura
 let TEMP_ENTRADA_ESTACION = null;
+let TEMP_ENTRADA_VARIABLE = 'temperatura';   // 'temperatura' | 'precipitacion' | 'humedad'
+let TEMP_ENTRADA_UNIDAD = '°C';
+const TEMP_ENTRADA_COLOR_VARIABLE = {temperatura:'#ef476f', precipitacion:'#00b4d8', humedad:'#8338ec'};
 let TEMP_ENTRADA_METRICA = 'promedio';   // 'min' | 'max' | 'promedio'
 let TEMP_ENTRADA_GRANULARIDAD = 'diario';   // 'diario' | 'mensual'
 let TEMP_ENTRADA_MOSTRAR_IPREG = false;     // solo aplica en 'mensual' -- superpone PT (kWh) de IP_Reg
@@ -10857,6 +10865,20 @@ async function _tempEntradaCargarBalanceDiario(desde, hasta){
     datos = await apiGet(`/api/balances-estructura/${TEMP_ENTRADA_NIVEL4_ID}/consumo?desde=${desde}&hasta=${hasta}`, BALANCE_TIMEOUT_MS);
   }catch(e){ return; }
   (datos.fechas || []).forEach((f,i) => { TEMP_ENTRADA_BALANCE_DIARIO[f] = datos.entrada_kwh?.[i] ?? null; });
+}
+
+function tempEntradaToggleVariable(v){
+  TEMP_ENTRADA_VARIABLE = v;
+  ['temperatura','precipitacion','humedad'].forEach(x =>
+    document.getElementById(`temp-entrada-btn-var-${x}`).classList.toggle('activo', x===v));
+  // La ventana de historia disponible cambia mucho entre variables (ver
+  // VARIABLES_CLIMA en el backend -- Precipitación son 20 días, Humedad
+  // 60, Temperatura 365) -- si se conserva un Rango elegido a mano de OTRA
+  // variable, puede quedar fuera del rango nuevo y no mostrar nada. Se
+  // limpia para que tempEntradaCargar() vuelva a calcular el default.
+  document.getElementById('temp-entrada-desde').value = '';
+  document.getElementById('temp-entrada-hasta').value = '';
+  _tempEntradaCargarDatos();
 }
 
 function tempEntradaToggleMetrica(m){
@@ -10916,30 +10938,37 @@ function _tempEntradaAgruparMensual(visibles, campoTemp){
   }));
 }
 
-async function tempEntradaCargar(){
+// Carga SOLO lo que necesita el gráfico "Energía de Entrada Vs <variable>"
+// -- separado de tempEntradaCargar() (que además dispara la hora/mapas)
+// para que tempEntradaToggleVariable() pueda recargar nada más este
+// gráfico sin volver a pedir el resto del módulo de arriba a abajo.
+async function _tempEntradaCargarDatos(){
   const vacio = document.getElementById('temp-entrada-vacio');
   const contenido = document.getElementById('temp-entrada-contenido');
+  const infoVar = TEMP_VARIABLE_INFO[TEMP_ENTRADA_VARIABLE];
   if(DEMO){
     vacio.classList.remove('hidden'); contenido.classList.add('hidden');
     vacio.querySelector('div').textContent = 'No disponible en modo demo (sin conexión al servidor).';
-    return;
+    return false;
   }
   try{
-    const resp = await apiGet('/api/ideam/temperatura', AUTH_TIMEOUT_MS);
+    const resp = await apiGet(`/api/ideam/temperatura?variable=${TEMP_ENTRADA_VARIABLE}`, CLIMA_TIMEOUT_MS);
     TEMP_ENTRADA_ESTACION = resp.estacion;
     TEMP_ENTRADA_DIAS = resp.filas || [];
+    TEMP_ENTRADA_UNIDAD = resp.unidad || infoVar.unidadFallback;
   }catch(e){
     vacio.classList.remove('hidden'); contenido.classList.add('hidden');
-    vacio.querySelector('div').textContent = e.message || 'No se pudo cargar la temperatura -- elegí una estación en Parametrización.';
-    return;
+    vacio.querySelector('div').textContent = e.message || 'No se pudo cargar los datos -- elegí una estación en Parametrización.';
+    return false;
   }
   if(!TEMP_ENTRADA_DIAS.length){
     vacio.classList.remove('hidden'); contenido.classList.add('hidden');
-    vacio.querySelector('div').textContent = 'La estación elegida en Parametrización todavía no trae lecturas de temperatura.';
-    return;
+    vacio.querySelector('div').textContent = `La estación elegida en Parametrización todavía no trae lecturas de ${infoVar.nombre.toLowerCase()}.`;
+    return false;
   }
   vacio.classList.add('hidden');
   contenido.classList.remove('hidden');
+  document.getElementById('temp-entrada-titulo').textContent = `Energía de Entrada Vs ${infoVar.nombre}`;
   document.getElementById('temp-entrada-estacion-txt').textContent = `Estación: ${TEMP_ENTRADA_ESTACION.nombre}`;
 
   const inDesde = document.getElementById('temp-entrada-desde');
@@ -10949,19 +10978,25 @@ async function tempEntradaCargar(){
     const primeraFecha = TEMP_ENTRADA_DIAS[0].fecha;
     if(!inHasta.value) inHasta.value = ultimaFecha;
     if(!inDesde.value){
-      // Arranca en los últimos ~90 días -- ver años enteros día a día de
-      // una sola vez se pone ilegible; el usuario puede ampliar el rango.
+      // Arranca en los últimos ~90 días (recortado al primer día
+      // disponible si la variable tiene menos historia, ej. Precipitación)
+      // -- ver años enteros día a día de una sola vez se pone ilegible.
       const hasta = new Date(ultimaFecha);
       const desde = new Date(hasta); desde.setDate(desde.getDate()-89);
       const desdeStr = desde.toISOString().slice(0,10);
       inDesde.value = desdeStr > primeraFecha ? desdeStr : primeraFecha;
     }
   }
-  // Se pide UNA vez, cubriendo TODO el rango disponible de temperatura
-  // (no solo lo visible ahora) -- así cambiar el filtro "Rango" más
-  // adelante solo filtra lo ya cacheado, sin pedidos nuevos.
+  // Se pide UNA vez, cubriendo TODO el rango disponible (no solo lo
+  // visible ahora) -- así cambiar el filtro "Rango" más adelante solo
+  // filtra lo ya cacheado, sin pedidos nuevos.
   await _tempEntradaCargarBalanceDiario(TEMP_ENTRADA_DIAS[0].fecha, TEMP_ENTRADA_DIAS[TEMP_ENTRADA_DIAS.length-1].fecha);
   tempEntradaRender();
+  return true;
+}
+
+async function tempEntradaCargar(){
+  if(!(await _tempEntradaCargarDatos())) return;
 
   const inFechaHoraria = document.getElementById('temp-horaria-fecha');
   if(!inFechaHoraria.value) inFechaHoraria.value = TEMP_ENTRADA_DIAS[TEMP_ENTRADA_DIAS.length-1].fecha;
@@ -10985,6 +11020,8 @@ function tempEntradaRender(){
   if(chTempEntrada){ chTempEntrada.destroy(); chTempEntrada = null; }
   if(!visibles.length) return;
 
+  const infoVar = TEMP_VARIABLE_INFO[TEMP_ENTRADA_VARIABLE];
+  const colorVar = TEMP_ENTRADA_COLOR_VARIABLE[TEMP_ENTRADA_VARIABLE];
   const metrica = TEMP_ENTRADA_METRICA_INFO[TEMP_ENTRADA_METRICA];
   const esMensual = TEMP_ENTRADA_GRANULARIDAD === 'mensual';
 
@@ -11001,7 +11038,11 @@ function tempEntradaRender(){
     entradaDatos = visibles.map(f => TEMP_ENTRADA_BALANCE_DIARIO[f.fecha] ?? null);
     entradaTitulo = 'Entrada (kWh, diaria)';
   }
-  const tempLabel = `Temperatura ${metrica.nombre} °C (${esMensual?'mensual':'diaria'})`;
+  // La precipitación es un TOTAL diario, no tiene Mínimo/Máximo/Promedio
+  // con sentido -- se muestra solo el nombre de la variable (ver mismo
+  // criterio en tempMapaActualizar/tempNacActualizar).
+  const nombreSerie = infoVar.conMetrica ? `${infoVar.nombre} ${metrica.nombre}` : infoVar.nombre;
+  const tempLabel = `${nombreSerie} ${TEMP_ENTRADA_UNIDAD} (${esMensual?'mensual':'diaria'})`;
 
   const dark = document.documentElement.getAttribute('data-theme')==='dark';
   const tickC = dark ? '#aab8d1' : '#4b5e7a';
@@ -11013,7 +11054,7 @@ function tempEntradaRender(){
       data: entradaDatos, borderColor:'#4361ee', backgroundColor:'transparent',
       borderWidth:1.5, pointRadius:0, spanGaps:true, tension:.2, datalabels:{display:false}},
     {type:'line', label:tempLabel, yAxisID:'yTemp', order:1,
-      data: tempDatos, borderColor:'#ef476f', backgroundColor:'transparent',
+      data: tempDatos, borderColor:colorVar, backgroundColor:'transparent',
       borderWidth:1.75, pointRadius:0, spanGaps:true, tension:.3, datalabels:{display:false}},
   ];
   if(esMensual && TEMP_ENTRADA_MOSTRAR_IPREG){
@@ -11040,7 +11081,7 @@ function tempEntradaRender(){
         legend:{display:true, position:'bottom', labels:{boxWidth:10, font:{size:9}, color:tickC}},
         tooltip:{callbacks:{label:c => {
           if(c.raw==null) return null;
-          return c.dataset.yAxisID==='yTemp' ? `${c.dataset.label}: ${c.raw.toFixed(1)}°C` : `${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`;
+          return c.dataset.yAxisID==='yTemp' ? `${c.dataset.label}: ${c.raw.toFixed(1)}${TEMP_ENTRADA_UNIDAD}` : `${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`;
         }}},
         zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:7}}},
       },
@@ -11048,8 +11089,8 @@ function tempEntradaRender(){
         x:{grid:{display:false}, ticks:{color:tickXFuerte, font:{size:9, weight:'600'}, maxRotation:45, minRotation:45, autoSkip:true, maxTicksLimit:24}},
         y:{position:'left', grid:{color:gridC}, ticks:{color:tickC, font:{size:10}, callback:v=>v.toLocaleString('es-CO')},
           title:{display:true, text:entradaTitulo, color:tickC, font:{size:10}}},
-        yTemp:{type:'linear', position:'right', grid:{drawOnChartArea:false}, ticks:{color:'#ef476f', font:{size:10}, callback:v=>v.toFixed(0)+'°C'},
-          title:{display:true, text:'Temperatura (°C)', color:'#ef476f', font:{size:10}}},
+        yTemp:{type:'linear', position:'right', grid:{drawOnChartArea:false}, ticks:{color:colorVar, font:{size:10}, callback:v=>v.toFixed(0)+TEMP_ENTRADA_UNIDAD},
+          title:{display:true, text:`${infoVar.nombre} (${TEMP_ENTRADA_UNIDAD})`, color:colorVar, font:{size:10}}},
       },
     },
   });
@@ -11137,13 +11178,12 @@ let TEMP_MAPA_PLAYING = false;
 let TEMP_MAPA_INTERVAL = null;
 let TEMP_MAPA_RANGO = {min:null, max:null};
 
-// Rampa cálida de 5 paradas (amarillo pálido -> amarillo -> naranja -> rojo
-// -> rojo oscuro), estilo mapas de isotermas tipo AccuWeather. Con más
-// paradas que antes (eran 3) el tramo cálido (donde cae la mayoría de
-// Colombia casi todo el año) queda más desglosado en vez de licuarse todo
-// a rojo parejo -- pedido explícito ("la gran mayoría se ve rojo y no se
-// ve cambio").
-const TEMP_MAPA_PARADAS = [[255,247,188], [255,224,102], [244,162,97], [214,40,40], [128,0,32]];
+// Rampa DIVERGENTE azul (frío) -> blanco (neutro) -> rojo (caliente) --
+// pedido explícito ("quita el amarillo... azul menor temperatura y rojo
+// mayor temperatura"). Es la escala ColorBrewer RdBu de 5 pasos (estándar
+// para mapas de temperatura/anomalía), invertida para que el azul quede
+// del lado frío.
+const TEMP_MAPA_PARADAS = [[33,102,172], [103,169,207], [247,247,247], [239,138,98], [178,24,43]];
 function _tempMapaColor(v, min, max){
   if(v==null || min==null || max==null || max<=min) return '#999';
   const t = Math.max(0, Math.min(1, (v-min)/(max-min)));
