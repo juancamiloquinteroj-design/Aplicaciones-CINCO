@@ -2210,15 +2210,30 @@ tfoot td:first-child{text-align:left}
           </div>
         </div>
 
-        <!-- Columna derecha: 3 gráficos del alimentador elegido -->
+        <!-- Columna derecha: tarjetas + 3 gráficos del alimentador elegido -->
         <div style="flex:1;min-width:400px">
           <div id="alim3-titulo-seleccion" style="text-align:center;font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase;margin-bottom:10px">Elegí un alimentador</div>
-          <div style="text-align:center;font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;margin-bottom:4px">Entradas -- Salidas -- Pérdida</div>
+
+          <div id="alim3-tarjetas" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:16px"></div>
+
+          <div class="fbar" style="justify-content:center;margin-bottom:4px">
+            <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase">Entradas -- Salidas -- Pérdida</div>
+            <button type="button" class="be-modo-btn activo" id="alim3-esp-btn-mensual" style="margin-left:10px" onclick="alim3ToggleEspModo('mensual')">Mensual</button>
+            <button type="button" class="be-modo-btn" id="alim3-esp-btn-anual" onclick="alim3ToggleEspModo('anual')">Anual (12M)</button>
+            <button type="button" class="be-modo-btn" id="alim3-esp-btn-var" onclick="alim3ToggleEspVariacion()" title="Agrega el delta vs. el punto anterior a la etiqueta de Pérdida %">Δ Variación</button>
+          </div>
           <div class="chart-wrap" style="height:280px;margin-bottom:18px"><canvas id="ch-alim3-esp"></canvas></div>
-          <div style="text-align:center;font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;margin-bottom:4px">Pérdida Total Vs Pérdida Técnica</div>
-          <div class="chart-wrap" style="height:200px;margin-bottom:18px"><canvas id="ch-alim3-tecnica"></canvas></div>
-          <div style="text-align:center;font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;margin-bottom:4px">Inyección AGPE</div>
-          <div class="chart-wrap" style="height:200px"><canvas id="ch-alim3-agpe"></canvas></div>
+
+          <div style="display:flex;gap:16px;flex-wrap:wrap">
+            <div style="flex:1;min-width:280px">
+              <div style="text-align:center;font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;margin-bottom:4px">Pérdida Total Vs Pérdida Técnica</div>
+              <div class="chart-wrap" style="height:200px"><canvas id="ch-alim3-tecnica"></canvas></div>
+            </div>
+            <div style="flex:1;min-width:280px">
+              <div style="text-align:center;font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;margin-bottom:4px">Inyección AGPE</div>
+              <div class="chart-wrap" style="height:200px"><canvas id="ch-alim3-agpe"></canvas></div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -9836,6 +9851,8 @@ let ALIM3_ZONAS = [];
 let ALIM3_ZONAS_SEL = new Set();
 let ALIM3_NEMONICO_SEL = null;
 let ALIM3_MES_TOP = null;
+let ALIM3_ESP_MODO = 'mensual';  // 'mensual' | 'anual' -- gráfico Entradas/Salidas/Pérdida
+let ALIM3_ESP_VAR = false;       // Δ Variación en la etiqueta de Pérdida %
 let chAlim3Esp = null, chAlim3Tecnica = null, chAlim3Agpe = null, chAlim3Scatter = null;
 
 async function alim3Cargar(){
@@ -9939,12 +9956,23 @@ function alim3ElegirAlimentador(nem){
   alim3RenderSeleccion();
 }
 
+function alim3ToggleEspModo(modo){
+  ALIM3_ESP_MODO = modo;
+  alim3RenderSeleccion();
+}
+
+function alim3ToggleEspVariacion(){
+  ALIM3_ESP_VAR = !ALIM3_ESP_VAR;
+  alim3RenderSeleccion();
+}
+
 function alim3RenderSeleccion(){
   const titulo = document.getElementById('alim3-titulo-seleccion');
   if(!ALIM3_NEMONICO_SEL){
     if(titulo) titulo.textContent = 'Elegí un alimentador';
     document.getElementById('alim3-indicador').innerHTML = '';
     document.getElementById('alim3-comentarios').innerHTML = '<p style="margin:0;color:var(--text3)">Elegí un alimentador de la lista.</p>';
+    document.getElementById('alim3-tarjetas').innerHTML = '';
     [chAlim3Esp, chAlim3Tecnica, chAlim3Agpe].forEach(c => c && c.destroy());
     chAlim3Esp = chAlim3Tecnica = chAlim3Agpe = null;
     return;
@@ -9957,9 +9985,61 @@ function alim3RenderSeleccion(){
   alim3RenderIndicador(ultima);
   alim3RenderComentarios(filas);
   const conClave = filas.map(f => ({...f, clave: alimN21Clave(f.anio, f.mes)}));
+  alim3RenderTarjetas(conClave);
   alim3RenderChartEsp(conClave);
   alim3RenderChartTecnica(conClave);
   alim3RenderChartAgpe(conClave);
+}
+
+// Tarjetas pequeñas Entrada/Salida/Pérdida kWh/Pérdida % del alimentador
+// elegido -- Mensual y Anual (12M) juntos, con la variación del último
+// mes -- pedido explícito ("tarjetas pequeñas bonitas... deben empezar
+// desde el gráfico").
+function _alim3Tarjeta(pref, icono, titulo, mensualAct, anualAct, fmt){
+  return `<div class="card inicio-dash-card" style="padding:10px 12px">
+    <div class="card-title" style="font-size:10.5px">${icono} ${titulo}</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;font-size:10px;color:var(--text3);margin-top:5px">
+      <span>Mensual</span>
+      <span style="display:flex;align-items:center;gap:5px"><b style="color:var(--text);font-size:12.5px">${fmt(mensualAct)}</b><span id="${pref}-var-m" class="inicio-variacion"></span></span>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;font-size:10px;color:var(--text3);margin-top:4px">
+      <span>Anual (12M)</span>
+      <span style="display:flex;align-items:center;gap:5px"><b style="color:var(--text);font-size:12.5px">${fmt(anualAct)}</b><span id="${pref}-var-a" class="inicio-variacion"></span></span>
+    </div>
+  </div>`;
+}
+
+function alim3RenderTarjetas(filasConClave){
+  const cont = document.getElementById('alim3-tarjetas');
+  if(!cont) return;
+  const serieBase = filasConClave.map(f => ({
+    anio: f.anio, mes: f.mes, clave: f.clave,
+    entrada: f.entrada_total, salida: f.salida_total, perdida: f.perdida_kwh, pct: f.perdida_pct,
+  })).filter(f => f.pct != null);
+  if(serieBase.length < 2){ cont.innerHTML = ''; return; }
+  const anual = alimN21Con12Meses(serieBase);
+  const actual = serieBase[serieBase.length-1];
+  const anterior = serieBase[serieBase.length-2];
+  const actual12 = anual.find(f => f.clave===actual.clave && f.pct12!=null) || null;
+  const anterior12 = anual.find(f => f.clave===anterior.clave && f.pct12!=null) || null;
+
+  const fmtKwh = v => v==null ? '--' : `${Math.round(v).toLocaleString('es-CO')} kWh`;
+  const fmtPct = v => v==null ? '--' : `${v.toFixed(2)}%`;
+
+  cont.innerHTML =
+    _alim3Tarjeta('alim3-t-ent', '⬇️', 'Entrada', actual.entrada, actual12?actual12.entrada12:null, fmtKwh) +
+    _alim3Tarjeta('alim3-t-sal', '⬆️', 'Salida', actual.salida, actual12?actual12.salida12:null, fmtKwh) +
+    _alim3Tarjeta('alim3-t-per', '⚡', 'Pérdida', actual.perdida, actual12?actual12.perdida12:null, fmtKwh) +
+    _alim3Tarjeta('alim3-t-pct', '📉', 'Pérdida %', actual.pct, actual12?actual12.pct12:null, fmtPct);
+
+  _iniRenderVariacion('alim3-t-ent-var-m', anterior.entrada, actual.entrada);
+  _iniRenderVariacion('alim3-t-ent-var-a', anterior12?anterior12.entrada12:null, actual12?actual12.entrada12:null);
+  _iniRenderVariacion('alim3-t-sal-var-m', anterior.salida, actual.salida);
+  _iniRenderVariacion('alim3-t-sal-var-a', anterior12?anterior12.salida12:null, actual12?actual12.salida12:null);
+  _iniRenderVariacion('alim3-t-per-var-m', anterior.perdida, actual.perdida);
+  _iniRenderVariacion('alim3-t-per-var-a', anterior12?anterior12.perdida12:null, actual12?actual12.perdida12:null);
+  _iniRenderVariacion('alim3-t-pct-var-m', anterior.pct, actual.pct);
+  _iniRenderVariacion('alim3-t-pct-var-a', anterior12?anterior12.pct12:null, actual12?actual12.pct12:null);
 }
 
 function alim3RenderIndicador(ultima){
@@ -9988,12 +10068,66 @@ function alim3RenderComentarios(filas){
 function alim3RenderChartEsp(filasConClave){
   const cv = document.getElementById('ch-alim3-esp');
   if(!cv) return;
-  const visibles = alim3VisiblesRango(filasConClave);
+  document.getElementById('alim3-esp-btn-mensual').classList.toggle('activo', ALIM3_ESP_MODO==='mensual');
+  document.getElementById('alim3-esp-btn-anual').classList.toggle('activo', ALIM3_ESP_MODO==='anual');
+  document.getElementById('alim3-esp-btn-var').classList.toggle('activo', ALIM3_ESP_VAR);
+  const esAnual = ALIM3_ESP_MODO === 'anual';
+
+  // La ventana de 12 meses móvil se calcula sobre el HISTÓRICO COMPLETO
+  // del alimentador (filasConClave YA es la serie completa, sin recortar
+  // por Rango todavía) -- mismo criterio que N2-1/Subestaciones -- recién
+  // después se acota al Rango visible.
+  const serieCompleta = filasConClave.map(f => ({
+    anio:f.anio, mes:f.mes, clave:f.clave,
+    entrada:f.entrada_total, salida:f.salida_total, perdida:f.perdida_kwh, pct:f.perdida_pct,
+  }));
+  const filas = esAnual
+    ? alim3VisiblesRango(alimN21Con12Meses(serieCompleta)).filter(f => f.pct12 != null)
+    : alim3VisiblesRango(serieCompleta);
+
   const dark = document.documentElement.getAttribute('data-theme')==='dark';
   const tickC = dark ? '#aab8d1' : '#4b5e7a';
   const tickXFuerte = dark ? '#ffffff' : '#000000';
   const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
-  const etiquetas = visibles.map(f => labelMesLargo(f.clave));
+  const etiquetas = filas.map(f => labelMesLargo(f.clave));
+  const entradaDatos = filas.map(f => esAnual ? f.entrada12 : f.entrada);
+  const salidaDatos = filas.map(f => esAnual ? f.salida12 : f.salida);
+  const perdidaDatos = filas.map(f => esAnual ? f.perdida12 : f.perdida);
+  const pctDatos = filas.map(f => esAnual ? f.pct12 : f.pct);
+
+  // "Que también vea la variación en Energía" -- la etiqueta de Pérdida %
+  // agrega el delta en pp Y en kWh (mismo patrón ya usado en Subestaciones),
+  // con la "tarjetita" prolija de IP_Reg/N2-1 en vez de un cartel plano.
+  const estiloVar = {...ipEstiloTarjetaVariacion(dark), font:[{size:10, weight:'800'}, {size:9, weight:'800'}, {size:8.5, weight:'700'}]};
+  const datalabelsPct = ALIM3_ESP_VAR ? {
+    display:true, anchor:'end', align:'top', offset:6,
+    formatter:(v,ctx)=>{
+      if(v==null) return '';
+      const base = v.toFixed(2)+'%';
+      const pctAnt = pctDatos[ctx.dataIndex-1];
+      if(pctAnt==null) return [base, '', ''];
+      const deltaPct = v - pctAnt;
+      const iconoPct = deltaPct>=0 ? '▲' : '▼';
+      const lineaPct = `${iconoPct} ${Math.abs(deltaPct).toFixed(2)}pp`;
+      const perdAnt = perdidaDatos[ctx.dataIndex-1], perdAct = perdidaDatos[ctx.dataIndex];
+      let lineaKwh = '';
+      if(perdAnt!=null && perdAct!=null){
+        const deltaKwh = perdAct - perdAnt;
+        const iconoKwh = deltaKwh>=0 ? '▲' : '▼';
+        lineaKwh = `${iconoKwh} ${Math.abs(deltaKwh).toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`;
+      }
+      return [base, lineaPct, lineaKwh];
+    },
+    color:(ctx)=>{
+      const colorDelta = ipColorVariacion(pctDatos[ctx.dataIndex], pctDatos[ctx.dataIndex-1], dark?'#aab8d1':'#6b7280');
+      return ['#ffc300', colorDelta, colorDelta];
+    },
+    ...estiloVar,
+  } : {
+    display:true, anchor:'end', align:'top', offset:4, formatter:v=>v==null?'':v.toFixed(2)+'%',
+    font:{size:9,weight:'700'}, color:'#ffc300',
+    backgroundColor: dark?'rgba(30,30,40,.85)':'rgba(255,255,255,.85)', borderRadius:3, padding:{left:3,right:3,top:1,bottom:1},
+  };
 
   if(chAlim3Esp) chAlim3Esp.destroy();
   if(!etiquetas.length) return;
@@ -10002,36 +10136,48 @@ function alim3RenderChartEsp(filasConClave){
     data:{
       labels: etiquetas,
       datasets:[
-        {type:'line', label:'Entrada Total kWh', yAxisID:'y', order:3, fill:'origin',
-          data: visibles.map(f=>f.entrada_total), borderColor:'#06d6a0', backgroundColor:'rgba(6,214,160,.20)',
+        {type:'line', label: esAnual?'Entrada kWh/12M':'Entrada Total kWh', yAxisID:'y', order:3, fill:'origin',
+          data: entradaDatos, borderColor:'#06d6a0', backgroundColor:'rgba(6,214,160,.20)',
           borderWidth:2, pointRadius:1.5, spanGaps:true, tension:.2, datalabels:{display:false}},
-        {type:'line', label:'Salida Total kWh', yAxisID:'y', order:2, fill:'origin',
-          data: visibles.map(f=>f.salida_total), borderColor:'#ef476f', backgroundColor:'rgba(239,71,111,.20)',
+        {type:'line', label: esAnual?'Salida kWh/12M':'Salida Total kWh', yAxisID:'y', order:2, fill:'origin',
+          data: salidaDatos, borderColor:'#ef476f', backgroundColor:'rgba(239,71,111,.20)',
           borderWidth:2, pointRadius:1.5, spanGaps:true, tension:.2, datalabels:{display:false}},
-        {type:'line', label:'Pérdida %', yAxisID:'yPct', order:1, borderDash:[4,3],
-          data: visibles.map(f=>f.perdida_pct), borderColor:'#ffc300', backgroundColor:'transparent',
-          borderWidth:2, pointRadius:2, spanGaps:true, tension:.25,
-          datalabels:{display:true, anchor:'end', align:'top', offset:4, formatter:v=>v==null?'':v.toFixed(2)+'%', font:{size:9,weight:'700'}, color:'#ffc300'}},
+        {type:'line', label: esAnual?'Pérdida %/12M':'Pérdida %', yAxisID:'yPct', order:1, borderDash:[4,3],
+          data: pctDatos, borderColor:'#ffc300', backgroundColor:'transparent',
+          borderWidth:2, pointRadius:2, spanGaps:true, tension:.25, datalabels: datalabelsPct},
       ],
     },
     options:{
       responsive:true, maintainAspectRatio:false,
-      layout:{padding:{top:20, right:20}},
+      layout:{padding:{top:28, right:20}},
       interaction:{mode:'index', intersect:false},
       plugins:{
         legend:{display:true, position:'bottom', labels:{boxWidth:10, font:{size:9}, color:tickC}},
+        // Al pasar el mouse SIEMPRE se ve la variación vs. el punto
+        // anterior (pp o kWh según la serie), esté prendido o no el botón
+        // "Δ Variación" -- ese botón solo controla la etiqueta fija sobre
+        // el gráfico -- pedido explícito.
         tooltip:{callbacks:{label:c=>{
           if(c.raw==null) return null;
-          return c.dataset.yAxisID==='yPct' ? `${c.dataset.label}: ${c.raw.toFixed(2)}%` : `${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`;
+          const esPct = c.dataset.yAxisID==='yPct';
+          const arr = esPct ? pctDatos : (c.datasetIndex===0 ? entradaDatos : salidaDatos);
+          const ant = arr[c.dataIndex-1];
+          let extra = '';
+          if(ant!=null){
+            const delta = c.raw - ant;
+            const icono = delta>=0 ? '▲' : '▼';
+            extra = esPct ? ` (${icono} ${Math.abs(delta).toFixed(2)}pp)` : ` (${icono} ${Math.abs(delta).toLocaleString('es-CO',{maximumFractionDigits:0})} kWh)`;
+          }
+          return esPct ? `${c.dataset.label}: ${c.raw.toFixed(2)}%${extra}` : `${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh${extra}`;
         }}},
         zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:3}}},
       },
       scales:{
         x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:9, weight:'600'}, maxRotation:45, minRotation:45}},
         y:{position:'left', grid:{color:gridC}, ticks:{color:tickC, font:{size:10}, callback:v=>v.toLocaleString('es-CO')},
-          title:{display:true, text:'Energía (kWh)', color:tickC, font:{size:10}}},
+          title:{display:true, text: esAnual?'Energía Anual 12M (kWh)':'Energía (kWh)', color:tickC, font:{size:10}}},
         yPct:{type:'linear', position:'right', grid:{drawOnChartArea:false}, ticks:{color:'#ffc300', font:{size:10}, callback:v=>v.toFixed(0)+'%'},
-          title:{display:true, text:'Pérdida (%)', color:'#ffc300', font:{size:10}}},
+          title:{display:true, text: esAnual?'Pérdida Anual 12M (%)':'Pérdida (%)', color:'#ffc300', font:{size:10}}},
       },
     },
   });
