@@ -2177,7 +2177,76 @@ tfoot td:first-child{text-align:left}
     <div class="sec-title">Alimentadores</div>
     <div class="sec-sub">Depende exclusivamente de Resumen de Alimentadores.csv.</div>
   </div>
-  <div class="card"><div id="alim-alimentadores-estado" style="color:var(--text3)">Cargando…</div></div>
+
+  <div id="alim3-vacio" class="card"><div style="color:var(--text3)">Cargando…</div></div>
+
+  <div id="alim3-contenido" class="hidden">
+    <div class="card">
+      <div class="fbar" style="margin-bottom:14px">
+        <label>Rango</label>
+        <input type="date" id="alim3-desde" onchange="alim3RenderSeleccion()">
+        <span style="font-size:11px;color:var(--text3)">→</span>
+        <input type="date" id="alim3-hasta" onchange="alim3RenderSeleccion()">
+        <label style="margin-left:10px">Zona</label>
+        <div id="alim3-zonas" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+      </div>
+
+      <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">
+        <!-- Columna izquierda: lista de circuitos + indicador + comentarios -->
+        <div style="flex:0 0 280px;max-width:280px;display:flex;flex-direction:column;gap:14px">
+          <div>
+            <label style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:700">Nombre Spard</label>
+            <input type="text" id="alim3-buscar" placeholder="Buscar..." oninput="alim3RenderListaAlimentadores()"
+              style="width:100%;margin:6px 0;padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg);box-sizing:border-box">
+            <div id="alim3-lista" style="max-height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:8px"></div>
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:700">Indicador</label>
+            <div id="alim3-indicador" style="margin-top:6px;font-size:12px"></div>
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:700">Comentarios</label>
+            <div id="alim3-comentarios" class="ip-comentario-caja" style="margin-top:6px;font-size:11.5px;padding:10px 12px"></div>
+          </div>
+        </div>
+
+        <!-- Columna derecha: 3 gráficos del alimentador elegido -->
+        <div style="flex:1;min-width:400px">
+          <div id="alim3-titulo-seleccion" style="text-align:center;font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase;margin-bottom:10px">Elegí un alimentador</div>
+          <div style="text-align:center;font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;margin-bottom:4px">Entradas -- Salidas -- Pérdida</div>
+          <div class="chart-wrap" style="height:280px;margin-bottom:18px"><canvas id="ch-alim3-esp"></canvas></div>
+          <div style="text-align:center;font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;margin-bottom:4px">Pérdida Total Vs Pérdida Técnica</div>
+          <div class="chart-wrap" style="height:200px;margin-bottom:18px"><canvas id="ch-alim3-tecnica"></canvas></div>
+          <div style="text-align:center;font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;margin-bottom:4px">Inyección AGPE</div>
+          <div class="chart-wrap" style="height:200px"><canvas id="ch-alim3-agpe"></canvas></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="fbar" style="justify-content:center;margin-bottom:10px">
+        <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Top Alimentadores</div>
+        <label style="margin-left:16px">AñoMes</label>
+        <select id="alim3-mes-top" onchange="alim3CambiarMesTop(this.value)"></select>
+      </div>
+      <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">
+        <div style="flex:1;min-width:360px">
+          <div class="tbl-wrap" style="max-height:420px;overflow-y:auto">
+            <table>
+              <thead><tr><th style="text-align:left">Nombre Spard</th><th>Zona</th><th>Gest x Longitud</th><th>Gestionable (kWh)</th><th>Gestionable % Top</th><th>Longitud (Km)</th></tr></thead>
+              <tbody id="alim3-tabla-top"></tbody>
+            </table>
+          </div>
+        </div>
+        <div style="flex:0 0 480px;max-width:480px">
+          <div style="text-align:center;margin-bottom:8px">
+            <div style="font-size:13px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Gest x Longitud Vs Gestionable % Top</div>
+          </div>
+          <div class="chart-wrap" style="height:360px"><canvas id="ch-alim3-scatter"></canvas></div>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 <!-- fin vista-alim-alimentadores -->
 
@@ -9084,6 +9153,7 @@ async function _alimAsegurarDatosCargados(){
 async function cargarAlimentadoresModulo(nombreVista){
   if(nombreVista === 'alim-n21'){ await alimN21Cargar(); return; }
   if(nombreVista === 'alim-subestaciones'){ await alimSubCargar(); return; }
+  if(nombreVista === 'alim-alimentadores'){ await alim3Cargar(); return; }
   const idEstado = `${nombreVista}-estado`;
   const cont = document.getElementById(idEstado);
   if(!cont) return;
@@ -9744,6 +9814,407 @@ function alimSubRenderAlimentadorCards(){
     _iniRenderVariacion(`${pref}-var-anual`, anterior12 ? anterior12.pct12 : null, actual12 ? actual12.pct12 : null);
     const cajaAnalisis = document.getElementById(`${pref}-analisis`);
     if(cajaAnalisis) cajaAnalisis.innerHTML = _alimSubTextoAnalisis(nem, anterior, actual);
+  });
+}
+
+/* ==========================================================================
+   ALIMENTADORES (submódulo 3) -- vista por circuito individual: lista
+   "Nombre Spard" + indicador + comentarios + 3 gráficos de tendencia
+   (Entradas/Salidas/Pérdida, Pérdida Total Vs Técnica, Inyección AGPE)
+   para el alimentador elegido, más una tabla "Top Alimentadores" (ranking
+   de un AñoMes puntual) y un scatter -- calcado de la referencia PowerBI
+   del usuario. Comparte ALIM_FILAS con N2-1/Subestaciones (mismo CSV).
+   Campos usados que no estaban en los otros 2 submódulos: nombre_spard,
+   tipo, on_off, municipio, leyenda, comentarios, nivel, perdida_tecnica_kwh,
+   entrada_agpe, gestionable_kwh, longitud_total, cantidad_trafos -- TODOS
+   ya vienen en /api/alimentadores, verificado contra el CSV real. "Venta
+   Proyectada", "Liquidación" y "Ciclo Predominante" de la referencia NO
+   existen en ningún archivo de datos del operador -- se omiten del
+   indicador (no hay de dónde traerlos).
+   ========================================================================== */
+let ALIM3_ZONAS = [];
+let ALIM3_ZONAS_SEL = new Set();
+let ALIM3_NEMONICO_SEL = null;
+let ALIM3_MES_TOP = null;
+let chAlim3Esp = null, chAlim3Tecnica = null, chAlim3Agpe = null, chAlim3Scatter = null;
+
+async function alim3Cargar(){
+  const vacio = document.getElementById('alim3-vacio');
+  const contenido = document.getElementById('alim3-contenido');
+  try{
+    const filas = await _alimAsegurarDatosCargados();
+    if(!filas.length){
+      vacio.classList.remove('hidden'); contenido.classList.add('hidden');
+      vacio.querySelector('div').textContent = 'Sin datos cargados todavía.';
+      return;
+    }
+  }catch(e){
+    vacio.classList.remove('hidden'); contenido.classList.add('hidden');
+    vacio.querySelector('div').textContent = e.message || 'No se pudo cargar Alimentadores.';
+    return;
+  }
+  vacio.classList.add('hidden');
+  contenido.classList.remove('hidden');
+
+  ALIM3_ZONAS = [...new Set(ALIM_FILAS.map(f => f.zona).filter(Boolean))].sort();
+  alim3RenderZonasChips();
+
+  const inDesde = document.getElementById('alim3-desde');
+  const inHasta = document.getElementById('alim3-hasta');
+  const claves = [...new Set(ALIM_FILAS.map(f => alimN21Clave(f.anio, f.mes)))].sort();
+  if(claves.length && (!inDesde.value || !inHasta.value)){
+    const ultima = claves[claves.length-1];
+    if(!inHasta.value) inHasta.value = ultima + '-01';
+    if(!inDesde.value){
+      const idx = claves.length - 12;
+      inDesde.value = (claves[Math.max(0, idx)]) + '-01';
+    }
+  }
+
+  alim3PoblarSelectorMesTop(claves);
+  alim3RenderListaAlimentadores();
+  alim3RenderSeleccion();
+  alim3RenderTablaTop();
+  alim3RenderScatter();
+}
+
+function alim3RenderZonasChips(){
+  const cont = document.getElementById('alim3-zonas');
+  if(!cont) return;
+  cont.innerHTML = ALIM3_ZONAS.map(z => {
+    const color = colorParaZona(z);
+    const activa = ALIM3_ZONAS_SEL.has(z);
+    const estilo = activa
+      ? `background:${color};border-color:${color};color:#fff`
+      : `border-color:${color};color:${color};background:transparent`;
+    return `<button type="button" class="be-modo-btn" style="${estilo}" onclick="alim3ToggleZona('${z}')">${z}</button>`;
+  }).join('');
+}
+
+function alim3ToggleZona(zona){
+  if(ALIM3_ZONAS_SEL.has(zona)) ALIM3_ZONAS_SEL.delete(zona); else ALIM3_ZONAS_SEL.add(zona);
+  alim3RenderZonasChips();
+  // Si el alimentador elegido queda fuera de la zona activa, se
+  // deselecciona -- evita mostrar datos de una zona apagada.
+  if(ALIM3_NEMONICO_SEL){
+    const sigueDisponible = ALIM_FILAS.some(f => f.nemonico === ALIM3_NEMONICO_SEL && (!ALIM3_ZONAS_SEL.size || ALIM3_ZONAS_SEL.has(f.zona)));
+    if(!sigueDisponible) ALIM3_NEMONICO_SEL = null;
+  }
+  alim3RenderListaAlimentadores();
+  alim3RenderSeleccion();
+  alim3RenderTablaTop();
+  alim3RenderScatter();
+}
+
+function alim3VisiblesRango(serie){
+  const desde = document.getElementById('alim3-desde').value ? document.getElementById('alim3-desde').value.slice(0,7) : null;
+  const hasta = document.getElementById('alim3-hasta').value ? document.getElementById('alim3-hasta').value.slice(0,7) : null;
+  return serie.filter(f => (!desde || f.clave >= desde) && (!hasta || f.clave <= hasta));
+}
+
+// Lista "Nombre Spard" -- un renglón por circuito (nemónico), buscador +
+// filtro de Zona -- click elige el alimentador para el indicador, los
+// comentarios y los 3 gráficos de tendencia.
+function alim3RenderListaAlimentadores(){
+  const cont = document.getElementById('alim3-lista');
+  if(!cont) return;
+  const texto = (document.getElementById('alim3-buscar').value || '').trim().toUpperCase();
+  const vistos = new Map();  // nemonico -> nombre_spard más reciente
+  ALIM_FILAS.forEach(f => {
+    if(ALIM3_ZONAS_SEL.size && !ALIM3_ZONAS_SEL.has(f.zona)) return;
+    vistos.set(f.nemonico, f.nombre_spard || f.nemonico);
+  });
+  let opciones = [...vistos.entries()].sort((a,b) => a[1].localeCompare(b[1]));
+  if(texto) opciones = opciones.filter(([nem, nombre]) => nombre.toUpperCase().includes(texto) || nem.toUpperCase().includes(texto));
+  if(!opciones.length){ cont.innerHTML = '<div style="padding:10px;font-size:11px;color:var(--text3)">Sin resultados.</div>'; return; }
+  cont.innerHTML = opciones.map(([nem, nombre]) => {
+    const activo = nem === ALIM3_NEMONICO_SEL;
+    return `<div onclick="alim3ElegirAlimentador('${nem}')" style="padding:7px 10px;font-size:12px;cursor:pointer;border-bottom:1px solid var(--border);${activo?'background:var(--bg3);font-weight:700;color:var(--accent)':'color:var(--text2)'}">${nombre}</div>`;
+  }).join('');
+}
+
+function alim3ElegirAlimentador(nem){
+  ALIM3_NEMONICO_SEL = nem;
+  alim3RenderListaAlimentadores();
+  alim3RenderSeleccion();
+}
+
+function alim3RenderSeleccion(){
+  const titulo = document.getElementById('alim3-titulo-seleccion');
+  if(!ALIM3_NEMONICO_SEL){
+    if(titulo) titulo.textContent = 'Elegí un alimentador';
+    document.getElementById('alim3-indicador').innerHTML = '';
+    document.getElementById('alim3-comentarios').innerHTML = '<p style="margin:0;color:var(--text3)">Elegí un alimentador de la lista.</p>';
+    [chAlim3Esp, chAlim3Tecnica, chAlim3Agpe].forEach(c => c && c.destroy());
+    chAlim3Esp = chAlim3Tecnica = chAlim3Agpe = null;
+    return;
+  }
+  const filas = ALIM_FILAS.filter(f => f.nemonico === ALIM3_NEMONICO_SEL).sort((a,b) => (a.anio*12+a.mes)-(b.anio*12+b.mes));
+  if(!filas.length) return;
+  const ultima = filas[filas.length-1];
+  if(titulo) titulo.textContent = ultima.nombre_spard || ALIM3_NEMONICO_SEL;
+
+  alim3RenderIndicador(ultima);
+  alim3RenderComentarios(filas);
+  const conClave = filas.map(f => ({...f, clave: alimN21Clave(f.anio, f.mes)}));
+  alim3RenderChartEsp(conClave);
+  alim3RenderChartTecnica(conClave);
+  alim3RenderChartAgpe(conClave);
+}
+
+function alim3RenderIndicador(ultima){
+  const cont = document.getElementById('alim3-indicador');
+  if(!cont) return;
+  const nivelLimpio = (ultima.nivel || '').replace(/^="|"$/g, '') || '--';
+  const filas = [
+    ['Zona', ultima.zona || '--'],
+    ['Subestación', ultima.subestacion || '--'],
+    ['Municipio', (ultima.municipio || '--').trim()],
+    ['Tipo', ultima.tipo || '--'],
+    ['Nivel', nivelLimpio],
+    ['Cant. Trafos', ultima.cantidad_trafos!=null ? Math.round(ultima.cantidad_trafos) : '--'],
+    ['Longitud (Km)', ultima.longitud_total!=null ? ultima.longitud_total.toLocaleString('es-CO',{maximumFractionDigits:2}) : '--'],
+  ];
+  cont.innerHTML = `<table style="width:100%">${filas.map(([k,v]) => `<tr><td style="text-align:left;color:var(--text3);padding:3px 4px;font-size:11px">${k}</td><td style="text-align:right;padding:3px 4px;font-weight:700">${v}</td></tr>`).join('')}</table>`;
+}
+
+function alim3RenderComentarios(filas){
+  const cont = document.getElementById('alim3-comentarios');
+  if(!cont) return;
+  const conNota = [...filas].reverse().find(f => f.comentarios && f.comentarios.trim());
+  cont.innerHTML = conNota ? `<p style="margin:0">${conNota.comentarios}</p>` : `<p style="margin:0;color:var(--text3)">Sin comentarios.</p>`;
+}
+
+function alim3RenderChartEsp(filasConClave){
+  const cv = document.getElementById('ch-alim3-esp');
+  if(!cv) return;
+  const visibles = alim3VisiblesRango(filasConClave);
+  const dark = document.documentElement.getAttribute('data-theme')==='dark';
+  const tickC = dark ? '#aab8d1' : '#4b5e7a';
+  const tickXFuerte = dark ? '#ffffff' : '#000000';
+  const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
+  const etiquetas = visibles.map(f => labelMesLargo(f.clave));
+
+  if(chAlim3Esp) chAlim3Esp.destroy();
+  if(!etiquetas.length) return;
+  chAlim3Esp = new Chart(cv, {
+    plugins:[tmPluginCrosshair],
+    data:{
+      labels: etiquetas,
+      datasets:[
+        {type:'line', label:'Entrada Total kWh', yAxisID:'y', order:3, fill:'origin',
+          data: visibles.map(f=>f.entrada_total), borderColor:'#06d6a0', backgroundColor:'rgba(6,214,160,.20)',
+          borderWidth:2, pointRadius:1.5, spanGaps:true, tension:.2, datalabels:{display:false}},
+        {type:'line', label:'Salida Total kWh', yAxisID:'y', order:2, fill:'origin',
+          data: visibles.map(f=>f.salida_total), borderColor:'#ef476f', backgroundColor:'rgba(239,71,111,.20)',
+          borderWidth:2, pointRadius:1.5, spanGaps:true, tension:.2, datalabels:{display:false}},
+        {type:'line', label:'Pérdida %', yAxisID:'yPct', order:1, borderDash:[4,3],
+          data: visibles.map(f=>f.perdida_pct), borderColor:'#ffc300', backgroundColor:'transparent',
+          borderWidth:2, pointRadius:2, spanGaps:true, tension:.25,
+          datalabels:{display:true, anchor:'end', align:'top', offset:4, formatter:v=>v==null?'':v.toFixed(2)+'%', font:{size:9,weight:'700'}, color:'#ffc300'}},
+      ],
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      layout:{padding:{top:20, right:20}},
+      interaction:{mode:'index', intersect:false},
+      plugins:{
+        legend:{display:true, position:'bottom', labels:{boxWidth:10, font:{size:9}, color:tickC}},
+        tooltip:{callbacks:{label:c=>{
+          if(c.raw==null) return null;
+          return c.dataset.yAxisID==='yPct' ? `${c.dataset.label}: ${c.raw.toFixed(2)}%` : `${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`;
+        }}},
+        zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:3}}},
+      },
+      scales:{
+        x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:9, weight:'600'}, maxRotation:45, minRotation:45}},
+        y:{position:'left', grid:{color:gridC}, ticks:{color:tickC, font:{size:10}, callback:v=>v.toLocaleString('es-CO')},
+          title:{display:true, text:'Energía (kWh)', color:tickC, font:{size:10}}},
+        yPct:{type:'linear', position:'right', grid:{drawOnChartArea:false}, ticks:{color:'#ffc300', font:{size:10}, callback:v=>v.toFixed(0)+'%'},
+          title:{display:true, text:'Pérdida (%)', color:'#ffc300', font:{size:10}}},
+      },
+    },
+  });
+}
+
+function alim3RenderChartTecnica(filasConClave){
+  const cv = document.getElementById('ch-alim3-tecnica');
+  if(!cv) return;
+  const visibles = alim3VisiblesRango(filasConClave);
+  const dark = document.documentElement.getAttribute('data-theme')==='dark';
+  const tickC = dark ? '#aab8d1' : '#4b5e7a';
+  const tickXFuerte = dark ? '#ffffff' : '#000000';
+  const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
+  const etiquetas = visibles.map(f => labelMesLargo(f.clave));
+
+  if(chAlim3Tecnica) chAlim3Tecnica.destroy();
+  if(!etiquetas.length) return;
+  chAlim3Tecnica = new Chart(cv, {
+    plugins:[tmPluginCrosshair],
+    data:{
+      labels: etiquetas,
+      datasets:[
+        {type:'line', label:'Pérdida Total kWh', data: visibles.map(f=>f.perdida_kwh), borderColor:'#4361ee', backgroundColor:'transparent',
+          borderWidth:2, pointRadius:1.5, spanGaps:true, tension:.2, datalabels:{display:false}},
+        {type:'line', label:'Pérdida Técnica kWh', data: visibles.map(f=>f.perdida_tecnica_kwh), borderColor:'#f4a261', backgroundColor:'transparent',
+          borderWidth:2, pointRadius:1.5, spanGaps:true, tension:.2, datalabels:{display:false}},
+      ],
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      layout:{padding:{top:16, right:16}},
+      interaction:{mode:'index', intersect:false},
+      plugins:{
+        legend:{display:true, position:'bottom', labels:{boxWidth:10, font:{size:9}, color:tickC}},
+        tooltip:{callbacks:{label:c => c.raw==null?null:`${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`}},
+        zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:3}}},
+      },
+      scales:{
+        x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:9, weight:'600'}, maxRotation:45, minRotation:45}},
+        y:{grid:{color:gridC}, ticks:{color:tickC, font:{size:10}, callback:v=>v.toLocaleString('es-CO')}, title:{display:true, text:'kWh', color:tickC, font:{size:10}}},
+      },
+    },
+  });
+}
+
+function alim3RenderChartAgpe(filasConClave){
+  const cv = document.getElementById('ch-alim3-agpe');
+  if(!cv) return;
+  const visibles = alim3VisiblesRango(filasConClave);
+  const dark = document.documentElement.getAttribute('data-theme')==='dark';
+  const tickC = dark ? '#aab8d1' : '#4b5e7a';
+  const tickXFuerte = dark ? '#ffffff' : '#000000';
+  const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
+  const etiquetas = visibles.map(f => labelMesLargo(f.clave));
+
+  if(chAlim3Agpe) chAlim3Agpe.destroy();
+  if(!etiquetas.length) return;
+  chAlim3Agpe = new Chart(cv, {
+    plugins:[tmPluginCrosshair],
+    data:{
+      labels: etiquetas,
+      datasets:[
+        {type:'line', label:'Inyección AGPE kWh', data: visibles.map(f=>f.entrada_agpe), borderColor:'#a1c623', backgroundColor:'rgba(161,198,35,.18)',
+          fill:'origin', borderWidth:2, pointRadius:1.5, spanGaps:true, tension:.2, datalabels:{display:false}},
+      ],
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      layout:{padding:{top:16, right:16}},
+      interaction:{mode:'index', intersect:false},
+      plugins:{
+        legend:{display:false},
+        tooltip:{callbacks:{label:c => c.raw==null?null:`${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`}},
+        zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:3}}},
+      },
+      scales:{
+        x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:9, weight:'600'}, maxRotation:45, minRotation:45}},
+        y:{grid:{color:gridC}, ticks:{color:tickC, font:{size:10}, callback:v=>v.toLocaleString('es-CO')}, title:{display:true, text:'kWh', color:tickC, font:{size:10}}},
+      },
+    },
+  });
+}
+
+function alim3PoblarSelectorMesTop(claves){
+  const sel = document.getElementById('alim3-mes-top');
+  if(!sel || !claves.length) return;
+  if(!ALIM3_MES_TOP || !claves.includes(ALIM3_MES_TOP)) ALIM3_MES_TOP = claves[claves.length-1];
+  sel.innerHTML = claves.map(c => `<option value="${c}"${c===ALIM3_MES_TOP?' selected':''}>${labelMesLargo(c)}</option>`).join('');
+}
+
+function alim3CambiarMesTop(clave){
+  ALIM3_MES_TOP = clave;
+  alim3RenderTablaTop();
+  alim3RenderScatter();
+}
+
+function alim3FilasDelMes(clave){
+  return ALIM_FILAS.filter(f => alimN21Clave(f.anio, f.mes) === clave
+    && (!ALIM3_ZONAS_SEL.size || ALIM3_ZONAS_SEL.has(f.zona)));
+}
+
+// "Top Alimentadores" -- una fila por circuito, snapshot del AñoMes
+// elegido. Gest x Longitud = Gestionable(kWh) / Longitud(Km) -- fórmula
+// verificada contra la referencia PowerBI (883,95 kWh / 1,18 km ≈ 749,49,
+// coincide con el "Gest x Longitud" mostrado ahí). Gestionable % Top =
+// Gestionable / Pérdida Total -- ordenado de mayor a menor Gest x
+// Longitud (más accionable por km de circuito, "TOP de pérdida").
+function alim3RenderTablaTop(){
+  const cont = document.getElementById('alim3-tabla-top');
+  if(!cont || !ALIM3_MES_TOP) return;
+  const filas = alim3FilasDelMes(ALIM3_MES_TOP)
+    .filter(f => f.longitud_total > 0 && f.gestionable_kwh != null)
+    .map(f => ({
+      nombre: f.nombre_spard || f.nemonico, zona: f.zona,
+      gestLongitud: f.gestionable_kwh / f.longitud_total,
+      gestionable: f.gestionable_kwh,
+      gestPct: f.perdida_kwh ? f.gestionable_kwh / f.perdida_kwh * 100 : null,
+      longitud: f.longitud_total,
+    }));
+  filas.sort((a,b) => b.gestLongitud - a.gestLongitud);
+  if(!filas.length){ cont.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text3)">Sin datos para este mes.</td></tr>'; return; }
+  const fmt = v => v==null ? '--' : v.toLocaleString('es-CO',{maximumFractionDigits:2});
+  const fmtPct = v => v==null ? '--' : `${v.toFixed(2)}%`;
+  cont.innerHTML = filas.map(f => {
+    const color = colorParaZona(f.zona);
+    return `<tr>
+      <td style="text-align:left;font-weight:700">${f.nombre}</td>
+      <td><span class="zb" style="background:${color}22;color:${color}">${f.zona}</span></td>
+      <td>${fmt(f.gestLongitud)}</td>
+      <td>${fmt(f.gestionable)}</td>
+      <td>${fmtPct(f.gestPct)}</td>
+      <td>${fmt(f.longitud)}</td>
+    </tr>`;
+  }).join('');
+}
+
+// Colores fijos por Leyenda (categoría del circuito) -- no depende de
+// colorParaZona (es una dimensión distinta a la Zona).
+const ALIM3_COLOR_LEYENDA = {'ok':'#06d6a0', 'Asociación':'#ef476f', 'Orden Público':'#f4a261', 'Subnormalidad':'#7b2fff'};
+function alim3ColorLeyenda(leyenda){ return ALIM3_COLOR_LEYENDA[leyenda] || '#8a9ab5'; }
+
+// Scatter "Gest x Longitud Vs Gestionable % Top" -- un punto por
+// alimentador del AñoMes elegido (mismas 2 métricas de la tabla de al
+// lado), coloreado por Leyenda.
+function alim3RenderScatter(){
+  const cv = document.getElementById('ch-alim3-scatter');
+  if(!cv || !ALIM3_MES_TOP) return;
+  const filas = alim3FilasDelMes(ALIM3_MES_TOP)
+    .filter(f => f.longitud_total > 0 && f.gestionable_kwh != null && f.perdida_kwh);
+  const dark = document.documentElement.getAttribute('data-theme')==='dark';
+  const tickC = dark ? '#aab8d1' : '#4b5e7a';
+  const tickXFuerte = dark ? '#ffffff' : '#000000';
+  const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
+
+  const leyendas = [...new Set(filas.map(f => f.leyenda).filter(Boolean))].sort();
+  const datasets = leyendas.map(ley => ({
+    type:'scatter', label: ley,
+    data: filas.filter(f => f.leyenda === ley).map(f => ({
+      x: f.gestionable_kwh / f.perdida_kwh * 100,
+      y: f.gestionable_kwh / f.longitud_total,
+      nombre: f.nombre_spard || f.nemonico,
+    })),
+    backgroundColor: alim3ColorLeyenda(ley), borderColor: alim3ColorLeyenda(ley),
+    pointRadius:4, pointHoverRadius:6, datalabels:{display:false},
+  }));
+
+  if(chAlim3Scatter) chAlim3Scatter.destroy();
+  if(!datasets.length){ return; }
+  chAlim3Scatter = new Chart(cv, {
+    data:{datasets},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      layout:{padding:{top:16, right:16}},
+      plugins:{
+        legend:{display:true, position:'bottom', labels:{boxWidth:10, font:{size:9}, color:tickC}},
+        tooltip:{callbacks:{label:c => `${c.raw.nombre}: ${c.raw.x.toFixed(1)}% · ${c.raw.y.toFixed(1)}`}},
+      },
+      scales:{
+        x:{type:'linear', min:0, max:100, grid:{color:gridC}, ticks:{color:tickXFuerte, font:{size:10}, callback:v=>v+'%'},
+          title:{display:true, text:'Gestionable % Top', color:tickC, font:{size:10}}},
+        y:{grid:{color:gridC}, ticks:{color:tickC, font:{size:10}}, title:{display:true, text:'Gest x Longitud', color:tickC, font:{size:10}}},
+      },
+    },
   });
 }
 
