@@ -9279,6 +9279,28 @@ const IP_COLUMNAS_NIVEL = {
 const IP_COLUMNAS_PCT_NIVEL = new Set(["n1_pct_preales", "n4_pj"]);
 const IP_COLUMNAS_DECIMAL_NIVEL = new Set(["n2_pj", "n3_pj"]);  // guardadas como "1.53" (ya *100), no como fracción
 
+// Significado de cada variable cruda -- pedido explícito del usuario, para
+// mostrar como tooltip (title) al pasar el mouse sobre el encabezado de la
+// tabla combinada de Nivel de Tensión (ipRenderTablaNivel/ipRenderTablaNivel1).
+const IP_DESCRIPCION_VARIABLE = {
+  'Eej': 'Energía de Entrada por nivel de tensión',
+  'EsTj': 'Energía de salida por Nivel de tensión',
+  'EPRj': 'Pérdidas reconocidas',
+  'EPRealesj': 'Pérdidas reconocidas',
+  'EeG': 'Energía de Generación en nivel de tensión',
+  'FeSTN': 'Flujos de entrada del STN',
+  'FeOR': 'Flujos de entrada de otros operadores de red',
+  'EsVFC': 'Energía de salida ventas con frontera Comercial',
+  'EsVSFC': 'Energía de salida ventas sin frontera Comercial',
+  'FsOR': 'Flujos de salida a otros operadores de red',
+  'EsVSTN': 'Energía de salida ventas al STN',
+};
+function ipDescripcionVariable(etiqueta){
+  if(IP_DESCRIPCION_VARIABLE[etiqueta]) return IP_DESCRIPCION_VARIABLE[etiqueta];
+  if(/^FeN[sS]/.test(etiqueta)) return 'Flujos de energía para nivel de tensión inferior';
+  return '';
+}
+
 function ipClaveNormal(f){ return `${f.anio_normal}-${String(f.mes_normal).padStart(2,'0')}`; }
 function ipClaveRegulatoria(f){ return `${f.anio}-${String(f.mes).padStart(2,'0')}`; }
 
@@ -14098,7 +14120,7 @@ function ipRenderTablaNivel(){
   head1.innerHTML = '<th class="ip-th-mes" rowspan="2">Mes (fecha real)</th>' +
     [1,2,3,4].map(n => `<th class="ip-th-nivel${n}${n>1?' ip-sep-nivel':''}" colspan="${IP_COLUMNAS_NIVEL[n].length}">Nivel de Tensión ${n}</th>`).join('');
   head2.innerHTML = [1,2,3,4].map(n =>
-    IP_COLUMNAS_NIVEL[n].map(([,etiqueta], i) => `<th class="ip-th-variable${n>1 && i===0?' ip-sep-nivel':''}">${etiqueta}</th>`).join('')
+    IP_COLUMNAS_NIVEL[n].map(([,etiqueta], i) => `<th class="ip-th-variable${n>1 && i===0?' ip-sep-nivel':''}" title="${ipDescripcionVariable(etiqueta)}">${etiqueta}</th>`).join('')
   ).join('');
 
   // Depende TOTALMENTE del mismo rango de fechas del gráfico principal
@@ -14139,7 +14161,7 @@ function ipRenderTablaNivel1(){
   head1.innerHTML = '<th class="ip-th-mes" rowspan="2">Mes (fecha real)</th>' +
     `<th class="ip-th-nivel1" colspan="${columnas.length}">Nivel de Tensión 1</th>` +
     '<th class="ip-th-nivel1" colspan="3">Resultado</th>';
-  head2.innerHTML = columnas.map(([,etiqueta]) => `<th class="ip-th-variable">${etiqueta}</th>`).join('') +
+  head2.innerHTML = columnas.map(([,etiqueta]) => `<th class="ip-th-variable" title="${ipDescripcionVariable(etiqueta)}">${etiqueta}</th>`).join('') +
     '<th class="ip-th-variable">Ver.</th><th class="ip-th-variable">PTj,1,t (kWh)</th><th class="ip-th-variable">IPTj,1,t (%)</th>';
 
   const desde = document.getElementById('ip-n1-chart-desde').value ? document.getElementById('ip-n1-chart-desde').value.slice(0,7) : null;
