@@ -2358,6 +2358,33 @@ tfoot td:first-child{text-align:left}
         </div>
       </div>
     </div>
+
+    <div class="card">
+      <div class="fbar" style="justify-content:center;margin-bottom:6px">
+        <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Mapa Nacional de Temperatura</div>
+      </div>
+      <div class="sec-sub" style="text-align:center;margin-bottom:12px">Una estación automática por departamento, para seguir la tendencia de temperatura del país -- útil para ver la temporada del fenómeno de El Niño.</div>
+      <div id="temp-nac-vacio" style="color:var(--text3);font-size:12px;text-align:center;padding:20px">Cargando…</div>
+      <div id="temp-nac-contenido" class="hidden">
+        <div id="temp-nac-leaflet-wrap" style="position:relative;margin-bottom:12px">
+          <div id="temp-nac-leaflet" style="height:560px;border-radius:10px;overflow:hidden;background:var(--bg3)"></div>
+          <div id="temp-nac-etiqueta" style="position:absolute;top:10px;left:10px;z-index:600;pointer-events:none;font-size:22px;font-weight:800;color:#ffffff;text-shadow:0 1px 3px rgba(0,0,0,.85), 0 0 10px rgba(0,0,0,.5)"></div>
+        </div>
+        <div class="fbar" style="justify-content:center;gap:14px;margin-bottom:8px">
+          <button type="button" id="temp-nac-btn-play" onclick="tempNacTogglePlay()" style="font-size:16px;line-height:1;padding:6px 12px" class="be-modo-btn">▶</button>
+          <input type="range" id="temp-nac-slider" min="0" max="0" value="0" style="flex:1;min-width:200px;max-width:520px" oninput="tempNacActualizar(Number(this.value))">
+          <div style="min-width:220px;text-align:center">
+            <span id="temp-nac-fecha" style="font-size:13px;font-weight:700;color:var(--text)"></span>
+            <span id="temp-nac-badge" style="font-size:10px;font-weight:800;letter-spacing:.5px;padding:2px 7px;border-radius:8px;margin-left:6px"></span>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:center;gap:8px;font-size:10px;color:var(--text3)">
+          <span id="temp-nac-leyenda-min"></span>
+          <div style="width:160px;height:10px;border-radius:5px;background:linear-gradient(90deg, #ffe066, #f4a261, #d62828)"></div>
+          <span id="temp-nac-leyenda-max"></span>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 <!-- fin vista-temp-entrada -->
@@ -10800,10 +10827,12 @@ function tempEntradaToggleMetrica(m){
   document.getElementById('temp-entrada-btn-max').classList.toggle('activo', m==='max');
   document.getElementById('temp-entrada-btn-promedio').classList.toggle('activo', m==='promedio');
   tempEntradaRender();
-  // El Mapa de Temperatura usa la MISMA métrica -- solo recolorea el
-  // marcador ya cargado, no vuelve a pedir datos ni pierde el slider.
+  // El Mapa de Temperatura y el Mapa Nacional usan la MISMA métrica --
+  // solo recolorean lo ya cargado, no vuelven a pedir datos ni pierden el slider.
   _tempMapaRecalcularRango();
   tempMapaActualizar(TEMP_MAPA_IDX);
+  _tempNacRecalcularRango();
+  tempNacActualizar(TEMP_NAC_IDX);
 }
 
 function tempEntradaToggleGranularidad(g){
@@ -10900,6 +10929,7 @@ async function tempEntradaCargar(){
   if(!inFechaHoraria.value) inFechaHoraria.value = TEMP_ENTRADA_DIAS[TEMP_ENTRADA_DIAS.length-1].fecha;
   tempHorariaCargar();
   tempMapaCargar();
+  tempNacCargar();   // independiente del resto -- no depende de la estación del operador, es la red nacional fija
 }
 
 const TEMP_ENTRADA_METRICA_INFO = {
@@ -11263,6 +11293,210 @@ function tempMapaDetenerPlay(){
   TEMP_MAPA_PLAYING = false;
   if(TEMP_MAPA_INTERVAL){ clearInterval(TEMP_MAPA_INTERVAL); TEMP_MAPA_INTERVAL = null; }
   const btn = document.getElementById('temp-mapa-btn-play');
+  if(btn) btn.textContent = '▶';
+}
+
+/* ==========================================================================
+   MAPA NACIONAL DE TEMPERATURA -- pedido explícito: "ver otro mapa general
+   con la temperatura de Colombia de las diferentes estaciones principales
+   de cada departamento... el objetivo es conocer la temporada del
+   fenómeno del Niño". Una estación automática VERIFICADA por departamento
+   (backend/app/ideam_estaciones_nacionales.py -- Vaupés no tiene ninguna
+   estación automática en todo el departamento, queda sin color/dato).
+   Mismo mecanismo visual que el mapa de la estación única (blur+blend en
+   su propio pane), pero coloreando cada municipio de TODO Colombia según
+   el departamento al que pertenece, con su propio slider/play (rango más
+   corto, DIAS_HISTORIA_NACIONAL -- ver nota de rendimiento en el backend).
+   ========================================================================== */
+let TEMP_NAC_ESTACIONES = [];
+let TEMP_NAC_DATOS = {};
+let TEMP_NAC_FECHAS = [];
+let TEMP_NAC_IDX = 0;
+let TEMP_NAC_MAPA = null;
+let TEMP_NAC_CAPA = null;
+let TEMP_NAC_MARCADORES = [];
+let TEMP_NAC_PLAYING = false;
+let TEMP_NAC_INTERVAL = null;
+let TEMP_NAC_RANGO = {min:null, max:null};
+
+// departamento (tal como viene en ESTACIONES_NACIONALES) -> DPTO_CNMBR
+// EXACTO del topojson (geo/colombia-municipios.json, DANE MGN) -- leído
+// del archivo real, no adivinado (mayúsculas/tildes no siempre coinciden
+// con un simple toUpperCase, ej. "Quindío" vs "QUINDIO" sin tilde, o
+// "Bogotá D.C." vs "BOGOTÁ, D.C.").
+const TEMP_NAC_DEPTO_A_DPTO_CNMBR = {
+  'Amazonas':'AMAZONAS','Antioquia':'ANTIOQUIA','Arauca':'ARAUCA',
+  'Atlántico':'ATLÁNTICO','Bolívar':'BOLÍVAR','Boyacá':'BOYACÁ','Caldas':'CALDAS',
+  'Caquetá':'CAQUETÁ','Casanare':'CASANARE','Cauca':'CAUCA','Cesar':'CESAR',
+  'Chocó':'CHOCÓ','Córdoba':'CÓRDOBA','Cundinamarca':'CUNDINAMARCA',
+  'Bogotá D.C.':'BOGOTÁ, D.C.','Guainía':'GUAINÍA','Guaviare':'GUAVIARE',
+  'Huila':'HUILA','La Guajira':'LA GUAJIRA','Magdalena':'MAGDALENA','Meta':'META',
+  'Nariño':'NARIÑO','Norte de Santander':'NORTE DE SANTANDER','Putumayo':'PUTUMAYO',
+  'Quindío':'QUINDIO','Risaralda':'RISARALDA',
+  'San Andrés y Providencia':'ARCHIPIÉLAGO DE SAN ANDRÉS, PROVIDENCIA Y SANTA CATALINA',
+  'Santander':'SANTANDER','Sucre':'SUCRE','Tolima':'TOLIMA',
+  'Valle del Cauca':'VALLE DEL CAUCA','Vaupés':'VAUPÉS','Vichada':'VICHADA',
+};
+
+function _tempNacEstacionDeDpto(dptoCnmbr){
+  return TEMP_NAC_ESTACIONES.find(e => TEMP_NAC_DEPTO_A_DPTO_CNMBR[e.departamento] === dptoCnmbr);
+}
+
+function _tempNacValor(codigo, fecha, campo){
+  const filas = TEMP_NAC_DATOS[codigo];
+  if(!filas) return null;
+  const fila = filas.find(f => f.fecha === fecha);
+  return fila ? fila[campo] : null;
+}
+
+async function tempNacCargar(){
+  const vacio = document.getElementById('temp-nac-vacio');
+  const contenido = document.getElementById('temp-nac-contenido');
+  if(!vacio || !contenido) return;
+  tempNacDetenerPlay();
+  vacio.classList.remove('hidden'); contenido.classList.add('hidden');
+  vacio.textContent = 'Cargando…';
+
+  let resp;
+  try{
+    resp = await apiGet('/api/ideam/temperatura-nacional', AUTH_TIMEOUT_MS);
+  }catch(e){
+    vacio.textContent = e.message || 'No se pudo cargar el mapa nacional.';
+    return;
+  }
+  TEMP_NAC_ESTACIONES = resp.estaciones || [];
+  TEMP_NAC_DATOS = resp.datos || {};
+  const conDatos = Object.values(TEMP_NAC_DATOS).find(f => f.length);
+  TEMP_NAC_FECHAS = conDatos ? conDatos.map(f => f.fecha) : [];
+  if(!TEMP_NAC_FECHAS.length){
+    vacio.textContent = 'No hay datos nacionales de temperatura disponibles.';
+    return;
+  }
+
+  let topo;
+  try{ topo = await mapaZonasCargarTopo(); }
+  catch(e){ vacio.textContent = 'No se pudo cargar el mapa de Colombia.'; return; }
+  const geo = topojson.feature(topo, topo.objects.MGN_MPIO_POLITICO);
+
+  const contId = 'temp-nac-leaflet';
+  if(MAPA_ZONAS_INSTANCIAS[contId]){ try{ MAPA_ZONAS_INSTANCIAS[contId].remove(); }catch(e){} delete MAPA_ZONAS_INSTANCIAS[contId]; }
+  if(MAPA_ZONAS_RESIZE_OBS[contId]){ MAPA_ZONAS_RESIZE_OBS[contId].disconnect(); delete MAPA_ZONAS_RESIZE_OBS[contId]; }
+  const cont = document.getElementById(contId);
+  if(!cont) return;
+  cont.innerHTML = ''; delete cont._leaflet_id;
+
+  const mapa = L.map(contId, {zoomControl:true, attributionControl:false});
+  MAPA_ZONAS_INSTANCIAS[contId] = mapa;
+  mapa.fitBounds(L.geoJSON(geo).getBounds(), {padding:[10,10]});
+  const capasBase = mapaZonasCapasBase();
+  capasBase['Calles'].addTo(mapa);
+  L.control.layers(capasBase, {'Vías y nombres (sobre Satélite)': mapaZonasCapaVias()}, {position:'topright', collapsed:true}).addTo(mapa);
+
+  if(!mapa.getPane('tempNacPane')){
+    const pane = mapa.createPane('tempNacPane');
+    pane.style.zIndex = 395;
+    pane.style.filter = 'blur(10px) saturate(1.35)';
+    pane.style.mixBlendMode = document.documentElement.getAttribute('data-theme')==='dark' ? 'screen' : 'multiply';
+  }
+  const capa = L.geoJSON(geo, {
+    pane: 'tempNacPane',
+    style: () => ({stroke:false, fillColor:'#999', fillOpacity:0.85}),
+  }).addTo(mapa);
+
+  TEMP_NAC_MARCADORES = TEMP_NAC_ESTACIONES.map(e => {
+    const m = L.circleMarker([e.latitud, e.longitud], {radius:4, weight:1.5, color:'#111111', fillColor:'#ffffff', fillOpacity:1}).addTo(mapa);
+    m._tempNacCodigo = e.codigo;
+    return m;
+  });
+
+  const ro = new ResizeObserver(() => {
+    if(MAPA_ZONAS_INSTANCIAS[contId] !== mapa){ ro.disconnect(); return; }
+    if(!cont.offsetWidth || !cont.offsetHeight) return;
+    mapa.invalidateSize();
+  });
+  ro.observe(cont);
+  MAPA_ZONAS_RESIZE_OBS[contId] = ro;
+
+  TEMP_NAC_MAPA = mapa;
+  TEMP_NAC_CAPA = capa;
+
+  vacio.classList.add('hidden'); contenido.classList.remove('hidden');
+  const slider = document.getElementById('temp-nac-slider');
+  slider.min = 0; slider.max = TEMP_NAC_FECHAS.length - 1;
+
+  const hoyIso = new Date().toISOString().slice(0,10);
+  let idxInicial = TEMP_NAC_FECHAS.indexOf(hoyIso);
+  if(idxInicial < 0) idxInicial = TEMP_NAC_FECHAS.length - 1;
+  _tempNacRecalcularRango();
+  tempNacActualizar(idxInicial);
+}
+
+function _tempNacRecalcularRango(){
+  const metrica = TEMP_ENTRADA_METRICA_INFO[TEMP_ENTRADA_METRICA];
+  const valores = [];
+  Object.values(TEMP_NAC_DATOS).forEach(filas => filas.forEach(f => { if(f[metrica.campo]!=null) valores.push(f[metrica.campo]); }));
+  if(!valores.length) return;
+  TEMP_NAC_RANGO = {min: Math.min(...valores), max: Math.max(...valores)};
+  document.getElementById('temp-nac-leyenda-min').textContent = TEMP_NAC_RANGO.min.toFixed(0)+'°C';
+  document.getElementById('temp-nac-leyenda-max').textContent = TEMP_NAC_RANGO.max.toFixed(0)+'°C';
+}
+
+function tempNacActualizar(idx){
+  if(!TEMP_NAC_FECHAS.length) return;
+  TEMP_NAC_IDX = Math.max(0, Math.min(TEMP_NAC_FECHAS.length-1, idx));
+  const fecha = TEMP_NAC_FECHAS[TEMP_NAC_IDX];
+  const metrica = TEMP_ENTRADA_METRICA_INFO[TEMP_ENTRADA_METRICA];
+
+  if(TEMP_NAC_CAPA){
+    TEMP_NAC_CAPA.setStyle(f => {
+      const est = _tempNacEstacionDeDpto(f.properties.DPTO_CNMBR);
+      const valor = est && !est.sin_datos ? _tempNacValor(est.codigo, fecha, metrica.campo) : null;
+      return {stroke:false, fillColor: _tempMapaColor(valor, TEMP_NAC_RANGO.min, TEMP_NAC_RANGO.max), fillOpacity:0.85};
+    });
+  }
+  const valores = [];
+  TEMP_NAC_MARCADORES.forEach(m => {
+    const est = TEMP_NAC_ESTACIONES.find(e => e.codigo === m._tempNacCodigo);
+    const valor = est && !est.sin_datos ? _tempNacValor(m._tempNacCodigo, fecha, metrica.campo) : null;
+    if(valor!=null) valores.push(valor);
+    m.bindTooltip(`${est ? est.departamento : ''} (${est ? est.municipio : ''}): ${valor!=null ? valor.toFixed(1)+'°C' : 'sin dato'}`);
+  });
+
+  const slider = document.getElementById('temp-nac-slider');
+  if(slider) slider.value = TEMP_NAC_IDX;
+  const promedioNacional = valores.length ? valores.reduce((a,b)=>a+b,0)/valores.length : null;
+  const [anio,mes,dia] = fecha.split('-');
+  document.getElementById('temp-nac-fecha').textContent = `${dia}/${mes}/${anio} -- ${metrica.nombre} nacional: ${promedioNacional!=null ? promedioNacional.toFixed(1)+'°C' : 'Sin dato'}`;
+  const etiqueta = document.getElementById('temp-nac-etiqueta');
+  if(etiqueta) etiqueta.textContent = promedioNacional!=null ? `${promedioNacional.toFixed(1)}°C` : '--';
+
+  const hoyIso = new Date().toISOString().slice(0,10);
+  const badge = document.getElementById('temp-nac-badge');
+  if(fecha > hoyIso){
+    badge.textContent = 'PRONÓSTICO'; badge.style.background = 'rgba(244,162,97,.18)'; badge.style.color = '#f4a261';
+  }else{
+    badge.textContent = 'HISTÓRICO'; badge.style.background = 'rgba(6,214,160,.18)'; badge.style.color = '#06d6a0';
+  }
+}
+
+function tempNacTogglePlay(){
+  if(TEMP_NAC_PLAYING){ tempNacDetenerPlay(); return; }
+  if(!TEMP_NAC_FECHAS.length) return;
+  TEMP_NAC_PLAYING = true;
+  const btn = document.getElementById('temp-nac-btn-play');
+  if(btn) btn.textContent = '⏸';
+  if(TEMP_NAC_IDX >= TEMP_NAC_FECHAS.length-1) tempNacActualizar(0);
+  TEMP_NAC_INTERVAL = setInterval(() => {
+    const siguiente = TEMP_NAC_IDX + 1;
+    if(siguiente >= TEMP_NAC_FECHAS.length){ tempNacDetenerPlay(); return; }
+    tempNacActualizar(siguiente);
+  }, 550);
+}
+
+function tempNacDetenerPlay(){
+  TEMP_NAC_PLAYING = false;
+  if(TEMP_NAC_INTERVAL){ clearInterval(TEMP_NAC_INTERVAL); TEMP_NAC_INTERVAL = null; }
+  const btn = document.getElementById('temp-nac-btn-play');
   if(btn) btn.textContent = '▶';
 }
 
