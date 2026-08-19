@@ -2146,6 +2146,25 @@ tfoot td:first-child{text-align:left}
     </div>
 
     <div class="card">
+      <div style="text-align:center;margin-bottom:8px">
+        <div style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Comparativo Mensual por Zona</div>
+        <div id="alim-n21-tabla-zonas-caption" style="font-size:11px;color:var(--text3);margin-top:2px"></div>
+      </div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr>
+            <th style="text-align:left">Zona</th>
+            <th>Entrada</th><th>Δ Entrada</th>
+            <th>Salida</th><th>Δ Salida</th>
+            <th>Pérdida</th><th>Δ Pérdida</th>
+            <th>Pérdida %</th><th>Δ pp</th>
+          </tr></thead>
+          <tbody id="alim-n21-tabla-zonas"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
       <div class="fbar" style="justify-content:center;margin-bottom:8px">
         <div style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Pérdida por Zona</div>
         <button type="button" class="be-modo-btn activo" id="alim-n21-btn-mapa-mensual" style="margin-left:12px" onclick="alimN21ToggleMapaModo('mensual')">Mensual</button>
@@ -12710,7 +12729,64 @@ function alimN21RenderTodo(){
   alimN21RenderChartMensual(datos12);
   alimN21RenderChartAnual(datos12);
   alimN21RenderChartZonas();
+  alimN21RenderTablaZonas();
   alimN21RenderResumen(datos12);
+}
+
+// Tabla comparativa por zona -- Entrada/Salida/Pérdida del último mes
+// visible (según el filtro Rango) vs. el mes anterior, siempre las 5 zonas
+// completas (igual que "Comparativo Pérdidas por Zona", ignora el filtro
+// de chips de Zona -- ese filtro es solo para las 2 gráficas de arriba).
+function alimN21RenderTablaZonas(){
+  const cont = document.getElementById('alim-n21-tabla-zonas');
+  const caption = document.getElementById('alim-n21-tabla-zonas-caption');
+  if(!cont) return;
+  const fmt = v => v==null ? '--' : v.toLocaleString('es-CO',{maximumFractionDigits:0});
+  const fmtDelta = v => v==null ? '--' : `${v>=0?'+':''}${v.toLocaleString('es-CO',{maximumFractionDigits:0})}`;
+
+  let mesActual = null, mesAnterior = null;
+  const filas = ALIM_N21_ZONAS.map(z => {
+    const visibles = alimN21Visibles(alimN21AgregarMensual(new Set([z]))).filter(f => f.pct != null);
+    if(!visibles.length) return null;
+    const actual = visibles[visibles.length-1];
+    const anterior = visibles.length >= 2 ? visibles[visibles.length-2] : null;
+    if(!mesActual){ mesActual = actual.clave; mesAnterior = anterior ? anterior.clave : null; }
+    return {
+      zona: z,
+      entrada: actual.entrada, deltaEntrada: anterior ? actual.entrada-anterior.entrada : null,
+      salida: actual.salida, deltaSalida: anterior ? actual.salida-anterior.salida : null,
+      perdida: actual.perdida, deltaPerdida: anterior ? actual.perdida-anterior.perdida : null,
+      pct: actual.pct, deltaPct: anterior ? actual.pct-anterior.pct : null,
+    };
+  }).filter(Boolean);
+
+  if(caption) caption.textContent = mesActual
+    ? (mesAnterior ? `${labelMesLargo(mesAnterior)} → ${labelMesLargo(mesActual)}` : labelMesLargo(mesActual))
+    : '';
+
+  if(!filas.length){
+    cont.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--text3)">Sin datos.</td></tr>';
+    return;
+  }
+
+  cont.innerHTML = filas.map(f => {
+    const color = colorParaZona(f.zona);
+    const anteriorPerdida = f.deltaPerdida!=null ? f.perdida-f.deltaPerdida : null;
+    const anteriorPct = f.deltaPct!=null ? f.pct-f.deltaPct : null;
+    const colorPerdida = ipColorVariacion(f.perdida, anteriorPerdida, 'var(--text3)');
+    const colorPct = ipColorVariacion(f.pct, anteriorPct, 'var(--text3)');
+    return `<tr>
+      <td style="text-align:left"><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${color};margin-right:6px"></span>Zona ${f.zona}</td>
+      <td>${fmt(f.entrada)}</td>
+      <td style="color:var(--text3)">${fmtDelta(f.deltaEntrada)}</td>
+      <td>${fmt(f.salida)}</td>
+      <td style="color:var(--text3)">${fmtDelta(f.deltaSalida)}</td>
+      <td>${fmt(f.perdida)}</td>
+      <td style="color:${colorPerdida}">${fmtDelta(f.deltaPerdida)}</td>
+      <td style="font-weight:700">${f.pct.toFixed(2)}%</td>
+      <td style="color:${colorPct}">${f.deltaPct==null?'--':`${f.deltaPct>=0?'▲':'▼'} ${Math.abs(f.deltaPct).toFixed(2)} pp`}</td>
+    </tr>`;
+  }).join('');
 }
 
 function alimN21ToggleVariacion(){
