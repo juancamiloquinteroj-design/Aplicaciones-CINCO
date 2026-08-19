@@ -16401,83 +16401,45 @@ async function _informesCargarAssetImagen(nombreArchivo){
   return {bytes: new Uint8Array(buf), width: dim.w, height: dim.h};
 }
 
-async function informesSeccionMetodologiaIPT(){
-  const children = [
-    _informesHeading1('Metodología de Calculo Índice de Pérdidas Totales'),
-    _informesParrafo('La metodología establecida en la Resolución CREG 015/2018 permite determinar el indicador de pérdidas de energía mediante la relación entre las pérdidas totales de energía y la energía de entrada al sistema de distribución, diferenciando el análisis de acuerdo con el nivel de tensión. Para su cálculo se parte de un balance energético en el que se determina la diferencia entre la energía que ingresa al sistema y la energía entregada o registrada a los usuarios, considerando los ajustes y variables definidos en la metodología regulatoria. El resultado se expresa como un porcentaje de pérdidas y permite evaluar el desempeño del sistema frente a los niveles de referencia establecidos por la regulación.'),
-  ];
-  try{
-    const formulaPt = await _informesCargarAssetImagen('formula_pt.png');
-    if(formulaPt) children.push(_informesParrafoImagen(formulaPt, 350));
-    const formulaIpt = await _informesCargarAssetImagen('formula_ipt.png');
-    if(formulaIpt) children.push(_informesParrafoImagen(formulaIpt, 400));
-  }catch(e){ /* si no cargan las fórmulas, el resto del informe sigue igual */ }
-  children.push(new docx.Paragraph({text:''}));
-  return children;
-}
-
 function _informesMesAnteriorClave(mesClave){
   const [a,m] = mesClave.split('-').map(Number);
   const idx = a*12 + (m-1) - 1;
   return `${Math.floor(idx/12)}-${String(idx%12+1).padStart(2,'0')}`;
 }
-function _informesMesAnioAnteriorClave(mesClave){
-  const [a,m] = mesClave.split('-').map(Number);
-  return `${a-1}-${String(m).padStart(2,'0')}`;
-}
-
 function informesTextoIpt(mesClave){
   const actual = IP_MAPA_POR_NORMAL.get(mesClave);
   if(!actual || actual.ipt_pct == null) return null;
   const anteriorClave = _informesMesAnteriorClave(mesClave);
   const anterior = IP_MAPA_POR_NORMAL.get(anteriorClave);
-  const anioAntClave = _informesMesAnioAnteriorClave(mesClave);
-  const anioAnt = IP_MAPA_POR_NORMAL.get(anioAntClave);
   const iptPct = actual.ipt_pct*100;
 
   const parrafos = [];
   parrafos.push(_informesParrafo([
-    new docx.TextRun(`Para el periodo de evaluación, ${labelMesLargo(mesClave).toUpperCase()}, el índice de pérdidas totales proyectado y calculado conforme a la resolución CREG 015 de 2018 es de `),
+    new docx.TextRun(`Para ${labelMesLargo(mesClave).toUpperCase()}, el índice de pérdidas totales (CREG 015/2018) es de `),
     new docx.TextRun({text:`${iptPct.toFixed(2)}%`, bold:true}),
-    new docx.TextRun(`, por lo cual se presenta un total de pérdidas de acuerdo a CREG 015/2018 de `),
+    new docx.TextRun(`, equivalente a `),
     new docx.TextRun({text:`${_informesFKwh(actual.pt_kwh)} kWh/Anual`, bold:true}),
     new docx.TextRun(`.`),
   ]));
 
+  // Solo comparación contra el mes anterior -- pedido explícito ("retirar
+  // la comparativa frente al mes de año anterior, vamos a seguir
+  // comparando el mes anterior de ese mismo año").
   if(anterior && anterior.ipt_pct != null){
     const deltaPp = (actual.ipt_pct - anterior.ipt_pct)*100;
     const deltaKwh = actual.pt_kwh - anterior.pt_kwh;
     const sube = deltaPp > 0;
     const runs = [
-      new docx.TextRun(`El IPT pasó de `), new docx.TextRun({text:`${(anterior.ipt_pct*100).toFixed(2)}%`, bold:true}),
+      new docx.TextRun(`El IPT `), new docx.TextRun({text: sube?'subió':'bajó', bold:true}),
+      new docx.TextRun(` de `), new docx.TextRun({text:`${(anterior.ipt_pct*100).toFixed(2)}%`, bold:true}),
       new docx.TextRun(` en ${labelMesLargo(anteriorClave)} a `), new docx.TextRun({text:`${iptPct.toFixed(2)}%`, bold:true}),
-      new docx.TextRun(` en ${labelMesLargo(mesClave)}, lo que equivale a pasar de una pérdida de `),
+      new docx.TextRun(` en ${labelMesLargo(mesClave)} (`), new docx.TextRun({text:`${_informesSigno(deltaPp)}${Math.abs(deltaPp).toFixed(2)} pp`, bold:true}),
+      new docx.TextRun(`), con una pérdida que pasó de `),
       new docx.TextRun({text:`${_informesFKwh(anterior.pt_kwh)} kWh/Anual`, bold:true}),
       new docx.TextRun(` a `), new docx.TextRun({text:`${_informesFKwh(actual.pt_kwh)} kWh/Anual`, bold:true}),
-      new docx.TextRun(` -- un ${sube?'incremento':'descenso'} de `), new docx.TextRun({text:`${Math.abs(deltaPp).toFixed(2)} pp`, bold:true}),
-      new docx.TextRun(`, equivalente a `), new docx.TextRun({text:`${_informesSigno(deltaKwh)}${_informesFKwh(Math.abs(deltaKwh))} kWh/Anual`, bold:true}),
-      new docx.TextRun(`.`),
+      new docx.TextRun(` (${_informesSigno(deltaKwh)}${_informesFKwh(Math.abs(deltaKwh))} kWh/Anual).`),
     ];
-    if(anioAnt && anioAnt.ipt_pct != null){
-      const deltaAnual = (actual.ipt_pct - anioAnt.ipt_pct)*100;
-      runs.push(new docx.TextRun(` Frente al mismo mes del año anterior (${labelMesLargo(anioAntClave)}), el IPT era de `));
-      runs.push(new docx.TextRun({text:`${(anioAnt.ipt_pct*100).toFixed(2)}%`, bold:true}));
-      runs.push(new docx.TextRun(`, por lo que la variación anual es de `));
-      runs.push(new docx.TextRun({text:`${_informesSigno(deltaAnual)}${Math.abs(deltaAnual).toFixed(2)} pp`, bold:true}));
-      runs.push(new docx.TextRun(` (${deltaAnual>0?'aumenta':'disminuye'}).`));
-    }
     parrafos.push(_informesParrafo(runs));
-  }
-
-  if(actual.pct_perdida_mensual != null && anioAnt && anioAnt.pct_perdida_mensual != null){
-    const mensualActual = actual.pct_perdida_mensual*100, mensualAnioAnt = anioAnt.pct_perdida_mensual*100;
-    parrafos.push(_informesParrafo([
-      new docx.TextRun(`De acuerdo con el IPT mensual, se tiene que para ${labelMesLargo(mesClave).toLowerCase()} hay un IPT mensual de `),
-      new docx.TextRun({text:`${mensualActual.toFixed(2)}%`, bold:true}),
-      new docx.TextRun(`, donde sale un indicador de `),
-      new docx.TextRun({text:`${mensualAnioAnt.toFixed(2)}%`, bold:true}),
-      new docx.TextRun(` (${labelMesLargo(anioAntClave)}) -- por lo cual entra un indicador mensual ${mensualActual>mensualAnioAnt?'más alto':'más bajo'} que el saliente del año anterior.`),
-    ]));
   }
   return parrafos;
 }
@@ -16625,7 +16587,7 @@ function informesCajaBalanceIpt(mesClave){
 }
 
 async function informesSeccionIndicadorIPT(mesClave){
-  const children = [_informesHeading2('Indicador de Índice de Pérdidas Totales (CREG 015/2018)')];
+  const children = [_informesHeading1('Indicador de Índice de Pérdidas Totales (CREG 015/2018)')];
   const parrafos = informesTextoIpt(mesClave);
   if(!parrafos){
     children.push(new docx.Paragraph({children:[new docx.TextRun({text:'No hay datos suficientes de IP_Reg para el mes seleccionado.', italics:true})]}));
@@ -16648,15 +16610,6 @@ async function informesSeccionIndicadorIPT(mesClave){
 // N2-1 (Total, por zona, por subestación) -- incluye la detección de
 // pérdida negativa por mala asociación (campo `leyenda`).
 // ==========================================================================
-function informesSeccionMetodologiaN21(){
-  return [
-    _informesHeading1('Metodología calculo indicador N2-1'),
-    _informesParrafo('La metodología del indicador N2-1 se basa en la construcción de balances energéticos para los niveles de tensión 2 y 1, partiendo de la información de alimentadores, subestaciones y zonas. Para garantizar la confiabilidad del balance, inicialmente se realiza la depuración de las lecturas y el análisis de las maniobras y suplencias, identificando los traslados temporales de carga que no se encuentran actualizados en el SPARD. Posteriormente, se consolida la energía de entrada de los alimentadores mediante el ciclo predominante, junto con la información de ventas, AGPE y demás variables necesarias para determinar las pérdidas de cada circuito.'),
-    _informesParrafo('Una vez consolidada la información, los alimentadores se agrupan de acuerdo con su zona y subestación, permitiendo obtener balances energéticos a diferentes niveles de agregación. Para el balance por zonas, la energía de ventas N21 se ajusta excluyendo los auxiliares, con el fin de mantener consistencia entre las entradas y salidas consideradas. Finalmente, las pérdidas obtenidas en cada alimentador se consolidan para determinar el comportamiento de las subestaciones y zonas, permitiendo obtener el indicador N2-1 y facilitar el seguimiento de las pérdidas totales de los niveles de tensión 1 y 2.'),
-    new docx.Paragraph({text:''}),
-  ];
-}
-
 // filasMes: filas de ALIM_FILAS de un mes puntual (ya filtradas por zona/
 // subestación según corresponda) -- detecta pérdida % negativa por fila.
 function informesDetectarNegativos(filasMes){
@@ -16701,56 +16654,82 @@ function informesAgruparAlimentadoresSubestacion(subestacion, hastaClave){
       clave, entrada:f.entrada_total||0, salida:f.salida_total||0,
       perdida:f.perdida_kwh||0, gestionable:f.gestionable_kwh||0,
       pct: f.entrada_total ? (f.perdida_kwh||0)/f.entrada_total*100 : null,
+      leyenda: f.leyenda || 'ok',
     });
   });
   Object.values(porNem).forEach(arr => arr.sort((a,b)=> a.clave<b.clave?-1:1));
   return porNem;
 }
 
-// Análisis más completo por subestación -- pedido explícito ("quiero un
-// mayor análisis por subestaciones... mes anterior, año anterior y
-// así"): además de la variación mensual (ya existía), agrega la
-// comparación contra el mismo mes del año anterior y la tendencia de los
-// últimos meses, igual criterio que informesTextoN21Total.
-function informesTextoSubestacion(subestacion, agregadoMes, agregadoAnterior, agregadoAnioAnterior, ventana, mesClave, claveAnioAnterior){
+// Variación mensual + POR QUÉ (el alimentador que más pesa en el cambio)
+// + tendencia reciente -- pedido explícito ("migrar de decir lo que pasa
+// a describir por qué pasa lo que pasa"). Sin comparación contra el año
+// anterior (pedido explícito: "vamos a seguir comparando el mes anterior
+// de ese mismo año").
+function informesTextoSubestacion(subestacion, agregadoMes, agregadoAnterior, ventana, mesClave, porNem, nemonicos){
   const runs = [
-    new docx.TextRun(`Esta subestación presenta un índice de pérdidas totales mensuales de `),
+    new docx.TextRun(`Esta subestación tiene un índice de pérdidas totales mensuales de `),
     new docx.TextRun({text:`${agregadoMes.pct!=null?agregadoMes.pct.toFixed(2):'--'}%`, bold:true}),
-    new docx.TextRun(` equivalente a `),
+    new docx.TextRun(` (`),
     new docx.TextRun({text:`${_informesFKwh(agregadoMes.perdida)} kWh/mes`, bold:true}),
-    new docx.TextRun(`, con una energía de entrada de `),
+    new docx.TextRun(`), con entrada de `),
     new docx.TextRun({text:`${_informesFKwh(agregadoMes.entrada)} kWh`, bold:true}),
-    new docx.TextRun(` y una energía de salida de `),
+    new docx.TextRun(` y salida de `),
     new docx.TextRun({text:`${_informesFKwh(agregadoMes.salida)} kWh`, bold:true}),
   ];
+  let deltaKwhMes = null;
   if(agregadoAnterior && agregadoAnterior.pct!=null && agregadoMes.pct!=null){
     const delta = agregadoMes.pct - agregadoAnterior.pct;
-    runs.push(new docx.TextRun(`, lo que ${delta>=0?'incrementa':'disminuye'} respecto al mes anterior con una variación de `));
+    deltaKwhMes = agregadoMes.perdida - agregadoAnterior.perdida;
+    runs.push(new docx.TextRun(`. Frente al mes anterior `));
+    runs.push(new docx.TextRun({text: delta>=0?'subió':'bajó', bold:true}));
+    runs.push(new docx.TextRun(` `));
     runs.push(new docx.TextRun({text:`${Math.abs(delta).toFixed(2)} pp`, bold:true}));
-    runs.push(new docx.TextRun(` (${_informesSigno(agregadoMes.perdida-agregadoAnterior.perdida)}${_informesFKwh(Math.abs(agregadoMes.perdida-agregadoAnterior.perdida))} kWh/mes).`));
+    runs.push(new docx.TextRun(` (${_informesSigno(deltaKwhMes)}${_informesFKwh(Math.abs(deltaKwhMes))} kWh/mes).`));
   }else{
     runs.push(new docx.TextRun(`.`));
   }
   const parrafos = [_informesParrafo(runs)];
 
-  if(agregadoAnioAnterior && agregadoAnioAnterior.pct!=null && agregadoMes.pct!=null){
-    const deltaAnual = agregadoMes.pct - agregadoAnioAnterior.pct;
-    const runsAnual = [
-      new docx.TextRun(`Frente al mismo mes del año anterior (${labelMesLargo(claveAnioAnterior)}), el índice de pérdidas de la subestación era de `),
-      new docx.TextRun({text:`${agregadoAnioAnterior.pct.toFixed(2)}%`, bold:true}),
-      new docx.TextRun(`, por lo que la variación interanual es de `),
-      new docx.TextRun({text:`${_informesSigno(deltaAnual)}${Math.abs(deltaAnual).toFixed(2)} pp`, bold:true}),
-      new docx.TextRun(` (${deltaAnual>0?'aumenta':'disminuye'}).`)
-    ];
-    if(ventana && ventana.length >= 3){
-      const delta6 = ventana[ventana.length-1].pct - ventana[0].pct;
-      runsAnual.push(new docx.TextRun(` En los últimos ${ventana.length} meses el indicador pasó de `));
-      runsAnual.push(new docx.TextRun({text:`${ventana[0].pct.toFixed(2)}%`, bold:true}));
-      runsAnual.push(new docx.TextRun(` (${labelMesLargo(ventana[0].clave)}) a `));
-      runsAnual.push(new docx.TextRun({text:`${ventana[ventana.length-1].pct.toFixed(2)}%`, bold:true}));
-      runsAnual.push(new docx.TextRun(` (${labelMesLargo(ventana[ventana.length-1].clave)}), una tendencia ${delta6>0?'al alza':delta6<0?'a la baja':'estable'} en el periodo reciente.`));
+  // Por qué -- el alimentador que más pesa en el cambio de la subestación.
+  if(deltaKwhMes != null && Math.abs(deltaKwhMes) > 0 && porNem && nemonicos){
+    const anteriorClave = _informesMesAnteriorClave(mesClave);
+    const contribuciones = nemonicos.map(nem => {
+      const fActual = porNem[nem].find(x=>x.clave===mesClave);
+      const fAnterior = porNem[nem].find(x=>x.clave===anteriorClave);
+      if(!fActual || !fAnterior) return null;
+      return {nem, deltaKwh: fActual.perdida-fAnterior.perdida, leyenda: fActual.leyenda};
+    }).filter(Boolean);
+    if(contribuciones.length){
+      contribuciones.sort((a,b) => Math.abs(b.deltaKwh)-Math.abs(a.deltaKwh));
+      const principal = contribuciones[0];
+      if(Math.abs(principal.deltaKwh) > 0){
+        const runsPorque = [
+          new docx.TextRun(`El circuito `),
+          new docx.TextRun({text: principal.nem, bold:true}),
+          new docx.TextRun(` explica la mayor parte del cambio, con una pérdida que ${principal.deltaKwh>0?'subió':'bajó'} `),
+          new docx.TextRun({text:`${_informesFKwh(Math.abs(principal.deltaKwh))} kWh`, bold:true}),
+          new docx.TextRun(` en el mes`),
+        ];
+        if(principal.leyenda && principal.leyenda !== 'ok'){
+          runsPorque.push(new docx.TextRun(`, clasificado como `));
+          runsPorque.push(new docx.TextRun({text: principal.leyenda, italics:true}));
+        }
+        runsPorque.push(new docx.TextRun(`.`));
+        parrafos.push(_informesParrafo(runsPorque));
+      }
     }
-    parrafos.push(_informesParrafo(runsAnual));
+  }
+
+  if(ventana && ventana.length >= 3){
+    const delta6 = ventana[ventana.length-1].pct - ventana[0].pct;
+    parrafos.push(_informesParrafo([
+      new docx.TextRun(`En los últimos ${ventana.length} meses el indicador pasó de `),
+      new docx.TextRun({text:`${ventana[0].pct.toFixed(2)}%`, bold:true}),
+      new docx.TextRun(` (${labelMesLargo(ventana[0].clave)}) a `),
+      new docx.TextRun({text:`${ventana[ventana.length-1].pct.toFixed(2)}%`, bold:true}),
+      new docx.TextRun(` (${labelMesLargo(ventana[ventana.length-1].clave)}), una tendencia ${delta6>0?'al alza':delta6<0?'a la baja':'estable'}.`),
+    ]));
   }
   return parrafos;
 }
@@ -16821,7 +16800,7 @@ function _informesTablaAlimentadores(filasPorNem, mesClave, campo){
 // subestación específica" (sin zona por encima), se llama con false para
 // que quede como título de primer nivel.
 async function informesSeccionSubestacion(subestacion, mesClave, esSubtitulo=true){
-  const children = [esSubtitulo ? _informesHeading4(`Subestación ${subestacion}`) : _informesHeading1(`Subestación ${subestacion}`)];
+  const children = [esSubtitulo ? _informesHeading3(`Subestación ${subestacion}`) : _informesHeading1(`Subestación ${subestacion}`)];
   const porNem = informesAgruparAlimentadoresSubestacion(subestacion, mesClave);
   const nemonicos = Object.keys(porNem);
   if(!nemonicos.length){
@@ -16839,14 +16818,12 @@ async function informesSeccionSubestacion(subestacion, mesClave, esSubtitulo=tru
   };
   const agregadoMes = sumar(mesClave);
   const agregadoAnterior = sumar(_informesMesAnteriorClave(mesClave));
-  const claveAnioAnterior = _informesMesAnioAnteriorClave(mesClave);
-  const agregadoAnioAnterior = sumar(claveAnioAnterior);
   const clavesDisponibles = [...new Set(nemonicos.flatMap(n => porNem[n].map(f=>f.clave)))].sort();
   const idxMesVentana = clavesDisponibles.indexOf(mesClave);
   const ventana = (idxMesVentana>=0 ? clavesDisponibles.slice(Math.max(0, idxMesVentana-5), idxMesVentana+1) : [])
     .map(c => ({clave:c, ...(sumar(c)||{pct:null})})).filter(f=>f.pct!=null);
   if(agregadoMes){
-    informesTextoSubestacion(subestacion, agregadoMes, agregadoAnterior, agregadoAnioAnterior, ventana, mesClave, claveAnioAnterior)
+    informesTextoSubestacion(subestacion, agregadoMes, agregadoAnterior, ventana, mesClave, porNem, nemonicos)
       .forEach(p => children.push(p));
   }
 
@@ -16968,6 +16945,27 @@ function informesConclusionesAlimentadores(mesClave){
   return {candidatos, asociacion, asentamientos};
 }
 
+// Cuadro de alimentadores candidatos a intervención -- pedido explícito
+// ("es mejor poner un cuadro con los datos, poner solo texto es más
+// engorroso").
+function _informesTablaCandidatos(candidatos){
+  const fk = _informesFKwh;
+  const celdaEncabezado = texto => new docx.TableCell({shading:{fill:'D9D9D9'}, borders:{bottom:INFORMES_BORDE},
+    children:[new docx.Paragraph({alignment:docx.AlignmentType.CENTER, children:[new docx.TextRun({text:texto, bold:true, size:16})]})]});
+  const celda = (texto, negrita) => new docx.TableCell({children:[new docx.Paragraph({alignment:docx.AlignmentType.CENTER, children:[new docx.TextRun({text:texto, bold:!!negrita})]})]});
+  const encabezado = new docx.TableRow({tableHeader:true, cantSplit:true, children:[
+    celdaEncabezado('Alimentador'), celdaEncabezado('Subestación'), celdaEncabezado('Zona'),
+    celdaEncabezado('% Actual'), celdaEncabezado('% Referencia Zona'), celdaEncabezado('Pérdida Técnica'), celdaEncabezado('Recuperación Estimada'),
+  ]});
+  const filas = candidatos.map(c => new docx.TableRow({cantSplit:true, children:[
+    new docx.TableCell({children:[new docx.Paragraph(c.nombre)]}),
+    celda(c.subestacion), celda(c.zona),
+    celda(`${c.pct.toFixed(2)}%`), celda(`${c.objetivo.toFixed(2)}%`),
+    celda(`${(c.pct-c.objetivo).toFixed(2)} pp`), celda(`${fk(c.recuperacionKwh)} kWh/mes`, true),
+  ]}));
+  return new docx.Table({width:{size:100, type:docx.WidthType.PERCENTAGE}, borders:INFORMES_TABLA_BORDES, rows:[encabezado, ...filas]});
+}
+
 function _informesSeccionConclusionesAlimentadores(mesClave){
   const analisis = informesConclusionesAlimentadores(mesClave);
   if(!analisis) return [];
@@ -16976,29 +16974,10 @@ function _informesSeccionConclusionesAlimentadores(mesClave){
 
   if(analisis.candidatos.length){
     children.push(_informesHeading2('Alimentadores prioritarios para intervención'));
-    // Explica de dónde sale la "pérdida técnica" antes de listar los
-    // alimentadores -- pedido explícito ("sería bueno decir cuándo es la
-    // pérdida técnica, ya que de ahí sale la recuperación estimada").
-    children.push(_informesParrafo([
-      new docx.TextRun(`Se identifican a continuación los alimentadores sin causal de pérdida ya identificada (clasificación "ok") cuyo porcentaje de pérdida de ${labelMesLargo(mesClave)} supera el promedio de los demás alimentadores "ok" de su misma zona -- ese promedio zonal se toma como el nivel normal/esperado sin causal conocida. `),
-      new docx.TextRun({text:`La pérdida técnica de cada alimentador se define como el excedente entre su % de pérdida actual y ese promedio zonal de referencia`, bold:true}),
-      new docx.TextRun(` (es decir, la parte de la pérdida que NO se explica por el nivel normal de la zona); sobre ese excedente, convertido a kWh, se calcula la recuperación estimada. Es una aproximación estadística y no reemplaza un estudio técnico puntual del circuito.`),
-    ]));
-    analisis.candidatos.forEach(c => {
-      const perdidaTecnicaPct = c.pct - c.objetivo;
-      children.push(new docx.Paragraph({bullet:{level:0}, children:[
-        new docx.TextRun({text:`${c.nombre}`, bold:true}),
-        new docx.TextRun(` (Subestación ${c.subestacion}, Zona ${c.zona}): pérdida actual de `),
-        new docx.TextRun({text:`${c.pct.toFixed(2)}%`, bold:true}),
-        new docx.TextRun(` (${fk(c.perdida)} kWh/mes), frente al promedio zonal de `),
-        new docx.TextRun({text:`${c.objetivo.toFixed(2)}%`, bold:true}),
-        new docx.TextRun(` -- pérdida técnica estimada de `),
-        new docx.TextRun({text:`${perdidaTecnicaPct.toFixed(2)} pp`, bold:true}),
-        new docx.TextRun(`, equivalente a una recuperación estimada de `),
-        new docx.TextRun({text:`${fk(c.recuperacionKwh)} kWh/mes`, bold:true}),
-        new docx.TextRun(` si se lleva al nivel de referencia.`),
-      ]}));
-    });
+    // Cuadro en vez de texto -- pedido explícito ("es mejor poner un
+    // cuadro con los datos, poner solo texto es más engorroso").
+    children.push(_informesParrafo(`Pérdida técnica = excedente del % de pérdida del alimentador sobre el promedio de los alimentadores "ok" de su zona. Ese excedente, en kWh, es la recuperación estimada.`));
+    children.push(_informesTablaCandidatos(analisis.candidatos));
     children.push(new docx.Paragraph({text:''}));
   }
 
@@ -17233,42 +17212,54 @@ async function informesFiguraMapaZonas(mesClave){
   return {bytes: _informesDataUrlAUint8(dataUrl), width: ancho, height: alto, tipo:'jpg'};
 }
 
-// Análisis más completo para el Total N2-1 (MoM + YoY + tendencia de los
-// últimos meses + comparación entre zonas) -- pedido explícito ("el
-// párrafo está muy simple, analiza más").
+// Análisis del Total N2-1: variación mensual + POR QUÉ (qué zona explica
+// más el cambio) + tendencia reciente -- pedido explícito ("el informe
+// debe migrar de decir lo que pasa a describir por qué pasa lo que
+// pasa"). Sin comparación contra el año anterior (pedido explícito:
+// "vamos a seguir comparando el mes anterior de ese mismo año").
 function informesTextoN21Total(serie, idx){
   const actual = serie[idx], anterior = idx>0 ? serie[idx-1] : null;
   const parrafos = [informesTextoN21('El total N2-1 (todas las zonas)', actual, anterior)];
 
-  // Año anterior (mismo mes)
-  const [anioAct, mesAct] = actual.clave.split('-').map(Number);
-  const claveAnioAnt = `${anioAct-1}-${String(mesAct).padStart(2,'0')}`;
-  const anioAnt = serie.find(f => f.clave === claveAnioAnt);
-  const runsAnual = [];
-  if(anioAnt && anioAnt.pct != null && actual.pct != null){
-    const deltaAnual = actual.pct - anioAnt.pct;
-    runsAnual.push(new docx.TextRun(`Frente al mismo mes del año anterior (${labelMesLargo(claveAnioAnt)}), el indicador N2-1 total era de `));
-    runsAnual.push(new docx.TextRun({text:`${anioAnt.pct.toFixed(2)}%`, bold:true}));
-    runsAnual.push(new docx.TextRun(`, por lo que la variación anual es de `));
-    runsAnual.push(new docx.TextRun({text:`${_informesSigno(deltaAnual)}${Math.abs(deltaAnual).toFixed(2)} pp`, bold:true}));
-    runsAnual.push(new docx.TextRun(` (${deltaAnual>0?'aumenta':'disminuye'}).`));
+  // Por qué -- la zona que más pesa en el cambio del total frente al mes anterior.
+  if(anterior){
+    const contribuciones = informesZonasDisponibles().map(z => {
+      const s = alimN21AgregarMensual(new Set([z]));
+      const fActual = s.find(x => x.clave === actual.clave);
+      const fAnterior = s.find(x => x.clave === anterior.clave);
+      if(!fActual || !fAnterior || fActual.perdida==null || fAnterior.perdida==null) return null;
+      return {zona: z, deltaKwh: fActual.perdida - fAnterior.perdida};
+    }).filter(Boolean);
+    if(contribuciones.length){
+      contribuciones.sort((a,b) => Math.abs(b.deltaKwh) - Math.abs(a.deltaKwh));
+      const principal = contribuciones[0];
+      if(Math.abs(principal.deltaKwh) > 0){
+        parrafos.push(_informesParrafo([
+          new docx.TextRun(`El cambio lo explica principalmente la zona `),
+          new docx.TextRun({text: principal.zona, bold:true}),
+          new docx.TextRun(`, cuya pérdida ${principal.deltaKwh>0?'subió':'bajó'} `),
+          new docx.TextRun({text:`${_informesFKwh(Math.abs(principal.deltaKwh))} kWh`, bold:true}),
+          new docx.TextRun(` frente al mes anterior.`),
+        ]));
+      }
+    }
   }
 
-  // Tendencia de los últimos meses (pendiente simple sobre la ventana visible)
+  // Tendencia de los últimos meses (pendiente simple sobre la ventana visible).
   const ventana = serie.slice(Math.max(0, idx-5), idx+1).filter(f=>f.pct!=null);
   if(ventana.length >= 3){
     const delta6 = ventana[ventana.length-1].pct - ventana[0].pct;
-    runsAnual.push(new docx.TextRun(` En los últimos ${ventana.length} meses el indicador pasó de `));
-    runsAnual.push(new docx.TextRun({text:`${ventana[0].pct.toFixed(2)}%`, bold:true}));
-    runsAnual.push(new docx.TextRun(` (${labelMesLargo(ventana[0].clave)}) a `));
-    runsAnual.push(new docx.TextRun({text:`${ventana[ventana.length-1].pct.toFixed(2)}%`, bold:true}));
-    runsAnual.push(new docx.TextRun(` (${labelMesLargo(ventana[ventana.length-1].clave)}), una tendencia ${delta6>0?'al alza':delta6<0?'a la baja':'estable'} en el periodo reciente.`));
+    parrafos.push(_informesParrafo([
+      new docx.TextRun(`En los últimos ${ventana.length} meses el indicador pasó de `),
+      new docx.TextRun({text:`${ventana[0].pct.toFixed(2)}%`, bold:true}),
+      new docx.TextRun(` (${labelMesLargo(ventana[0].clave)}) a `),
+      new docx.TextRun({text:`${ventana[ventana.length-1].pct.toFixed(2)}%`, bold:true}),
+      new docx.TextRun(` (${labelMesLargo(ventana[ventana.length-1].clave)}), una tendencia ${delta6>0?'al alza':delta6<0?'a la baja':'estable'}.`),
+    ]));
   }
-  if(runsAnual.length) parrafos.push(_informesParrafo(runsAnual));
 
   // Comparación entre zonas del mismo mes -- cuál pesa más/menos.
-  const zonas = informesZonasDisponibles();
-  const porZona = zonas.map(z => {
+  const porZona = informesZonasDisponibles().map(z => {
     const s = alimN21AgregarMensual(new Set([z]));
     const f = s.find(x => x.clave === actual.clave);
     return f && f.pct!=null ? {zona:z, pct:f.pct, perdida:f.perdida} : null;
@@ -17277,22 +17268,22 @@ function informesTextoN21Total(serie, idx){
     porZona.sort((a,b)=> b.pct-a.pct);
     const mayor = porZona[0], menor = porZona[porZona.length-1];
     parrafos.push(_informesParrafo([
-      new docx.TextRun(`Entre las zonas evaluadas, `),
+      new docx.TextRun(`La zona `),
       new docx.TextRun({text:mayor.zona, bold:true}),
-      new docx.TextRun(` presenta el mayor indicador de pérdidas (`),
+      new docx.TextRun(` tiene el indicador más alto (`),
       new docx.TextRun({text:`${mayor.pct.toFixed(2)}%`, bold:true}),
-      new docx.TextRun(`), mientras que `),
+      new docx.TextRun(`); `),
       new docx.TextRun({text:menor.zona, bold:true}),
-      new docx.TextRun(` registra el menor (`),
+      new docx.TextRun(` el más bajo (`),
       new docx.TextRun({text:`${menor.pct.toFixed(2)}%`, bold:true}),
-      new docx.TextRun(`), para el periodo de evaluación de ${labelMesLargo(actual.clave)}.`),
+      new docx.TextRun(`).`),
     ]));
   }
   return parrafos;
 }
 
 async function informesSeccionIndicadorN21Total(mesClave){
-  const children = [_informesHeading2('Indicador Total N2-1')];
+  const children = [_informesHeading1('Indicador Total N2-1')];
   const serie = alimN21AgregarMensual(new Set());
   const idx = serie.findIndex(f => f.clave === mesClave);
   if(idx < 0){
@@ -17308,8 +17299,50 @@ async function informesSeccionIndicadorN21Total(mesClave){
   return children;
 }
 
+// Solo se listan las subestaciones "destacadas" de cada zona -- pedido
+// explícito ("solo se debe colocar en el informe aquellas S/E donde su
+// pérdida gestionable/km sea la más grande y también de aquellas que
+// hayan tenido un crecimiento destacable frente al mes anterior, la
+// variación es la clave"). Umbral de "destacable": +1 pp o más frente al
+// mes anterior.
+const INFORMES_UMBRAL_CRECIMIENTO_PP = 1;
+function informesSubestacionesDestacadas(zona, mesClave){
+  const todas = [...new Set(ALIM_FILAS.filter(f=>f.zona===zona).map(f=>f.subestacion).filter(Boolean))].filter(n=>!_informesEsCompacto(n));
+  const anteriorClave = _informesMesAnteriorClave(mesClave);
+  const [anio, mesNum] = mesClave.split('-').map(Number);
+  const resumen = todas.map(sub => {
+    const porNem = informesAgruparAlimentadoresSubestacion(sub, mesClave);
+    const nemonicos = Object.keys(porNem);
+    if(!nemonicos.length) return null;
+    const sumar = clave => {
+      let entrada=0, perdida=0, gestionable=0, tiene=false;
+      nemonicos.forEach(nem => {
+        const f = porNem[nem].find(x=>x.clave===clave);
+        if(f){ entrada+=f.entrada; perdida+=f.perdida; gestionable+=f.gestionable||0; tiene=true; }
+      });
+      return tiene ? {entrada, perdida, gestionable, pct: entrada?perdida/entrada*100:null} : null;
+    };
+    const actual = sumar(mesClave);
+    if(!actual) return null;
+    const anterior = sumar(anteriorClave);
+    const longitud = ALIM_FILAS
+      .filter(f => f.subestacion===sub && f.anio===anio && f.mes===mesNum && !_informesEsCompacto(f.nombre_spard) && !_informesEsCompacto(f.nemonico))
+      .reduce((s,f) => s+(f.longitud_total||0), 0);
+    const gestionablePorKm = longitud>0 ? actual.gestionable/longitud : null;
+    const deltaPct = (anterior && anterior.pct!=null && actual.pct!=null) ? actual.pct-anterior.pct : null;
+    return {subestacion: sub, gestionablePorKm, deltaPct};
+  }).filter(Boolean);
+  if(!resumen.length) return [];
+
+  const conMayorGestionablePorKm = resumen.reduce((max,r) => (r.gestionablePorKm!=null && (!max || r.gestionablePorKm>max.gestionablePorKm)) ? r : max, null);
+  const destacadas = new Set();
+  if(conMayorGestionablePorKm) destacadas.add(conMayorGestionablePorKm.subestacion);
+  resumen.forEach(r => { if(r.deltaPct!=null && r.deltaPct >= INFORMES_UMBRAL_CRECIMIENTO_PP) destacadas.add(r.subestacion); });
+  return todas.filter(s => destacadas.has(s));
+}
+
 async function informesSeccionZonaN21(zona, mesClave){
-  const children = [_informesHeading3(`Indicador N2-1 ZONA ${zona}`)];
+  const children = [_informesHeading2(`Indicador N2-1 ZONA ${zona}`)];
   const serie = alimN21AgregarMensual(new Set([zona]));
   const idx = serie.findIndex(f => f.clave === mesClave);
   if(idx >= 0){
@@ -17321,7 +17354,7 @@ async function informesSeccionZonaN21(zona, mesClave){
     const figZona = await informesFiguraN21(serie, idx, `Zona ${zona}`);
     if(figZona){ children.push(_informesParrafoImagen(figZona)); children.push(_informesCaption('Figura', `Indicador N2-1 Mensual -- Zona ${zona}`)); }
   }
-  const subestaciones = [...new Set(ALIM_FILAS.filter(f=>f.zona===zona).map(f=>f.subestacion).filter(Boolean))].filter(n=>!_informesEsCompacto(n)).sort();
+  const subestaciones = informesSubestacionesDestacadas(zona, mesClave);
   for(const sub of subestaciones){
     children.push(...await informesSeccionSubestacion(sub, mesClave));
   }
@@ -17533,11 +17566,9 @@ async function informesGenerar(){
     }else{
       if(sel.introduccion) children.push(...informesSeccionIntroduccion(mesPortada, _informesAlcanceTexto(sel)));
       if(sel.ipReg){
-        children.push(...await informesSeccionMetodologiaIPT());
         children.push(...await informesSeccionIndicadorIPT(mesIpReg));
       }
       if(sel.n21){
-        children.push(...informesSeccionMetodologiaN21());
         children.push(...await informesSeccionIndicadorN21Total(mesN21));
         for(const zona of sel.zonas){ children.push(...await informesSeccionZonaN21(zona, mesN21)); }
       }
@@ -17900,16 +17931,7 @@ async function _informesPdfCuerpo(doc, sel, mesIpReg, mesN21, toc){
   }
 
   if(sel.ipReg){
-    y = _informesPdfHeading(doc, contador, 0, 'Metodología de Calculo Índice de Pérdidas Totales', y, toc);
-    y = _informesPdfParrafo(doc, 'La metodología establecida en la Resolución CREG 015/2018 permite determinar el indicador de pérdidas de energía mediante la relación entre las pérdidas totales de energía y la energía de entrada al sistema de distribución, diferenciando el análisis de acuerdo con el nivel de tensión. Para su cálculo se parte de un balance energético en el que se determina la diferencia entre la energía que ingresa al sistema y la energía entregada o registrada a los usuarios, considerando los ajustes y variables definidos en la metodología regulatoria. El resultado se expresa como un porcentaje de pérdidas y permite evaluar el desempeño del sistema frente a los niveles de referencia establecidos por la regulación.', y);
-    try{
-      const fPt = await _informesCargarAssetImagen('formula_pt.png');
-      y = await _informesPdfImagen(doc, fPt ? {...fPt, tipo:'png'} : null, y, null, 0.45);
-      const fIpt = await _informesCargarAssetImagen('formula_ipt.png');
-      y = await _informesPdfImagen(doc, fIpt ? {...fIpt, tipo:'png'} : null, y, null, 0.5);
-    }catch(e){ /* si no cargan las fórmulas, el resto del informe sigue igual */ }
-
-    y = _informesPdfHeading(doc, contador, 1, 'Indicador de Índice de Pérdidas Totales (CREG 015/2018)', y, toc);
+    y = _informesPdfHeading(doc, contador, 0, 'Indicador de Índice de Pérdidas Totales (CREG 015/2018)', y, toc);
     const parrafosIpt = _informesTextosPlanos(_informesConTextoPlano(() => informesTextoIpt(mesIpReg)));
     for(const p of parrafosIpt) y = _informesPdfParrafo(doc, p, y);
     const figAnual = await informesFiguraIptAnual(mesIpReg);
@@ -17927,11 +17949,7 @@ async function _informesPdfCuerpo(doc, sel, mesIpReg, mesN21, toc){
   }
 
   if(sel.n21){
-    y = _informesPdfHeading(doc, contador, 0, 'Metodología calculo indicador N2-1', y, toc);
-    y = _informesPdfParrafo(doc, 'La metodología del indicador N2-1 se basa en la construcción de balances energéticos para los niveles de tensión 2 y 1, partiendo de la información de alimentadores, subestaciones y zonas. Para garantizar la confiabilidad del balance, inicialmente se realiza la depuración de las lecturas y el análisis de las maniobras y suplencias, identificando los traslados temporales de carga que no se encuentran actualizados en el SPARD. Posteriormente, se consolida la energía de entrada de los alimentadores mediante el ciclo predominante, junto con la información de ventas, AGPE y demás variables necesarias para determinar las pérdidas de cada circuito.', y);
-    y = _informesPdfParrafo(doc, 'Una vez consolidada la información, los alimentadores se agrupan de acuerdo con su zona y subestación, permitiendo obtener balances energéticos a diferentes niveles de agregación. Para el balance por zonas, la energía de ventas N21 se ajusta excluyendo los auxiliares, con el fin de mantener consistencia entre las entradas y salidas consideradas. Finalmente, las pérdidas obtenidas en cada alimentador se consolidan para determinar el comportamiento de las subestaciones y zonas, permitiendo obtener el indicador N2-1 y facilitar el seguimiento de las pérdidas totales de los niveles de tensión 1 y 2.', y);
-
-    y = _informesPdfHeading(doc, contador, 1, 'Indicador Total N2-1', y, toc);
+    y = _informesPdfHeading(doc, contador, 0, 'Indicador Total N2-1', y, toc);
     const serieTotal = alimN21AgregarMensual(new Set());
     const idxTotal = serieTotal.findIndex(f=>f.clave===mesN21);
     if(idxTotal>=0){
@@ -17946,7 +17964,7 @@ async function _informesPdfCuerpo(doc, sel, mesIpReg, mesN21, toc){
     }
 
     for(const zona of sel.zonas){
-      y = _informesPdfHeading(doc, contador, 2, `Indicador N2-1 ZONA ${zona}`, y, toc);
+      y = _informesPdfHeading(doc, contador, 1, `Indicador N2-1 ZONA ${zona}`, y, toc);
       const serieZona = alimN21AgregarMensual(new Set([zona]));
       const idxZona = serieZona.findIndex(f=>f.clave===mesN21);
       if(idxZona>=0){
@@ -17956,9 +17974,9 @@ async function _informesPdfCuerpo(doc, sel, mesIpReg, mesN21, toc){
         const figZona = await informesFiguraN21(serieZona, idxZona, `Zona ${zona}`);
         y = await _informesPdfImagen(doc, figZona, y, `Indicador N2-1 Mensual -- Zona ${zona}`);
       }
-      const subestaciones = [...new Set(ALIM_FILAS.filter(f=>f.zona===zona).map(f=>f.subestacion).filter(Boolean))].filter(n=>!_informesEsCompacto(n)).sort();
+      const subestaciones = informesSubestacionesDestacadas(zona, mesN21);
       for(const sub of subestaciones){
-        y = await _informesPdfSeccionSubestacion(doc, contador, 3, sub, mesN21, y, toc);
+        y = await _informesPdfSeccionSubestacion(doc, contador, 2, sub, mesN21, y, toc);
       }
     }
   }
@@ -18012,11 +18030,20 @@ async function _informesPdfCuerpo(doc, sel, mesIpReg, mesN21, toc){
       const fk = _informesFKwh;
       if(analisis.candidatos.length){
         y = _informesPdfHeading(doc, contador, 1, 'Alimentadores prioritarios para intervención', y, toc);
-        y = _informesPdfParrafo(doc, `Se identifican a continuación los alimentadores sin causal de pérdida ya identificada (clasificación "ok") cuyo porcentaje de pérdida de ${labelMesLargo(mesN21)} supera el promedio de los demás alimentadores "ok" de su misma zona -- ese promedio zonal se toma como el nivel normal/esperado sin causal conocida. La pérdida técnica de cada alimentador se define como el excedente entre su % de pérdida actual y ese promedio zonal de referencia (es decir, la parte de la pérdida que NO se explica por el nivel normal de la zona); sobre ese excedente, convertido a kWh, se calcula la recuperación estimada. Es una aproximación estadística y no reemplaza un estudio técnico puntual del circuito.`, y);
-        for(const c of analisis.candidatos){
-          const perdidaTecnicaPct = c.pct - c.objetivo;
-          y = _informesPdfParrafo(doc, `•  ${c.nombre} (Subestación ${c.subestacion}, Zona ${c.zona}): pérdida actual de ${c.pct.toFixed(2)}% (${fk(c.perdida)} kWh/mes), frente al promedio zonal de ${c.objetivo.toFixed(2)}% -- pérdida técnica estimada de ${perdidaTecnicaPct.toFixed(2)} pp, equivalente a una recuperación estimada de ${fk(c.recuperacionKwh)} kWh/mes si se lleva al nivel de referencia.`, y, {align:'left'});
-        }
+        y = _informesPdfParrafo(doc, `Pérdida técnica = excedente del % de pérdida del alimentador sobre el promedio de los alimentadores "ok" de su zona. Ese excedente, en kWh, es la recuperación estimada.`, y);
+        y = _informesPdfAsegurarEspacio(doc, y, 40);
+        doc.autoTable({
+          startY: y,
+          head: [['Alimentador','Subestación','Zona','% Actual','% Referencia Zona','Pérdida Técnica','Recuperación Estimada']],
+          body: analisis.candidatos.map(c => [c.nombre, c.subestacion, c.zona, `${c.pct.toFixed(2)}%`, `${c.objetivo.toFixed(2)}%`, `${(c.pct-c.objetivo).toFixed(2)} pp`, `${fk(c.recuperacionKwh)} kWh/mes`]),
+          margin:{left:INFORMES_PDF_MARGEN, right:INFORMES_PDF_MARGEN},
+          theme:'plain',
+          styles:{fontSize:7.5, cellPadding:3, lineColor:[210,210,210], lineWidth:{bottom:0.5}, textColor:30},
+          headStyles:{fillColor:[217,217,217], textColor:20, fontStyle:'bold', lineWidth:{bottom:1}, lineColor:[0,0,0]},
+          columnStyles:{0:{halign:'left'}},
+          bodyStyles:{halign:'center'},
+        });
+        y = doc.lastAutoTable.finalY + 14;
       }
       if(analisis.asociacion.length){
         y = _informesPdfHeading(doc, contador, 1, 'Alimentadores con posibles errores de asociación', y, toc);
@@ -18050,15 +18077,13 @@ async function _informesPdfSeccionSubestacion(doc, contador, nivel, subestacion,
   };
   const agregadoMes = sumar(mesClave);
   const agregadoAnterior = sumar(_informesMesAnteriorClave(mesClave));
-  const claveAnioAnterior = _informesMesAnioAnteriorClave(mesClave);
-  const agregadoAnioAnterior = sumar(claveAnioAnterior);
   const clavesDisponibles = [...new Set(nemonicos.flatMap(n => porNem[n].map(f=>f.clave)))].sort();
   const idxMesVentana = clavesDisponibles.indexOf(mesClave);
   const ventana = (idxMesVentana>=0 ? clavesDisponibles.slice(Math.max(0, idxMesVentana-5), idxMesVentana+1) : [])
     .map(c => ({clave:c, ...(sumar(c)||{pct:null})})).filter(f=>f.pct!=null);
   if(agregadoMes){
     const parrafosSub = _informesTextosPlanos(_informesConTextoPlano(() =>
-      informesTextoSubestacion(subestacion, agregadoMes, agregadoAnterior, agregadoAnioAnterior, ventana, mesClave, claveAnioAnterior)));
+      informesTextoSubestacion(subestacion, agregadoMes, agregadoAnterior, ventana, mesClave, porNem, nemonicos)));
     for(const p of parrafosSub) y = _informesPdfParrafo(doc, p, y);
   }
   const figSub = await informesFiguraSubestacion(porNem, nemonicos, mesClave);
