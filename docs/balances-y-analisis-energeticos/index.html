@@ -16299,10 +16299,18 @@ function informesSeccionPortada(mesClave){
     children.push(new docx.Paragraph({alignment: docx.AlignmentType.CENTER, spacing:{after:400},
       children:[new docx.ImageRun({data: INFORMES_LOGO_BYTES, transformation:{width:anchoLogo, height:altoLogo}, type:'png'})]}));
   }
-  children.push(new docx.Paragraph({alignment: docx.AlignmentType.CENTER, spacing:{after:150},
-    children:[new docx.TextRun({text:'INFORME MENSUAL BALANCES Y ANALISIS ENERGETICOS', bold:true, size:24})]}));
+  // Título y mes-año EN EL MISMO párrafo (con un salto de línea manual,
+  // no dos párrafos separados) -- pedido explícito ("el texto junio o
+  // julio que sea justamente debajo del título"): con verticalAlign:BOTH
+  // (ver informesGenerar) Word reparte el espacio EXTRA por igual entre
+  // TODOS los párrafos de la sección, así que dos párrafos separados se
+  // terminaban separando tanto como cualquier otro par -- juntándolos en
+  // un solo párrafo, esa separación no aplica entre ellos.
   children.push(new docx.Paragraph({alignment: docx.AlignmentType.CENTER, spacing:{after:400},
-    children:[new docx.TextRun({text: labelMesLargo(mesClave).toUpperCase(), bold:true, size:24})]}));
+    children:[
+      new docx.TextRun({text:'INFORME MENSUAL BALANCES Y ANALISIS ENERGETICOS', bold:true, size:24}),
+      new docx.TextRun({text: labelMesLargo(mesClave).toUpperCase(), bold:true, size:24, break:1}),
+    ]}));
   children.push(new docx.Paragraph({alignment: docx.AlignmentType.CENTER, spacing:{after:100}, text:'Presentado por:'}));
   children.push(new docx.Paragraph({alignment: docx.AlignmentType.CENTER, spacing:{after:400}, text:'División Control de Pérdidas'}));
   children.push(new docx.Paragraph({alignment: docx.AlignmentType.CENTER, spacing:{after:400},
@@ -16668,6 +16676,10 @@ function informesTextoSubestacion(subestacion, agregadoMes, agregadoAnterior, ag
     new docx.TextRun({text:`${agregadoMes.pct!=null?agregadoMes.pct.toFixed(2):'--'}%`, bold:true}),
     new docx.TextRun(` equivalente a `),
     new docx.TextRun({text:`${_informesFKwh(agregadoMes.perdida)} kWh/mes`, bold:true}),
+    new docx.TextRun(`, con una energía de entrada de `),
+    new docx.TextRun({text:`${_informesFKwh(agregadoMes.entrada)} kWh`, bold:true}),
+    new docx.TextRun(` y una energía de salida de `),
+    new docx.TextRun({text:`${_informesFKwh(agregadoMes.salida)} kWh`, bold:true}),
   ];
   if(agregadoAnterior && agregadoAnterior.pct!=null && agregadoMes.pct!=null){
     const delta = agregadoMes.pct - agregadoAnterior.pct;
@@ -16800,13 +16812,16 @@ async function informesSeccionSubestacion(subestacion, mesClave, esSubtitulo=tru
   const fig = await informesFiguraSubestacion(porNem, nemonicos, mesClave);
   if(fig){ children.push(_informesParrafoImagen(fig)); children.push(_informesCaption('Figura', `Indicador de pérdidas Mensual S/E ${subestacion}`)); }
 
+  // Sin la nota "Elaboración propia..." debajo de las tablas -- pedido
+  // explícito ("quitar esa nota"), se quita en las dos tablas hermanas
+  // por consistencia (misma nota, solo cambiaba una frase).
   children.push(_informesCaption('Tabla', `Pérdidas totales Subestación ${subestacion}`));
   children.push(_informesTablaAlimentadores(porNem, mesClave, 'perdida'));
-  children.push(new docx.Paragraph({children:[new docx.TextRun({text:'Nota: Elaboración propia, energía de pérdida calculada corresponde a la diferencia de la registrada en la cabecera del alimentador y la venta de energía correspondiente a cada circuito teniendo en cuenta las suplencias.', italics:true, size:18})], spacing:{before:100,after:200}}));
+  children.push(new docx.Paragraph({text:''}));
 
   children.push(_informesCaption('Tabla', `Pérdidas totales gestionables Subestación ${subestacion}`));
   children.push(_informesTablaAlimentadores(porNem, mesClave, 'gestionable'));
-  children.push(new docx.Paragraph({children:[new docx.TextRun({text:'Nota: Elaboración propia, energía de pérdida calculada corresponde a la diferencia de la registrada en la cabecera del alimentador y la venta de energía correspondiente a cada circuito teniendo en cuenta las suplencias y adicionalmente la resta de pérdidas técnicas por alimentador mediante flujos de potencia.', italics:true, size:18})], spacing:{before:100,after:200}}));
+  children.push(new docx.Paragraph({text:''}));
 
   // Tabla del % de pérdida por alimentador -- pedido explícito ("quiero
   // otra tabla por subestación donde se muestre el porcentaje de pérdida también").
@@ -16976,12 +16991,19 @@ function _informesSeccionConclusionesAlimentadores(mesClave){
   return children;
 }
 
+// Incluye Entrada/Salida además de la pérdida -- pedido explícito ("en
+// los análisis que se realizan en las zonas y subestación quiero que
+// también diga la energía de entrada y salida").
 function informesTextoN21(etiqueta, actual, anterior){
   const runs = [
     new docx.TextRun(`${etiqueta} tiene un indicador de pérdidas para el periodo de evaluación de ${labelMesLargo(actual.clave)} de `),
     new docx.TextRun({text:`${actual.pct!=null?actual.pct.toFixed(2):'--'}%`, bold:true}),
     new docx.TextRun(`, lo que equivale a un total de pérdidas mensuales de `),
     new docx.TextRun({text:`${_informesFKwh(actual.perdida)} kWh/mes`, bold:true}),
+    new docx.TextRun(`, con una energía de entrada de `),
+    new docx.TextRun({text:`${_informesFKwh(actual.entrada)} kWh`, bold:true}),
+    new docx.TextRun(` y una energía de salida de `),
+    new docx.TextRun({text:`${_informesFKwh(actual.salida)} kWh`, bold:true}),
   ];
   if(anterior && anterior.pct!=null && actual.pct!=null){
     const delta = actual.pct - anterior.pct;
@@ -17251,6 +17273,11 @@ async function informesSeccionZonaN21(zona, mesClave){
   if(idx >= 0){
     const actual = serie[idx], anterior = idx>0 ? serie[idx-1] : null;
     children.push(informesTextoN21(`La zona ${zona}`, actual, anterior));
+    // Gráfica del indicador mensual histórico DE LA ZONA -- pedido
+    // explícito ("no está presentando la gráfica del indicador mensual
+    // histórico de la zona"); antes solo el Total N2-1 tenía figura.
+    const figZona = await informesFiguraN21(serie, idx, `Zona ${zona}`);
+    if(figZona){ children.push(_informesParrafoImagen(figZona)); children.push(_informesCaption('Figura', `Indicador N2-1 Mensual -- Zona ${zona}`)); }
   }
   const subestaciones = [...new Set(ALIM_FILAS.filter(f=>f.zona===zona).map(f=>f.subestacion).filter(Boolean))].filter(n=>!_informesEsCompacto(n)).sort();
   for(const sub of subestaciones){
@@ -17447,9 +17474,11 @@ async function informesGenerar(){
   }
   btn.disabled = true; msg.textContent = 'Generando informe…';
   try{
-    // El mes de portada es el N2-1 (el "mes del periodo" que se percibe
-    // como el real) salvo cuando el informe no trae N2-1.
-    const mesPortada = (sel.n21 || sel.subestacion ? mesN21 : mesIpReg) || mesN21 || mesIpReg;
+    // El mes de portada es el del indicador de pérdidas (IP_Reg) --
+    // pedido explícito ("el texto junio o julio... ese se tomaría es con
+    // la fecha del indicador de pérdidas"), con el mes N2-1 como
+    // respaldo si el informe no trae IP_Reg.
+    const mesPortada = mesIpReg || mesN21;
     const childrenPortada = informesSeccionPortada(mesPortada);
     const children = [];
     children.push(..._informesSeccionTOC());
