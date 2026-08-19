@@ -15948,6 +15948,7 @@ function demoGet(path){
    acá (ver notas de la sesión): arma un .docx real, python-docx lo abre
    sin problemas.
    ========================================================================== */
+const INFORMES_NUMERACION_REF = 'informes-numeracion';
 let INFORMES_ALCANCE = 'completo';       // 'completo' | 'ip_reg' | 'n21' | 'subestacion'
 let INFORMES_LOGO_BYTES = null;          // Uint8Array del logo elegido (o null -- portada sin logo)
 let INFORMES_LOGO_DIM = null;            // {width,height} en px reales de la imagen elegida
@@ -16080,7 +16081,7 @@ async function _informesGraficoAImagen({labels, datasets, scales, titulo, ancho=
       layout:{padding:{top: titulo?26:16, right:16, bottom:8, left:8}},
       plugins:{
         legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:11}}},
-        title: titulo ? {display:true, text:titulo.toUpperCase(), align:'end', font:{size:14, weight:'700'}, color:'#1a2a4a', padding:{bottom:14}} : {display:false},
+        title: titulo ? {display:true, text:titulo.toUpperCase(), align:'center', font:{size:14, weight:'700'}, color:'#1a2a4a', padding:{bottom:14}} : {display:false},
       },
       scales: scales || {},
     },
@@ -16116,32 +16117,61 @@ function _informesCaption(tipo, texto){
     ]});
 }
 
+// Título/subtítulo NUMERADOS automáticamente (campo de Word, lista
+// multinivel ligada a Heading 1/2 -- ver INFORMES_NUMERACION_REF en
+// informesGenerar) -- pedido explícito ("en la plantilla los títulos y
+// subtítulos están enumerados... yo estoy colocando títulos, subtítulos y
+// subsubtítulos"). Heading 1 = título (zonas, secciones principales);
+// Heading 2 = subtítulo (subestaciones, dentro de su zona).
 function _informesHeading1(texto){
-  return new docx.Paragraph({heading: docx.HeadingLevel.HEADING_1, text:texto});
+  return new docx.Paragraph({heading: docx.HeadingLevel.HEADING_1,
+    numbering:{reference: INFORMES_NUMERACION_REF, level:0}, text:texto});
+}
+function _informesHeading2(texto){
+  return new docx.Paragraph({heading: docx.HeadingLevel.HEADING_2,
+    numbering:{reference: INFORMES_NUMERACION_REF, level:1}, text:texto});
+}
+// Párrafo de cuerpo NORMAL -- justificado + sangría de primera línea
+// (pedido explícito: "no tiene la sangría los párrafos, no está
+// justificado"). Se define acá en vez de confiar en el estilo default
+// del documento porque python-docx (y algunas versiones de Word) no
+// siempre heredan bien el docDefaults en párrafos sin pPr propio -- más
+// seguro ponerlo explícito en cada párrafo de cuerpo.
+function _informesParrafo(childrenOTexto, opts){
+  const base = {alignment: docx.AlignmentType.JUSTIFIED, indent:{firstLine:360}};
+  if(typeof childrenOTexto === 'string') return new docx.Paragraph({...base, text:childrenOTexto, ...opts});
+  return new docx.Paragraph({...base, children:childrenOTexto, ...opts});
 }
 
 // ==========================================================================
 // PORTADA
 // ==========================================================================
+// Portada IGUAL a la plantilla real -- pedido explícito ("la portada es
+// totalmente diferente a la que yo te pasé, se ve muy fea... quiero que
+// sea tal cual la de la plantilla"). Nada de HeadingLevel.TITLE (ese
+// estilo trae su propio color/tamaño de Word que no es el de la
+// plantilla) -- texto plano bold centrado, mismo tamaño/espaciado que el
+// documento original (confirmado leyendo la plantilla con python-docx).
 function informesSeccionPortada(mesClave){
   const children = [];
   if(INFORMES_LOGO_BYTES && INFORMES_LOGO_DIM){
-    const anchoLogo = 140;
+    const anchoLogo = 170;
     const altoLogo = Math.round(anchoLogo * INFORMES_LOGO_DIM.height / INFORMES_LOGO_DIM.width);
-    children.push(new docx.Paragraph({alignment: docx.AlignmentType.CENTER, spacing:{after:300},
+    children.push(new docx.Paragraph({alignment: docx.AlignmentType.CENTER, spacing:{before:600, after:500},
       children:[new docx.ImageRun({data: INFORMES_LOGO_BYTES, transformation:{width:anchoLogo, height:altoLogo}, type:'png'})]}));
   }
-  children.push(new docx.Paragraph({heading: docx.HeadingLevel.TITLE, alignment: docx.AlignmentType.CENTER,
-    spacing:{after:0}, text:'INFORME MENSUAL BALANCES Y ANALISIS ENERGETICOS'}));
-  children.push(new docx.Paragraph({alignment: docx.AlignmentType.CENTER, spacing:{after:600},
-    children:[new docx.TextRun({text: labelMesLargo(mesClave).toUpperCase(), bold:true})]}));
+  children.push(new docx.Paragraph({alignment: docx.AlignmentType.CENTER, spacing:{after:80},
+    children:[new docx.TextRun({text:'INFORME MENSUAL BALANCES Y ANALISIS ENERGETICOS', bold:true, size:24})]}));
+  children.push(new docx.Paragraph({alignment: docx.AlignmentType.CENTER, spacing:{after:900},
+    children:[new docx.TextRun({text: labelMesLargo(mesClave).toUpperCase(), bold:true, size:24})]}));
   children.push(new docx.Paragraph({alignment: docx.AlignmentType.CENTER, text:'Presentado por:'}));
-  children.push(new docx.Paragraph({alignment: docx.AlignmentType.CENTER, spacing:{after:600}, text:'División Control de Pérdidas'}));
-  children.push(new docx.Paragraph({alignment: docx.AlignmentType.CENTER, spacing:{after:600},
-    children:[new docx.TextRun({text:(OPERADOR&&OPERADOR.nombre)||'', bold:true})]}));
+  children.push(new docx.Paragraph({alignment: docx.AlignmentType.CENTER, spacing:{after:900}, text:'División Control de Pérdidas'}));
+  children.push(new docx.Paragraph({alignment: docx.AlignmentType.CENTER, spacing:{after:900},
+    children:[new docx.TextRun({text:(OPERADOR&&OPERADOR.nombre)||'', bold:false})]}));
   const fechaLarga = new Date().toLocaleDateString('es-CO', {day:'2-digit', month:'long', year:'numeric'});
   const ciudad = (typeof PZ_DEPARTAMENTO !== 'undefined' && PZ_DEPARTAMENTO) ? PZ_DEPARTAMENTO : null;
-  children.push(new docx.Paragraph({alignment: docx.AlignmentType.CENTER, text: ciudad ? `${ciudad}, ${fechaLarga}` : fechaLarga}));
+  if(ciudad) children.push(new docx.Paragraph({alignment: docx.AlignmentType.CENTER, text: ciudad}));
+  children.push(new docx.Paragraph({alignment: docx.AlignmentType.CENTER, text: fechaLarga}));
   children.push(new docx.Paragraph({children:[new docx.PageBreak()]}));
   return children;
 }
@@ -16161,7 +16191,7 @@ function _informesSeccionTOC(){
 function informesSeccionIntroduccion(mesClave, alcanceTexto){
   return [
     _informesHeading1('Introducción y objetivo'),
-    new docx.Paragraph({text:`El presente informe tiene como objetivo presentar el análisis del comportamiento energético y de pérdidas de ${(OPERADOR&&OPERADOR.nombre)||'la empresa'} para el periodo ${labelMesLargo(mesClave)}, con base en la información registrada en el Sistema de Gestión de la Medida. El alcance de este documento corresponde a: ${alcanceTexto}.`}),
+    _informesParrafo(`El presente informe tiene como objetivo presentar el análisis del comportamiento energético y de pérdidas de ${(OPERADOR&&OPERADOR.nombre)||'la empresa'} para el periodo ${labelMesLargo(mesClave)}, con base en la información registrada en el Sistema de Gestión de la Medida. El alcance de este documento corresponde a: ${alcanceTexto}.`),
     new docx.Paragraph({text:''}),
   ];
 }
@@ -16186,7 +16216,7 @@ async function _informesCargarAssetImagen(nombreArchivo){
 async function informesSeccionMetodologiaIPT(){
   const children = [
     _informesHeading1('Metodología de Calculo Índice de Pérdidas Totales'),
-    new docx.Paragraph({text:'La metodología establecida en la Resolución CREG 015/2018 permite determinar el indicador de pérdidas de energía mediante la relación entre las pérdidas totales de energía y la energía de entrada al sistema de distribución, diferenciando el análisis de acuerdo con el nivel de tensión. Para su cálculo se parte de un balance energético en el que se determina la diferencia entre la energía que ingresa al sistema y la energía entregada o registrada a los usuarios, considerando los ajustes y variables definidos en la metodología regulatoria. El resultado se expresa como un porcentaje de pérdidas y permite evaluar el desempeño del sistema frente a los niveles de referencia establecidos por la regulación.'}),
+    _informesParrafo('La metodología establecida en la Resolución CREG 015/2018 permite determinar el indicador de pérdidas de energía mediante la relación entre las pérdidas totales de energía y la energía de entrada al sistema de distribución, diferenciando el análisis de acuerdo con el nivel de tensión. Para su cálculo se parte de un balance energético en el que se determina la diferencia entre la energía que ingresa al sistema y la energía entregada o registrada a los usuarios, considerando los ajustes y variables definidos en la metodología regulatoria. El resultado se expresa como un porcentaje de pérdidas y permite evaluar el desempeño del sistema frente a los niveles de referencia establecidos por la regulación.'),
   ];
   try{
     const formulaPt = await _informesCargarAssetImagen('formula_pt.png');
@@ -16218,13 +16248,13 @@ function informesTextoIpt(mesClave){
   const iptPct = actual.ipt_pct*100;
 
   const parrafos = [];
-  parrafos.push(new docx.Paragraph({children:[
+  parrafos.push(_informesParrafo([
     new docx.TextRun(`Para el periodo de evaluación, ${labelMesLargo(mesClave).toUpperCase()}, el índice de pérdidas totales proyectado y calculado conforme a la resolución CREG 015 de 2018 es de `),
     new docx.TextRun({text:`${iptPct.toFixed(2)}%`, bold:true}),
     new docx.TextRun(`, por lo cual se presenta un total de pérdidas de acuerdo a CREG 015/2018 de `),
     new docx.TextRun({text:`${_informesFKwh(actual.pt_kwh)} kWh/Anual`, bold:true}),
     new docx.TextRun(`.`),
-  ]}));
+  ]));
 
   if(anterior && anterior.ipt_pct != null){
     const deltaPp = (actual.ipt_pct - anterior.ipt_pct)*100;
@@ -16248,18 +16278,18 @@ function informesTextoIpt(mesClave){
       runs.push(new docx.TextRun({text:`${_informesSigno(deltaAnual)}${Math.abs(deltaAnual).toFixed(2)} pp`, bold:true}));
       runs.push(new docx.TextRun(` (${deltaAnual>0?'aumenta':'disminuye'}).`));
     }
-    parrafos.push(new docx.Paragraph({children:runs}));
+    parrafos.push(_informesParrafo(runs));
   }
 
   if(actual.pct_perdida_mensual != null && anioAnt && anioAnt.pct_perdida_mensual != null){
     const mensualActual = actual.pct_perdida_mensual*100, mensualAnioAnt = anioAnt.pct_perdida_mensual*100;
-    parrafos.push(new docx.Paragraph({children:[
+    parrafos.push(_informesParrafo([
       new docx.TextRun(`De acuerdo con el IPT mensual, se tiene que para ${labelMesLargo(mesClave).toLowerCase()} hay un IPT mensual de `),
       new docx.TextRun({text:`${mensualActual.toFixed(2)}%`, bold:true}),
       new docx.TextRun(`, donde sale un indicador de `),
       new docx.TextRun({text:`${mensualAnioAnt.toFixed(2)}%`, bold:true}),
       new docx.TextRun(` (${labelMesLargo(anioAntClave)}) -- por lo cual entra un indicador mensual ${mensualActual>mensualAnioAnt?'más alto':'más bajo'} que el saliente del año anterior.`),
-    ]}));
+    ]));
   }
   return parrafos;
 }
@@ -16332,23 +16362,38 @@ async function informesFiguraIptMensual(mesClave){
   });
 }
 
-function informesTablaBalanceMes(mesClave){
-  const n21 = alimN21AgregarMensual(new Set()).find(f => f.clave === mesClave);
-  if(!n21) return null;
-  const fila = (etiqueta, valor) => new docx.TableRow({children:[
-    new docx.TableCell({children:[new docx.Paragraph(etiqueta)]}),
-    new docx.TableCell({children:[new docx.Paragraph(`${_informesFKwh(valor)} kWh`)]}),
-  ]});
+// Cajas visuales estilo "tarjeta" (Entrada / Salida / Pérdida kWh /
+// Pérdida %) -- pedido explícito ("no está haciendo eso del balance
+// energético", refiriéndose a las 4 cajas resaltadas de la plantilla, no
+// una tabla plana). Se derivan Entrada/Salida desde PT/IPT (Entrada =
+// PT/IPT, Salida = Entrada-PT) porque son las MISMAS cifras que ya
+// aparecen en el párrafo de arriba -- así el balance siempre cuadra con
+// el texto, en vez de mezclar con el total N2-1 (que corre en otra
+// fecha, ver nota de mesIpReg vs mesN21).
+function informesCajaBalanceIpt(mesClave){
+  const fila = IP_MAPA_POR_NORMAL.get(mesClave);
+  if(!fila || fila.ipt_pct == null) return null;
+  const entrada = fila.pt_kwh / fila.ipt_pct;
+  const salida = entrada - fila.pt_kwh;
+  const celda = (etiqueta, valor, color) => new docx.TableCell({
+    shading:{fill:'F2F2F2'},
+    margins:{top:150, bottom:150, left:150, right:150},
+    children:[
+      new docx.Paragraph({alignment:docx.AlignmentType.CENTER, spacing:{after:60}, children:[new docx.TextRun({text:etiqueta, bold:true, size:17})]}),
+      new docx.Paragraph({alignment:docx.AlignmentType.CENTER, children:[new docx.TextRun({text:valor, bold:true, size:26, color:color||'000000'})]}),
+    ],
+  });
   return new docx.Table({
-    width:{size:60, type:docx.WidthType.PERCENTAGE},
+    width:{size:90, type:docx.WidthType.PERCENTAGE},
     rows:[
       new docx.TableRow({children:[
-        new docx.TableCell({children:[new docx.Paragraph({children:[new docx.TextRun({text:'Variable', bold:true})]})]}),
-        new docx.TableCell({children:[new docx.Paragraph({children:[new docx.TextRun({text:'Valor (N2-1, todas las zonas)', bold:true})]})]}),
+        celda('ENERGÍA DE ENTRADA', `${_informesFKwh(entrada)} kWh`),
+        celda('ENERGÍA DE SALIDA', `${_informesFKwh(salida)} kWh`),
       ]}),
-      fila('Entrada Total', n21.entrada),
-      fila('Salida Total', n21.salida),
-      fila('Pérdida', n21.perdida),
+      new docx.TableRow({children:[
+        celda('PÉRDIDA DE ENERGÍA (kWh)', `${_informesFKwh(fila.pt_kwh)} kWh`, 'C00000'),
+        celda('PÉRDIDA DE ENERGÍA (%)', `${(fila.ipt_pct*100).toFixed(2)}%`, 'C00000'),
+      ]}),
     ],
   });
 }
@@ -16367,11 +16412,8 @@ async function informesSeccionIndicadorIPT(mesClave){
   const fig2 = await informesFiguraIptMensual(mesClave);
   if(fig2){ children.push(_informesParrafoImagen(fig2)); children.push(_informesCaption('Figura', 'Índice de pérdidas totales mensuales')); }
   children.push(new docx.Paragraph({spacing:{before:200, after:100}, children:[new docx.TextRun({text:'Información del balance energético', bold:true})]}));
-  const tabla = informesTablaBalanceMes(mesClave);
-  if(tabla){
-    children.push(_informesCaption('Tabla', `Balance energético ${labelMesLargo(mesClave)}`));
-    children.push(tabla);
-  }
+  const caja = informesCajaBalanceIpt(mesClave);
+  if(caja) children.push(caja);
   children.push(new docx.Paragraph({text:''}));
   return children;
 }
@@ -16383,8 +16425,8 @@ async function informesSeccionIndicadorIPT(mesClave){
 function informesSeccionMetodologiaN21(){
   return [
     _informesHeading1('Metodología calculo indicador N2-1'),
-    new docx.Paragraph({text:'La metodología del indicador N2-1 se basa en la construcción de balances energéticos para los niveles de tensión 2 y 1, partiendo de la información de alimentadores, subestaciones y zonas. Para garantizar la confiabilidad del balance, inicialmente se realiza la depuración de las lecturas y el análisis de las maniobras y suplencias, identificando los traslados temporales de carga que no se encuentran actualizados en el SPARD. Posteriormente, se consolida la energía de entrada de los alimentadores mediante el ciclo predominante, junto con la información de ventas, AGPE y demás variables necesarias para determinar las pérdidas de cada circuito.'}),
-    new docx.Paragraph({text:'Una vez consolidada la información, los alimentadores se agrupan de acuerdo con su zona y subestación, permitiendo obtener balances energéticos a diferentes niveles de agregación. Para el balance por zonas, la energía de ventas N21 se ajusta excluyendo los auxiliares, con el fin de mantener consistencia entre las entradas y salidas consideradas. Finalmente, las pérdidas obtenidas en cada alimentador se consolidan para determinar el comportamiento de las subestaciones y zonas, permitiendo obtener el indicador N2-1 y facilitar el seguimiento de las pérdidas totales de los niveles de tensión 1 y 2.'}),
+    _informesParrafo('La metodología del indicador N2-1 se basa en la construcción de balances energéticos para los niveles de tensión 2 y 1, partiendo de la información de alimentadores, subestaciones y zonas. Para garantizar la confiabilidad del balance, inicialmente se realiza la depuración de las lecturas y el análisis de las maniobras y suplencias, identificando los traslados temporales de carga que no se encuentran actualizados en el SPARD. Posteriormente, se consolida la energía de entrada de los alimentadores mediante el ciclo predominante, junto con la información de ventas, AGPE y demás variables necesarias para determinar las pérdidas de cada circuito.'),
+    _informesParrafo('Una vez consolidada la información, los alimentadores se agrupan de acuerdo con su zona y subestación, permitiendo obtener balances energéticos a diferentes niveles de agregación. Para el balance por zonas, la energía de ventas N21 se ajusta excluyendo los auxiliares, con el fin de mantener consistencia entre las entradas y salidas consideradas. Finalmente, las pérdidas obtenidas en cada alimentador se consolidan para determinar el comportamiento de las subestaciones y zonas, permitiendo obtener el indicador N2-1 y facilitar el seguimiento de las pérdidas totales de los niveles de tensión 1 y 2.'),
     new docx.Paragraph({text:''}),
   ];
 }
@@ -16410,7 +16452,7 @@ function informesTextoNegativos(negativos){
     runs.push(new docx.TextRun(`)`));
   }
   runs.push(new docx.TextRun(`. Esto se valida en la figura siguiente, donde los circuitos con esta clasificación se identifican con un color distintivo en el gráfico de dispersión Gestionable % vs Gest x Longitud.`));
-  return new docx.Paragraph({children: runs});
+  return _informesParrafo(runs);
 }
 
 async function informesFiguraScatter(filasMes){
@@ -16472,30 +16514,55 @@ function informesTextoSubestacion(subestacion, agregadoMes, agregadoAnterior){
   }else{
     runs.push(new docx.TextRun(`.`));
   }
-  return new docx.Paragraph({children: runs});
+  return _informesParrafo(runs);
 }
 
-function _informesTablaAlimentadores(nombreTabla, filasPorNem, mesClave, columnaExtra){
-  const encabezado = new docx.TableRow({children:[
-    new docx.TableCell({children:[new docx.Paragraph({children:[new docx.TextRun({text:'Circuito Alimentador', bold:true})]})]}),
-    new docx.TableCell({children:[new docx.Paragraph({children:[new docx.TextRun({text:`Pérdida ${labelMesLargo(mesClave)} (kWh)`, bold:true})]})]}),
-    new docx.TableCell({children:[new docx.Paragraph({children:[new docx.TextRun({text: columnaExtra, bold:true})]})]}),
+// Tabla ANCHA -- un mes por columna, de Enero del año de mesClave hasta
+// mesClave, una fila por alimentador + fila Total -- pedido explícito
+// ("las tablas de los alimentadores... yo quiero ver desde enero del
+// 2026 hasta junio 2026"), igual formato que la plantilla real (los
+// meses van en las COLUMNAS, no una tabla de un solo mes).
+function _informesTablaAlimentadores(filasPorNem, mesClave, campo){
+  const [anio, mesNum] = mesClave.split('-').map(Number);
+  const meses = [];
+  for(let m=1; m<=mesNum; m++) meses.push(`${anio}-${String(m).padStart(2,'0')}`);
+  const nemonicos = Object.keys(filasPorNem).sort();
+
+  const celdaEncabezado = texto => new docx.TableCell({shading:{fill:'D9D9D9'},
+    children:[new docx.Paragraph({alignment:docx.AlignmentType.CENTER, children:[new docx.TextRun({text:texto, bold:true, size:16})]})]});
+  const encabezado = new docx.TableRow({tableHeader:true, children:[
+    celdaEncabezado('Circuito Alimentador'),
+    ...meses.map(m => celdaEncabezado(labelMesLargo(m))),
   ]});
-  const filas = Object.keys(filasPorNem).sort().map(nem => {
-    const serie = filasPorNem[nem];
-    const actual = serie.find(f => f.clave === mesClave);
-    const valorExtra = actual ? (columnaExtra.startsWith('Gestionable') ? _informesFKwh(actual.gestionable) : `${actual.pct!=null?actual.pct.toFixed(2):'--'}%`) : '--';
-    return new docx.TableRow({children:[
-      new docx.TableCell({children:[new docx.Paragraph(nem)]}),
-      new docx.TableCell({children:[new docx.Paragraph(actual ? `${_informesFKwh(actual.perdida)} kWh` : '--')]}),
-      new docx.TableCell({children:[new docx.Paragraph(valorExtra)]}),
-    ]});
-  });
-  return new docx.Table({width:{size:100, type:docx.WidthType.PERCENTAGE}, rows:[encabezado, ...filas]});
+
+  const filas = nemonicos.map(nem => new docx.TableRow({children:[
+    new docx.TableCell({children:[new docx.Paragraph(nem)]}),
+    ...meses.map(m => {
+      const f = filasPorNem[nem].find(x=>x.clave===m);
+      const v = f ? f[campo] : null;
+      return new docx.TableCell({children:[new docx.Paragraph({alignment:docx.AlignmentType.CENTER, text: v!=null?_informesFKwh(v):'--'})]});
+    }),
+  ]}));
+
+  const totalRow = new docx.TableRow({children:[
+    new docx.TableCell({shading:{fill:'EDEDED'}, children:[new docx.Paragraph({children:[new docx.TextRun({text:'Total, Pérdida S/E', bold:true})]})]}),
+    ...meses.map(m => {
+      let suma = 0, tiene = false;
+      nemonicos.forEach(nem => { const f = filasPorNem[nem].find(x=>x.clave===m); if(f && f[campo]!=null){ suma += f[campo]; tiene = true; } });
+      return new docx.TableCell({shading:{fill:'EDEDED'}, children:[new docx.Paragraph({alignment:docx.AlignmentType.CENTER, children:[new docx.TextRun({text: tiene?_informesFKwh(suma):'--', bold:true})]})]});
+    }),
+  ]});
+
+  return new docx.Table({width:{size:100, type:docx.WidthType.PERCENTAGE}, rows:[encabezado, ...filas, totalRow]});
 }
 
-async function informesSeccionSubestacion(subestacion, mesClave){
-  const children = [_informesHeading1(`Subestación ${subestacion}`)];
+// esSubtitulo=true (default): la subestación va como Heading 2, subtítulo
+// DENTRO de su zona (Heading 1) -- pedido explícito ("yo estoy colocando
+// títulos, subtítulos y subsubtítulos"). Cuando el alcance es "una
+// subestación específica" (sin zona por encima), se llama con false para
+// que quede como título de primer nivel.
+async function informesSeccionSubestacion(subestacion, mesClave, esSubtitulo=true){
+  const children = [esSubtitulo ? _informesHeading2(`Subestación ${subestacion}`) : _informesHeading1(`Subestación ${subestacion}`)];
   const porNem = informesAgruparAlimentadoresSubestacion(subestacion, mesClave);
   const nemonicos = Object.keys(porNem);
   if(!nemonicos.length){
@@ -16520,11 +16587,11 @@ async function informesSeccionSubestacion(subestacion, mesClave){
   if(fig){ children.push(_informesParrafoImagen(fig)); children.push(_informesCaption('Figura', `Indicador de pérdidas Mensual S/E ${subestacion}`)); }
 
   children.push(_informesCaption('Tabla', `Pérdidas totales Subestación ${subestacion}`));
-  children.push(_informesTablaAlimentadores('perdidas', porNem, mesClave, 'Pérdida %'));
+  children.push(_informesTablaAlimentadores(porNem, mesClave, 'perdida'));
   children.push(new docx.Paragraph({children:[new docx.TextRun({text:'Nota: Elaboración propia, energía de pérdida calculada corresponde a la diferencia de la registrada en la cabecera del alimentador y la venta de energía correspondiente a cada circuito teniendo en cuenta las suplencias.', italics:true, size:18})], spacing:{before:100,after:200}}));
 
   children.push(_informesCaption('Tabla', `Pérdidas totales gestionables Subestación ${subestacion}`));
-  children.push(_informesTablaAlimentadores('gestionables', porNem, mesClave, 'Gestionable (kWh)'));
+  children.push(_informesTablaAlimentadores(porNem, mesClave, 'gestionable'));
   children.push(new docx.Paragraph({children:[new docx.TextRun({text:'Nota: Elaboración propia, energía de pérdida calculada corresponde a la diferencia de la registrada en la cabecera del alimentador y la venta de energía correspondiente a cada circuito teniendo en cuenta las suplencias y adicionalmente la resta de pérdidas técnicas por alimentador mediante flujos de potencia.', italics:true, size:18})], spacing:{before:100,after:200}}));
 
   const negativos = informesDetectarNegativos(filasMes);
@@ -16590,7 +16657,7 @@ function informesTextoN21(etiqueta, actual, anterior){
   }else{
     runs.push(new docx.TextRun(`.`));
   }
-  return new docx.Paragraph({children: runs});
+  return _informesParrafo(runs);
 }
 
 // Mismas 4 series y mismos colores que alimN21RenderChartMensual (el
@@ -16625,6 +16692,171 @@ async function informesFiguraN21(serie, idx, etiqueta){
   });
 }
 
+// Mapa ESTÁTICO de zonas (municipios coloreados por zona + tarjeta con
+// Entrada/Salida/Pérdida por zona) -- pedido explícito ("no se ve el
+// mapa"). NO usa Leaflet/tiles de fondo (capturar un mapa interactivo
+// con tiles externos offscreen es frágil -- CORS, timing de carga de
+// tiles) -- se dibuja directo en un canvas 2D con los mismos datos y
+// colores que el croquis en vivo (mismo topojson, misma
+// colorParaZona/mapaZonasFeaturesDeDepto ya usados en toda la app),
+// proyección equirectangular simple (suficiente a la escala de un
+// departamento).
+async function informesFiguraMapaZonas(mesClave){
+  let topo, resp;
+  try{
+    topo = await mapaZonasCargarTopo();
+    resp = await apiGet('/api/mapa-zonas');
+  }catch(e){ return null; }
+  if(!resp || !resp.departamento) return null;
+  const features = mapaZonasFeaturesDeDepto(topo, resp.departamento);
+  if(!features.length) return null;
+
+  const ancho = 640, alto = 460, pad = 24;
+  let minLon=Infinity, maxLon=-Infinity, minLat=Infinity, maxLat=-Infinity;
+  const paraCadaAnillo = (f, cb) => {
+    if(f.geometry.type==='Polygon') f.geometry.coordinates.forEach(cb);
+    else if(f.geometry.type==='MultiPolygon') f.geometry.coordinates.forEach(poly => poly.forEach(cb));
+  };
+  features.forEach(f => paraCadaAnillo(f, anillo => anillo.forEach(([lon,lat]) => {
+    if(lon<minLon) minLon=lon; if(lon>maxLon) maxLon=lon;
+    if(lat<minLat) minLat=lat; if(lat>maxLat) maxLat=lat;
+  })));
+  const spanLon = (maxLon-minLon)||1, spanLat = (maxLat-minLat)||1;
+  const escala = Math.min((ancho-pad*2)/spanLon, (alto-pad*2)/spanLat);
+  const offX = pad + ((ancho-pad*2) - spanLon*escala)/2;
+  const offY = pad + ((alto-pad*2) - spanLat*escala)/2;
+  const proyectar = ([lon,lat]) => [offX + (lon-minLon)*escala, alto - (offY + (lat-minLat)*escala)];
+
+  const dpr = 2;
+  const cont = document.createElement('div');
+  cont.style.cssText = 'position:fixed;left:-9999px;top:0';
+  const cv = document.createElement('canvas');
+  cv.width = ancho*dpr; cv.height = alto*dpr;
+  cont.appendChild(cv);
+  document.body.appendChild(cont);
+  const ctx = cv.getContext('2d');
+  ctx.scale(dpr, dpr);
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(0,0,ancho,alto);
+
+  const zonaDeMunicipio = id => resp.municipios[id];
+  const datosPorZona = {};
+  informesZonasDisponibles().forEach(z => {
+    const f = alimN21AgregarMensual(new Set([z])).find(x => x.clave === mesClave);
+    if(f) datosPorZona[z] = f;
+  });
+
+  const centroides = {};
+  features.forEach(f => {
+    const zona = zonaDeMunicipio(mapaZonasIdMunicipio(f));
+    ctx.fillStyle = zona ? colorParaZona(zona) : '#cccccc';
+    ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1;
+    paraCadaAnillo(f, anillo => {
+      ctx.beginPath();
+      anillo.forEach(([lon,lat], i) => {
+        const [x,y] = proyectar([lon,lat]);
+        if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+      });
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      if(zona){
+        if(!centroides[zona]) centroides[zona] = {sx:0, sy:0, n:0};
+        anillo.forEach(([lon,lat]) => {
+          const [x,y] = proyectar([lon,lat]);
+          centroides[zona].sx += x; centroides[zona].sy += y; centroides[zona].n++;
+        });
+      }
+    });
+  });
+
+  Object.keys(centroides).forEach(zona => {
+    const c = centroides[zona];
+    const cx = c.sx/c.n, cy = c.sy/c.n;
+    const datos = datosPorZona[zona];
+    const color = colorParaZona(zona);
+    const lineas = [`ZONA ${zona}`, datos && datos.pct!=null ? `${datos.pct.toFixed(2)}%` : 'Sin datos'];
+    if(datos){
+      lineas.push(`Entrada: ${_informesFKwh(datos.entrada)}`);
+      lineas.push(`Salida: ${_informesFKwh(datos.salida)}`);
+      lineas.push(`Pérdida: ${_informesFKwh(datos.perdida)}`);
+    }
+    const cajaAncho = 140, lineaAlto = 15, cajaAlto = 12 + lineas.length*lineaAlto;
+    const bx = Math.max(4, Math.min(ancho-cajaAncho-4, cx-cajaAncho/2));
+    const by = Math.max(4, Math.min(alto-cajaAlto-4, cy-cajaAlto/2));
+    ctx.fillStyle = 'rgba(255,255,255,.94)';
+    ctx.strokeStyle = color; ctx.lineWidth = 2;
+    ctx.beginPath();
+    if(ctx.roundRect) ctx.roundRect(bx, by, cajaAncho, cajaAlto, 6); else ctx.rect(bx, by, cajaAncho, cajaAlto);
+    ctx.fill(); ctx.stroke();
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    lineas.forEach((linea, i) => {
+      ctx.fillStyle = i===0 ? color : (i===1 ? '#111111' : '#444444');
+      ctx.font = i===0 ? 'bold 11px Arial' : (i===1 ? 'bold 13px Arial' : '10px Arial');
+      ctx.fillText(linea, bx+cajaAncho/2, by+6+i*lineaAlto);
+    });
+  });
+
+  const dataUrl = cv.toDataURL('image/png', 1.0);
+  document.body.removeChild(cont);
+  return {bytes: _informesDataUrlAUint8(dataUrl), width: ancho, height: alto};
+}
+
+// Análisis más completo para el Total N2-1 (MoM + YoY + tendencia de los
+// últimos meses + comparación entre zonas) -- pedido explícito ("el
+// párrafo está muy simple, analiza más").
+function informesTextoN21Total(serie, idx){
+  const actual = serie[idx], anterior = idx>0 ? serie[idx-1] : null;
+  const parrafos = [informesTextoN21('El total N2-1 (todas las zonas)', actual, anterior)];
+
+  // Año anterior (mismo mes)
+  const [anioAct, mesAct] = actual.clave.split('-').map(Number);
+  const claveAnioAnt = `${anioAct-1}-${String(mesAct).padStart(2,'0')}`;
+  const anioAnt = serie.find(f => f.clave === claveAnioAnt);
+  const runsAnual = [];
+  if(anioAnt && anioAnt.pct != null && actual.pct != null){
+    const deltaAnual = actual.pct - anioAnt.pct;
+    runsAnual.push(new docx.TextRun(`Frente al mismo mes del año anterior (${labelMesLargo(claveAnioAnt)}), el indicador N2-1 total era de `));
+    runsAnual.push(new docx.TextRun({text:`${anioAnt.pct.toFixed(2)}%`, bold:true}));
+    runsAnual.push(new docx.TextRun(`, por lo que la variación anual es de `));
+    runsAnual.push(new docx.TextRun({text:`${_informesSigno(deltaAnual)}${Math.abs(deltaAnual).toFixed(2)} pp`, bold:true}));
+    runsAnual.push(new docx.TextRun(` (${deltaAnual>0?'aumenta':'disminuye'}).`));
+  }
+
+  // Tendencia de los últimos meses (pendiente simple sobre la ventana visible)
+  const ventana = serie.slice(Math.max(0, idx-5), idx+1).filter(f=>f.pct!=null);
+  if(ventana.length >= 3){
+    const delta6 = ventana[ventana.length-1].pct - ventana[0].pct;
+    runsAnual.push(new docx.TextRun(` En los últimos ${ventana.length} meses el indicador pasó de `));
+    runsAnual.push(new docx.TextRun({text:`${ventana[0].pct.toFixed(2)}%`, bold:true}));
+    runsAnual.push(new docx.TextRun(` (${labelMesLargo(ventana[0].clave)}) a `));
+    runsAnual.push(new docx.TextRun({text:`${ventana[ventana.length-1].pct.toFixed(2)}%`, bold:true}));
+    runsAnual.push(new docx.TextRun(` (${labelMesLargo(ventana[ventana.length-1].clave)}), una tendencia ${delta6>0?'al alza':delta6<0?'a la baja':'estable'} en el periodo reciente.`));
+  }
+  if(runsAnual.length) parrafos.push(_informesParrafo(runsAnual));
+
+  // Comparación entre zonas del mismo mes -- cuál pesa más/menos.
+  const zonas = informesZonasDisponibles();
+  const porZona = zonas.map(z => {
+    const s = alimN21AgregarMensual(new Set([z]));
+    const f = s.find(x => x.clave === actual.clave);
+    return f && f.pct!=null ? {zona:z, pct:f.pct, perdida:f.perdida} : null;
+  }).filter(Boolean);
+  if(porZona.length >= 2){
+    porZona.sort((a,b)=> b.pct-a.pct);
+    const mayor = porZona[0], menor = porZona[porZona.length-1];
+    parrafos.push(_informesParrafo([
+      new docx.TextRun(`Entre las zonas evaluadas, `),
+      new docx.TextRun({text:mayor.zona, bold:true}),
+      new docx.TextRun(` presenta el mayor indicador de pérdidas (`),
+      new docx.TextRun({text:`${mayor.pct.toFixed(2)}%`, bold:true}),
+      new docx.TextRun(`), mientras que `),
+      new docx.TextRun({text:menor.zona, bold:true}),
+      new docx.TextRun(` registra el menor (`),
+      new docx.TextRun({text:`${menor.pct.toFixed(2)}%`, bold:true}),
+      new docx.TextRun(`), para el periodo de evaluación de ${labelMesLargo(actual.clave)}.`),
+    ]));
+  }
+  return parrafos;
+}
+
 async function informesSeccionIndicadorN21Total(mesClave){
   const children = [_informesHeading1('Indicador Total N2-1')];
   const serie = alimN21AgregarMensual(new Set());
@@ -16633,8 +16865,9 @@ async function informesSeccionIndicadorN21Total(mesClave){
     children.push(new docx.Paragraph({children:[new docx.TextRun({text:'No hay datos de N2-1 para el mes seleccionado.', italics:true})]}));
     return children;
   }
-  const actual = serie[idx], anterior = idx>0 ? serie[idx-1] : null;
-  children.push(informesTextoN21('El total N2-1 (todas las zonas)', actual, anterior));
+  informesTextoN21Total(serie, idx).forEach(p => children.push(p));
+  const mapa = await informesFiguraMapaZonas(mesClave);
+  if(mapa){ children.push(_informesParrafoImagen(mapa)); children.push(_informesCaption('Figura', 'Indicador N2-1 por zona')); }
   const fig = await informesFiguraN21(serie, idx, 'Total');
   if(fig){ children.push(_informesParrafoImagen(fig)); children.push(_informesCaption('Figura', 'Indicador Total N2-1 -- pérdida mensual (kWh y %)')); }
   children.push(new docx.Paragraph({text:''}));
@@ -16688,7 +16921,7 @@ function informesTextoIpComercial(mesClave){
   }else{
     runs.push(new docx.TextRun(`.`));
   }
-  return [new docx.Paragraph({children: runs})];
+  return [_informesParrafo(runs)];
 }
 
 async function informesFiguraIpComercial(mesClave){
@@ -16759,7 +16992,7 @@ async function informesSeccionTemperaturaEntrada(){
   runs.push(new docx.TextRun(`, con una entrada de energía diaria promedio de `));
   runs.push(new docx.TextRun({text: promedioEntrada!=null?`${_informesFKwh(promedioEntrada)} kWh`:'--', bold:true}));
   runs.push(new docx.TextRun(`.`));
-  children.push(new docx.Paragraph({children: runs}));
+  children.push(_informesParrafo(runs));
   const fig = await informesFiguraTemperaturaEntrada(dias);
   if(fig){ children.push(_informesParrafoImagen(fig)); children.push(_informesCaption('Figura', 'Relación Temperatura vs Energía de Entrada')); }
   children.push(new docx.Paragraph({text:''}));
@@ -16837,11 +17070,30 @@ async function informesGenerar(){
       children.push(...await informesSeccionIndicadorN21Total(mesN21));
       for(const zona of informesZonasDisponibles()){ children.push(...await informesSeccionZonaN21(zona, mesN21)); }
     }else if(INFORMES_ALCANCE === 'subestacion'){
-      children.push(...await informesSeccionSubestacion(document.getElementById('informes-subestacion').value, mesN21));
+      children.push(...await informesSeccionSubestacion(document.getElementById('informes-subestacion').value, mesN21, false));
     }
 
     const doc = new docx.Document({
       features: {updateFields: true},   // Word actualiza TOC/numeración de figuras al abrir, sin que el usuario tenga que apretar F9
+      // Encabezados en NEGRO (el estilo Heading de Word por defecto que usa
+      // la librería es azul -- pedido explícito: "los títulos están de
+      // azul") + numeración multinivel real (1., 1.1., 2., 2.1....) ligada
+      // a Heading 1/Heading 2.
+      styles:{
+        default:{
+          heading1:{run:{color:'000000', bold:true, size:26}, paragraph:{spacing:{before:280, after:140}}},
+          heading2:{run:{color:'000000', bold:true, size:23}, paragraph:{spacing:{before:220, after:110}}},
+        },
+      },
+      numbering:{
+        config:[{
+          reference: INFORMES_NUMERACION_REF,
+          levels:[
+            {level:0, format:docx.LevelFormat.DECIMAL, text:'%1.', alignment:docx.AlignmentType.START, style:{paragraph:{indent:{left:260, hanging:260}}}},
+            {level:1, format:docx.LevelFormat.DECIMAL, text:'%1.%2.', alignment:docx.AlignmentType.START, style:{paragraph:{indent:{left:520, hanging:320}}}},
+          ],
+        }],
+      },
       sections:[{
         properties:{page:{size:{width:12240, height:15840}, margin:{top:1440,bottom:1440,left:1440,right:1440}}},
         children,
