@@ -41,6 +41,7 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(
 .nav-tagline{font-size:9.5px;color:var(--text3);white-space:nowrap;letter-spacing:.2px}
 .nav-right{margin-left:auto;display:flex;align-items:center;gap:10px}
 .badge-demo{font-size:10px;font-weight:800;letter-spacing:.5px;padding:3px 10px;border-radius:20px;background:rgba(244,162,97,.15);color:#c47a2a;border:1px solid rgba(244,162,97,.3)}
+.badge-offline{font-size:10px;font-weight:800;letter-spacing:.5px;padding:3px 10px;border-radius:20px;background:rgba(239,71,111,.15);color:#c4294a;border:1px solid rgba(239,71,111,.35)}
 .badge-op{font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:rgba(0,180,216,.12);color:var(--accent);border:1px solid rgba(0,180,216,.25)}
 .badge-recarga{font-size:10.5px;font-weight:600;color:var(--text3);white-space:nowrap}
 .badge-recarga b{color:var(--text2)}
@@ -686,7 +687,8 @@ tfoot td:first-child{text-align:left}
   </div>
   <div class="nav-right">
     <span id="badge-demo" class="badge-demo hidden">MODO DEMO · sin conexión al servidor</span>
-    <span id="badge-visualizador" class="badge-demo hidden" title="Tu usuario solo puede consultar y filtrar -- pedile a un administrador que te cambie el rol en Centro de Mando si necesitas editar">👁 SOLO LECTURA</span>
+    <span id="badge-offline" class="badge-offline hidden" title="No se pueden hacer cambios en este momento">🔌 SIN CONEXIÓN · viendo datos guardados<span id="badge-offline-fecha"></span></span>
+    <span id="badge-visualizador" class="badge-demo hidden" title="Tu usuario solo puede consultar y filtrar -- pídele a un administrador que te cambie el rol en Centro de Mando si necesitas editar">👁 SOLO LECTURA</span>
     <span id="badge-recarga" class="badge-recarga hidden" title="El servidor revisa los archivos y actualiza los datos solo, cada pocos minutos"></span>
     <span id="badge-op" class="badge-op hidden"></span>
     <button class="btn-logout hidden" id="btn-suite" onclick="volverASuite()" title="Volver al selector de módulos">🧩 Módulos</button>
@@ -3160,9 +3162,25 @@ let TOKEN = null, OPERADOR = null, PERSONA = null, DEMO = false;
 // la interfaz no deje ni intentar acciones que van a rebotar igual.
 let EDITOR = true;
 
+// MODO OFFLINE -- pedido explícito: "quiero que el aplicativo funcione
+// cuando tengo el servidor apagado... debe advertir que no puede hacer
+// cambios". OFFLINE_MODO se prende en dos casos (ver apiGet y
+// manejarLogin): (a) el servidor ya estaba apagado al iniciar sesión --
+// se entra con la última identidad guardada y datos de caché -- o (b)
+// se estaba con conexión normal y el servidor se apaga a mitad de
+// sesión -- cada pantalla nueva que se abra sirve su último dato
+// guardado en vez de fallar. Nunca se permite editar en este modo (ver
+// requiereEditor), sin importar el rol real del usuario.
+let OFFLINE_MODO = false;
+let OFFLINE_FECHA = null;   // Date del dato en caché más reciente mostrado
+
 function requiereEditor(){
+  if(OFFLINE_MODO){
+    alert('No hay conexión con el servidor -- estás viendo datos guardados y no se pueden hacer cambios en este momento.');
+    return false;
+  }
   if(EDITOR) return true;
-  alert('Tu usuario tiene rol de Visualizador (solo lectura) y no puede editar datos. Pedile a un administrador que te cambie el rol en Centro de Mando si necesitas editar.');
+  alert('Tu usuario tiene rol de Visualizador (solo lectura) y no puede editar datos. Pídele a un administrador que te cambie el rol en Centro de Mando si necesitas editar.');
   return false;
 }
 // Las zonas se muestran TAL CUAL vienen en el CSV de cada operador -- no hay
@@ -3309,12 +3327,36 @@ async function manejarLogin(ev){
     }
     TOKEN = data.access_token; OPERADOR = data.operador; PERSONA = data.persona; DEMO = false;
     EDITOR = (data.persona?.rol !== 'visualizador');
+    // Se guarda la identidad (NO la contraseña) para poder entrar en MODO
+    // OFFLINE la próxima vez que el servidor esté apagado -- ver más abajo.
+    try{
+      localStorage.setItem('offline_operador', JSON.stringify(OPERADOR));
+      localStorage.setItem('offline_persona', JSON.stringify(PERSONA));
+    }catch(e){ /* localStorage lleno/deshabilitado -- no es crítico */ }
     entrarDashboard();
   }catch(e){
     if(e.name==='AbortError' || e instanceof TypeError){
-      // No hay backend disponible todavía -> vista de demostración con datos de ejemplo.
-      TOKEN = null; OPERADOR = {nombre:'Operador de ejemplo', slug:'demo'}; PERSONA = {nombre:'', correo:user}; DEMO = true;
-      entrarDashboard();
+      // Sin backend disponible -- si ya se había entrado antes CON el
+      // servidor prendido en este navegador, se reusa esa identidad
+      // guardada y se entra en MODO OFFLINE (cada pantalla sirve su
+      // último dato de caché, ver apiGet); no se puede validar la
+      // contraseña sin servidor, así que no se vuelve a pedir acá,
+      // igual que ya hacía el modo demo. Si nunca se había entrado antes,
+      // no hay nada real que mostrar y cae al modo demo (datos de
+      // ejemplo) como ya hacía.
+      let operadorGuardado = null;
+      try{ operadorGuardado = JSON.parse(localStorage.getItem('offline_operador') || 'null'); }catch(e2){ /* dato corrupto -- ignorar */ }
+      if(operadorGuardado){
+        TOKEN = 'offline'; DEMO = false; EDITOR = false;
+        OPERADOR = operadorGuardado;
+        try{ PERSONA = JSON.parse(localStorage.getItem('offline_persona') || '{}'); }catch(e2){ PERSONA = {}; }
+        OFFLINE_MODO = true; OFFLINE_FECHA = null;
+        entrarDashboard();
+        document.getElementById('badge-offline').classList.remove('hidden');
+      }else{
+        TOKEN = null; OPERADOR = {nombre:'Operador de ejemplo', slug:'demo'}; PERSONA = {nombre:'', correo:user}; DEMO = true;
+        entrarDashboard();
+      }
     }else{
       err.textContent = e.message; err.style.display='block';
     }
@@ -3959,12 +4001,14 @@ function _iniRenderVariacionKwh(elId, valorAnt, valorAct, esPerdida){
 
 function cerrarSesion(){
   TOKEN=null; OPERADOR=null; PERSONA=null; DEMO=false;
+  OFFLINE_MODO=false; OFFLINE_FECHA=null;
   vistaCargada = {perdidas:false, parametrizacion:false, telemedidos:false, balancesEstructura:false, ipReg:false, ipComercial:false, ipNivel1:false, reportesSspd:false, tridevanados:false};
   document.getElementById('app-screen').classList.add('hidden');
   document.getElementById('suite-screen').classList.add('hidden');
   document.getElementById('login-screen').classList.remove('hidden');
   document.getElementById('badge-op').classList.add('hidden');
   document.getElementById('badge-demo').classList.add('hidden');
+  document.getElementById('badge-offline').classList.add('hidden');
   document.getElementById('badge-recarga').classList.add('hidden');
   if(_badgeRecargaInterval){ clearInterval(_badgeRecargaInterval); _badgeRecargaInterval = null; }
   document.getElementById('btn-logout').classList.add('hidden');
@@ -4016,7 +4060,8 @@ async function entrarVisualizador(){
   document.getElementById('badge-op').textContent = OPERADOR.nombre;
   document.getElementById('badge-op').classList.remove('hidden');
   document.getElementById('badge-demo').classList.toggle('hidden', !DEMO);
-  document.getElementById('badge-visualizador').classList.toggle('hidden', EDITOR);
+  document.getElementById('badge-offline').classList.toggle('hidden', !OFFLINE_MODO);
+  document.getElementById('badge-visualizador').classList.toggle('hidden', EDITOR || OFFLINE_MODO);
   const nombrePersona = (PERSONA && PERSONA.nombre) ? PERSONA.nombre.split(' ')[0] : (PERSONA && PERSONA.correo) || '';
   document.getElementById('inicio-saludo').textContent = nombrePersona ? `Bienvenido/a, ${nombrePersona} 👋` : 'Bienvenido/a 👋';
   document.getElementById('inicio-sub').textContent =
@@ -6815,7 +6860,7 @@ async function crearBalanceNivel(){
   const entradas = _beRecolectarFilas('entrada', 'bn');
   const salidas = _beRecolectarFilas('salida', 'bn');
 
-  if(!nombre){ msg.className='tm-modal-msg err'; msg.textContent='Ponele un nombre.'; return; }
+  if(!nombre){ msg.className='tm-modal-msg err'; msg.textContent='Ponle un nombre.'; return; }
   if(!entradas.length || entradas.some(m=>!m)){ msg.className='tm-modal-msg err'; msg.textContent='Alguna fila de Entrada no coincide con ningún usuario/medidor real -- elegilo del buscador, o completa nombre y fórmula si es una medida inventada.'; return; }
   if(!salidas.length || salidas.some(m=>!m)){ msg.className='tm-modal-msg err'; msg.textContent='Alguna fila de Salida no coincide con ningún usuario/medidor real -- elegilo del buscador, o completa nombre y fórmula si es una medida inventada.'; return; }
 
@@ -6856,7 +6901,7 @@ async function crearEstructuraBalance(){
   const entradas = _beRecolectarFilas('entrada');
   const salidas = _beRecolectarFilas('salida');
 
-  if(!nombre){ msg.className='tm-modal-msg err'; msg.textContent='Ponele un nombre a la estructura.'; return; }
+  if(!nombre){ msg.className='tm-modal-msg err'; msg.textContent='Ponle un nombre a la estructura.'; return; }
   if(!tipo){ msg.className='tm-modal-msg err'; msg.textContent='Elige el tipo de estructura (Transformador, Barra o Línea).'; return; }
   if(!entradas.length || entradas.some(m=>!m)){ msg.className='tm-modal-msg err'; msg.textContent='Alguna fila de Entrada no coincide con ningún usuario/medidor real -- elegilo del buscador, o completa nombre y fórmula si es una medida inventada.'; return; }
   if(!salidas.length || salidas.some(m=>!m)){ msg.className='tm-modal-msg err'; msg.textContent='Alguna fila de Salida no coincide con ningún usuario/medidor real -- elegilo del buscador, o completa nombre y fórmula si es una medida inventada.'; return; }
@@ -9234,33 +9279,115 @@ function renderTelemedida(datos, canales){
 
 function authHeaders(){ return TOKEN ? {'Authorization':`Bearer ${TOKEN}`} : {}; }
 
+/* ==========================================================================
+   CACHÉ OFFLINE -- pedido explícito: poder ver los datos con el servidor
+   (el PC del operador) apagado. Cada GET que responde bien se guarda acá
+   (IndexedDB -- más espacio que localStorage, este backend ya devuelve
+   respuestas grandes, ej. Alimentadores con miles de filas). Si un GET
+   falla por un problema de RED (servidor apagado, sin internet, timeout
+   -- fetch() mismo revienta, distinto de un 404/401 que sí responde) se
+   sirve la última copia guardada de ESE mismo path -- si no hay ninguna
+   guardada (nunca se abrió esa pantalla con el servidor prendido), no hay
+   nada que mostrar y el error sigue de largo como antes.
+   ========================================================================== */
+let _offlineDbPromise = null;
+function _offlineDb(){
+  if(_offlineDbPromise) return _offlineDbPromise;
+  _offlineDbPromise = new Promise((resolve, reject) => {
+    if(!window.indexedDB){ reject(new Error('sin IndexedDB')); return; }
+    const req = indexedDB.open('perdidas-tecnicas-offline', 1);
+    req.onupgradeneeded = () => { req.result.createObjectStore('respuestas'); };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+  return _offlineDbPromise;
+}
+async function _offlineGuardar(path, datos){
+  try{
+    const db = await _offlineDb();
+    db.transaction('respuestas', 'readwrite').objectStore('respuestas').put({datos, fecha: Date.now()}, path);
+  }catch(e){ /* sin IndexedDB (navegador viejo/modo privado) -- no es crítico, sigue sin caché */ }
+}
+async function _offlineLeer(path){
+  try{
+    const db = await _offlineDb();
+    return await new Promise((resolve, reject) => {
+      const req = db.transaction('respuestas', 'readonly').objectStore('respuestas').get(path);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => reject(req.error);
+    });
+  }catch(e){ return null; }
+}
+
+function _offlineActivar(fecha){
+  OFFLINE_MODO = true;
+  if(!OFFLINE_FECHA || fecha > OFFLINE_FECHA) OFFLINE_FECHA = fecha;
+  const badge = document.getElementById('badge-offline');
+  if(!badge) return;
+  badge.classList.remove('hidden');
+  const fechaTxt = document.getElementById('badge-offline-fecha');
+  if(fechaTxt) fechaTxt.textContent = OFFLINE_FECHA
+    ? ` (${new Date(OFFLINE_FECHA).toLocaleString('es-CO', {dateStyle:'short', timeStyle:'short'})})`
+    : '';
+}
+function _offlineDesactivar(){
+  if(!OFFLINE_MODO) return;
+  OFFLINE_MODO = false; OFFLINE_FECHA = null;
+  const badge = document.getElementById('badge-offline');
+  if(badge) badge.classList.add('hidden');
+}
+
 async function apiGet(path, timeoutMs){
   if(DEMO) return demoGet(path);
-  const res = await fetchConTimeout(`${API_BASE_URL}${path}`, {headers: authHeaders()}, timeoutMs);
+  let res;
+  try{
+    res = await fetchConTimeout(`${API_BASE_URL}${path}`, {headers: authHeaders()}, timeoutMs);
+  }catch(e){
+    // Falla de RED (no un error de la API) -- se intenta servir la
+    // última copia guardada de este mismo path.
+    const guardado = await _offlineLeer(path);
+    if(guardado){ _offlineActivar(guardado.fecha); return guardado.datos; }
+    throw e;
+  }
   if(!res.ok) throw new Error('Error consultando la API');
-  return res.json();
+  const datos = await res.json();
+  _offlineDesactivar();
+  _offlineGuardar(path, datos);   // no se espera -- no debe demorar la respuesta a quien llamó
+  return datos;
 }
 
 async function apiPost(path, body){
-  const res = await fetchConTimeout(`${API_BASE_URL}${path}`, {
-    method:'POST', headers:{...authHeaders(), 'Content-Type':'application/json'}, body: JSON.stringify(body),
-  }, AUTH_TIMEOUT_MS);
+  if(OFFLINE_MODO) throw new Error('No hay conexión con el servidor -- no se pueden guardar cambios en este momento.');
+  let res;
+  try{
+    res = await fetchConTimeout(`${API_BASE_URL}${path}`, {
+      method:'POST', headers:{...authHeaders(), 'Content-Type':'application/json'}, body: JSON.stringify(body),
+    }, AUTH_TIMEOUT_MS);
+  }catch(e){ throw new Error('No hay conexión con el servidor -- no se pueden guardar cambios en este momento.'); }
   const data = await res.json().catch(()=>null);
   if(!res.ok) throw new Error((data && data.detail) || 'Error consultando la API');
   return data;
 }
 
 async function apiPut(path, body){
-  const res = await fetchConTimeout(`${API_BASE_URL}${path}`, {
-    method:'PUT', headers:{...authHeaders(), 'Content-Type':'application/json'}, body: JSON.stringify(body),
-  }, AUTH_TIMEOUT_MS);
+  if(OFFLINE_MODO) throw new Error('No hay conexión con el servidor -- no se pueden guardar cambios en este momento.');
+  let res;
+  try{
+    res = await fetchConTimeout(`${API_BASE_URL}${path}`, {
+      method:'PUT', headers:{...authHeaders(), 'Content-Type':'application/json'}, body: JSON.stringify(body),
+    }, AUTH_TIMEOUT_MS);
+  }catch(e){ throw new Error('No hay conexión con el servidor -- no se pueden guardar cambios en este momento.'); }
   const data = await res.json().catch(()=>null);
   if(!res.ok) throw new Error((data && data.detail) || 'Error consultando la API');
   return data;
 }
 
 async function apiDelete(path){
-  const res = await fetchConTimeout(`${API_BASE_URL}${path}`, {method:'DELETE', headers: authHeaders()}, AUTH_TIMEOUT_MS);
+  if(OFFLINE_MODO) throw new Error('No hay conexión con el servidor -- no se pueden guardar cambios en este momento.');
+  let res;
+  try{
+    res = await fetchConTimeout(`${API_BASE_URL}${path}`, {method:'DELETE', headers: authHeaders()}, AUTH_TIMEOUT_MS);
+  }catch(e){ throw new Error('No hay conexión con el servidor -- no se pueden guardar cambios en este momento.'); }
   const data = await res.json().catch(()=>null);
   if(!res.ok) throw new Error((data && data.detail) || 'Error consultando la API');
   return data;
