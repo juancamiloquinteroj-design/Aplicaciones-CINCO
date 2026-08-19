@@ -311,6 +311,9 @@ canvas[id^="ch-tride-"]:active{cursor:grabbing}
 
 .tbl-wrap{overflow-x:auto;border-radius:9px;border:1px solid var(--border)}
 .alim3-tabla-sticky thead th{position:sticky;top:0;z-index:2}
+.tbl-compacta table{width:auto;min-width:100%;font-size:11.5px}
+.tbl-compacta thead th,.tbl-compacta tbody td,.tbl-compacta tfoot td{padding:5px 9px;border-right:1px solid var(--border)}
+.tbl-compacta thead th:last-child,.tbl-compacta tbody td:last-child,.tbl-compacta tfoot td:last-child{border-right:none}
 .alim3-th-flecha{font-size:9px}
 table{width:100%;border-collapse:collapse;font-size:12px}
 thead th{padding:8px 12px;font-weight:700;text-align:right;background:var(--bg3);color:var(--text2);font-size:10px;text-transform:uppercase;border-bottom:1px solid var(--border);white-space:nowrap}
@@ -2150,7 +2153,7 @@ tfoot td:first-child{text-align:left}
         <div style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Comparativo Mensual por Zona</div>
         <div id="alim-n21-tabla-zonas-caption" style="font-size:11px;color:var(--text3);margin-top:2px"></div>
       </div>
-      <div class="tbl-wrap">
+      <div class="tbl-wrap tbl-compacta">
         <table>
           <thead><tr>
             <th style="text-align:left">Zona</th>
@@ -2160,6 +2163,7 @@ tfoot td:first-child{text-align:left}
             <th>Pérdida %</th><th>Δ pp</th>
           </tr></thead>
           <tbody id="alim-n21-tabla-zonas"></tbody>
+          <tfoot><tr id="alim-n21-tabla-zonas-total"></tr></tfoot>
         </table>
       </div>
     </div>
@@ -12733,19 +12737,35 @@ function alimN21RenderTodo(){
   alimN21RenderResumen(datos12);
 }
 
+// Orden fijo pedido para la tabla comparativa (no alfabético) -- cualquier
+// zona que no esté en esta lista se agrega al final, alfabética, para que
+// operadores con otros códigos de zona no pierdan ninguna fila.
+const ALIM_N21_ORDEN_TABLA = ['ZE','ZN','ZS','ZC','ZO'];
+function _alimN21OrdenarZonasTabla(zonas){
+  return [...zonas].sort((a,b) => {
+    const ia = ALIM_N21_ORDEN_TABLA.indexOf(a), ib = ALIM_N21_ORDEN_TABLA.indexOf(b);
+    if(ia>=0 && ib>=0) return ia-ib;
+    if(ia>=0) return -1;
+    if(ib>=0) return 1;
+    return a.localeCompare(b);
+  });
+}
+
 // Tabla comparativa por zona -- Entrada/Salida/Pérdida del último mes
 // visible (según el filtro Rango) vs. el mes anterior, siempre las 5 zonas
 // completas (igual que "Comparativo Pérdidas por Zona", ignora el filtro
-// de chips de Zona -- ese filtro es solo para las 2 gráficas de arriba).
+// de chips de Zona -- ese filtro es solo para las 2 gráficas de arriba),
+// en el orden fijo ZE/ZN/ZS/ZC/ZO pedido, con fila de Total al final.
 function alimN21RenderTablaZonas(){
   const cont = document.getElementById('alim-n21-tabla-zonas');
+  const contTotal = document.getElementById('alim-n21-tabla-zonas-total');
   const caption = document.getElementById('alim-n21-tabla-zonas-caption');
   if(!cont) return;
   const fmt = v => v==null ? '--' : v.toLocaleString('es-CO',{maximumFractionDigits:0});
   const fmtDelta = v => v==null ? '--' : `${v>=0?'+':''}${v.toLocaleString('es-CO',{maximumFractionDigits:0})}`;
 
   let mesActual = null, mesAnterior = null;
-  const filas = ALIM_N21_ZONAS.map(z => {
+  const filas = _alimN21OrdenarZonasTabla(ALIM_N21_ZONAS).map(z => {
     const visibles = alimN21Visibles(alimN21AgregarMensual(new Set([z]))).filter(f => f.pct != null);
     if(!visibles.length) return null;
     const actual = visibles[visibles.length-1];
@@ -12766,6 +12786,7 @@ function alimN21RenderTablaZonas(){
 
   if(!filas.length){
     cont.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--text3)">Sin datos.</td></tr>';
+    if(contTotal) contTotal.innerHTML = '';
     return;
   }
 
@@ -12787,6 +12808,36 @@ function alimN21RenderTablaZonas(){
       <td style="color:${colorPct}">${f.deltaPct==null?'--':`${f.deltaPct>=0?'▲':'▼'} ${Math.abs(f.deltaPct).toFixed(2)} pp`}</td>
     </tr>`;
   }).join('');
+
+  if(contTotal){
+    const sum = campo => filas.reduce((s,f)=>s+f[campo], 0);
+    const todasConDelta = filas.every(f => f.deltaEntrada!=null && f.deltaSalida!=null && f.deltaPerdida!=null);
+    const totEntrada = sum('entrada'), totSalida = sum('salida'), totPerdida = sum('perdida');
+    const totDeltaEntrada = todasConDelta ? sum('deltaEntrada') : null;
+    const totDeltaSalida = todasConDelta ? sum('deltaSalida') : null;
+    const totDeltaPerdida = todasConDelta ? sum('deltaPerdida') : null;
+    const totPct = totEntrada ? totPerdida/totEntrada*100 : null;
+    let totDeltaPct = null;
+    if(todasConDelta && totEntrada){
+      const totEntradaAnterior = totEntrada - totDeltaEntrada;
+      const totPerdidaAnterior = totPerdida - totDeltaPerdida;
+      const totPctAnterior = totEntradaAnterior ? totPerdidaAnterior/totEntradaAnterior*100 : null;
+      if(totPctAnterior != null) totDeltaPct = totPct - totPctAnterior;
+    }
+    const colorTotPerdida = totDeltaPerdida==null ? 'var(--text3)' : (totDeltaPerdida>=0 ? '#ef476f' : '#06d6a0');
+    const colorTotPct = totDeltaPct==null ? 'var(--text3)' : (totDeltaPct>=0 ? '#ef476f' : '#06d6a0');
+    contTotal.innerHTML = `
+      <td style="text-align:left">Total</td>
+      <td>${fmt(totEntrada)}</td>
+      <td>${fmtDelta(totDeltaEntrada)}</td>
+      <td>${fmt(totSalida)}</td>
+      <td>${fmtDelta(totDeltaSalida)}</td>
+      <td>${fmt(totPerdida)}</td>
+      <td style="color:${colorTotPerdida}">${fmtDelta(totDeltaPerdida)}</td>
+      <td>${totPct==null?'--':totPct.toFixed(2)+'%'}</td>
+      <td style="color:${colorTotPct}">${totDeltaPct==null?'--':`${totDeltaPct>=0?'▲':'▼'} ${Math.abs(totDeltaPct).toFixed(2)} pp`}</td>
+    `;
+  }
 }
 
 function alimN21ToggleVariacion(){
