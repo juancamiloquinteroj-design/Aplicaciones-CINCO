@@ -16138,7 +16138,13 @@ async function _informesGraficoAImagen({labels, datasets, scales, titulo, ancho=
   // salvo en los ejes que el llamador marcó drawOnChartArea:false
   // (esos ya comparten el área de otro eje, no deben pintar nada).
   const ejesSinGrid = new Set();
-  const scalesConFuente = {x:{ticks:{font:{size:13}, color:'#333333'}, grid:{display:false}}};
+  // offset:true en el eje X -- deja un margen a los lados del primer y
+  // último punto, para que la etiqueta resaltada del último mes (más
+  // grande, ver _informesResaltarUltimo) no quede pegada/cortada contra
+  // el borde derecho del gráfico -- pedido explícito ("todas las
+  // gráficas están saliendo cortadas al lado derecho, no se alcanza a
+  // ver bien el %").
+  const scalesConFuente = {x:{offset:true, ticks:{font:{size:13}, color:'#333333'}, grid:{display:false}}};
   Object.entries(scales||{}).forEach(([eje, cfg]) => {
     if(cfg.grid && cfg.grid.drawOnChartArea === false) ejesSinGrid.add(eje);
     scalesConFuente[eje] = {...cfg, ticks:{font:{size:14}, color:'#333333', ...(cfg.ticks||{})}, grid:{display:false}};
@@ -16148,7 +16154,7 @@ async function _informesGraficoAImagen({labels, datasets, scales, titulo, ancho=
     options:{
       responsive:false, animation:false, devicePixelRatio:escala,
       font:{size:13},
-      layout:{padding:{top: titulo?30:18, right:20, bottom:10, left:10}},
+      layout:{padding:{top: titulo?30:18, right:60, bottom:10, left:10}},
       plugins:{
         legend:{display:true, position:'bottom', labels:{boxWidth:14, font:{size:13}}},
         title: titulo ? {display:true, text:titulo.toUpperCase(), align:'center', font:{size:16, weight:'700'}, color:'#1a2a4a', padding:{bottom:16}} : {display:false},
@@ -16269,8 +16275,12 @@ const INFORMES_TABLA_BORDES = {top:INFORMES_BORDE, bottom:INFORMES_BORDE, left:I
 const INFORMES_BORDE_CAJA = {style: docx.BorderStyle.SINGLE, size:4, color:'D0D0D0'};
 const INFORMES_TABLA_BORDES_CAJA = {top:INFORMES_BORDE_CAJA, bottom:INFORMES_BORDE_CAJA, left:INFORMES_BORDE_CAJA, right:INFORMES_BORDE_CAJA, insideHorizontal:INFORMES_BORDE_CAJA, insideVertical:INFORMES_BORDE_CAJA};
 
+// spacing.after -- pedido explícito ("después de que haya un punto
+// aparte o cambio de párrafo quiero que haya un espacio"): antes los
+// párrafos de cuerpo no tenían separación propia, solo se notaban por la
+// sangría/justificado, y quedaban pegados uno contra el otro.
 function _informesParrafo(childrenOTexto, opts){
-  const base = {alignment: docx.AlignmentType.JUSTIFIED, indent:{firstLine:360}};
+  const base = {alignment: docx.AlignmentType.JUSTIFIED, indent:{firstLine:360}, spacing:{after:160}};
   if(typeof childrenOTexto === 'string') return new docx.Paragraph({...base, text:childrenOTexto, ...opts});
   return new docx.Paragraph({...base, children:childrenOTexto, ...opts});
 }
@@ -16342,6 +16352,31 @@ function informesSeccionIntroduccion(mesClave, alcanceTexto){
   ];
 }
 
+// Encabezado de página REAL de Word (se repite en todas las páginas del
+// cuerpo del informe, no solo la portada) -- pedido explícito ("en el
+// encabezado quiero que esté esto: el logo de CINCO que diga 'Informe
+// Balances y Análisis Energéticos (BAE) - Mes-año'"). Logo de CINCO (el
+// software), no el logo del operador que ya va en la portada -- son
+// cosas distintas.
+async function _informesEncabezadoPagina(mesClave){
+  const logo = await _informesCargarAssetImagen('logo_cinco.png');
+  const anchoLogo = 60;
+  const altoLogo = logo ? Math.round(anchoLogo * logo.height / logo.width) : 0;
+  const sinBorde = {top:INFORMES_BORDE_NINGUNO, bottom:INFORMES_BORDE_NINGUNO, left:INFORMES_BORDE_NINGUNO, right:INFORMES_BORDE_NINGUNO};
+  const celdaLogo = new docx.TableCell({borders:sinBorde,
+    children:[new docx.Paragraph(logo ? {children:[new docx.ImageRun({data:logo.bytes, transformation:{width:anchoLogo, height:altoLogo}, type:'png'})]} : {})]});
+  const celdaTexto = new docx.TableCell({borders:sinBorde, verticalAlign: docx.VerticalAlign.CENTER,
+    children:[new docx.Paragraph({alignment:docx.AlignmentType.RIGHT,
+      children:[new docx.TextRun({text:`Informe Balances y Análisis Energéticos (BAE) - ${labelMesLargo(mesClave)}`, size:18, color:'555555'})]})]});
+  // El borde inferior naranja va a nivel de TABLA (no de celda) para que
+  // la línea quede continua de punta a punta, no solo bajo una columna.
+  return new docx.Header({children:[
+    new docx.Table({width:{size:100, type:docx.WidthType.PERCENTAGE},
+      borders:{...sinBorde, bottom:{style:docx.BorderStyle.SINGLE, size:12, color:'F4A261'}, insideHorizontal:INFORMES_BORDE_NINGUNO, insideVertical:INFORMES_BORDE_NINGUNO},
+      rows:[new docx.TableRow({cantSplit:true, children:[celdaLogo, celdaTexto]})]}),
+  ]});
+}
+
 // ==========================================================================
 // IP_REG (Indicador de Índice de Pérdidas Totales -- CREG 015/2018)
 // ==========================================================================
@@ -16350,7 +16385,7 @@ function informesSeccionIntroduccion(mesClave, alcanceTexto){
 // guardadas en assets/formula_pt.png / formula_ipt.png. Se leen como
 // bytes crudos (no dataURL) porque son archivos locales de la app, no
 // canvases -- fetch + arrayBuffer alcanza, sin pasar por toDataURL.
-const _informesFormulaDim = {'formula_pt.png':{w:508,h:94}, 'formula_ipt.png':{w:609,h:92}};
+const _informesFormulaDim = {'formula_pt.png':{w:508,h:94}, 'formula_ipt.png':{w:609,h:92}, 'logo_cinco.png':{w:1445,h:633}};
 async function _informesCargarAssetImagen(nombreArchivo){
   const resp = await fetch(`assets/${nombreArchivo}`);
   if(!resp.ok) return null;
@@ -17480,6 +17515,9 @@ async function informesGenerar(){
     // respaldo si el informe no trae IP_Reg.
     const mesPortada = mesIpReg || mesN21;
     const childrenPortada = informesSeccionPortada(mesPortada);
+    // Encabezado de página (logo CINCO + título) -- pedido explícito, se
+    // repite en todas las páginas del cuerpo, no en la portada.
+    const encabezadoPagina = await _informesEncabezadoPagina(mesPortada);
     const children = [];
     children.push(..._informesSeccionTOC());
 
@@ -17535,6 +17573,7 @@ async function informesGenerar(){
         },
         {
           properties:{page:{size:{width:12240, height:15840}, margin:{top:1440,bottom:1440,left:1440,right:1440}}},
+          headers:{default: encabezadoPagina},
           children,
         },
       ],
