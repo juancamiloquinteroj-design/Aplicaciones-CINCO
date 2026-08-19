@@ -26,6 +26,12 @@
      (el navegador se niega a ejecutarlo por MIME type), confirmado en vivo con
      curl -I; unpkg lo sirve bien como "text/javascript". -->
 <script src="https://unpkg.com/docx@9.7.1/dist/index.umd.cjs"></script>
+<!-- jsPDF + autoTable -- exportar el informe también a PDF real (texto
+     vectorial, no una imagen escaneada), sin pasar por Word. Vía jsdelivr
+     -- cdnjs tenía la ruta de la versión 2.5.2 rota (404), confirmado con
+     curl -I. -->
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
 <style>
 :root{
   --accent:#00b4d8;--accent2:#0096c7;--amber:#f4a261;--green:#06d6a0;--red:#ef476f;--purple:#7b2fff;
@@ -2477,7 +2483,8 @@ tfoot td:first-child{text-align:left}
       </div>
 
       <div class="fbar" style="margin-top:10px">
-        <button type="button" class="btn-theme" style="width:auto;padding:0 18px" id="informes-btn-generar" onclick="informesGenerar()">⬇ Generar y descargar informe (.docx)</button>
+        <button type="button" class="btn-theme" style="width:auto;padding:0 18px" id="informes-btn-generar" onclick="informesGenerar()">⬇ Descargar informe (.docx)</button>
+        <button type="button" class="btn-theme" style="width:auto;padding:0 18px" id="informes-btn-generar-pdf" onclick="informesGenerarPDF()">⬇ Descargar informe (.pdf)</button>
         <span id="informes-msg" style="font-size:11.5px;color:var(--text3)"></span>
       </div>
     </div>
@@ -17589,6 +17596,540 @@ async function informesGenerar(){
   }catch(e){
     console.error(e);
     msg.textContent = 'No se pudo generar el informe: ' + (e.message || e);
+  }finally{
+    btn.disabled = false;
+  }
+}
+
+// ==========================================================================
+// EXPORTACIÓN A PDF -- mismo informe, en PDF real (texto vectorial
+// seleccionable, no una imagen escaneada), sin pasar por Word. Pedido
+// explícito ("el informe se debe poder imprimir en PDF y Word", con un
+// botón de descarga PDF aparte en la app).
+//
+// Reusa TAL CUAL las funciones de datos/gráficos que ya existen para el
+// .docx -- son independientes de la librería de salida: informesFilasAlimMes,
+// alimN21AgregarMensual, informesAgruparAlimentadoresSubestacion,
+// informesConclusionesAlimentadores, _informesGraficoAImagen,
+// informesFiguraMapaZonas, informesFiguraIptAnual/Mensual/N21/Subestacion/
+// IpComercial/TemperaturaEntrada -- todas devuelven números o bytes JPEG
+// crudos, no nodos de docx.js.
+//
+// Para la REDACCIÓN (los párrafos que sí mezclan texto con números en
+// negrita) se reusa la MISMA función que ya arma el .docx
+// (informesTextoIpt/N21/N21Total/Subestacion/Negativos/IpComercial) con un
+// truco: mientras esas funciones corren, se reemplazan momentáneamente
+// docx.TextRun/docx.Paragraph por versiones que solo devuelven el texto
+// plano en vez de armar nodos reales de Word -- así el informe en PDF
+// dice EXACTAMENTE lo mismo que el .docx, sin mantener dos redacciones
+// que se puedan desincronizar (confirmado con una prueba real: la
+// numeración con "new docx.TextRun(...)" respeta el valor de retorno
+// explícito del constructor incluso llamado con `new`, tal como exige el
+// spec de JS).
+// ==========================================================================
+function _informesConTextoPlano(fn){
+  const TextRunOriginal = docx.TextRun, ParagraphOriginal = docx.Paragraph;
+  docx.TextRun = function(arg){ return {text: typeof arg === 'string' ? arg : ((arg && arg.text) || '')}; };
+  docx.Paragraph = function(arg){
+    if(typeof arg === 'string') return {text: arg};
+    if(arg && typeof arg.text === 'string') return {text: arg.text};
+    if(arg && Array.isArray(arg.children)) return {text: arg.children.map(c => (c && c.text) || '').join('')};
+    return {text: ''};
+  };
+  try{ return fn(); }
+  finally{ docx.TextRun = TextRunOriginal; docx.Paragraph = ParagraphOriginal; }
+}
+function _informesTextosPlanos(resultado){
+  const arr = Array.isArray(resultado) ? resultado : [resultado];
+  return arr.filter(Boolean).map(p => p.text).filter(t => t && t.trim());
+}
+
+const INFORMES_PDF_MARGEN = 72;          // 1in, igual que el margen del .docx
+const INFORMES_PDF_ANCHO_PAGINA = 612;   // Carta en puntos (8.5in)
+const INFORMES_PDF_ALTO_PAGINA = 792;    // 11in
+const INFORMES_PDF_ANCHO_CONTENIDO = INFORMES_PDF_ANCHO_PAGINA - 2*INFORMES_PDF_MARGEN;
+
+function _informesPdfBytesADataUrl(bytes, mime){
+  let s = ''; const CH = 8192;
+  for(let i=0;i<bytes.length;i+=CH) s += String.fromCharCode(...bytes.subarray(i,i+CH));
+  return `data:${mime};base64,${btoa(s)}`;
+}
+
+// jsPDF NO reescala/comprime las imágenes que recibe -- si se le pasa el
+// logo_cinco.png tal cual (1445x633px, ~200KB) y se embebe en el
+// encabezado de cada página, cada página suma esos ~200KB completos
+// (confirmado con una prueba real: 8 inserciones del logo sin achicar
+// pesaron 3.6MB). Se achica UNA vez a un canvas chico antes de repetirlo
+// en cada encabezado -- pedido explícito de que el informe sea liviano.
+let _informesPdfLogoChicoCache = null;
+async function _informesPdfLogoChico(){
+  if(_informesPdfLogoChicoCache !== null) return _informesPdfLogoChicoCache;
+  const logo = await _informesCargarAssetImagen('logo_cinco.png');
+  if(!logo){ _informesPdfLogoChicoCache = null; return null; }
+  const anchoPx = 160, altoPx = Math.round(anchoPx*logo.height/logo.width);
+  const cv = document.createElement('canvas');
+  cv.width = anchoPx; cv.height = altoPx;
+  const ctx = cv.getContext('2d');
+  const img = new Image();
+  await new Promise((resolve,reject) => {
+    img.onload = resolve; img.onerror = reject;
+    img.src = _informesPdfBytesADataUrl(logo.bytes, 'image/png');
+  });
+  ctx.drawImage(img, 0, 0, anchoPx, altoPx);
+  const dataUrl = cv.toDataURL('image/png');
+  _informesPdfLogoChicoCache = {bytes: _informesDataUrlAUint8(dataUrl), width: anchoPx, height: altoPx};
+  return _informesPdfLogoChicoCache;
+}
+
+// jsPDF no reacomoda contenido solo como Word -- cada bloque que se va a
+// dibujar primero pregunta si cabe, y si no cabe agrega página.
+function _informesPdfAsegurarEspacio(doc, y, alturaNecesaria){
+  if(y + alturaNecesaria > INFORMES_PDF_ALTO_PAGINA - INFORMES_PDF_MARGEN){
+    doc.addPage();
+    return INFORMES_PDF_MARGEN;
+  }
+  return y;
+}
+
+// Párrafo justificado envuelto a mano línea por línea (la ÚLTIMA línea de
+// cada párrafo NO se justifica, como en cualquier texto justificado real)
+// -- pedido explícito de justificado/legibilidad, mismo criterio que ya
+// se aplicó en el .docx.
+function _informesPdfParrafo(doc, texto, y, opts={}){
+  if(!texto) return y;
+  const tamano = opts.tamano || 9.5;
+  doc.setFont('helvetica', opts.bold ? 'bold' : (opts.italica ? 'italic' : 'normal'));
+  doc.setFontSize(tamano);
+  doc.setTextColor(opts.color!=null ? opts.color : 40);
+  const ancho = opts.ancho || INFORMES_PDF_ANCHO_CONTENIDO;
+  const x = opts.x != null ? opts.x : INFORMES_PDF_MARGEN;
+  const lineas = doc.splitTextToSize(texto, ancho);
+  const alturaLinea = tamano*1.42;
+  lineas.forEach((linea,i) => {
+    y = _informesPdfAsegurarEspacio(doc, y, alturaLinea);
+    const esUltima = i===lineas.length-1;
+    if(opts.align==='center') doc.text(linea, INFORMES_PDF_MARGEN+ancho/2, y, {align:'center'});
+    else if(esUltima || opts.align==='left') doc.text(linea, x, y);
+    else doc.text(linea, x, y, {align:'justify', maxWidth:ancho});
+    y += alturaLinea;
+  });
+  return y + (opts.espacioDespues!=null ? opts.espacioDespues : 7);
+}
+
+// Encabezados numerados a mano (jsPDF no tiene el campo de numeración
+// multinivel de Word) -- mismo esquema 1./1.1./1.1.1./1.1.1.1. que el
+// .docx, registrando cada uno en `toc` con su página real para la tabla
+// de contenido.
+function _informesPdfHeading(doc, contador, nivel, texto, y, toc){
+  contador[nivel]++;
+  for(let i=nivel+1;i<contador.length;i++) contador[i]=0;
+  const numero = contador.slice(0,nivel+1).join('.') + '.';
+  const tamanos = [12.5, 11.5, 10.5, 9.5];
+  const antes = [14,10,8,6][nivel];
+  y = _informesPdfAsegurarEspacio(doc, y+antes, tamanos[nivel]*1.6);
+  doc.setFont('helvetica','bold'); doc.setFontSize(tamanos[nivel]); doc.setTextColor(20);
+  const tituloCompleto = `${numero} ${texto}`;
+  const xIndent = INFORMES_PDF_MARGEN + nivel*10;
+  doc.text(tituloCompleto, xIndent, y);
+  if(toc) toc.push({texto: tituloCompleto, nivel, pagina: doc.internal.getNumberOfPages()});
+  return y + tamanos[nivel]*1.7;
+}
+
+let _informesPdfContadorFigura = 0, _informesPdfContadorTabla = 0;
+async function _informesPdfImagen(doc, imgResultado, y, tituloFigura, anchoRel=0.92){
+  if(!imgResultado) return y;
+  const anchoImg = INFORMES_PDF_ANCHO_CONTENIDO*anchoRel;
+  const altoImg = anchoImg * imgResultado.height / imgResultado.width;
+  y = _informesPdfAsegurarEspacio(doc, y, altoImg+22);
+  const mime = imgResultado.tipo==='png' ? 'image/png' : 'image/jpeg';
+  const formato = imgResultado.tipo==='png' ? 'PNG' : 'JPEG';
+  const dataUrl = _informesPdfBytesADataUrl(imgResultado.bytes, mime);
+  const x = INFORMES_PDF_MARGEN + (INFORMES_PDF_ANCHO_CONTENIDO-anchoImg)/2;
+  doc.addImage(dataUrl, formato, x, y, anchoImg, altoImg);
+  y += altoImg + 4;
+  if(tituloFigura){
+    _informesPdfContadorFigura++;
+    doc.setFont('helvetica','italic'); doc.setFontSize(8.5); doc.setTextColor(90);
+    doc.text(`Figura ${_informesPdfContadorFigura}: ${tituloFigura}`, INFORMES_PDF_ANCHO_PAGINA/2, y, {align:'center'});
+    y += 16;
+  }
+  return y;
+}
+
+function _informesPdfCaptionTabla(doc, texto, y){
+  _informesPdfContadorTabla++;
+  y = _informesPdfAsegurarEspacio(doc, y, 14);
+  doc.setFont('helvetica','italic'); doc.setFontSize(8.5); doc.setTextColor(90);
+  doc.text(`Tabla ${_informesPdfContadorTabla}: ${texto}`, INFORMES_PDF_MARGEN, y);
+  return y + 14;
+}
+
+// Misma tabla ANCHA (un mes por columna) que el .docx -- reusa
+// directamente `filasPorNem` de informesAgruparAlimentadoresSubestacion.
+function _informesPdfTablaAlimentadores(doc, filasPorNem, mesClave, campo, y){
+  const [anio, mesNum] = mesClave.split('-').map(Number);
+  const meses = []; for(let m=1;m<=mesNum;m++) meses.push(`${anio}-${String(m).padStart(2,'0')}`);
+  const nemonicos = Object.keys(filasPorNem).sort();
+  const esPct = campo==='pct';
+  const formato = v => esPct ? `${v.toFixed(2)}%` : _informesFKwh(v);
+  const head = ['Circuito Alimentador', ...meses.map(m=>labelMesLargo(m))];
+  const body = nemonicos.map(nem => [nem, ...meses.map(m => {
+    const f = filasPorNem[nem].find(x=>x.clave===m);
+    const v = f ? f[campo] : null;
+    return v!=null ? formato(v) : '';
+  })]);
+  const filaTotal = ['%'===campo?'':'', ...meses.map(m => {
+    if(esPct){
+      let entrada=0, perdida=0, tiene=false;
+      nemonicos.forEach(nem => { const f=filasPorNem[nem].find(x=>x.clave===m); if(f){ entrada+=f.entrada||0; perdida+=f.perdida||0; tiene=true; } });
+      return (tiene && entrada) ? `${(perdida/entrada*100).toFixed(2)}%` : '';
+    }
+    let suma=0, tiene=false;
+    nemonicos.forEach(nem => { const f=filasPorNem[nem].find(x=>x.clave===m); if(f && f[campo]!=null){ suma+=f[campo]; tiene=true; } });
+    return tiene ? _informesFKwh(suma) : '';
+  })];
+  filaTotal[0] = esPct ? '% Pérdida S/E' : 'Total, Pérdida S/E';
+  y = _informesPdfAsegurarEspacio(doc, y, 40);
+  doc.autoTable({
+    startY: y,
+    head: [head], body,
+    foot: [filaTotal],
+    margin:{left:INFORMES_PDF_MARGEN, right:INFORMES_PDF_MARGEN},
+    theme: 'plain',
+    styles:{fontSize:7.5, cellPadding:3, lineColor:[210,210,210], lineWidth:{bottom:0.5}, textColor:30},
+    headStyles:{fillColor:[217,217,217], textColor:20, fontStyle:'bold', lineWidth:{bottom:1}, lineColor:[0,0,0]},
+    footStyles:{fillColor:[237,237,237], textColor:20, fontStyle:'bold', lineWidth:{top:1}, lineColor:[0,0,0]},
+    columnStyles:{0:{halign:'left'}},
+    bodyStyles:{halign:'center'},
+  });
+  return doc.lastAutoTable.finalY + 14;
+}
+
+// ---- Portada (página 1, sin encabezado de página) ----
+function _informesPdfPortada(doc, mesClave, logoOperador){
+  let y = 150;
+  if(logoOperador){
+    const anchoLogo = 120, altoLogo = anchoLogo*logoOperador.height/logoOperador.width;
+    doc.addImage(_informesPdfBytesADataUrl(logoOperador.bytes,'image/png'), 'PNG', (INFORMES_PDF_ANCHO_PAGINA-anchoLogo)/2, y, anchoLogo, altoLogo);
+    y += altoLogo + 26;
+  }
+  doc.setFont('helvetica','bold'); doc.setFontSize(14); doc.setTextColor(15);
+  doc.text('INFORME MENSUAL BALANCES Y ANALISIS ENERGETICOS', INFORMES_PDF_ANCHO_PAGINA/2, y, {align:'center'}); y += 20;
+  doc.text(labelMesLargo(mesClave).toUpperCase(), INFORMES_PDF_ANCHO_PAGINA/2, y, {align:'center'}); y += 56;
+  doc.setFont('helvetica','normal'); doc.setFontSize(11); doc.setTextColor(30);
+  doc.text('Presentado por:', INFORMES_PDF_ANCHO_PAGINA/2, y, {align:'center'}); y += 18;
+  doc.text('División Control de Pérdidas', INFORMES_PDF_ANCHO_PAGINA/2, y, {align:'center'}); y += 40;
+  doc.text((OPERADOR&&OPERADOR.nombre)||'', INFORMES_PDF_ANCHO_PAGINA/2, y, {align:'center'}); y += 40;
+  const ciudad = (typeof PZ_DEPARTAMENTO !== 'undefined' && PZ_DEPARTAMENTO) ? PZ_DEPARTAMENTO : null;
+  if(ciudad){ doc.text(ciudad, INFORMES_PDF_ANCHO_PAGINA/2, y, {align:'center'}); y += 18; }
+  const fechaLarga = new Date().toLocaleDateString('es-CO', {day:'2-digit', month:'long', year:'numeric'});
+  doc.text(fechaLarga, INFORMES_PDF_ANCHO_PAGINA/2, y, {align:'center'});
+}
+
+// ---- Tabla de contenido (páginas reservadas de antemano, se llenan al final) ----
+function _informesPdfDibujarTOC(doc, toc, primeraPagina){
+  doc.setPage(primeraPagina);
+  let y = INFORMES_PDF_MARGEN;
+  doc.setFont('helvetica','bold'); doc.setFontSize(14); doc.setTextColor(15);
+  doc.text('Tabla de Contenido', INFORMES_PDF_MARGEN, y); y += 26;
+  const alturaLinea = 15.5;
+  toc.forEach(item => {
+    if(y + alturaLinea > INFORMES_PDF_ALTO_PAGINA - INFORMES_PDF_MARGEN){ doc.addPage(); doc.setPage(doc.internal.getNumberOfPages()); y = INFORMES_PDF_MARGEN; }
+    const tamano = item.nivel===0 ? 9.5 : 8.5;
+    doc.setFont('helvetica', item.nivel===0?'bold':'normal'); doc.setFontSize(tamano); doc.setTextColor(item.nivel===0?20:60);
+    const xIndent = INFORMES_PDF_MARGEN + item.nivel*12;
+    const numPagTexto = String(item.pagina);
+    const anchoNum = doc.getTextWidth(numPagTexto);
+    const anchoDisponible = INFORMES_PDF_ANCHO_CONTENIDO - item.nivel*12 - anchoNum - 6;
+    let titulo = item.texto;
+    while(doc.getTextWidth(titulo) > anchoDisponible && titulo.length>3) titulo = titulo.slice(0,-2);
+    if(titulo !== item.texto) titulo = titulo.slice(0,-1)+'…';
+    doc.text(titulo, xIndent, y);
+    // Línea punteada guía hasta el número de página.
+    const xFinTitulo = xIndent + doc.getTextWidth(titulo) + 4;
+    const xNum = INFORMES_PDF_MARGEN + INFORMES_PDF_ANCHO_CONTENIDO - anchoNum;
+    doc.setDrawColor(180); doc.setLineDashPattern([1,2], 0); doc.setLineWidth(0.5);
+    doc.line(xFinTitulo, y-2, xNum-4, y-2);
+    doc.setLineDashPattern([], 0);
+    doc.text(numPagTexto, INFORMES_PDF_ANCHO_PAGINA-INFORMES_PDF_MARGEN, y, {align:'right'});
+    y += alturaLinea;
+  });
+}
+
+// ---- Encabezado + pie de página en TODAS las páginas del cuerpo (no la
+// portada ni la tabla de contenido) -- pedido explícito ("en el
+// encabezado quiero que esté esto: el logo de CINCO que diga 'Informe
+// Balances y Análisis Energéticos (BAE) - Mes-año'"), mismo contenido
+// que el encabezado del .docx. ----
+async function _informesPdfAplicarEncabezados(doc, mesClave, desdePagina){
+  const logo = await _informesPdfLogoChico();
+  const totalPaginas = doc.internal.getNumberOfPages();
+  for(let i=desdePagina; i<=totalPaginas; i++){
+    doc.setPage(i);
+    if(logo){
+      const anchoLogo = 30, altoLogo = anchoLogo*logo.height/logo.width;
+      doc.addImage(_informesPdfBytesADataUrl(logo.bytes,'image/png'), 'PNG', INFORMES_PDF_MARGEN, 28, anchoLogo, altoLogo);
+    }
+    doc.setFont('helvetica','normal'); doc.setFontSize(8.5); doc.setTextColor(85);
+    doc.text(`Informe Balances y Análisis Energéticos (BAE) - ${labelMesLargo(mesClave)}`, INFORMES_PDF_ANCHO_PAGINA-INFORMES_PDF_MARGEN, 40, {align:'right'});
+    doc.setDrawColor(244,162,97); doc.setLineWidth(1.6);
+    doc.line(INFORMES_PDF_MARGEN, 50, INFORMES_PDF_ANCHO_PAGINA-INFORMES_PDF_MARGEN, 50);
+    doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(140);
+    doc.text(`Página ${i-desdePagina+1} de ${totalPaginas-desdePagina+1}`, INFORMES_PDF_ANCHO_PAGINA/2, INFORMES_PDF_ALTO_PAGINA-30, {align:'center'});
+  }
+}
+
+// ---- Cuerpo completo del informe (todo menos portada/TOC) -- la MISMA
+// función se corre dos veces (ver informesGenerarPDF): una "sonda" para
+// contar cuántas páginas necesita la tabla de contenido, y otra real
+// después de reservar esas páginas. Determinista: mismos datos de
+// entrada, mismo resultado siempre. ----
+async function _informesPdfCuerpo(doc, sel, mesIpReg, mesN21, toc){
+  const contador = [0,0,0,0];
+  let y = INFORMES_PDF_MARGEN;
+
+  if(sel.subestacion){
+    y = await _informesPdfSeccionSubestacion(doc, contador, 0, sel.subestacion, mesN21, y, toc);
+    return;
+  }
+
+  if(sel.introduccion){
+    y = _informesPdfHeading(doc, contador, 0, 'Introducción y objetivo', y, toc);
+    const mesPortada = mesIpReg || mesN21;
+    y = _informesPdfParrafo(doc, `El presente informe tiene como objetivo presentar el análisis del comportamiento energético y de pérdidas de ${(OPERADOR&&OPERADOR.nombre)||'la empresa'} para el periodo ${labelMesLargo(mesPortada)}, con base en la información registrada en el Sistema de Gestión de la Medida. El alcance de este documento corresponde a: ${_informesAlcanceTexto(sel)}.`, y);
+  }
+
+  if(sel.ipReg){
+    y = _informesPdfHeading(doc, contador, 0, 'Metodología de Calculo Índice de Pérdidas Totales', y, toc);
+    y = _informesPdfParrafo(doc, 'La metodología establecida en la Resolución CREG 015/2018 permite determinar el indicador de pérdidas de energía mediante la relación entre las pérdidas totales de energía y la energía de entrada al sistema de distribución, diferenciando el análisis de acuerdo con el nivel de tensión. Para su cálculo se parte de un balance energético en el que se determina la diferencia entre la energía que ingresa al sistema y la energía entregada o registrada a los usuarios, considerando los ajustes y variables definidos en la metodología regulatoria. El resultado se expresa como un porcentaje de pérdidas y permite evaluar el desempeño del sistema frente a los niveles de referencia establecidos por la regulación.', y);
+    try{
+      const fPt = await _informesCargarAssetImagen('formula_pt.png');
+      y = await _informesPdfImagen(doc, fPt ? {...fPt, tipo:'png'} : null, y, null, 0.45);
+      const fIpt = await _informesCargarAssetImagen('formula_ipt.png');
+      y = await _informesPdfImagen(doc, fIpt ? {...fIpt, tipo:'png'} : null, y, null, 0.5);
+    }catch(e){ /* si no cargan las fórmulas, el resto del informe sigue igual */ }
+
+    y = _informesPdfHeading(doc, contador, 1, 'Indicador de Índice de Pérdidas Totales (CREG 015/2018)', y, toc);
+    const parrafosIpt = _informesTextosPlanos(_informesConTextoPlano(() => informesTextoIpt(mesIpReg)));
+    for(const p of parrafosIpt) y = _informesPdfParrafo(doc, p, y);
+    const figAnual = await informesFiguraIptAnual(mesIpReg);
+    y = await _informesPdfImagen(doc, figAnual, y, 'Índice de pérdidas totales CREG 015/2018 (Anual)');
+    const figMensual = await informesFiguraIptMensual(mesIpReg);
+    y = await _informesPdfImagen(doc, figMensual, y, 'Índice de pérdidas totales mensuales');
+    const filaIpt = IP_MAPA_POR_NORMAL.get(mesIpReg);
+    if(filaIpt && filaIpt.ipt_pct!=null){
+      const entrada = filaIpt.pt_kwh/filaIpt.ipt_pct, salida = entrada-filaIpt.pt_kwh;
+      y = _informesPdfAsegurarEspacio(doc, y, 20);
+      doc.setFont('helvetica','bold'); doc.setFontSize(9.5); doc.setTextColor(20);
+      doc.text('Información del balance energético', INFORMES_PDF_MARGEN, y); y += 16;
+      y = _informesPdfParrafo(doc, `Energía de entrada: ${_informesFKwh(entrada)} kWh   ·   Energía de salida: ${_informesFKwh(salida)} kWh   ·   Pérdida de energía: ${_informesFKwh(filaIpt.pt_kwh)} kWh (${(filaIpt.ipt_pct*100).toFixed(2)}%)`, y, {tamano:9.5});
+    }
+  }
+
+  if(sel.n21){
+    y = _informesPdfHeading(doc, contador, 0, 'Metodología calculo indicador N2-1', y, toc);
+    y = _informesPdfParrafo(doc, 'La metodología del indicador N2-1 se basa en la construcción de balances energéticos para los niveles de tensión 2 y 1, partiendo de la información de alimentadores, subestaciones y zonas. Para garantizar la confiabilidad del balance, inicialmente se realiza la depuración de las lecturas y el análisis de las maniobras y suplencias, identificando los traslados temporales de carga que no se encuentran actualizados en el SPARD. Posteriormente, se consolida la energía de entrada de los alimentadores mediante el ciclo predominante, junto con la información de ventas, AGPE y demás variables necesarias para determinar las pérdidas de cada circuito.', y);
+    y = _informesPdfParrafo(doc, 'Una vez consolidada la información, los alimentadores se agrupan de acuerdo con su zona y subestación, permitiendo obtener balances energéticos a diferentes niveles de agregación. Para el balance por zonas, la energía de ventas N21 se ajusta excluyendo los auxiliares, con el fin de mantener consistencia entre las entradas y salidas consideradas. Finalmente, las pérdidas obtenidas en cada alimentador se consolidan para determinar el comportamiento de las subestaciones y zonas, permitiendo obtener el indicador N2-1 y facilitar el seguimiento de las pérdidas totales de los niveles de tensión 1 y 2.', y);
+
+    y = _informesPdfHeading(doc, contador, 1, 'Indicador Total N2-1', y, toc);
+    const serieTotal = alimN21AgregarMensual(new Set());
+    const idxTotal = serieTotal.findIndex(f=>f.clave===mesN21);
+    if(idxTotal>=0){
+      const parrafosTotal = _informesTextosPlanos(_informesConTextoPlano(() => informesTextoN21Total(serieTotal, idxTotal)));
+      for(const p of parrafosTotal) y = _informesPdfParrafo(doc, p, y);
+      const mapa = await informesFiguraMapaZonas(mesN21);
+      y = await _informesPdfImagen(doc, mapa, y, 'Indicador N2-1 por zona');
+      const figTotal = await informesFiguraN21(serieTotal, idxTotal, 'Total');
+      y = await _informesPdfImagen(doc, figTotal, y, 'Indicador Total N2-1 -- pérdida mensual (kWh y %)');
+    }else{
+      y = _informesPdfParrafo(doc, 'No hay datos de N2-1 para el mes seleccionado.', y, {italica:true});
+    }
+
+    for(const zona of sel.zonas){
+      y = _informesPdfHeading(doc, contador, 2, `Indicador N2-1 ZONA ${zona}`, y, toc);
+      const serieZona = alimN21AgregarMensual(new Set([zona]));
+      const idxZona = serieZona.findIndex(f=>f.clave===mesN21);
+      if(idxZona>=0){
+        const anterior = idxZona>0 ? serieZona[idxZona-1] : null;
+        const parrafoZona = _informesTextosPlanos(_informesConTextoPlano(() => informesTextoN21(`La zona ${zona}`, serieZona[idxZona], anterior)));
+        for(const p of parrafoZona) y = _informesPdfParrafo(doc, p, y);
+        const figZona = await informesFiguraN21(serieZona, idxZona, `Zona ${zona}`);
+        y = await _informesPdfImagen(doc, figZona, y, `Indicador N2-1 Mensual -- Zona ${zona}`);
+      }
+      const subestaciones = [...new Set(ALIM_FILAS.filter(f=>f.zona===zona).map(f=>f.subestacion).filter(Boolean))].filter(n=>!_informesEsCompacto(n)).sort();
+      for(const sub of subestaciones){
+        y = await _informesPdfSeccionSubestacion(doc, contador, 3, sub, mesN21, y, toc);
+      }
+    }
+  }
+
+  if(sel.comercial){
+    y = _informesPdfHeading(doc, contador, 0, 'Indicador de Pérdidas comerciales', y, toc);
+    const parrafosComercial = _informesTextosPlanos(_informesConTextoPlano(() => informesTextoIpComercial(mesIpReg)));
+    if(parrafosComercial.length){
+      for(const p of parrafosComercial) y = _informesPdfParrafo(doc, p, y);
+      const figComercial = await informesFiguraIpComercial(mesIpReg);
+      y = await _informesPdfImagen(doc, figComercial, y, 'Índice de Pérdidas Comercial');
+    }else{
+      y = _informesPdfParrafo(doc, 'No hay datos suficientes de IP Comercial para el mes seleccionado.', y, {italica:true});
+    }
+  }
+
+  if(sel.temperatura){
+    y = _informesPdfHeading(doc, contador, 0, 'Relación de Temperatura vs Energía de Entrada', y, toc);
+    if(!TEMP_ENTRADA_DIAS || !TEMP_ENTRADA_DIAS.length){
+      try{ await tempEntradaCargar(); }catch(e){ /* la sección avisa abajo si sigue sin datos */ }
+    }
+    if(!TEMP_ENTRADA_DIAS || !TEMP_ENTRADA_DIAS.length){
+      y = _informesPdfParrafo(doc, 'No hay una estación de temperatura configurada en Parametrización, o no trae datos disponibles.', y, {italica:true});
+    }else{
+      const dias = TEMP_ENTRADA_DIAS.slice(-90);
+      const temps = dias.map(f=>f.temp_promedio).filter(v=>v!=null);
+      const promedioTemp = temps.length ? temps.reduce((a,b)=>a+b,0)/temps.length : null;
+      const entradas = dias.map(f=>TEMP_ENTRADA_BALANCE_DIARIO[f.fecha]).filter(v=>v!=null);
+      const promedioEntrada = entradas.length ? entradas.reduce((a,b)=>a+b,0)/entradas.length : null;
+      const nombreEstacion = TEMP_ENTRADA_ESTACION ? TEMP_ENTRADA_ESTACION.nombre : '--';
+      y = _informesPdfParrafo(doc, `Durante los últimos ${dias.length} días con datos disponibles, la temperatura promedio de la estación ${nombreEstacion} fue de ${promedioTemp!=null?promedioTemp.toFixed(1)+'°C':'--'}, con una entrada de energía diaria promedio de ${promedioEntrada!=null?_informesFKwh(promedioEntrada)+' kWh':'--'}.`, y);
+      const figTemp = await informesFiguraTemperaturaEntrada(dias);
+      y = await _informesPdfImagen(doc, figTemp, y, 'Relación Temperatura vs Energía de Entrada');
+    }
+  }
+
+  if(sel.conclusiones){
+    y = _informesPdfHeading(doc, contador, 0, 'Conclusiones', y, toc);
+    const bullets = [];
+    const ipRegFila = IP_MAPA_POR_NORMAL.get(mesIpReg);
+    if(ipRegFila && ipRegFila.ipt_pct!=null) bullets.push(`El índice de pérdidas totales regulatorio (IP_Reg) para ${labelMesLargo(mesIpReg)} fue de ${(ipRegFila.ipt_pct*100).toFixed(2)}%, equivalente a ${_informesFKwh(ipRegFila.pt_kwh)} kWh/Anual.`);
+    const n21Fila = alimN21AgregarMensual(new Set()).find(f=>f.clave===mesN21);
+    if(n21Fila && n21Fila.pct!=null) bullets.push(`El indicador N2-1 total (todas las zonas) para ${labelMesLargo(mesN21)} fue de ${n21Fila.pct.toFixed(2)}%, con una pérdida mensual de ${_informesFKwh(n21Fila.perdida)} kWh.`);
+    const comercialFila = IP_COMERCIAL_FILAS && IP_COMERCIAL_FILAS.find(f=>ipComercialClave(f)===mesIpReg && f.perdida_pct_12!=null);
+    if(comercialFila) bullets.push(`El índice de pérdidas comercial fue de ${comercialFila.perdida_pct_12.toFixed(2)}%.`);
+    if(!bullets.length) bullets.push('No hay suficiente información para generar conclusiones automáticas de este periodo.');
+    for(const b of bullets) y = _informesPdfParrafo(doc, `•  ${b}`, y, {align:'left'});
+
+    const analisis = informesConclusionesAlimentadores(mesN21);
+    if(analisis){
+      const fk = _informesFKwh;
+      if(analisis.candidatos.length){
+        y = _informesPdfHeading(doc, contador, 1, 'Alimentadores prioritarios para intervención', y, toc);
+        y = _informesPdfParrafo(doc, `Se identifican a continuación los alimentadores sin causal de pérdida ya identificada (clasificación "ok") cuyo porcentaje de pérdida de ${labelMesLargo(mesN21)} supera el promedio de los demás alimentadores "ok" de su misma zona -- ese promedio zonal se toma como el nivel normal/esperado sin causal conocida. La pérdida técnica de cada alimentador se define como el excedente entre su % de pérdida actual y ese promedio zonal de referencia (es decir, la parte de la pérdida que NO se explica por el nivel normal de la zona); sobre ese excedente, convertido a kWh, se calcula la recuperación estimada. Es una aproximación estadística y no reemplaza un estudio técnico puntual del circuito.`, y);
+        for(const c of analisis.candidatos){
+          const perdidaTecnicaPct = c.pct - c.objetivo;
+          y = _informesPdfParrafo(doc, `•  ${c.nombre} (Subestación ${c.subestacion}, Zona ${c.zona}): pérdida actual de ${c.pct.toFixed(2)}% (${fk(c.perdida)} kWh/mes), frente al promedio zonal de ${c.objetivo.toFixed(2)}% -- pérdida técnica estimada de ${perdidaTecnicaPct.toFixed(2)} pp, equivalente a una recuperación estimada de ${fk(c.recuperacionKwh)} kWh/mes si se lleva al nivel de referencia.`, y, {align:'left'});
+        }
+      }
+      if(analisis.asociacion.length){
+        y = _informesPdfHeading(doc, contador, 1, 'Alimentadores con posibles errores de asociación', y, toc);
+        y = _informesPdfParrafo(doc, `Los siguientes alimentadores están clasificados con causal "Asociación" -- indicio de que el medidor podría estar asociado a un circuito distinto del real, lo que puede producir pérdidas negativas o atípicas sin que exista una pérdida técnica real de esa magnitud.`, y);
+        for(const c of analisis.asociacion){
+          y = _informesPdfParrafo(doc, `•  ${c.nombre} (Subestación ${c.subestacion}, Zona ${c.zona}): ${c.pct.toFixed(2)}% de pérdida en ${labelMesLargo(mesN21)}.`, y, {align:'left'});
+        }
+      }
+      if(analisis.asentamientos.length){
+        y = _informesPdfHeading(doc, contador, 1, 'Alimentadores con afectación por orden público o asentamientos subnormales', y, toc);
+        y = _informesPdfParrafo(doc, `Los siguientes alimentadores tienen una causal externa ya identificada (orden público o subnormalidad) que puede explicar parte de su pérdida sin que corresponda a una falla técnica de la red.`, y);
+        for(const c of analisis.asentamientos){
+          y = _informesPdfParrafo(doc, `•  ${c.nombre} (Subestación ${c.subestacion}, Zona ${c.zona}) -- ${c.leyenda}: ${c.pct.toFixed(2)}% de pérdida en ${labelMesLargo(mesN21)}.`, y, {align:'left'});
+        }
+      }
+    }
+  }
+}
+
+async function _informesPdfSeccionSubestacion(doc, contador, nivel, subestacion, mesClave, y, toc){
+  y = _informesPdfHeading(doc, contador, nivel, `Subestación ${subestacion}`, y, toc);
+  const porNem = informesAgruparAlimentadoresSubestacion(subestacion, mesClave);
+  const nemonicos = Object.keys(porNem);
+  if(!nemonicos.length){
+    return _informesPdfParrafo(doc, 'No hay datos de alimentadores para esta subestación en el mes seleccionado.', y, {italica:true});
+  }
+  const sumar = clave => {
+    let entrada=0, salida=0, perdida=0, tieneDato=false;
+    nemonicos.forEach(nem => { const f = porNem[nem].find(x=>x.clave===clave); if(f){ entrada+=f.entrada; salida+=f.salida; perdida+=f.perdida; tieneDato=true; } });
+    return tieneDato ? {entrada, salida, perdida, pct: entrada?perdida/entrada*100:null} : null;
+  };
+  const agregadoMes = sumar(mesClave);
+  const agregadoAnterior = sumar(_informesMesAnteriorClave(mesClave));
+  const claveAnioAnterior = _informesMesAnioAnteriorClave(mesClave);
+  const agregadoAnioAnterior = sumar(claveAnioAnterior);
+  const clavesDisponibles = [...new Set(nemonicos.flatMap(n => porNem[n].map(f=>f.clave)))].sort();
+  const idxMesVentana = clavesDisponibles.indexOf(mesClave);
+  const ventana = (idxMesVentana>=0 ? clavesDisponibles.slice(Math.max(0, idxMesVentana-5), idxMesVentana+1) : [])
+    .map(c => ({clave:c, ...(sumar(c)||{pct:null})})).filter(f=>f.pct!=null);
+  if(agregadoMes){
+    const parrafosSub = _informesTextosPlanos(_informesConTextoPlano(() =>
+      informesTextoSubestacion(subestacion, agregadoMes, agregadoAnterior, agregadoAnioAnterior, ventana, mesClave, claveAnioAnterior)));
+    for(const p of parrafosSub) y = _informesPdfParrafo(doc, p, y);
+  }
+  const figSub = await informesFiguraSubestacion(porNem, nemonicos, mesClave);
+  y = await _informesPdfImagen(doc, figSub, y, `Indicador de pérdidas Mensual S/E ${subestacion}`);
+
+  y = _informesPdfCaptionTabla(doc, `Pérdidas totales Subestación ${subestacion}`, y);
+  y = _informesPdfTablaAlimentadores(doc, porNem, mesClave, 'perdida', y);
+  y = _informesPdfCaptionTabla(doc, `Pérdidas totales gestionables Subestación ${subestacion}`, y);
+  y = _informesPdfTablaAlimentadores(doc, porNem, mesClave, 'gestionable', y);
+  y = _informesPdfCaptionTabla(doc, `Porcentaje de pérdida Subestación ${subestacion}`, y);
+  y = _informesPdfTablaAlimentadores(doc, porNem, mesClave, 'pct', y);
+
+  const filasMes = informesFilasAlimMes(mesClave, f => f.subestacion === subestacion);
+  const negativos = informesDetectarNegativos(filasMes);
+  if(negativos.length){
+    const parrafoNeg = _informesTextosPlanos(_informesConTextoPlano(() => informesTextoNegativos(negativos)));
+    for(const p of parrafoNeg) y = _informesPdfParrafo(doc, p, y);
+  }
+  return y;
+}
+
+async function informesGenerarPDF(){
+  const btn = document.getElementById('informes-btn-generar-pdf');
+  const msg = document.getElementById('informes-msg');
+  const mesIpReg = document.getElementById('informes-mes').value;
+  const mesN21 = document.getElementById('informes-mes-n21').value;
+  if(!mesIpReg && !mesN21){ msg.textContent = 'Elige al menos un mes.'; return; }
+  const sel = _informesSeleccionContenido();
+  if(!sel.subestacion && !sel.ipReg && !sel.n21 && !sel.comercial && !sel.temperatura && !sel.conclusiones){
+    msg.textContent = 'Elige al menos un contenido para el informe.'; return;
+  }
+  btn.disabled = true; msg.textContent = 'Generando PDF…';
+  _informesPdfContadorFigura = 0; _informesPdfContadorTabla = 0;
+  try{
+    const mesPortada = mesIpReg || mesN21;
+    const {jsPDF} = window.jspdf;
+
+    // Pasada "sonda" -- corre el cuerpo completo en un documento
+    // descartable solo para saber cuántas páginas necesita la tabla de
+    // contenido (mismo cuerpo, determinista).
+    const sonda = new jsPDF({unit:'pt', format:'letter'});
+    sonda.addPage();
+    const tocSonda = [];
+    _informesPdfContadorFigura = 0; _informesPdfContadorTabla = 0;
+    await _informesPdfCuerpo(sonda, sel, mesIpReg, mesN21, tocSonda);
+    const lineasPorPaginaToc = Math.floor((INFORMES_PDF_ALTO_PAGINA - 2*INFORMES_PDF_MARGEN - 30)/15.5);
+    const paginasToc = Math.max(1, Math.ceil(tocSonda.length/lineasPorPaginaToc));
+
+    // Documento real: portada, páginas reservadas para la TOC, y el
+    // cuerpo (empieza en la misma página relativa que en la sonda --
+    // por eso el offset entre ambas pasadas es exactamente `paginasToc`).
+    const doc = new jsPDF({unit:'pt', format:'letter'});
+    let logoOperador = null;
+    if(INFORMES_LOGO_BYTES && INFORMES_LOGO_DIM) logoOperador = {bytes:INFORMES_LOGO_BYTES, width:INFORMES_LOGO_DIM.width, height:INFORMES_LOGO_DIM.height};
+    _informesPdfPortada(doc, mesPortada, logoOperador);
+    const primeraPaginaToc = doc.internal.getNumberOfPages()+1;
+    for(let i=0;i<paginasToc;i++) doc.addPage();
+    doc.addPage();
+    _informesPdfContadorFigura = 0; _informesPdfContadorTabla = 0;
+    const tocReal = [];
+    await _informesPdfCuerpo(doc, sel, mesIpReg, mesN21, tocReal);
+
+    _informesPdfDibujarTOC(doc, tocReal, primeraPaginaToc);
+    await _informesPdfAplicarEncabezados(doc, mesPortada, primeraPaginaToc);
+
+    const nombreAlcance = sel.subestacion ? 'subestacion' : 'personalizado';
+    doc.save(`informe_${nombreAlcance}_${mesPortada}_${(OPERADOR&&OPERADOR.slug)||'operador'}.pdf`);
+    msg.textContent = 'PDF descargado.';
+  }catch(e){
+    console.error(e);
+    msg.textContent = 'No se pudo generar el PDF: ' + (e.message || e);
   }finally{
     btn.disabled = false;
   }
