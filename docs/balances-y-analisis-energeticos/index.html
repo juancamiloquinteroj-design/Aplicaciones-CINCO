@@ -2304,9 +2304,9 @@ tfoot td:first-child{text-align:left}
     <div class="card">
       <div class="fbar" style="margin-bottom:14px">
         <label>Rango</label>
-        <input type="date" id="alim3-desde" onchange="alim3RenderSeleccion()">
+        <input type="date" id="alim3-desde" onchange="alim3RenderSeleccion(); alim3RenderTablaVariacion()">
         <span style="font-size:11px;color:var(--text3)">→</span>
-        <input type="date" id="alim3-hasta" onchange="alim3RenderSeleccion()">
+        <input type="date" id="alim3-hasta" onchange="alim3RenderSeleccion(); alim3RenderTablaVariacion()">
         <label style="margin-left:10px">Zona</label>
         <div id="alim3-zonas" style="display:flex;gap:6px;flex-wrap:wrap"></div>
       </div>
@@ -2388,6 +2388,30 @@ tfoot td:first-child{text-align:left}
           </div>
           <div class="chart-wrap" style="height:520px"><canvas id="ch-alim3-scatter"></canvas></div>
         </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="fbar" style="justify-content:center;margin-bottom:10px">
+        <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Variación de Pérdida por Alimentador</div>
+      </div>
+      <div id="alim3-var-caption" style="text-align:center;font-size:11px;color:var(--text3);margin-bottom:8px"></div>
+      <div class="tbl-wrap tbl-compacta alim3-tabla-sticky" style="max-height:520px;overflow-y:auto">
+        <table>
+          <thead><tr>
+            <th style="text-align:left;cursor:pointer" onclick="alim3OrdenarVariacion('nombre')" title="Click para ordenar">Nombre Spard <span id="alim3-var-th-nombre" class="alim3-th-flecha"></span></th>
+            <th style="cursor:pointer" onclick="alim3OrdenarVariacion('zona')" title="Click para ordenar">Zona <span id="alim3-var-th-zona" class="alim3-th-flecha"></span></th>
+            <th style="cursor:pointer" onclick="alim3OrdenarVariacion('entrada')" title="Click para ordenar">Entrada <span id="alim3-var-th-entrada" class="alim3-th-flecha"></span></th>
+            <th style="cursor:pointer" onclick="alim3OrdenarVariacion('deltaEntrada')" title="Click para ordenar">Δ Entrada <span id="alim3-var-th-deltaEntrada" class="alim3-th-flecha"></span></th>
+            <th style="cursor:pointer" onclick="alim3OrdenarVariacion('salida')" title="Click para ordenar">Salida <span id="alim3-var-th-salida" class="alim3-th-flecha"></span></th>
+            <th style="cursor:pointer" onclick="alim3OrdenarVariacion('deltaSalida')" title="Click para ordenar">Δ Salida <span id="alim3-var-th-deltaSalida" class="alim3-th-flecha"></span></th>
+            <th style="cursor:pointer" onclick="alim3OrdenarVariacion('perdida')" title="Click para ordenar">Pérdida <span id="alim3-var-th-perdida" class="alim3-th-flecha"></span></th>
+            <th style="cursor:pointer" onclick="alim3OrdenarVariacion('deltaPerdida')" title="Click para ordenar">Δ Pérdida <span id="alim3-var-th-deltaPerdida" class="alim3-th-flecha"></span></th>
+            <th style="cursor:pointer" onclick="alim3OrdenarVariacion('pct')" title="Click para ordenar">Pérdida % <span id="alim3-var-th-pct" class="alim3-th-flecha"></span></th>
+            <th style="cursor:pointer" onclick="alim3OrdenarVariacion('deltaPct')" title="Click para ordenar">Δ pp <span id="alim3-var-th-deltaPct" class="alim3-th-flecha"></span></th>
+          </tr></thead>
+          <tbody id="alim3-tabla-var"></tbody>
+        </table>
       </div>
     </div>
   </div>
@@ -10885,6 +10909,8 @@ let ALIM3_ESP_VAR = false;       // Δ Variación en la etiqueta de Pérdida %
 let ALIM3_TOP_MODO = 'mensual';  // 'mensual' | 'anual' -- tabla/scatter Top Alimentadores
 let ALIM3_TOP_ORDEN_COL = 'gestLongitud';  // columna de orden de la tabla Top Alimentadores
 let ALIM3_TOP_ORDEN_DIR = 'desc';          // 'asc' | 'desc'
+let ALIM3_VAR_ORDEN_COL = 'deltaPct';  // columna de orden de "Variación de Pérdida por Alimentador"
+let ALIM3_VAR_ORDEN_DIR = 'desc';      // arranca mostrando primero los que más empeoraron
 let chAlim3Esp = null, chAlim3Tecnica = null, chAlim3Agpe = null, chAlim3Scatter = null;
 
 async function alim3Cargar(){
@@ -10926,6 +10952,7 @@ async function alim3Cargar(){
   alim3RenderSeleccion();
   alim3RenderTablaTop();
   alim3RenderScatter();
+  alim3RenderTablaVariacion();
 }
 
 function alim3RenderZonasChips(){
@@ -10955,6 +10982,7 @@ function alim3ToggleZona(zona){
   alim3RenderSeleccion();
   alim3RenderTablaTop();
   alim3RenderScatter();
+  alim3RenderTablaVariacion();
 }
 
 function alim3VisiblesRango(serie){
@@ -11034,6 +11062,105 @@ function alim3AgregarZonaMensual(zonaSet){
   return [...mapa.values()]
     .sort((a,b) => (a.anio*12+a.mes)-(b.anio*12+b.mes))
     .map(a => ({...a, perdida_pct: a.entrada_total ? a.perdida_kwh/a.entrada_total*100 : null}));
+}
+
+// "Variación de Pérdida por Alimentador" -- una fila por circuito
+// (nemónico), con Entrada/Salida/Pérdida (kWh) y Pérdida % del último mes
+// visible dentro del Rango elegido, más su Δ vs. el mes anterior dentro de
+// ese mismo Rango. Respeta el filtro de Zona (chips), igual que "Top
+// Alimentadores" -- pero acá SÍ respeta el Rango de fechas (ese filtro
+// decide cuáles son "el mes actual" y "el mes anterior" de cada circuito).
+function alim3FilasVariacionPorAlimentador(){
+  const desde = document.getElementById('alim3-desde').value ? document.getElementById('alim3-desde').value.slice(0,7) : null;
+  const hasta = document.getElementById('alim3-hasta').value ? document.getElementById('alim3-hasta').value.slice(0,7) : null;
+
+  const porNem = new Map();
+  for(const f of ALIM_FILAS){
+    if(ALIM3_ZONAS_SEL.size && !ALIM3_ZONAS_SEL.has(f.zona)) continue;
+    const clave = alimN21Clave(f.anio, f.mes);
+    if((desde && clave < desde) || (hasta && clave > hasta)) continue;
+    if(!porNem.has(f.nemonico)) porNem.set(f.nemonico, {nombre: f.nombre_spard || f.nemonico, zona: f.zona, serie: []});
+    porNem.get(f.nemonico).serie.push({clave, entrada: f.entrada_total||0, salida: f.salida_total||0, perdida: f.perdida_kwh||0});
+  }
+
+  let mesActual = null, mesAnterior = null;
+  const filas = [];
+  porNem.forEach((info, nem) => {
+    const serie = info.serie.sort((a,b) => a.clave < b.clave ? -1 : a.clave > b.clave ? 1 : 0);
+    const actual = serie[serie.length-1];
+    const anterior = serie.length >= 2 ? serie[serie.length-2] : null;
+    if(!mesActual || actual.clave > mesActual){ mesActual = actual.clave; mesAnterior = anterior ? anterior.clave : mesAnterior; }
+    const pct = actual.entrada ? actual.perdida/actual.entrada*100 : null;
+    const pctAnterior = anterior && anterior.entrada ? anterior.perdida/anterior.entrada*100 : null;
+    filas.push({
+      nemonico: nem, nombre: info.nombre, zona: info.zona,
+      entrada: actual.entrada, deltaEntrada: anterior ? actual.entrada-anterior.entrada : null,
+      salida: actual.salida, deltaSalida: anterior ? actual.salida-anterior.salida : null,
+      perdida: actual.perdida, deltaPerdida: anterior ? actual.perdida-anterior.perdida : null,
+      pct, deltaPct: (pct!=null && pctAnterior!=null) ? pct-pctAnterior : null,
+    });
+  });
+  return {filas, mesActual, mesAnterior};
+}
+
+function alim3RenderTablaVariacion(){
+  const cont = document.getElementById('alim3-tabla-var');
+  const caption = document.getElementById('alim3-var-caption');
+  if(!cont) return;
+  const {filas, mesActual, mesAnterior} = alim3FilasVariacionPorAlimentador();
+  if(caption) caption.textContent = mesActual
+    ? (mesAnterior ? `${labelMesLargo(mesAnterior)} → ${labelMesLargo(mesActual)}` : labelMesLargo(mesActual))
+    : '';
+  if(!filas.length){
+    cont.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--text3)">Sin datos.</td></tr>';
+    return;
+  }
+
+  filas.sort((a,b) => {
+    const va = a[ALIM3_VAR_ORDEN_COL], vb = b[ALIM3_VAR_ORDEN_COL];
+    if(va==null && vb==null) return 0;
+    if(va==null) return 1;
+    if(vb==null) return -1;
+    const cmp = typeof va==='string' ? va.localeCompare(vb) : va-vb;
+    return ALIM3_VAR_ORDEN_DIR==='asc' ? cmp : -cmp;
+  });
+
+  const fmt = v => v==null ? '--' : v.toLocaleString('es-CO',{maximumFractionDigits:0});
+  const fmtDelta = v => v==null ? '--' : `${v>=0?'+':''}${v.toLocaleString('es-CO',{maximumFractionDigits:0})}`;
+  cont.innerHTML = filas.map(f => {
+    const color = colorParaZona(f.zona);
+    const anteriorPerdida = f.deltaPerdida!=null ? f.perdida-f.deltaPerdida : null;
+    const anteriorPct = f.deltaPct!=null ? f.pct-f.deltaPct : null;
+    const colorPerdida = ipColorVariacion(f.perdida, anteriorPerdida, 'var(--text3)');
+    const colorPct = ipColorVariacion(f.pct, anteriorPct, 'var(--text3)');
+    return `<tr>
+      <td style="text-align:left;font-weight:700">${f.nombre}</td>
+      <td><span class="zb" style="background:${color}22;color:${color}">${f.zona||'--'}</span></td>
+      <td>${fmt(f.entrada)}</td>
+      <td style="color:var(--text3)">${fmtDelta(f.deltaEntrada)}</td>
+      <td>${fmt(f.salida)}</td>
+      <td style="color:var(--text3)">${fmtDelta(f.deltaSalida)}</td>
+      <td>${fmt(f.perdida)}</td>
+      <td style="color:${colorPerdida}">${fmtDelta(f.deltaPerdida)}</td>
+      <td style="font-weight:700">${f.pct==null?'--':f.pct.toFixed(2)+'%'}</td>
+      <td style="color:${colorPct}">${f.deltaPct==null?'--':`${f.deltaPct>=0?'▲':'▼'} ${Math.abs(f.deltaPct).toFixed(2)} pp`}</td>
+    </tr>`;
+  }).join('');
+
+  ['nombre','zona','entrada','deltaEntrada','salida','deltaSalida','perdida','deltaPerdida','pct','deltaPct'].forEach(col => {
+    const el = document.getElementById(`alim3-var-th-${col}`);
+    if(el) el.textContent = col===ALIM3_VAR_ORDEN_COL ? (ALIM3_VAR_ORDEN_DIR==='asc' ? '▲' : '▼') : '';
+  });
+}
+
+function alim3OrdenarVariacion(col){
+  if(ALIM3_VAR_ORDEN_COL === col){
+    ALIM3_VAR_ORDEN_DIR = ALIM3_VAR_ORDEN_DIR === 'desc' ? 'asc' : 'desc';
+  }else{
+    ALIM3_VAR_ORDEN_COL = col;
+    ALIM3_VAR_ORDEN_DIR = 'desc';
+  }
+  alim3RenderTablaVariacion();
 }
 
 function alim3RenderSeleccion(){
