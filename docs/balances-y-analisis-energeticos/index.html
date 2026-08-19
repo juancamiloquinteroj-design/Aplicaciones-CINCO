@@ -2434,16 +2434,38 @@ tfoot td:first-child{text-align:left}
         <span style="font-size:10.5px;color:var(--text3);margin-left:auto;max-width:280px">IP_Reg y N2-1 corren en calendarios distintos (el mismo comportamiento que ves en la plantilla) -- por eso cada uno tiene su propio mes.</span>
       </div>
 
-      <div class="fbar" style="margin-bottom:6px">
-        <label>Alcance</label>
-        <button type="button" class="be-modo-btn activo" id="informes-btn-alcance-completo" onclick="informesToggleAlcance('completo')">Completo</button>
-        <button type="button" class="be-modo-btn" id="informes-btn-alcance-ip_reg" onclick="informesToggleAlcance('ip_reg')">Solo IP_Reg (Regulatorio)</button>
-        <button type="button" class="be-modo-btn" id="informes-btn-alcance-n21" onclick="informesToggleAlcance('n21')">Solo N2-1</button>
-        <button type="button" class="be-modo-btn" id="informes-btn-alcance-subestacion" onclick="informesToggleAlcance('subestacion')">Una subestación</button>
+      <div class="fbar" style="margin-bottom:6px;align-items:flex-start">
+        <label style="padding-top:2px">Contenido</label>
+        <div style="display:flex;flex-direction:column;gap:7px;flex:1;min-width:260px">
+          <label style="display:flex;align-items:center;gap:6px;font-size:12.5px">
+            <input type="checkbox" id="informes-chk-introduccion" checked> Introducción y objetivo
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12.5px">
+            <input type="checkbox" id="informes-chk-ipreg" checked> Indicador de Pérdidas Totales (IP_Reg, regulatorio)
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12.5px">
+            <input type="checkbox" id="informes-chk-n21" checked onchange="document.getElementById('informes-chk-zonas').classList.toggle('hidden', !this.checked)"> Indicador N2-1 (por zona y subestación)
+          </label>
+          <div id="informes-chk-zonas" style="display:flex;flex-wrap:wrap;gap:10px;margin-left:22px;font-size:12px;color:var(--text2)"></div>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12.5px">
+            <input type="checkbox" id="informes-chk-comercial" checked> Indicador de Pérdidas Comercial
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12.5px">
+            <input type="checkbox" id="informes-chk-temperatura" checked> Relación Temperatura vs Energía de Entrada
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12.5px">
+            <input type="checkbox" id="informes-chk-conclusiones" checked> Conclusiones
+          </label>
+        </div>
       </div>
-      <div class="fbar hidden" id="informes-fila-subestacion" style="margin-bottom:10px">
-        <label>Subestación</label>
-        <select id="informes-subestacion" style="min-width:220px"></select>
+      <div class="fbar" style="margin-bottom:10px">
+        <button type="button" class="be-modo-btn" onclick="informesMarcarTodo(true)">Marcar todo</button>
+        <button type="button" class="be-modo-btn" onclick="informesMarcarTodo(false)">Desmarcar todo</button>
+        <span style="font-size:10.5px;color:var(--text3);margin-left:auto;max-width:320px">Elige qué debe traer el informe. Si además eliges una subestación abajo, el informe sale SOLO con esa subestación (se ignora lo demás).</span>
+      </div>
+      <div class="fbar" style="margin-bottom:10px">
+        <label>Solo una subestación (opcional)</label>
+        <select id="informes-subestacion" style="min-width:220px"><option value="">-- Usar la selección de contenido de arriba --</option></select>
       </div>
 
       <div class="fbar" style="margin-bottom:6px;align-items:center">
@@ -15949,7 +15971,6 @@ function demoGet(path){
    sin problemas.
    ========================================================================== */
 const INFORMES_NUMERACION_REF = 'informes-numeracion';
-let INFORMES_ALCANCE = 'completo';       // 'completo' | 'ip_reg' | 'n21' | 'subestacion'
 let INFORMES_LOGO_BYTES = null;          // Uint8Array del logo elegido (o null -- portada sin logo)
 let INFORMES_LOGO_DIM = null;            // {width,height} en px reales de la imagen elegida
 
@@ -15979,6 +16000,7 @@ async function informesCargar(){
   ipPoblarSelectorAnalisisMes('informes-mes');
   informesPoblarSelectorMesN21();
   informesPoblarSubestaciones();
+  informesPoblarChecklistZonas();
   await informesCargarLogoGuardado();
 }
 
@@ -16013,15 +16035,36 @@ function informesPoblarSubestaciones(){
   if(!sel) return;
   const anterior = sel.value;
   const nombres = [...new Set((ALIM_FILAS||[]).map(f=>f.subestacion).filter(Boolean))].filter(n=>!_informesEsCompacto(n)).sort();
-  sel.innerHTML = nombres.map(n=>`<option value="${_mselEsc(n)}">${_mselEsc(n)}</option>`).join('');
-  if(anterior && nombres.includes(anterior)) sel.value = anterior;
+  // OJO: el placeholder vacío tiene que quedar SIEMPRE primero -- si no,
+  // el <select> queda con la primera subestación real seleccionada por
+  // defecto del navegador, y el informe saldría "solo esa subestación"
+  // sin que el usuario haya tocado nada (bug real, encontrado probando
+  // el flujo completo con Puppeteer).
+  sel.innerHTML = '<option value="">-- Usar la selección de contenido de arriba --</option>'
+    + nombres.map(n=>`<option value="${_mselEsc(n)}">${_mselEsc(n)}</option>`).join('');
+  sel.value = (anterior && nombres.includes(anterior)) ? anterior : '';
 }
 
-function informesToggleAlcance(a){
-  INFORMES_ALCANCE = a;
-  ['completo','ip_reg','n21','subestacion'].forEach(x =>
-    document.getElementById(`informes-btn-alcance-${x}`).classList.toggle('activo', x===a));
-  document.getElementById('informes-fila-subestacion').classList.toggle('hidden', a!=='subestacion');
+// Checklist de zonas del Indicador N2-1 -- pedido explícito ("debe haber
+// forma para chulear lo que quiero que contenga, ya sea solo indicador de
+// pérdidas totales, alguna zona o algo adicional"): cada zona se puede
+// incluir o excluir del informe por separado, no solo "todas o ninguna".
+function informesPoblarChecklistZonas(){
+  const cont = document.getElementById('informes-chk-zonas');
+  if(!cont) return;
+  const marcadasAntes = new Set([...cont.querySelectorAll('input[type=checkbox]')].filter(i=>i.checked).map(i=>i.value));
+  const esPrimeraVez = !cont.dataset.poblado;
+  const zonas = informesZonasDisponibles();
+  cont.innerHTML = zonas.map(z => `<label style="display:flex;align-items:center;gap:5px">
+    <input type="checkbox" class="informes-chk-zona" value="${_mselEsc(z)}" ${(esPrimeraVez || marcadasAntes.has(z))?'checked':''}> Zona ${_mselEsc(z)}</label>`).join('');
+  cont.dataset.poblado = '1';
+}
+
+function informesMarcarTodo(valor){
+  ['informes-chk-introduccion','informes-chk-ipreg','informes-chk-n21','informes-chk-comercial','informes-chk-temperatura','informes-chk-conclusiones']
+    .forEach(id => { const el = document.getElementById(id); if(el) el.checked = valor; });
+  document.querySelectorAll('#informes-chk-zonas input[type=checkbox]').forEach(el => el.checked = valor);
+  document.getElementById('informes-chk-zonas').classList.toggle('hidden', !valor);
 }
 
 async function informesElegirLogo(ev){
@@ -16087,12 +16130,18 @@ async function _informesGraficoAImagen({labels, datasets, scales, titulo, ancho=
   // Chart.defaults global -- eso afectaría también los gráficos EN VIVO
   // de la app) -- pedido explícito ("no se alcanzan a ver los valores del
   // eje x y y"). Cada eje que no traiga su propio ticks.font se completa acá.
-  // Cuadrícula de fondo PUNTEADA (no línea sólida) -- pedido explícito
-  // ("quiero que sea una línea punteada de fondo").
-  const gridPunteado = {color:'#e3e3e3', borderDash:[4,4]};
-  const scalesConFuente = {x:{ticks:{font:{size:13}, color:'#333333'}, grid:gridPunteado}};
+  // Cuadrícula PUNTEADA -- pedido explícito ("quiero que sea una línea
+  // punteada de fondo"). Chart.js v4 no tiene un `grid.borderDash` nativo
+  // (confirmado: Chart.defaults.scale.grid no trae esa propiedad y no
+  // tenía efecto) -- se apaga el grid nativo de TODOS los ejes
+  // (grid:{display:false}) y se dibuja a mano en el plugin de abajo,
+  // salvo en los ejes que el llamador marcó drawOnChartArea:false
+  // (esos ya comparten el área de otro eje, no deben pintar nada).
+  const ejesSinGrid = new Set();
+  const scalesConFuente = {x:{ticks:{font:{size:13}, color:'#333333'}, grid:{display:false}}};
   Object.entries(scales||{}).forEach(([eje, cfg]) => {
-    scalesConFuente[eje] = {...cfg, ticks:{font:{size:14}, color:'#333333', ...(cfg.ticks||{})}, grid:{...gridPunteado, ...(cfg.grid||{})}};
+    if(cfg.grid && cfg.grid.drawOnChartArea === false) ejesSinGrid.add(eje);
+    scalesConFuente[eje] = {...cfg, ticks:{font:{size:14}, color:'#333333', ...(cfg.ticks||{})}, grid:{display:false}};
   });
   const chart = new Chart(cv, {
     data:{labels: labels||[], datasets},
@@ -16106,11 +16155,41 @@ async function _informesGraficoAImagen({labels, datasets, scales, titulo, ancho=
       },
       scales: scalesConFuente,
     },
+    plugins: [
+      // Fondo blanco -- necesario para exportar a JPEG (sin canal alfa, lo
+      // transparente sale NEGRO al hacer toDataURL, confirmado con una
+      // prueba real). Chart.js limpia el canvas (queda transparente) antes
+      // de dibujar, así que un fillRect ANTES de crear el Chart no sirve --
+      // tiene que ser un plugin beforeDraw, que corre después de ese clear.
+      {id:'informesFondoBlanco', beforeDraw(c){
+        c.ctx.save(); c.ctx.fillStyle = '#ffffff'; c.ctx.fillRect(0, 0, c.width, c.height); c.ctx.restore();
+      }},
+      // Cuadrícula punteada a mano -- ver nota de ejesSinGrid arriba.
+      {id:'informesGridPunteado', beforeDatasetsDraw(chart){
+        const {ctx, chartArea} = chart;
+        ctx.save();
+        ctx.strokeStyle = '#dcdcdc'; ctx.lineWidth = 1; ctx.setLineDash([4,4]);
+        Object.entries(chart.scales).forEach(([id, scale]) => {
+          if(ejesSinGrid.has(id) || !scale.ticks) return;
+          scale.ticks.forEach((tick, i) => {
+            const pos = scale.getPixelForTick(i);
+            ctx.beginPath();
+            if(scale.axis === 'x'){ ctx.moveTo(pos, chartArea.top); ctx.lineTo(pos, chartArea.bottom); }
+            else{ ctx.moveTo(chartArea.left, pos); ctx.lineTo(chartArea.right, pos); }
+            ctx.stroke();
+          });
+        });
+        ctx.restore();
+      }},
+    ],
   });
-  const dataUrl = cv.toDataURL('image/png', 1.0);
+  // JPEG en vez de PNG -- pedido explícito ("el archivo pesa 24MB, debe
+  // ser más liviano"): un gráfico con relleno degradado pesa ~20x menos
+  // en JPEG que en PNG sin pérdida visible a calidad 0.9 (verificado).
+  const dataUrl = cv.toDataURL('image/jpeg', 0.9);
   chart.destroy();
   document.body.removeChild(cont);
-  return {bytes: _informesDataUrlAUint8(dataUrl), width: ancho, height: alto};
+  return {bytes: _informesDataUrlAUint8(dataUrl), width: ancho, height: alto, tipo:'jpg'};
 }
 
 function _informesParrafoImagen(imgResultado, anchoDoc=600){
@@ -16118,7 +16197,7 @@ function _informesParrafoImagen(imgResultado, anchoDoc=600){
   const alto = Math.round(anchoDoc * imgResultado.height / imgResultado.width);
   return new docx.Paragraph({
     alignment: docx.AlignmentType.CENTER,
-    children: [new docx.ImageRun({data: imgResultado.bytes, transformation:{width:anchoDoc, height:alto}, type:'png'})],
+    children: [new docx.ImageRun({data: imgResultado.bytes, transformation:{width:anchoDoc, height:alto}, type: imgResultado.tipo || 'png'})],
   });
 }
 
@@ -16179,7 +16258,12 @@ function _informesHeading4(texto){
 // mide el grosor de borde en octavos de punto).
 const INFORMES_BORDE = {style: docx.BorderStyle.SINGLE, size:4, color:'000000'};
 const INFORMES_BORDE_NINGUNO = {style: docx.BorderStyle.NONE, size:0, color:'FFFFFF'};
-const INFORMES_TABLA_BORDES = {top:INFORMES_BORDE, bottom:INFORMES_BORDE, left:INFORMES_BORDE_NINGUNO, right:INFORMES_BORDE_NINGUNO, insideHorizontal:INFORMES_BORDE, insideVertical:INFORMES_BORDE_NINGUNO};
+// Líneas intermedias (entre filas de datos) en gris claro, con el borde
+// exterior y el separador de encabezado en negro -- pedido explícito, con
+// foto de referencia ("algunas líneas intermedias de la tabla las tengo
+// en color gris claro").
+const INFORMES_BORDE_GRIS = {style: docx.BorderStyle.SINGLE, size:4, color:'BFBFBF'};
+const INFORMES_TABLA_BORDES = {top:INFORMES_BORDE, bottom:INFORMES_BORDE, left:INFORMES_BORDE_NINGUNO, right:INFORMES_BORDE_NINGUNO, insideHorizontal:INFORMES_BORDE_GRIS, insideVertical:INFORMES_BORDE_NINGUNO};
 // La caja de balance energético es una grilla de tarjetas (no una tabla de
 // datos) -- sí lleva los 4 bordes, para que se vea como caja.
 const INFORMES_BORDE_CAJA = {style: docx.BorderStyle.SINGLE, size:4, color:'D0D0D0'};
@@ -16200,31 +16284,33 @@ function _informesParrafo(childrenOTexto, opts){
 // estilo trae su propio color/tamaño de Word que no es el de la
 // plantilla) -- texto plano bold centrado, mismo tamaño/espaciado que el
 // documento original (confirmado leyendo la plantilla con python-docx).
+// La portada es su PROPIA sección de Word (ver informesGenerar) con
+// verticalAlign:BOTH -- la "justificación vertical" nativa de Word que
+// reparte el espacio EXTRA entre párrafos para que el bloque llene la
+// hoja de arriba a abajo sola, sin adivinar valores de spacing a mano
+// (pedido explícito, dos veces: "que ocupe toda la hoja... déjale más
+// espacio entre los párrafos"). Los `spacing` de acá son solo el mínimo/
+// relativo entre líneas -- Word agranda los huecos para llenar la página.
 function informesSeccionPortada(mesClave){
   const children = [];
-  // Espaciado generoso y repartido entre cada línea -- pedido explícito
-  // ("las líneas de la portada deben ocupar toda la primera hoja,
-  // dejando varios espacios entre ellas") -- en vez de un solo bloque
-  // apretado arriba con un hueco enorme abajo.
   if(INFORMES_LOGO_BYTES && INFORMES_LOGO_DIM){
     const anchoLogo = 150;
     const altoLogo = Math.round(anchoLogo * INFORMES_LOGO_DIM.height / INFORMES_LOGO_DIM.width);
-    children.push(new docx.Paragraph({alignment: docx.AlignmentType.CENTER, spacing:{before:500, after:500},
+    children.push(new docx.Paragraph({alignment: docx.AlignmentType.CENTER, spacing:{after:400},
       children:[new docx.ImageRun({data: INFORMES_LOGO_BYTES, transformation:{width:anchoLogo, height:altoLogo}, type:'png'})]}));
   }
-  children.push(new docx.Paragraph({alignment: docx.AlignmentType.CENTER, spacing:{before:200, after:200},
+  children.push(new docx.Paragraph({alignment: docx.AlignmentType.CENTER, spacing:{after:150},
     children:[new docx.TextRun({text:'INFORME MENSUAL BALANCES Y ANALISIS ENERGETICOS', bold:true, size:24})]}));
-  children.push(new docx.Paragraph({alignment: docx.AlignmentType.CENTER, spacing:{after:900},
+  children.push(new docx.Paragraph({alignment: docx.AlignmentType.CENTER, spacing:{after:400},
     children:[new docx.TextRun({text: labelMesLargo(mesClave).toUpperCase(), bold:true, size:24})]}));
-  children.push(new docx.Paragraph({alignment: docx.AlignmentType.CENTER, spacing:{before:100}, text:'Presentado por:'}));
-  children.push(new docx.Paragraph({alignment: docx.AlignmentType.CENTER, spacing:{after:900}, text:'División Control de Pérdidas'}));
-  children.push(new docx.Paragraph({alignment: docx.AlignmentType.CENTER, spacing:{after:900},
+  children.push(new docx.Paragraph({alignment: docx.AlignmentType.CENTER, spacing:{after:100}, text:'Presentado por:'}));
+  children.push(new docx.Paragraph({alignment: docx.AlignmentType.CENTER, spacing:{after:400}, text:'División Control de Pérdidas'}));
+  children.push(new docx.Paragraph({alignment: docx.AlignmentType.CENTER, spacing:{after:400},
     children:[new docx.TextRun({text:(OPERADOR&&OPERADOR.nombre)||'', bold:false})]}));
   const fechaLarga = new Date().toLocaleDateString('es-CO', {day:'2-digit', month:'long', year:'numeric'});
   const ciudad = (typeof PZ_DEPARTAMENTO !== 'undefined' && PZ_DEPARTAMENTO) ? PZ_DEPARTAMENTO : null;
   if(ciudad) children.push(new docx.Paragraph({alignment: docx.AlignmentType.CENTER, spacing:{after:150}, text: ciudad}));
-  children.push(new docx.Paragraph({alignment: docx.AlignmentType.CENTER, spacing:{after:900}, text: fechaLarga}));
-  children.push(new docx.Paragraph({children:[new docx.PageBreak()]}));
+  children.push(new docx.Paragraph({alignment: docx.AlignmentType.CENTER, text: fechaLarga}));
   return children;
 }
 
@@ -16357,8 +16443,35 @@ function informesTextoIpt(mesClave){
 // prueba: sin formatter, chartjs-plugin-datalabels imprime el número
 // crudo tal cual llega (ej. "15.299999999999999" por errores de punto
 // flotante) en vez de "15.30%".
+// Color fijo para resaltar el ÚLTIMO mes calculado en cualquier gráfico
+// de serie mensual -- pedido explícito ("en cada gráfica seleccionar el
+// último mes calculado, mostrarlo más grande y de otro color que
+// resalte").
+const INFORMES_COLOR_RESALTE = '#d90429';
+
+// Arrays de estilo por-punto (Chart.js acepta un array del mismo largo
+// que `data` para pointRadius/pointBackgroundColor/etc.) -- el último
+// punto queda más grande y con el color de resalte, el resto con el
+// tamaño/color normal de la serie.
+function _informesResaltarUltimo(n, colorBase, radioBase=2.5, radioResalte=7){
+  const pointRadius = Array(n).fill(radioBase);
+  const pointBackgroundColor = Array(n).fill(colorBase);
+  const pointBorderColor = Array(n).fill(colorBase);
+  const pointBorderWidth = Array(n).fill(1);
+  if(n){
+    pointRadius[n-1] = radioResalte;
+    pointBackgroundColor[n-1] = INFORMES_COLOR_RESALTE;
+    pointBorderColor[n-1] = '#ffffff';
+    pointBorderWidth[n-1] = 2;
+  }
+  return {pointRadius, pointBackgroundColor, pointBorderColor, pointBorderWidth};
+}
+
 function _informesDatalabelChip(color, dark, tamano=15, sufijo='%'){
-  return {display:true, anchor:'end', align:'top', offset:6, font:{size:tamano, weight:'700'}, color,
+  const esUltimo = ctx => ctx.dataIndex === ctx.dataset.data.length-1;
+  return {display:true, anchor:'end', align:'top', offset:6,
+    font: ctx => ({size: esUltimo(ctx) ? tamano+4 : tamano, weight:'700'}),
+    color: ctx => esUltimo(ctx) ? INFORMES_COLOR_RESALTE : color,
     formatter: v => v==null ? '' : (sufijo==='%' ? v.toFixed(2)+'%' : Math.round(v).toLocaleString('es-CO')),
     backgroundColor: dark?'rgba(30,30,40,.85)':'rgba(255,255,255,.9)', borderRadius:3, padding:{left:4,right:4,top:1,bottom:1}};
 }
@@ -16386,7 +16499,8 @@ async function informesFiguraIptAnual(mesClave){
     datasets: [
       {type:'line', label:'IPT -- Índice de Pérdidas Totales (%)', order:1,
         data: visibles.map(f => f.ipt_pct*100), borderColor:'#f4a261', backgroundColor:'rgba(244,162,97,.15)',
-        fill:true, borderWidth:3, tension:.25, pointRadius:3, datalabels:_informesDatalabelChip('#f4a261', false, 15)},
+        fill:true, borderWidth:3, tension:.25, ..._informesResaltarUltimo(visibles.length, '#f4a261'),
+        datalabels:_informesDatalabelChip('#f4a261', false, 15)},
     ],
     scales:{
       y:{ticks:{callback:v=>v.toFixed(1)+'%', font:{size:13}}},
@@ -16401,17 +16515,23 @@ async function informesFiguraIptMensual(mesClave){
   const fin = idx>=0 ? idx+1 : reales.length;
   const visibles = reales.slice(Math.max(0, fin-15), fin);
   if(!visibles.length) return null;
-  // Igual que la Figura Anual: solo el % mensual, sin la barra de kWh.
+  // Con barra de kWh/mes de vuelta -- pedido explícito ("el indicador de
+  // pérdidas mensual sí quiero que salga con los kWh/mes, es decir, con
+  // las barras"); a diferencia de la Figura Anual (que sí se quedó solo
+  // en %), acá el usuario pidió mantener las dos series.
   return _informesGraficoAImagen({
     titulo: 'Indicador Mensual',
     labels: visibles.map(f => labelMes(ipClaveNormal(f))),
     datasets: [
-      {type:'line', label:'% Pérdida Mensual', data: visibles.map(f=>f.pct_perdida_mensual*100),
-        borderColor:'#f4a261', backgroundColor:'rgba(244,162,97,.15)', fill:true,
-        borderWidth:3, pointRadius:3, tension:.25, datalabels:_informesDatalabelChip('#f4a261', false, 15)},
+      {type:'bar', label:'Pérdida Mensual (kWh)', yAxisID:'y', order:2, data: visibles.map(f=>f.perdida_mensual_kwh),
+        backgroundColor:'rgba(67,97,238,.35)', borderColor:'#4361ee', borderWidth:1, datalabels:{display:false}},
+      {type:'line', label:'% Pérdida Mensual', yAxisID:'yPct', order:1, data: visibles.map(f=>f.pct_perdida_mensual*100),
+        borderColor:'#f4a261', backgroundColor:'transparent', borderWidth:3, tension:.25,
+        ..._informesResaltarUltimo(visibles.length, '#f4a261'), datalabels:_informesDatalabelChip('#f4a261', false, 15)},
     ],
     scales:{
-      y:{ticks:{callback:v=>v.toFixed(1)+'%', font:{size:13}}},
+      y:{position:'left', ticks:{font:{size:12}}},
+      yPct:{position:'right', grid:{drawOnChartArea:false}, ticks:{callback:v=>v.toFixed(1)+'%', font:{size:13}}},
       x:{ticks:{font:{size:12}}},
     },
   });
@@ -16597,7 +16717,9 @@ function _informesTablaAlimentadores(filasPorNem, mesClave, campo){
   const esPct = campo === 'pct';
   const formato = v => esPct ? `${v.toFixed(2)}%` : _informesFKwh(v);
 
-  const celdaEncabezado = texto => new docx.TableCell({shading:{fill:'D9D9D9'},
+  // El separador encabezado→datos queda en negro (no gris) para marcar
+  // bien dónde empiezan los datos.
+  const celdaEncabezado = texto => new docx.TableCell({shading:{fill:'D9D9D9'}, borders:{bottom:INFORMES_BORDE},
     children:[new docx.Paragraph({alignment:docx.AlignmentType.CENTER, children:[new docx.TextRun({text:texto, bold:true, size:16})]})]});
   // cantSplit:true en cada fila -- pedido explícito ("las tablas no deben
   // quedar cortadas por cambio de página"): evita que Word parta una fila
@@ -16617,8 +16739,9 @@ function _informesTablaAlimentadores(filasPorNem, mesClave, campo){
     }),
   ]}));
 
+  // El separador datos→total también queda en negro, por la misma razón.
   const totalRow = new docx.TableRow({cantSplit:true, children:[
-    new docx.TableCell({shading:{fill:'EDEDED'}, children:[new docx.Paragraph({children:[new docx.TextRun({text: esPct?'% Pérdida S/E':'Total, Pérdida S/E', bold:true})]})]}),
+    new docx.TableCell({shading:{fill:'EDEDED'}, borders:{top:INFORMES_BORDE}, children:[new docx.Paragraph({children:[new docx.TextRun({text: esPct?'% Pérdida S/E':'Total, Pérdida S/E', bold:true})]})]}),
     ...meses.map(m => {
       let texto = '';
       if(esPct){
@@ -16631,7 +16754,7 @@ function _informesTablaAlimentadores(filasPorNem, mesClave, campo){
         nemonicos.forEach(nem => { const f = filasPorNem[nem].find(x=>x.clave===m); if(f && f[campo]!=null){ suma += f[campo]; tiene = true; } });
         if(tiene) texto = _informesFKwh(suma);
       }
-      return new docx.TableCell({shading:{fill:'EDEDED'}, children:[new docx.Paragraph({alignment:docx.AlignmentType.CENTER, children:[new docx.TextRun({text: texto, bold:true})]})]});
+      return new docx.TableCell({shading:{fill:'EDEDED'}, borders:{top:INFORMES_BORDE}, children:[new docx.Paragraph({alignment:docx.AlignmentType.CENTER, children:[new docx.TextRun({text: texto, bold:true})]})]});
     }),
   ]});
 
@@ -16715,9 +16838,12 @@ async function informesFiguraSubestacion(porNem, nemonicos, mesClave){
     return {
       type:'line', label: nem,
       data: visibles.map(c => { const f = porNem[nem].find(x=>x.clave===c); return f && f.pct!=null ? f.pct : null; }),
-      borderColor: color, backgroundColor:'transparent', borderWidth:2, tension:.2, pointRadius:2, spanGaps:true,
+      borderColor: color, backgroundColor:'transparent', borderWidth:2, tension:.2, spanGaps:true,
+      ..._informesResaltarUltimo(visibles.length, color, 2, 6),
       datalabels:{display:true, anchor:'end', align:'top', offset:4, formatter:v=>v==null?'':v.toFixed(2)+'%',
-        font:{size:14, weight:'700'}, color, backgroundColor:'rgba(255,255,255,.85)', borderRadius:3, padding:{left:4,right:4,top:1,bottom:1}},
+        font: ctx => ({size: ctx.dataIndex===ctx.dataset.data.length-1?18:14, weight:'700'}),
+        color: ctx => ctx.dataIndex===ctx.dataset.data.length-1?INFORMES_COLOR_RESALTE:color,
+        backgroundColor:'rgba(255,255,255,.85)', borderRadius:3, padding:{left:4,right:4,top:1,bottom:1}},
     };
   });
   return _informesGraficoAImagen({
@@ -16793,15 +16919,25 @@ function _informesSeccionConclusionesAlimentadores(mesClave){
 
   if(analisis.candidatos.length){
     children.push(_informesHeading2('Alimentadores prioritarios para intervención'));
-    children.push(_informesParrafo(`Se identifican a continuación los alimentadores sin causal de pérdida ya identificada (clasificación "ok") cuyo porcentaje de pérdida de ${labelMesLargo(mesClave)} supera el promedio de los demás alimentadores "ok" de su misma zona -- es decir, con mayor probabilidad de que la pérdida sea técnica y recuperable con una intervención. La recuperación estimada compara el % actual contra ese promedio zonal de referencia; es una aproximación y no reemplaza un estudio técnico puntual del circuito.`));
+    // Explica de dónde sale la "pérdida técnica" antes de listar los
+    // alimentadores -- pedido explícito ("sería bueno decir cuándo es la
+    // pérdida técnica, ya que de ahí sale la recuperación estimada").
+    children.push(_informesParrafo([
+      new docx.TextRun(`Se identifican a continuación los alimentadores sin causal de pérdida ya identificada (clasificación "ok") cuyo porcentaje de pérdida de ${labelMesLargo(mesClave)} supera el promedio de los demás alimentadores "ok" de su misma zona -- ese promedio zonal se toma como el nivel normal/esperado sin causal conocida. `),
+      new docx.TextRun({text:`La pérdida técnica de cada alimentador se define como el excedente entre su % de pérdida actual y ese promedio zonal de referencia`, bold:true}),
+      new docx.TextRun(` (es decir, la parte de la pérdida que NO se explica por el nivel normal de la zona); sobre ese excedente, convertido a kWh, se calcula la recuperación estimada. Es una aproximación estadística y no reemplaza un estudio técnico puntual del circuito.`),
+    ]));
     analisis.candidatos.forEach(c => {
+      const perdidaTecnicaPct = c.pct - c.objetivo;
       children.push(new docx.Paragraph({bullet:{level:0}, children:[
         new docx.TextRun({text:`${c.nombre}`, bold:true}),
         new docx.TextRun(` (Subestación ${c.subestacion}, Zona ${c.zona}): pérdida actual de `),
         new docx.TextRun({text:`${c.pct.toFixed(2)}%`, bold:true}),
         new docx.TextRun(` (${fk(c.perdida)} kWh/mes), frente al promedio zonal de `),
         new docx.TextRun({text:`${c.objetivo.toFixed(2)}%`, bold:true}),
-        new docx.TextRun(` -- recuperación estimada de `),
+        new docx.TextRun(` -- pérdida técnica estimada de `),
+        new docx.TextRun({text:`${perdidaTecnicaPct.toFixed(2)} pp`, bold:true}),
+        new docx.TextRun(`, equivalente a una recuperación estimada de `),
         new docx.TextRun({text:`${fk(c.recuperacionKwh)} kWh/mes`, bold:true}),
         new docx.TextRun(` si se lleva al nivel de referencia.`),
       ]}));
@@ -16881,7 +17017,8 @@ async function informesFiguraN21(serie, idx, etiqueta){
         borderWidth:2, pointRadius:1.5, spanGaps:true, tension:.2, datalabels:{display:false}},
       {type:'line', label:`Pérdida % ${etiqueta}`, yAxisID:'yPct', order:1,
         data: visibles.map(f=>f.pct), borderColor:'#7b2fff', backgroundColor:'transparent',
-        borderWidth:3, pointRadius:3, spanGaps:true, tension:.25, datalabels:_informesDatalabelChip('#7b2fff', false, 15)},
+        borderWidth:3, spanGaps:true, tension:.25, ..._informesResaltarUltimo(visibles.length, '#7b2fff'),
+        datalabels:_informesDatalabelChip('#7b2fff', false, 15)},
     ],
     scales:{
       yPct:{position:'right', grid:{drawOnChartArea:false}, ticks:{callback:v=>v.toFixed(1)+'%'}},
@@ -17027,9 +17164,9 @@ async function informesFiguraMapaZonas(mesClave){
     });
   });
 
-  const dataUrl = cv.toDataURL('image/png', 1.0);
+  const dataUrl = cv.toDataURL('image/jpeg', 0.9);
   document.body.removeChild(cont);
-  return {bytes: _informesDataUrlAUint8(dataUrl), width: ancho, height: alto};
+  return {bytes: _informesDataUrlAUint8(dataUrl), width: ancho, height: alto, tipo:'jpg'};
 }
 
 // Análisis más completo para el Total N2-1 (MoM + YoY + tendencia de los
@@ -17167,7 +17304,8 @@ async function informesFiguraIpComercial(mesClave){
     titulo: 'Índice de Pérdidas Comercial',
     labels: visibles.map(f => labelMes(ipComercialClave(f))),
     datasets: [{type:'line', label:'Índice de Pérdidas Comercial (%)', data: visibles.map(f=>f.perdida_pct_12),
-      borderColor:'#7b2fff', backgroundColor:'rgba(123,47,255,.12)', fill:true, borderWidth:2.5, tension:.25, pointRadius:2,
+      borderColor:'#7b2fff', backgroundColor:'rgba(123,47,255,.12)', fill:true, borderWidth:2.5, tension:.25,
+      ..._informesResaltarUltimo(visibles.length, '#7b2fff'),
       datalabels:_informesDatalabelChip('#7b2fff', false)}],
     scales:{ y:{ticks:{callback:v=>v.toFixed(1)+'%'}} },
   });
@@ -17263,13 +17401,38 @@ function informesSeccionConclusiones(mesIpReg, mesN21){
 // ==========================================================================
 // ORQUESTADOR
 // ==========================================================================
-function _informesAlcanceTexto(){
+// Contenido elegido por el usuario en el checklist -- pedido explícito
+// ("debe haber forma para chulear lo que quiero que contenga, ya sea
+// solo indicador de pérdidas totales, alguna zona o algo adicional").
+// Si hay una subestación elegida en el selector aparte, esa gana sobre
+// el checklist (informe SOLO de esa subestación).
+function _informesSeleccionContenido(){
+  const subestacion = document.getElementById('informes-subestacion').value;
+  if(subestacion) return {subestacion};
+  const chk = id => document.getElementById(id).checked;
+  const zonas = [...document.querySelectorAll('#informes-chk-zonas input[type=checkbox]')]
+    .filter(i=>i.checked).map(i=>i.value);
   return {
-    completo:'informe completo (indicador regulatorio IP_Reg, indicador N2-1 por zona y subestación, IP Comercial y relación Temperatura vs Entrada)',
-    ip_reg:'el indicador de pérdidas totales regulatorio (IP_Reg, CREG 015/2018)',
-    n21:'el indicador N2-1 por zona y subestación',
-    subestacion:`la subestación ${document.getElementById('informes-subestacion').value || ''}`,
-  }[INFORMES_ALCANCE];
+    subestacion: null,
+    introduccion: chk('informes-chk-introduccion'),
+    ipReg: chk('informes-chk-ipreg'),
+    n21: chk('informes-chk-n21') && zonas.length>0,
+    zonas,
+    comercial: chk('informes-chk-comercial'),
+    temperatura: chk('informes-chk-temperatura'),
+    conclusiones: chk('informes-chk-conclusiones'),
+  };
+}
+
+function _informesAlcanceTexto(sel){
+  if(sel.subestacion) return `la subestación ${sel.subestacion}`;
+  const partes = [];
+  if(sel.ipReg) partes.push('el indicador regulatorio IP_Reg');
+  if(sel.n21) partes.push(`el indicador N2-1 (${sel.zonas.map(z=>'zona '+z).join(', ')})`);
+  if(sel.comercial) partes.push('el indicador de pérdidas comercial');
+  if(sel.temperatura) partes.push('la relación temperatura vs energía de entrada');
+  if(!partes.length) return 'los indicadores seleccionados';
+  return partes.join(', ');
 }
 
 async function informesGenerar(){
@@ -17278,37 +17441,35 @@ async function informesGenerar(){
   const mesIpReg = document.getElementById('informes-mes').value;
   const mesN21 = document.getElementById('informes-mes-n21').value;
   if(!mesIpReg && !mesN21){ msg.textContent = 'Elige al menos un mes.'; return; }
-  if(INFORMES_ALCANCE==='subestacion' && !document.getElementById('informes-subestacion').value){
-    msg.textContent = 'Elige una subestación.'; return;
+  const sel = _informesSeleccionContenido();
+  if(!sel.subestacion && !sel.ipReg && !sel.n21 && !sel.comercial && !sel.temperatura && !sel.conclusiones){
+    msg.textContent = 'Elige al menos un contenido para el informe.'; return;
   }
   btn.disabled = true; msg.textContent = 'Generando informe…';
   try{
     // El mes de portada es el N2-1 (el "mes del periodo" que se percibe
-    // como el real) salvo en el alcance Solo IP_Reg, donde no hay N2-1.
-    const mesPortada = (INFORMES_ALCANCE==='ip_reg' ? mesIpReg : mesN21) || mesIpReg || mesN21;
+    // como el real) salvo cuando el informe no trae N2-1.
+    const mesPortada = (sel.n21 || sel.subestacion ? mesN21 : mesIpReg) || mesN21 || mesIpReg;
+    const childrenPortada = informesSeccionPortada(mesPortada);
     const children = [];
-    children.push(...informesSeccionPortada(mesPortada));
     children.push(..._informesSeccionTOC());
 
-    if(INFORMES_ALCANCE === 'completo'){
-      children.push(...informesSeccionIntroduccion(mesPortada, _informesAlcanceTexto()));
-      children.push(...await informesSeccionMetodologiaIPT());
-      children.push(...await informesSeccionIndicadorIPT(mesIpReg));
-      children.push(...informesSeccionMetodologiaN21());
-      children.push(...await informesSeccionIndicadorN21Total(mesN21));
-      for(const zona of informesZonasDisponibles()){ children.push(...await informesSeccionZonaN21(zona, mesN21)); }
-      children.push(...await informesSeccionIPComercial(mesIpReg));
-      children.push(...await informesSeccionTemperaturaEntrada());
-      children.push(...informesSeccionConclusiones(mesIpReg, mesN21));
-    }else if(INFORMES_ALCANCE === 'ip_reg'){
-      children.push(...await informesSeccionMetodologiaIPT());
-      children.push(...await informesSeccionIndicadorIPT(mesIpReg));
-    }else if(INFORMES_ALCANCE === 'n21'){
-      children.push(...informesSeccionMetodologiaN21());
-      children.push(...await informesSeccionIndicadorN21Total(mesN21));
-      for(const zona of informesZonasDisponibles()){ children.push(...await informesSeccionZonaN21(zona, mesN21)); }
-    }else if(INFORMES_ALCANCE === 'subestacion'){
-      children.push(...await informesSeccionSubestacion(document.getElementById('informes-subestacion').value, mesN21, false));
+    if(sel.subestacion){
+      children.push(...await informesSeccionSubestacion(sel.subestacion, mesN21, false));
+    }else{
+      if(sel.introduccion) children.push(...informesSeccionIntroduccion(mesPortada, _informesAlcanceTexto(sel)));
+      if(sel.ipReg){
+        children.push(...await informesSeccionMetodologiaIPT());
+        children.push(...await informesSeccionIndicadorIPT(mesIpReg));
+      }
+      if(sel.n21){
+        children.push(...informesSeccionMetodologiaN21());
+        children.push(...await informesSeccionIndicadorN21Total(mesN21));
+        for(const zona of sel.zonas){ children.push(...await informesSeccionZonaN21(zona, mesN21)); }
+      }
+      if(sel.comercial) children.push(...await informesSeccionIPComercial(mesIpReg));
+      if(sel.temperatura) children.push(...await informesSeccionTemperaturaEntrada());
+      if(sel.conclusiones) children.push(...informesSeccionConclusiones(mesIpReg, mesN21));
     }
 
     const doc = new docx.Document({
@@ -17336,15 +17497,24 @@ async function informesGenerar(){
           ],
         }],
       },
-      sections:[{
-        properties:{page:{size:{width:12240, height:15840}, margin:{top:1440,bottom:1440,left:1440,right:1440}}},
-        children,
-      }],
+      sections:[
+        {
+          // Portada en su propia sección con justificación vertical --
+          // llena la hoja sola (ver informesSeccionPortada).
+          properties:{page:{size:{width:12240, height:15840}, margin:{top:1440,bottom:1440,left:1440,right:1440}}, verticalAlign: docx.VerticalAlign.BOTH},
+          children: childrenPortada,
+        },
+        {
+          properties:{page:{size:{width:12240, height:15840}, margin:{top:1440,bottom:1440,left:1440,right:1440}}},
+          children,
+        },
+      ],
     });
     const blob = await docx.Packer.toBlob(doc);
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = `informe_${INFORMES_ALCANCE}_${mesPortada}_${(OPERADOR&&OPERADOR.slug)||'operador'}.docx`;
+    const nombreAlcance = sel.subestacion ? 'subestacion' : 'personalizado';
+    a.href = url; a.download = `informe_${nombreAlcance}_${mesPortada}_${(OPERADOR&&OPERADOR.slug)||'operador'}.docx`;
     document.body.appendChild(a); a.click(); a.remove();
     URL.revokeObjectURL(url);
     msg.textContent = 'Informe descargado. Al abrirlo, Word va a preguntar si actualizar los campos -- di que sí para que se vea bien la tabla de contenido y la numeración de figuras.';
