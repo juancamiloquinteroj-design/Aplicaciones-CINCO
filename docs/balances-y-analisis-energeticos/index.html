@@ -18,6 +18,14 @@
 <!-- topojson-client decodifica geo/colombia-municipios.json (arcs cuantizados,
      ver la carpeta geo/) a GeoJSON en el navegador -- solo eso, ~5KB. -->
 <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
+<!-- docx (dolanmiu) -- genera el .docx del módulo Informes en el navegador, sin
+     backend. Build UMD confirmado en vivo (curl + prueba real con Node antes de
+     agregarlo acá): expone el global `docx` con Document/Paragraph/TextRun/Heading
+     Level/Table/TableRow/TableCell/ImageRun/Packer. OJO: tiene que ser unpkg, NO
+     jsdelivr -- jsdelivr sirve este archivo .cjs con Content-Type "application/node"
+     (el navegador se niega a ejecutarlo por MIME type), confirmado en vivo con
+     curl -I; unpkg lo sirve bien como "text/javascript". -->
+<script src="https://unpkg.com/docx@9.7.1/dist/index.umd.cjs"></script>
 <style>
 :root{
   --accent:#00b4d8;--accent2:#0096c7;--amber:#f4a261;--green:#06d6a0;--red:#ef476f;--purple:#7b2fff;
@@ -835,6 +843,7 @@ tfoot td:first-child{text-align:left}
     <button class="sidebar-sublink" data-vista="be-alertas" onclick="mostrarVista('be-alertas')">🔔 Alertas de Balance</button>
     <!-- Diagrama Unifilar oculto a pedido del usuario (dibujo lento/difícil de usar) -- código y tablas se dejan intactos por si se retoma más adelante. -->
   </div>
+  <button class="sidebar-link" data-vista="informes" onclick="mostrarVista('informes')">📄 Informes</button>
   <div class="sidebar-proximamente">Más módulos próximamente</div>
   <div class="sidebar-acceso" id="sidebar-acceso"></div>
 </aside>
@@ -2406,6 +2415,51 @@ tfoot td:first-child{text-align:left}
 </div>
 <!-- fin vista-temp-entrada -->
 
+<!-- ---------------- INFORMES (.docx descargable) ---------------- -->
+<div id="vista-informes" class="vista-modulo hidden">
+  <div class="sec-hdr">
+    <div class="sec-title">Informes</div>
+    <div class="sec-sub">Genera el informe mensual en Word (.docx), con la misma narrativa y estructura de la plantilla -- completo o acotado a un alcance específico.</div>
+  </div>
+
+  <div id="informes-vacio" class="card"><div style="color:var(--text3)">Cargando…</div></div>
+
+  <div id="informes-contenido" class="hidden">
+    <div class="card">
+      <div class="fbar" style="margin-bottom:10px">
+        <label>Mes a informar</label>
+        <select id="informes-mes" style="min-width:180px"></select>
+      </div>
+
+      <div class="fbar" style="margin-bottom:6px">
+        <label>Alcance</label>
+        <button type="button" class="be-modo-btn activo" id="informes-btn-alcance-completo" onclick="informesToggleAlcance('completo')">Completo</button>
+        <button type="button" class="be-modo-btn" id="informes-btn-alcance-ip_reg" onclick="informesToggleAlcance('ip_reg')">Solo IP_Reg (Regulatorio)</button>
+        <button type="button" class="be-modo-btn" id="informes-btn-alcance-n21" onclick="informesToggleAlcance('n21')">Solo N2-1</button>
+        <button type="button" class="be-modo-btn" id="informes-btn-alcance-subestacion" onclick="informesToggleAlcance('subestacion')">Una subestación</button>
+      </div>
+      <div class="fbar hidden" id="informes-fila-subestacion" style="margin-bottom:10px">
+        <label>Subestación</label>
+        <select id="informes-subestacion" style="min-width:220px"></select>
+      </div>
+
+      <div class="fbar" style="margin-bottom:6px;align-items:center">
+        <label>Logo de portada</label>
+        <input type="file" id="informes-logo-input" accept="image/*" onchange="informesElegirLogo(event)">
+        <img id="informes-logo-preview" class="hidden" style="height:36px;border-radius:4px;background:#fff;padding:2px" alt="Logo elegido">
+        <button type="button" class="be-modo-btn hidden" id="informes-btn-quitar-logo" onclick="informesQuitarLogo()" style="margin-left:4px">Quitar</button>
+        <span style="font-size:10.5px;color:var(--text3)">Opcional -- si no eliges ninguno, la portada sale sin logo. Se recuerda para la próxima vez.</span>
+      </div>
+
+      <div class="fbar" style="margin-top:10px">
+        <button type="button" class="btn-theme" style="width:auto;padding:0 18px" id="informes-btn-generar" onclick="informesGenerar()">⬇ Generar y descargar informe (.docx)</button>
+        <span id="informes-msg" style="font-size:11.5px;color:var(--text3)"></span>
+      </div>
+    </div>
+  </div>
+</div>
+<!-- fin vista-informes -->
+
 <!-- ---------------- BALANCES POR ESTRUCTURA · CREAR ---------------- -->
 <div id="vista-be-crear" class="vista-modulo hidden">
 
@@ -3487,7 +3541,7 @@ function toggleSubmenuAlim(){
   }
 }
 
-let vistaCargada = {perdidas:false, parametrizacion:false, telemedidos:false, balancesEstructura:false, ipReg:false, ipComercial:false, ipNivel1:false, reportesSspd:false, tridevanados:false, alimN21:false, alimSubestaciones:false, alimAlimentadores:false, tempEntrada:false};
+let vistaCargada = {perdidas:false, parametrizacion:false, telemedidos:false, balancesEstructura:false, ipReg:false, ipComercial:false, ipNivel1:false, reportesSspd:false, tridevanados:false, alimN21:false, alimSubestaciones:false, alimAlimentadores:false, tempEntrada:false, informes:false};
 
 async function mostrarVista(nombre){
   document.querySelectorAll('.vista-modulo').forEach(v=>v.classList.add('hidden'));
@@ -3573,6 +3627,10 @@ async function mostrarVista(nombre){
   if(nombre==='temp-entrada' && !vistaCargada.tempEntrada){
     vistaCargada.tempEntrada = true;
     await tempEntradaCargar();
+  }
+  if(nombre==='informes' && !vistaCargada.informes){
+    vistaCargada.informes = true;
+    await informesCargar();
   }
   // Las alertas se piden de nuevo cada vez que se entra a esta vista puntual
   // (no solo la primera vez) -- son datos que cambian seguido (atraso día a
@@ -15867,6 +15925,784 @@ function demoGet(path){
     return Promise.resolve({meses:DEMO_MESES, series});
   }
   return Promise.resolve({});
+}
+
+/* ==========================================================================
+   INFORMES -- genera el informe mensual en Word (.docx), reusando los
+   mismos datos/cálculos ya cargados por IP_Reg, N2-1/Subestaciones e IP
+   Comercial. Pedido explícito: un módulo al final de Visualización de
+   Datos que genere el informe con la misma estructura/redacción de la
+   plantilla real (ver Informe Plantilla.docx), explicando variaciones y
+   por qué suben o bajan los indicadores -- incluyendo los N2-1 negativos,
+   posibles por mala asociación medidor↔circuito, validable contra el
+   campo `leyenda` de ALIM_FILAS (mismo campo que colorea el gráfico de
+   dispersión de Alimentadores). Multipropósito: Completo / Solo IP_Reg /
+   Solo N2-1 / Una subestación específica.
+
+   Librería: docx (dolanmiu) v9.7.1 vía CDN (ver <head>), global `docx`
+   con Document/Paragraph/TextRun/HeadingLevel/Table/TableRow/TableCell/
+   ImageRun/Packer -- probado de punta a punta con Node antes de sumarlo
+   acá (ver notas de la sesión): arma un .docx real, python-docx lo abre
+   sin problemas.
+   ========================================================================== */
+let INFORMES_ALCANCE = 'completo';       // 'completo' | 'ip_reg' | 'n21' | 'subestacion'
+let INFORMES_LOGO_BYTES = null;          // Uint8Array del logo elegido (o null -- portada sin logo)
+let INFORMES_LOGO_DIM = null;            // {width,height} en px reales de la imagen elegida
+
+function _informesDataUrlAUint8(dataUrl){
+  const base64 = dataUrl.split(',')[1];
+  const bin = atob(base64);
+  const bytes = new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+
+async function informesCargar(){
+  const vacio = document.getElementById('informes-vacio');
+  const contenido = document.getElementById('informes-contenido');
+  if(DEMO){
+    vacio.classList.remove('hidden'); contenido.classList.add('hidden');
+    vacio.querySelector('div').textContent = 'No disponible en modo demo (sin conexión al servidor).';
+    return;
+  }
+  try{
+    await Promise.all([ ipAsegurarDatosCargados(), _alimAsegurarDatosCargados() ]);
+  }catch(e){ /* seguimos igual -- cada sección del informe avisa si le falta su dato */ }
+
+  vacio.classList.add('hidden');
+  contenido.classList.remove('hidden');
+
+  ipPoblarSelectorAnalisisMes('informes-mes');
+  informesPoblarSubestaciones();
+  await informesCargarLogoGuardado();
+}
+
+// Lista TODAS las subestaciones (sin filtrar por el chip de zona activo del
+// módulo Subestaciones -- Informes es independiente de esa selección de UI).
+function informesPoblarSubestaciones(){
+  const sel = document.getElementById('informes-subestacion');
+  if(!sel) return;
+  const anterior = sel.value;
+  const nombres = [...new Set((ALIM_FILAS||[]).map(f=>f.subestacion).filter(Boolean))].sort();
+  sel.innerHTML = nombres.map(n=>`<option value="${_mselEsc(n)}">${_mselEsc(n)}</option>`).join('');
+  if(anterior && nombres.includes(anterior)) sel.value = anterior;
+}
+
+function informesToggleAlcance(a){
+  INFORMES_ALCANCE = a;
+  ['completo','ip_reg','n21','subestacion'].forEach(x =>
+    document.getElementById(`informes-btn-alcance-${x}`).classList.toggle('activo', x===a));
+  document.getElementById('informes-fila-subestacion').classList.toggle('hidden', a!=='subestacion');
+}
+
+async function informesElegirLogo(ev){
+  const file = ev.target.files && ev.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  const dataUrl = await new Promise((resolve,reject) => {
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+  await informesFijarLogo(dataUrl);
+  try{ localStorage.setItem('informes_logo', dataUrl); }catch(e){ /* localStorage lleno/deshabilitado -- no es crítico, solo no se recuerda para la próxima */ }
+}
+
+async function informesFijarLogo(dataUrl){
+  const img = new Image();
+  await new Promise((resolve,reject) => { img.onload = resolve; img.onerror = reject; img.src = dataUrl; });
+  INFORMES_LOGO_DIM = {width: img.naturalWidth, height: img.naturalHeight};
+  INFORMES_LOGO_BYTES = _informesDataUrlAUint8(dataUrl);
+  const preview = document.getElementById('informes-logo-preview');
+  preview.src = dataUrl; preview.classList.remove('hidden');
+  document.getElementById('informes-btn-quitar-logo').classList.remove('hidden');
+}
+
+function informesQuitarLogo(){
+  INFORMES_LOGO_BYTES = null; INFORMES_LOGO_DIM = null;
+  document.getElementById('informes-logo-input').value = '';
+  document.getElementById('informes-logo-preview').classList.add('hidden');
+  document.getElementById('informes-btn-quitar-logo').classList.add('hidden');
+  try{ localStorage.removeItem('informes_logo'); }catch(e){ /* no crítico */ }
+}
+
+async function informesCargarLogoGuardado(){
+  let dataUrl = null;
+  try{ dataUrl = localStorage.getItem('informes_logo'); }catch(e){ /* no crítico */ }
+  if(!dataUrl) return;
+  try{ await informesFijarLogo(dataUrl); }catch(e){ /* dato corrupto -- se ignora, queda sin logo */ }
+}
+
+// ---- Utilidades de redacción (mismo tono que _alimSubTextoAnalisis/
+// ipGenerarAnalisisPrincipal, pero devolviendo texto plano para armar
+// TextRun/Paragraph en vez de innerHTML). ----
+const _informesSigno = v => v >= 0 ? '+' : '-';
+const _informesFKwh = v => v==null ? '--' : Math.round(v).toLocaleString('es-CO');
+
+// ---- Gráficos offscreen -> imagen PNG (Uint8Array) para embeber en el .docx.
+// animation:false es necesario para que toDataURL() capture el chart ya
+// pintado sin esperar un frame de animación. ----
+async function _informesGraficoAImagen({labels, datasets, scales, ancho=620, alto=300}){
+  const cont = document.createElement('div');
+  cont.style.cssText = 'position:fixed;left:-9999px;top:0';
+  const cv = document.createElement('canvas');
+  cv.width = ancho; cv.height = alto;
+  cont.appendChild(cv);
+  document.body.appendChild(cont);
+  const chart = new Chart(cv, {
+    data:{labels: labels||[], datasets},
+    options:{
+      responsive:false, animation:false,
+      layout:{padding:16},
+      plugins:{legend:{display:true, position:'bottom', labels:{font:{size:11}}}},
+      scales: scales || {},
+    },
+  });
+  const dataUrl = cv.toDataURL('image/png', 1.0);
+  chart.destroy();
+  document.body.removeChild(cont);
+  return {bytes: _informesDataUrlAUint8(dataUrl), width: ancho, height: alto};
+}
+
+function _informesParrafoImagen(imgResultado, anchoDoc=500){
+  if(!imgResultado) return null;
+  const alto = Math.round(anchoDoc * imgResultado.height / imgResultado.width);
+  return new docx.Paragraph({
+    alignment: docx.AlignmentType.CENTER,
+    children: [new docx.ImageRun({data: imgResultado.bytes, transformation:{width:anchoDoc, height:alto}, type:'png'})],
+  });
+}
+
+function _informesParrafoCaption(texto){
+  return new docx.Paragraph({alignment: docx.AlignmentType.CENTER, spacing:{after:200},
+    children:[new docx.TextRun({text:texto, italics:true, size:20})]});
+}
+
+function _informesHeading1(texto){
+  return new docx.Paragraph({heading: docx.HeadingLevel.HEADING_1, text:texto});
+}
+
+// ==========================================================================
+// PORTADA
+// ==========================================================================
+function informesSeccionPortada(mesClave){
+  const children = [];
+  if(INFORMES_LOGO_BYTES && INFORMES_LOGO_DIM){
+    const anchoLogo = 140;
+    const altoLogo = Math.round(anchoLogo * INFORMES_LOGO_DIM.height / INFORMES_LOGO_DIM.width);
+    children.push(new docx.Paragraph({alignment: docx.AlignmentType.CENTER, spacing:{after:300},
+      children:[new docx.ImageRun({data: INFORMES_LOGO_BYTES, transformation:{width:anchoLogo, height:altoLogo}, type:'png'})]}));
+  }
+  children.push(new docx.Paragraph({heading: docx.HeadingLevel.TITLE, alignment: docx.AlignmentType.CENTER,
+    spacing:{after:0}, text:'INFORME MENSUAL BALANCES Y ANALISIS ENERGETICOS'}));
+  children.push(new docx.Paragraph({alignment: docx.AlignmentType.CENTER, spacing:{after:600},
+    children:[new docx.TextRun({text: labelMesLargo(mesClave).toUpperCase(), bold:true})]}));
+  children.push(new docx.Paragraph({alignment: docx.AlignmentType.CENTER, text:'Presentado por:'}));
+  children.push(new docx.Paragraph({alignment: docx.AlignmentType.CENTER, spacing:{after:600}, text:'División Control de Pérdidas'}));
+  children.push(new docx.Paragraph({alignment: docx.AlignmentType.CENTER, spacing:{after:600},
+    children:[new docx.TextRun({text:(OPERADOR&&OPERADOR.nombre)||'', bold:true})]}));
+  const fechaLarga = new Date().toLocaleDateString('es-CO', {day:'2-digit', month:'long', year:'numeric'});
+  const ciudad = (typeof PZ_DEPARTAMENTO !== 'undefined' && PZ_DEPARTAMENTO) ? PZ_DEPARTAMENTO : null;
+  children.push(new docx.Paragraph({alignment: docx.AlignmentType.CENTER, text: ciudad ? `${ciudad}, ${fechaLarga}` : fechaLarga}));
+  children.push(new docx.Paragraph({children:[new docx.PageBreak()]}));
+  return children;
+}
+
+function informesSeccionIntroduccion(mesClave, alcanceTexto){
+  return [
+    _informesHeading1('Introducción y objetivo'),
+    new docx.Paragraph({text:`El presente informe tiene como objetivo presentar el análisis del comportamiento energético y de pérdidas de ${(OPERADOR&&OPERADOR.nombre)||'la empresa'} para el periodo ${labelMesLargo(mesClave)}, con base en la información registrada en el Sistema de Gestión de la Medida. El alcance de este documento corresponde a: ${alcanceTexto}.`}),
+    new docx.Paragraph({text:''}),
+  ];
+}
+
+// ==========================================================================
+// IP_REG (Indicador de Índice de Pérdidas Totales -- CREG 015/2018)
+// ==========================================================================
+function informesSeccionMetodologiaIPT(){
+  return [
+    _informesHeading1('Metodología de Calculo Índice de Pérdidas Totales'),
+    new docx.Paragraph({text:'La metodología establecida en la Resolución CREG 015/2018 permite determinar el indicador de pérdidas de energía mediante la relación entre las pérdidas totales de energía y la energía de entrada al sistema de distribución, diferenciando el análisis de acuerdo con el nivel de tensión. Para su cálculo se parte de un balance energético en el que se determina la diferencia entre la energía que ingresa al sistema y la energía entregada o registrada a los usuarios, considerando los ajustes y variables definidos en la metodología regulatoria. El resultado se expresa como un porcentaje de pérdidas y permite evaluar el desempeño del sistema frente a los niveles de referencia establecidos por la regulación.'}),
+    new docx.Paragraph({text:''}),
+  ];
+}
+
+function _informesMesAnteriorClave(mesClave){
+  const [a,m] = mesClave.split('-').map(Number);
+  const idx = a*12 + (m-1) - 1;
+  return `${Math.floor(idx/12)}-${String(idx%12+1).padStart(2,'0')}`;
+}
+function _informesMesAnioAnteriorClave(mesClave){
+  const [a,m] = mesClave.split('-').map(Number);
+  return `${a-1}-${String(m).padStart(2,'0')}`;
+}
+
+function informesTextoIpt(mesClave){
+  const actual = IP_MAPA_POR_NORMAL.get(mesClave);
+  if(!actual || actual.ipt_pct == null) return null;
+  const anteriorClave = _informesMesAnteriorClave(mesClave);
+  const anterior = IP_MAPA_POR_NORMAL.get(anteriorClave);
+  const anioAntClave = _informesMesAnioAnteriorClave(mesClave);
+  const anioAnt = IP_MAPA_POR_NORMAL.get(anioAntClave);
+  const iptPct = actual.ipt_pct*100;
+
+  const parrafos = [];
+  parrafos.push(new docx.Paragraph({children:[
+    new docx.TextRun(`Para el periodo de evaluación, ${labelMesLargo(mesClave).toUpperCase()}, el índice de pérdidas totales proyectado y calculado conforme a la resolución CREG 015 de 2018 es de `),
+    new docx.TextRun({text:`${iptPct.toFixed(2)}%`, bold:true}),
+    new docx.TextRun(`, por lo cual se presenta un total de pérdidas de acuerdo a CREG 015/2018 de `),
+    new docx.TextRun({text:`${_informesFKwh(actual.pt_kwh)} kWh/Anual`, bold:true}),
+    new docx.TextRun(`.`),
+  ]}));
+
+  if(anterior && anterior.ipt_pct != null){
+    const deltaPp = (actual.ipt_pct - anterior.ipt_pct)*100;
+    const deltaKwh = actual.pt_kwh - anterior.pt_kwh;
+    const sube = deltaPp > 0;
+    const runs = [
+      new docx.TextRun(`El IPT pasó de `), new docx.TextRun({text:`${(anterior.ipt_pct*100).toFixed(2)}%`, bold:true}),
+      new docx.TextRun(` en ${labelMesLargo(anteriorClave)} a `), new docx.TextRun({text:`${iptPct.toFixed(2)}%`, bold:true}),
+      new docx.TextRun(` en ${labelMesLargo(mesClave)}, lo que equivale a pasar de una pérdida de `),
+      new docx.TextRun({text:`${_informesFKwh(anterior.pt_kwh)} kWh/Anual`, bold:true}),
+      new docx.TextRun(` a `), new docx.TextRun({text:`${_informesFKwh(actual.pt_kwh)} kWh/Anual`, bold:true}),
+      new docx.TextRun(` -- un ${sube?'incremento':'descenso'} de `), new docx.TextRun({text:`${Math.abs(deltaPp).toFixed(2)} pp`, bold:true}),
+      new docx.TextRun(`, equivalente a `), new docx.TextRun({text:`${_informesSigno(deltaKwh)}${_informesFKwh(Math.abs(deltaKwh))} kWh/Anual`, bold:true}),
+      new docx.TextRun(`.`),
+    ];
+    if(anioAnt && anioAnt.ipt_pct != null){
+      const deltaAnual = (actual.ipt_pct - anioAnt.ipt_pct)*100;
+      runs.push(new docx.TextRun(` Frente al mismo mes del año anterior (${labelMesLargo(anioAntClave)}), el IPT era de `));
+      runs.push(new docx.TextRun({text:`${(anioAnt.ipt_pct*100).toFixed(2)}%`, bold:true}));
+      runs.push(new docx.TextRun(`, por lo que la variación anual es de `));
+      runs.push(new docx.TextRun({text:`${_informesSigno(deltaAnual)}${Math.abs(deltaAnual).toFixed(2)} pp`, bold:true}));
+      runs.push(new docx.TextRun(` (${deltaAnual>0?'aumenta':'disminuye'}).`));
+    }
+    parrafos.push(new docx.Paragraph({children:runs}));
+  }
+
+  if(actual.pct_perdida_mensual != null && anioAnt && anioAnt.pct_perdida_mensual != null){
+    const mensualActual = actual.pct_perdida_mensual*100, mensualAnioAnt = anioAnt.pct_perdida_mensual*100;
+    parrafos.push(new docx.Paragraph({children:[
+      new docx.TextRun(`De acuerdo con el IPT mensual, se tiene que para ${labelMesLargo(mesClave).toLowerCase()} hay un IPT mensual de `),
+      new docx.TextRun({text:`${mensualActual.toFixed(2)}%`, bold:true}),
+      new docx.TextRun(`, donde sale un indicador de `),
+      new docx.TextRun({text:`${mensualAnioAnt.toFixed(2)}%`, bold:true}),
+      new docx.TextRun(` (${labelMesLargo(anioAntClave)}) -- por lo cual entra un indicador mensual ${mensualActual>mensualAnioAnt?'más alto':'más bajo'} que el saliente del año anterior.`),
+    ]}));
+  }
+  return parrafos;
+}
+
+async function informesFiguraIptAnual(mesClave){
+  const reales = ipUltimasFilasReales();
+  const idx = reales.findIndex(f => ipClaveNormal(f) === mesClave);
+  const visibles = idx>=0 ? reales.slice(0, idx+1) : reales;
+  if(visibles.length < 2) return null;
+  return _informesGraficoAImagen({
+    labels: visibles.map(f => labelMes(ipClaveNormal(f))),
+    datasets: [{type:'line', label:'IPT -- Índice de Pérdidas Totales (%)',
+      data: visibles.map(f => f.ipt_pct*100), borderColor:'#f4a261', backgroundColor:'rgba(244,162,97,.15)',
+      fill:true, borderWidth:2.5, tension:.2, pointRadius:2}],
+    scales:{ y:{ticks:{callback:v=>v.toFixed(1)+'%'}} },
+  });
+}
+
+async function informesFiguraIptMensual(mesClave){
+  const reales = IP_REG_FILAS.filter(f => f.pct_perdida_mensual != null).sort((a,b)=> ipClaveNormal(a) < ipClaveNormal(b) ? -1 : 1);
+  const idx = reales.findIndex(f => ipClaveNormal(f) === mesClave);
+  const visibles = idx>=0 ? reales.slice(Math.max(0, idx-11), idx+1) : reales.slice(-12);
+  if(!visibles.length) return null;
+  return _informesGraficoAImagen({
+    labels: visibles.map(f => labelMes(ipClaveNormal(f))),
+    datasets: [
+      {type:'bar', label:'Pérdida Mensual (kWh)', yAxisID:'y', data: visibles.map(f=>f.perdida_mensual_kwh), backgroundColor:'rgba(67,97,238,.35)', borderColor:'#4361ee', borderWidth:1},
+      {type:'line', label:'% Pérdida Mensual', yAxisID:'yPct', data: visibles.map(f=>f.pct_perdida_mensual*100), borderColor:'#f4a261', borderWidth:2, pointRadius:2, tension:.2},
+    ],
+    scales:{ y:{position:'left'}, yPct:{position:'right', ticks:{callback:v=>v.toFixed(1)+'%'}} },
+  });
+}
+
+function informesTablaBalanceMes(mesClave){
+  const n21 = alimN21AgregarMensual(new Set()).find(f => f.clave === mesClave);
+  if(!n21) return null;
+  const fila = (etiqueta, valor) => new docx.TableRow({children:[
+    new docx.TableCell({children:[new docx.Paragraph(etiqueta)]}),
+    new docx.TableCell({children:[new docx.Paragraph(`${_informesFKwh(valor)} kWh`)]}),
+  ]});
+  return new docx.Table({
+    width:{size:60, type:docx.WidthType.PERCENTAGE},
+    rows:[
+      new docx.TableRow({children:[
+        new docx.TableCell({children:[new docx.Paragraph({children:[new docx.TextRun({text:'Variable', bold:true})]})]}),
+        new docx.TableCell({children:[new docx.Paragraph({children:[new docx.TextRun({text:'Valor (N2-1, todas las zonas)', bold:true})]})]}),
+      ]}),
+      fila('Entrada Total', n21.entrada),
+      fila('Salida Total', n21.salida),
+      fila('Pérdida', n21.perdida),
+    ],
+  });
+}
+
+async function informesSeccionIndicadorIPT(mesClave){
+  const children = [_informesHeading1('Indicador de Índice de Pérdidas Totales (CREG 015/2018)')];
+  const parrafos = informesTextoIpt(mesClave);
+  if(!parrafos){
+    children.push(new docx.Paragraph({children:[new docx.TextRun({text:'No hay datos suficientes de IP_Reg para el mes seleccionado.', italics:true})]}));
+    return children;
+  }
+  children.push(parrafos[0]);
+  const fig1 = await informesFiguraIptAnual(mesClave);
+  if(fig1){ children.push(_informesParrafoImagen(fig1)); children.push(_informesParrafoCaption('Figura 1: Índice de pérdidas totales CREG 015/2018 (Anual)')); }
+  parrafos.slice(1).forEach(p => children.push(p));
+  const fig2 = await informesFiguraIptMensual(mesClave);
+  if(fig2){ children.push(_informesParrafoImagen(fig2)); children.push(_informesParrafoCaption('Figura 2: Índice de pérdidas totales mensuales')); }
+  children.push(new docx.Paragraph({text:'Información del balance energético', spacing:{before:200, after:100}}));
+  const tabla = informesTablaBalanceMes(mesClave);
+  if(tabla) children.push(tabla);
+  children.push(new docx.Paragraph({text:''}));
+  return children;
+}
+
+// ==========================================================================
+// N2-1 (Total, por zona, por subestación) -- incluye la detección de
+// pérdida negativa por mala asociación (campo `leyenda`).
+// ==========================================================================
+function informesSeccionMetodologiaN21(){
+  return [
+    _informesHeading1('Metodología calculo indicador N2-1'),
+    new docx.Paragraph({text:'La metodología del indicador N2-1 se basa en la construcción de balances energéticos para los niveles de tensión 2 y 1, partiendo de la información de alimentadores, subestaciones y zonas. Para garantizar la confiabilidad del balance, inicialmente se realiza la depuración de las lecturas y el análisis de las maniobras y suplencias, identificando los traslados temporales de carga que no se encuentran actualizados en el SPARD. Posteriormente, se consolida la energía de entrada de los alimentadores mediante el ciclo predominante, junto con la información de ventas, AGPE y demás variables necesarias para determinar las pérdidas de cada circuito.'}),
+    new docx.Paragraph({text:'Una vez consolidada la información, los alimentadores se agrupan de acuerdo con su zona y subestación, permitiendo obtener balances energéticos a diferentes niveles de agregación. Para el balance por zonas, la energía de ventas N21 se ajusta excluyendo los auxiliares, con el fin de mantener consistencia entre las entradas y salidas consideradas. Finalmente, las pérdidas obtenidas en cada alimentador se consolidan para determinar el comportamiento de las subestaciones y zonas, permitiendo obtener el indicador N2-1 y facilitar el seguimiento de las pérdidas totales de los niveles de tensión 1 y 2.'}),
+    new docx.Paragraph({text:''}),
+  ];
+}
+
+// filasMes: filas de ALIM_FILAS de un mes puntual (ya filtradas por zona/
+// subestación según corresponda) -- detecta pérdida % negativa por fila.
+function informesDetectarNegativos(filasMes){
+  return filasMes.filter(f => (f.entrada_total||0) && (f.perdida_kwh||0)/(f.entrada_total||1) < 0);
+}
+
+function informesTextoNegativos(negativos){
+  if(!negativos.length) return null;
+  const conAsociacion = negativos.filter(f => f.leyenda === 'Asociación');
+  const nombres = negativos.map(f => f.nombre_spard || f.nemonico).join(', ');
+  const runs = [
+    new docx.TextRun(`Se identifican valores de pérdida negativos en los siguientes circuitos: `),
+    new docx.TextRun({text: nombres, bold:true}),
+    new docx.TextRun(`. Estos valores son posibles cuando existe una inadecuada asociación entre el medidor y el circuito real al que pertenece`),
+  ];
+  if(conAsociacion.length){
+    runs.push(new docx.TextRun(`, situación consistente con la clasificación de causa registrada para ${conAsociacion.length===negativos.length?'estos circuitos':`${conAsociacion.length} de ${negativos.length} de estos circuitos`} (categoría `));
+    runs.push(new docx.TextRun({text:'"Asociación"', italics:true}));
+    runs.push(new docx.TextRun(`)`));
+  }
+  runs.push(new docx.TextRun(`. Esto se valida en la figura siguiente, donde los circuitos con esta clasificación se identifican con un color distintivo en el gráfico de dispersión Gestionable % vs Gest x Longitud.`));
+  return new docx.Paragraph({children: runs});
+}
+
+async function informesFiguraScatter(filasMes){
+  const colores = {'ok':'#06d6a0', 'Asociación':'#ef476f', 'Orden Público':'#f4a261', 'Subnormalidad':'#7b2fff'};
+  const puntos = filasMes.filter(f => f.longitud_total>0 && f.gestionable_kwh!=null && f.perdida_kwh);
+  if(!puntos.length) return null;
+  const leyendas = [...new Set(puntos.map(f=>f.leyenda).filter(Boolean))].sort();
+  const datasets = leyendas.map(ley => ({
+    type:'scatter', label: ley,
+    data: puntos.filter(f=>f.leyenda===ley).map(f => ({x: f.gestionable_kwh/f.perdida_kwh*100, y: f.gestionable_kwh/f.longitud_total})),
+    backgroundColor: colores[ley] || '#8a9ab5', pointRadius:5,
+  }));
+  return _informesGraficoAImagen({
+    labels: [], datasets, ancho:560, alto:340,
+    scales:{
+      x:{type:'linear', min:0, max:100, title:{display:true,text:'Gestionable % Top'}},
+      y:{title:{display:true,text:'Gest x Longitud'}},
+    },
+  });
+}
+
+// ==========================================================================
+// SUBESTACIÓN -- narrativa + gráfico + 2 tablas (pérdidas / gestionables),
+// mismo tono que _alimSubTextoAnalisis pero calculado independiente (no
+// depende de ALIM_SUB_ZONAS_SEL, el filtro de zona de la vista en vivo).
+// ==========================================================================
+function informesAgruparAlimentadoresSubestacion(subestacion, hastaClave){
+  const [aH,mH] = hastaClave.split('-').map(Number);
+  const claveHastaNum = aH*12+mH;
+  const porNem = {};
+  ALIM_FILAS.forEach(f => {
+    if(f.subestacion !== subestacion) return;
+    if(f.anio*12+f.mes > claveHastaNum) return;
+    const clave = `${f.anio}-${String(f.mes).padStart(2,'0')}`;
+    const nem = f.nombre_spard || f.nemonico;
+    (porNem[nem] = porNem[nem] || []).push({
+      clave, entrada:f.entrada_total||0, salida:f.salida_total||0,
+      perdida:f.perdida_kwh||0, gestionable:f.gestionable_kwh||0,
+      pct: f.entrada_total ? (f.perdida_kwh||0)/f.entrada_total*100 : null,
+    });
+  });
+  Object.values(porNem).forEach(arr => arr.sort((a,b)=> a.clave<b.clave?-1:1));
+  return porNem;
+}
+
+function informesTextoSubestacion(subestacion, agregadoMes, agregadoAnterior){
+  const runs = [
+    new docx.TextRun(`Esta subestación presenta un índice de pérdidas totales mensuales de `),
+    new docx.TextRun({text:`${agregadoMes.pct!=null?agregadoMes.pct.toFixed(2):'--'}%`, bold:true}),
+    new docx.TextRun(` equivalente a `),
+    new docx.TextRun({text:`${_informesFKwh(agregadoMes.perdida)} kWh/mes`, bold:true}),
+  ];
+  if(agregadoAnterior && agregadoAnterior.pct!=null && agregadoMes.pct!=null){
+    const delta = agregadoMes.pct - agregadoAnterior.pct;
+    runs.push(new docx.TextRun(`, lo que ${delta>=0?'incrementa':'disminuye'} respecto al mes anterior con una variación de `));
+    runs.push(new docx.TextRun({text:`${Math.abs(delta).toFixed(2)} pp`, bold:true}));
+    runs.push(new docx.TextRun(` (${_informesSigno(agregadoMes.perdida-agregadoAnterior.perdida)}${_informesFKwh(Math.abs(agregadoMes.perdida-agregadoAnterior.perdida))} kWh/mes).`));
+  }else{
+    runs.push(new docx.TextRun(`.`));
+  }
+  return new docx.Paragraph({children: runs});
+}
+
+function _informesTablaAlimentadores(nombreTabla, filasPorNem, mesClave, columnaExtra){
+  const encabezado = new docx.TableRow({children:[
+    new docx.TableCell({children:[new docx.Paragraph({children:[new docx.TextRun({text:'Circuito Alimentador', bold:true})]})]}),
+    new docx.TableCell({children:[new docx.Paragraph({children:[new docx.TextRun({text:`Pérdida ${labelMesLargo(mesClave)} (kWh)`, bold:true})]})]}),
+    new docx.TableCell({children:[new docx.Paragraph({children:[new docx.TextRun({text: columnaExtra, bold:true})]})]}),
+  ]});
+  const filas = Object.keys(filasPorNem).sort().map(nem => {
+    const serie = filasPorNem[nem];
+    const actual = serie.find(f => f.clave === mesClave);
+    const valorExtra = actual ? (columnaExtra.startsWith('Gestionable') ? _informesFKwh(actual.gestionable) : `${actual.pct!=null?actual.pct.toFixed(2):'--'}%`) : '--';
+    return new docx.TableRow({children:[
+      new docx.TableCell({children:[new docx.Paragraph(nem)]}),
+      new docx.TableCell({children:[new docx.Paragraph(actual ? `${_informesFKwh(actual.perdida)} kWh` : '--')]}),
+      new docx.TableCell({children:[new docx.Paragraph(valorExtra)]}),
+    ]});
+  });
+  return new docx.Table({width:{size:100, type:docx.WidthType.PERCENTAGE}, rows:[encabezado, ...filas]});
+}
+
+async function informesSeccionSubestacion(subestacion, mesClave){
+  const children = [_informesHeading1(`Subestación ${subestacion}`)];
+  const porNem = informesAgruparAlimentadoresSubestacion(subestacion, mesClave);
+  const nemonicos = Object.keys(porNem);
+  if(!nemonicos.length){
+    children.push(new docx.Paragraph({children:[new docx.TextRun({text:'No hay datos de alimentadores para esta subestación en el mes seleccionado.', italics:true})]}));
+    return children;
+  }
+  // Agregado de la subestación completa (suma de sus alimentadores).
+  const sumar = clave => {
+    let entrada=0, salida=0, perdida=0, tieneDato=false;
+    nemonicos.forEach(nem => {
+      const f = porNem[nem].find(x=>x.clave===clave);
+      if(f){ entrada+=f.entrada; salida+=f.salida; perdida+=f.perdida; tieneDato=true; }
+    });
+    return tieneDato ? {entrada, salida, perdida, pct: entrada?perdida/entrada*100:null} : null;
+  };
+  const agregadoMes = sumar(mesClave);
+  const agregadoAnterior = sumar(_informesMesAnteriorClave(mesClave));
+  if(agregadoMes) children.push(informesTextoSubestacion(subestacion, agregadoMes, agregadoAnterior));
+
+  const filasMes = informesFilasAlimMes(mesClave, f => f.subestacion === subestacion);
+  const fig = await informesFiguraSubestacion(porNem, nemonicos, mesClave);
+  if(fig){ children.push(_informesParrafoImagen(fig)); children.push(_informesParrafoCaption(`Figura: Indicador de pérdidas Mensual S/E ${subestacion}`)); }
+
+  children.push(new docx.Paragraph({text:'Pérdidas totales Subestación '+subestacion+'.', spacing:{before:200}}));
+  children.push(_informesTablaAlimentadores('perdidas', porNem, mesClave, 'Pérdida %'));
+  children.push(new docx.Paragraph({children:[new docx.TextRun({text:'Nota: Elaboración propia, energía de pérdida calculada corresponde a la diferencia de la registrada en la cabecera del alimentador y la venta de energía correspondiente a cada circuito teniendo en cuenta las suplencias.', italics:true, size:18})], spacing:{before:100,after:200}}));
+
+  children.push(new docx.Paragraph({text:'Pérdidas totales gestionables Subestación '+subestacion+'.'}));
+  children.push(_informesTablaAlimentadores('gestionables', porNem, mesClave, 'Gestionable (kWh)'));
+  children.push(new docx.Paragraph({children:[new docx.TextRun({text:'Nota: Elaboración propia, energía de pérdida calculada corresponde a la diferencia de la registrada en la cabecera del alimentador y la venta de energía correspondiente a cada circuito teniendo en cuenta las suplencias y adicionalmente la resta de pérdidas técnicas por alimentador mediante flujos de potencia.', italics:true, size:18})], spacing:{before:100,after:200}}));
+
+  const negativos = informesDetectarNegativos(filasMes);
+  if(negativos.length){
+    children.push(informesTextoNegativos(negativos));
+    const figScatter = await informesFiguraScatter(filasMes);
+    if(figScatter){ children.push(_informesParrafoImagen(figScatter)); children.push(_informesParrafoCaption('Figura: Gest x Longitud Vs Gestionable % Top -- validación de causa')); }
+  }
+  children.push(new docx.Paragraph({text:''}));
+  return children;
+}
+
+async function informesFiguraSubestacion(porNem, nemonicos, mesClave){
+  const reales = ALIM_FILAS.filter(() => true);   // solo para tomar el set de claves reales del histórico
+  const claves = [...new Set(nemonicos.flatMap(n => porNem[n].map(f=>f.clave)))].sort();
+  const idx = claves.indexOf(mesClave);
+  const visibles = idx>=0 ? claves.slice(Math.max(0, idx-11), idx+1) : claves.slice(-12);
+  if(!visibles.length) return null;
+  const datasets = nemonicos.map((nem,i) => ({
+    type:'line', label: nem,
+    data: visibles.map(c => { const f = porNem[nem].find(x=>x.clave===c); return f ? f.perdida : null; }),
+    borderColor: PALETA_NIVELES[i % PALETA_NIVELES.length], backgroundColor:'transparent', borderWidth:2, tension:.2, pointRadius:2, spanGaps:true,
+  }));
+  return _informesGraficoAImagen({
+    labels: visibles.map(c => labelMes(c)),
+    datasets,
+    scales:{ y:{title:{display:true,text:'Pérdida (kWh)'}} },
+  });
+}
+
+function informesFilasAlimMes(mesClave, filtro){
+  const [anio, mes] = mesClave.split('-').map(Number);
+  return ALIM_FILAS.filter(f => f.anio===anio && f.mes===mes && (!filtro || filtro(f)));
+}
+
+function informesZonasDisponibles(){
+  return [...new Set((ALIM_FILAS||[]).map(f => f.zona).filter(Boolean))].sort();
+}
+
+function informesTextoN21(etiqueta, actual, anterior){
+  const runs = [
+    new docx.TextRun(`${etiqueta} tiene un indicador de pérdidas para el periodo de evaluación de ${labelMesLargo(actual.clave)} de `),
+    new docx.TextRun({text:`${actual.pct!=null?actual.pct.toFixed(2):'--'}%`, bold:true}),
+    new docx.TextRun(`, lo que equivale a un total de pérdidas mensuales de `),
+    new docx.TextRun({text:`${_informesFKwh(actual.perdida)} kWh/mes`, bold:true}),
+  ];
+  if(anterior && anterior.pct!=null && actual.pct!=null){
+    const delta = actual.pct - anterior.pct;
+    runs.push(new docx.TextRun(`, con una variación mensual de `));
+    runs.push(new docx.TextRun({text:`${Math.abs(delta).toFixed(2)} pp`, bold:true}));
+    runs.push(new docx.TextRun(` ${delta>0?'incrementando':'disminuyendo'} respecto al mes anterior.`));
+  }else{
+    runs.push(new docx.TextRun(`.`));
+  }
+  return new docx.Paragraph({children: runs});
+}
+
+async function informesFiguraN21(serie, idx, etiqueta){
+  const visibles = serie.slice(Math.max(0, idx-11), idx+1);
+  if(!visibles.length) return null;
+  return _informesGraficoAImagen({
+    labels: visibles.map(f => labelMes(f.clave)),
+    datasets: [
+      {type:'bar', label:`Pérdida ${etiqueta} (kWh)`, yAxisID:'y', data: visibles.map(f=>f.perdida), backgroundColor:'rgba(67,97,238,.35)', borderColor:'#4361ee', borderWidth:1},
+      {type:'line', label:'Pérdida %', yAxisID:'yPct', data: visibles.map(f=>f.pct), borderColor:'#f4a261', borderWidth:2, pointRadius:2, tension:.2, spanGaps:true},
+    ],
+    scales:{ y:{position:'left'}, yPct:{position:'right', ticks:{callback:v=>v.toFixed(1)+'%'}} },
+  });
+}
+
+async function informesSeccionIndicadorN21Total(mesClave){
+  const children = [_informesHeading1('Indicador Total N2-1')];
+  const serie = alimN21AgregarMensual(new Set());
+  const idx = serie.findIndex(f => f.clave === mesClave);
+  if(idx < 0){
+    children.push(new docx.Paragraph({children:[new docx.TextRun({text:'No hay datos de N2-1 para el mes seleccionado.', italics:true})]}));
+    return children;
+  }
+  const actual = serie[idx], anterior = idx>0 ? serie[idx-1] : null;
+  children.push(informesTextoN21('El total N2-1 (todas las zonas)', actual, anterior));
+  const fig = await informesFiguraN21(serie, idx, 'Total');
+  if(fig){ children.push(_informesParrafoImagen(fig)); children.push(_informesParrafoCaption('Figura: Indicador Total N2-1 -- pérdida mensual (kWh y %)')); }
+  children.push(new docx.Paragraph({text:''}));
+  return children;
+}
+
+async function informesSeccionZonaN21(zona, mesClave){
+  const children = [_informesHeading1(`Indicador N2-1 ZONA ${zona}`)];
+  const serie = alimN21AgregarMensual(new Set([zona]));
+  const idx = serie.findIndex(f => f.clave === mesClave);
+  if(idx >= 0){
+    const actual = serie[idx], anterior = idx>0 ? serie[idx-1] : null;
+    children.push(informesTextoN21(`La zona ${zona}`, actual, anterior));
+  }
+  const subestaciones = [...new Set(ALIM_FILAS.filter(f=>f.zona===zona).map(f=>f.subestacion).filter(Boolean))].sort();
+  for(const sub of subestaciones){
+    children.push(...await informesSeccionSubestacion(sub, mesClave));
+  }
+  return children;
+}
+
+// ==========================================================================
+// IP COMERCIAL
+// ==========================================================================
+async function informesAsegurarIpComercial(){
+  if(typeof IP_COMERCIAL_FILAS !== 'undefined' && IP_COMERCIAL_FILAS && IP_COMERCIAL_FILAS.length) return;
+  try{ await cargarIndicadorPerdidasComercial(); }catch(e){ /* la sección avisa si sigue sin datos */ }
+}
+
+function informesTextoIpComercial(mesClave){
+  const actual = IP_COMERCIAL_FILAS.find(f => ipComercialClave(f) === mesClave && f.perdida_pct_12 != null);
+  if(!actual) return null;
+  const anteriorClave = _informesMesAnteriorClave(mesClave);
+  const anterior = IP_COMERCIAL_FILAS.find(f => ipComercialClave(f) === anteriorClave);
+  const runs = [
+    new docx.TextRun(`El índice de pérdidas comercial para ${labelMesLargo(mesClave)} es de `),
+    new docx.TextRun({text:`${actual.perdida_pct_12.toFixed(2)}%`, bold:true}),
+    new docx.TextRun(`, equivalente a `),
+    new docx.TextRun({text:`${_informesFKwh(actual.perdida_kwh_12)} kWh/Anual`, bold:true}),
+  ];
+  if(anterior && anterior.perdida_pct_12 != null){
+    const deltaMensual = actual.perdida_pct_12 - anterior.perdida_pct_12;
+    const deltaKwh = actual.perdida_kwh_12 - anterior.perdida_kwh_12;
+    runs.push(new docx.TextRun(`. El índice pasó de `));
+    runs.push(new docx.TextRun({text:`${anterior.perdida_pct_12.toFixed(2)}%`, bold:true}));
+    runs.push(new docx.TextRun(` en ${labelMesLargo(anteriorClave)}, un ${deltaMensual>0?'incremento':'descenso'} de `));
+    runs.push(new docx.TextRun({text:`${Math.abs(deltaMensual).toFixed(2)} pp`, bold:true}));
+    runs.push(new docx.TextRun(`, equivalente a `));
+    runs.push(new docx.TextRun({text:`${_informesSigno(deltaKwh)}${_informesFKwh(Math.abs(deltaKwh))} kWh/Anual`, bold:true}));
+    runs.push(new docx.TextRun(`.`));
+  }else{
+    runs.push(new docx.TextRun(`.`));
+  }
+  return [new docx.Paragraph({children: runs})];
+}
+
+async function informesFiguraIpComercial(mesClave){
+  const reales = ipComercialUltimasFilasReales();
+  const idx = reales.findIndex(f => ipComercialClave(f) === mesClave);
+  const visibles = idx>=0 ? reales.slice(0, idx+1) : reales;
+  if(visibles.length < 2) return null;
+  return _informesGraficoAImagen({
+    labels: visibles.map(f => labelMes(ipComercialClave(f))),
+    datasets: [{type:'line', label:'Índice de Pérdidas Comercial (%)', data: visibles.map(f=>f.perdida_pct_12), borderColor:'#7b2fff', backgroundColor:'rgba(123,47,255,.12)', fill:true, borderWidth:2.5, tension:.2, pointRadius:2}],
+    scales:{ y:{ticks:{callback:v=>v.toFixed(1)+'%'}} },
+  });
+}
+
+async function informesSeccionIPComercial(mesClave){
+  const children = [_informesHeading1('Indicador de Pérdidas comerciales')];
+  await informesAsegurarIpComercial();
+  const parrafos = informesTextoIpComercial(mesClave);
+  if(!parrafos){
+    children.push(new docx.Paragraph({children:[new docx.TextRun({text:'No hay datos suficientes de IP Comercial para el mes seleccionado.', italics:true})]}));
+    return children;
+  }
+  parrafos.forEach(p => children.push(p));
+  const fig = await informesFiguraIpComercial(mesClave);
+  if(fig){ children.push(_informesParrafoImagen(fig)); children.push(_informesParrafoCaption('Figura: Índice de Pérdidas Comercial')); }
+  children.push(new docx.Paragraph({text:''}));
+  return children;
+}
+
+// ==========================================================================
+// TEMPERATURA VS ENTRADA
+// ==========================================================================
+async function informesFiguraTemperaturaEntrada(dias){
+  if(!dias.length) return null;
+  return _informesGraficoAImagen({
+    labels: dias.map(f=>f.fecha),
+    datasets: [
+      {type:'line', label:'Entrada (kWh)', yAxisID:'y', data: dias.map(f=>TEMP_ENTRADA_BALANCE_DIARIO[f.fecha] ?? null), borderColor:'#4361ee', backgroundColor:'transparent', borderWidth:1.5, pointRadius:0, spanGaps:true, tension:.2},
+      {type:'line', label:'Temperatura (°C)', yAxisID:'yTemp', data: dias.map(f=>f.temp_promedio), borderColor:'#ef476f', backgroundColor:'transparent', borderWidth:1.5, pointRadius:0, spanGaps:true, tension:.3},
+    ],
+    scales:{ y:{position:'left'}, yTemp:{position:'right'} },
+  });
+}
+
+async function informesSeccionTemperaturaEntrada(){
+  const children = [_informesHeading1('Relación de Temperatura vs Energía de Entrada')];
+  if(!TEMP_ENTRADA_DIAS || !TEMP_ENTRADA_DIAS.length){
+    try{ await tempEntradaCargar(); }catch(e){ /* la sección avisa abajo si sigue sin datos */ }
+  }
+  if(!TEMP_ENTRADA_DIAS || !TEMP_ENTRADA_DIAS.length){
+    children.push(new docx.Paragraph({children:[new docx.TextRun({text:'No hay una estación de temperatura configurada en Parametrización, o no trae datos disponibles.', italics:true})]}));
+    return children;
+  }
+  const dias = TEMP_ENTRADA_DIAS.slice(-90);
+  const temps = dias.map(f=>f.temp_promedio).filter(v=>v!=null);
+  const promedioTemp = temps.length ? temps.reduce((a,b)=>a+b,0)/temps.length : null;
+  const entradas = dias.map(f => TEMP_ENTRADA_BALANCE_DIARIO[f.fecha]).filter(v=>v!=null);
+  const promedioEntrada = entradas.length ? entradas.reduce((a,b)=>a+b,0)/entradas.length : null;
+  const runs = [new docx.TextRun(`Durante los últimos ${dias.length} días con datos disponibles, la temperatura promedio de la estación `)];
+  if(TEMP_ENTRADA_ESTACION) runs.push(new docx.TextRun({text: TEMP_ENTRADA_ESTACION.nombre, bold:true}));
+  runs.push(new docx.TextRun(` fue de `));
+  runs.push(new docx.TextRun({text: promedioTemp!=null?`${promedioTemp.toFixed(1)}°C`:'--', bold:true}));
+  runs.push(new docx.TextRun(`, con una entrada de energía diaria promedio de `));
+  runs.push(new docx.TextRun({text: promedioEntrada!=null?`${_informesFKwh(promedioEntrada)} kWh`:'--', bold:true}));
+  runs.push(new docx.TextRun(`.`));
+  children.push(new docx.Paragraph({children: runs}));
+  const fig = await informesFiguraTemperaturaEntrada(dias);
+  if(fig){ children.push(_informesParrafoImagen(fig)); children.push(_informesParrafoCaption('Figura: Relación Temperatura vs Energía de Entrada')); }
+  children.push(new docx.Paragraph({text:''}));
+  return children;
+}
+
+// ==========================================================================
+// CONCLUSIONES
+// ==========================================================================
+function informesSeccionConclusiones(mesClave){
+  const children = [_informesHeading1('Conclusiones')];
+  const bullets = [];
+  const ipReg = IP_MAPA_POR_NORMAL.get(mesClave);
+  if(ipReg && ipReg.ipt_pct != null){
+    bullets.push(`El índice de pérdidas totales regulatorio (IP_Reg) para ${labelMesLargo(mesClave)} fue de ${(ipReg.ipt_pct*100).toFixed(2)}%, equivalente a ${_informesFKwh(ipReg.pt_kwh)} kWh/Anual.`);
+  }
+  const n21 = alimN21AgregarMensual(new Set()).find(f=>f.clave===mesClave);
+  if(n21 && n21.pct != null){
+    bullets.push(`El indicador N2-1 total (todas las zonas) fue de ${n21.pct.toFixed(2)}%, con una pérdida mensual de ${_informesFKwh(n21.perdida)} kWh.`);
+  }
+  const comercial = IP_COMERCIAL_FILAS && IP_COMERCIAL_FILAS.find(f=>ipComercialClave(f)===mesClave && f.perdida_pct_12!=null);
+  if(comercial){
+    bullets.push(`El índice de pérdidas comercial fue de ${comercial.perdida_pct_12.toFixed(2)}%.`);
+  }
+  if(!bullets.length) bullets.push('No hay suficiente información para generar conclusiones automáticas de este periodo.');
+  bullets.forEach(b => children.push(new docx.Paragraph({bullet:{level:0}, text:b})));
+  return children;
+}
+
+// ==========================================================================
+// ORQUESTADOR
+// ==========================================================================
+function _informesAlcanceTexto(){
+  return {
+    completo:'informe completo (indicador regulatorio IP_Reg, indicador N2-1 por zona y subestación, IP Comercial y relación Temperatura vs Entrada)',
+    ip_reg:'el indicador de pérdidas totales regulatorio (IP_Reg, CREG 015/2018)',
+    n21:'el indicador N2-1 por zona y subestación',
+    subestacion:`la subestación ${document.getElementById('informes-subestacion').value || ''}`,
+  }[INFORMES_ALCANCE];
+}
+
+async function informesGenerar(){
+  const btn = document.getElementById('informes-btn-generar');
+  const msg = document.getElementById('informes-msg');
+  const mesClave = document.getElementById('informes-mes').value;
+  if(!mesClave){ msg.textContent = 'Elige un mes para el informe.'; return; }
+  if(INFORMES_ALCANCE==='subestacion' && !document.getElementById('informes-subestacion').value){
+    msg.textContent = 'Elige una subestación.'; return;
+  }
+  btn.disabled = true; msg.textContent = 'Generando informe…';
+  try{
+    const children = [];
+    children.push(...informesSeccionPortada(mesClave));
+
+    if(INFORMES_ALCANCE === 'completo'){
+      children.push(...informesSeccionIntroduccion(mesClave, _informesAlcanceTexto()));
+      children.push(...informesSeccionMetodologiaIPT());
+      children.push(...await informesSeccionIndicadorIPT(mesClave));
+      children.push(...informesSeccionMetodologiaN21());
+      children.push(...await informesSeccionIndicadorN21Total(mesClave));
+      for(const zona of informesZonasDisponibles()){ children.push(...await informesSeccionZonaN21(zona, mesClave)); }
+      children.push(...await informesSeccionIPComercial(mesClave));
+      children.push(...await informesSeccionTemperaturaEntrada());
+      children.push(...informesSeccionConclusiones(mesClave));
+    }else if(INFORMES_ALCANCE === 'ip_reg'){
+      children.push(...informesSeccionMetodologiaIPT());
+      children.push(...await informesSeccionIndicadorIPT(mesClave));
+    }else if(INFORMES_ALCANCE === 'n21'){
+      children.push(...informesSeccionMetodologiaN21());
+      children.push(...await informesSeccionIndicadorN21Total(mesClave));
+      for(const zona of informesZonasDisponibles()){ children.push(...await informesSeccionZonaN21(zona, mesClave)); }
+    }else if(INFORMES_ALCANCE === 'subestacion'){
+      children.push(...await informesSeccionSubestacion(document.getElementById('informes-subestacion').value, mesClave));
+    }
+
+    const doc = new docx.Document({sections:[{
+      properties:{page:{size:{width:12240, height:15840}, margin:{top:1440,bottom:1440,left:1440,right:1440}}},
+      children,
+    }]});
+    const blob = await docx.Packer.toBlob(doc);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `informe_${INFORMES_ALCANCE}_${mesClave}_${(OPERADOR&&OPERADOR.slug)||'operador'}.docx`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    msg.textContent = 'Informe descargado.';
+  }catch(e){
+    console.error(e);
+    msg.textContent = 'No se pudo generar el informe: ' + (e.message || e);
+  }finally{
+    btn.disabled = false;
+  }
 }
 </script>
 </body>
