@@ -15997,13 +15997,22 @@ function informesPoblarSelectorMesN21(){
   sel.value = (anterior && [...sel.options].some(o=>o.value===anterior)) ? anterior : (serie.length ? serie[serie.length-1].clave : '');
 }
 
+// "Compacto" = subestación/transformador tipo compacto -- no forma parte
+// del alcance del informe mensual (pedido explícito, dos veces: "toda la
+// subestación compacto no se debe incluir" / "todos los compactos debes
+// quitarlos del informe"). Se filtra por nombre en TODOS los puntos donde
+// Informes lista subestaciones o alimentadores.
+function _informesEsCompacto(nombre){
+  return !!(nombre && /compact/i.test(nombre));
+}
+
 // Lista TODAS las subestaciones (sin filtrar por el chip de zona activo del
 // módulo Subestaciones -- Informes es independiente de esa selección de UI).
 function informesPoblarSubestaciones(){
   const sel = document.getElementById('informes-subestacion');
   if(!sel) return;
   const anterior = sel.value;
-  const nombres = [...new Set((ALIM_FILAS||[]).map(f=>f.subestacion).filter(Boolean))].sort();
+  const nombres = [...new Set((ALIM_FILAS||[]).map(f=>f.subestacion).filter(Boolean))].filter(n=>!_informesEsCompacto(n)).sort();
   sel.innerHTML = nombres.map(n=>`<option value="${_mselEsc(n)}">${_mselEsc(n)}</option>`).join('');
   if(anterior && nombres.includes(anterior)) sel.value = anterior;
 }
@@ -16062,7 +16071,7 @@ const _informesFKwh = v => v==null ? '--' : Math.round(v).toLocaleString('es-CO'
 // ---- Gráficos offscreen -> imagen PNG (Uint8Array) para embeber en el .docx.
 // animation:false es necesario para que toDataURL() capture el chart ya
 // pintado sin esperar un frame de animación. ----
-async function _informesGraficoAImagen({labels, datasets, scales, titulo, ancho=680, alto=340}){
+async function _informesGraficoAImagen({labels, datasets, scales, titulo, ancho=760, alto=400}){
   const cont = document.createElement('div');
   cont.style.cssText = 'position:fixed;left:-9999px;top:0';
   const cv = document.createElement('canvas');
@@ -16074,16 +16083,25 @@ async function _informesGraficoAImagen({labels, datasets, scales, titulo, ancho=
   cv.style.width = ancho+'px'; cv.style.height = alto+'px';
   cont.appendChild(cv);
   document.body.appendChild(cont);
+  // Tamaño de fuente más grande en los ejes por defecto (sin tocar
+  // Chart.defaults global -- eso afectaría también los gráficos EN VIVO
+  // de la app) -- pedido explícito ("no se alcanzan a ver los valores del
+  // eje x y y"). Cada eje que no traiga su propio ticks.font se completa acá.
+  const scalesConFuente = {x:{ticks:{font:{size:12}, color:'#333333'}}};
+  Object.entries(scales||{}).forEach(([eje, cfg]) => {
+    scalesConFuente[eje] = {...cfg, ticks:{font:{size:13}, color:'#333333', ...(cfg.ticks||{})}};
+  });
   const chart = new Chart(cv, {
     data:{labels: labels||[], datasets},
     options:{
       responsive:false, animation:false, devicePixelRatio:escala,
-      layout:{padding:{top: titulo?26:16, right:16, bottom:8, left:8}},
+      font:{size:13},
+      layout:{padding:{top: titulo?30:18, right:20, bottom:10, left:10}},
       plugins:{
-        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:11}}},
-        title: titulo ? {display:true, text:titulo.toUpperCase(), align:'center', font:{size:14, weight:'700'}, color:'#1a2a4a', padding:{bottom:14}} : {display:false},
+        legend:{display:true, position:'bottom', labels:{boxWidth:14, font:{size:13}}},
+        title: titulo ? {display:true, text:titulo.toUpperCase(), align:'center', font:{size:16, weight:'700'}, color:'#1a2a4a', padding:{bottom:16}} : {display:false},
       },
-      scales: scales || {},
+      scales: scalesConFuente,
     },
   });
   const dataUrl = cv.toDataURL('image/png', 1.0);
@@ -16092,7 +16110,7 @@ async function _informesGraficoAImagen({labels, datasets, scales, titulo, ancho=
   return {bytes: _informesDataUrlAUint8(dataUrl), width: ancho, height: alto};
 }
 
-function _informesParrafoImagen(imgResultado, anchoDoc=500){
+function _informesParrafoImagen(imgResultado, anchoDoc=600){
   if(!imgResultado) return null;
   const alto = Math.round(anchoDoc * imgResultado.height / imgResultado.width);
   return new docx.Paragraph({
@@ -16131,12 +16149,32 @@ function _informesHeading2(texto){
   return new docx.Paragraph({heading: docx.HeadingLevel.HEADING_2,
     numbering:{reference: INFORMES_NUMERACION_REF, level:1}, text:texto});
 }
+// Heading 3/4 -- pedido explícito de numeración jerárquica completa
+// ("4. Metodología... 4.1 Indicador total N2-1 4.1.1 Indicador N2-1
+// ZONA ZC y así sucesivamente"): zona cuelga de "Indicador total N2-1"
+// (nivel 3) y subestación cuelga de zona (nivel 4).
+function _informesHeading3(texto){
+  return new docx.Paragraph({heading: docx.HeadingLevel.HEADING_3,
+    numbering:{reference: INFORMES_NUMERACION_REF, level:2}, text:texto});
+}
+function _informesHeading4(texto){
+  return new docx.Paragraph({heading: docx.HeadingLevel.HEADING_4,
+    numbering:{reference: INFORMES_NUMERACION_REF, level:3}, text:texto});
+}
 // Párrafo de cuerpo NORMAL -- justificado + sangría de primera línea
 // (pedido explícito: "no tiene la sangría los párrafos, no está
 // justificado"). Se define acá en vez de confiar en el estilo default
 // del documento porque python-docx (y algunas versiones de Word) no
 // siempre heredan bien el docDefaults en párrafos sin pPr propio -- más
 // seguro ponerlo explícito en cada párrafo de cuerpo.
+// Líneas de separación de celdas finas y negras, como la tabla "Table
+// Grid" de Word que usa la plantilla real -- pedido explícito ("el
+// formato de la tabla lo cambiaste, las líneas de separación de celdas
+// son diferentes"). size:4 = 0.5pt (docx.js mide el grosor de borde en
+// octavos de punto).
+const INFORMES_BORDE = {style: docx.BorderStyle.SINGLE, size:4, color:'000000'};
+const INFORMES_TABLA_BORDES = {top:INFORMES_BORDE, bottom:INFORMES_BORDE, left:INFORMES_BORDE, right:INFORMES_BORDE, insideHorizontal:INFORMES_BORDE, insideVertical:INFORMES_BORDE};
+
 function _informesParrafo(childrenOTexto, opts){
   const base = {alignment: docx.AlignmentType.JUSTIFIED, indent:{firstLine:360}};
   if(typeof childrenOTexto === 'string') return new docx.Paragraph({...base, text:childrenOTexto, ...opts});
@@ -16155,18 +16193,18 @@ function _informesParrafo(childrenOTexto, opts){
 function informesSeccionPortada(mesClave){
   const children = [];
   if(INFORMES_LOGO_BYTES && INFORMES_LOGO_DIM){
-    const anchoLogo = 170;
+    const anchoLogo = 150;
     const altoLogo = Math.round(anchoLogo * INFORMES_LOGO_DIM.height / INFORMES_LOGO_DIM.width);
-    children.push(new docx.Paragraph({alignment: docx.AlignmentType.CENTER, spacing:{before:600, after:500},
+    children.push(new docx.Paragraph({alignment: docx.AlignmentType.CENTER, spacing:{before:300, after:250},
       children:[new docx.ImageRun({data: INFORMES_LOGO_BYTES, transformation:{width:anchoLogo, height:altoLogo}, type:'png'})]}));
   }
-  children.push(new docx.Paragraph({alignment: docx.AlignmentType.CENTER, spacing:{after:80},
+  children.push(new docx.Paragraph({alignment: docx.AlignmentType.CENTER, spacing:{before:200, after:60},
     children:[new docx.TextRun({text:'INFORME MENSUAL BALANCES Y ANALISIS ENERGETICOS', bold:true, size:24})]}));
-  children.push(new docx.Paragraph({alignment: docx.AlignmentType.CENTER, spacing:{after:900},
+  children.push(new docx.Paragraph({alignment: docx.AlignmentType.CENTER, spacing:{after:300},
     children:[new docx.TextRun({text: labelMesLargo(mesClave).toUpperCase(), bold:true, size:24})]}));
-  children.push(new docx.Paragraph({alignment: docx.AlignmentType.CENTER, text:'Presentado por:'}));
-  children.push(new docx.Paragraph({alignment: docx.AlignmentType.CENTER, spacing:{after:900}, text:'División Control de Pérdidas'}));
-  children.push(new docx.Paragraph({alignment: docx.AlignmentType.CENTER, spacing:{after:900},
+  children.push(new docx.Paragraph({alignment: docx.AlignmentType.CENTER, spacing:{before:200}, text:'Presentado por:'}));
+  children.push(new docx.Paragraph({alignment: docx.AlignmentType.CENTER, spacing:{after:300}, text:'División Control de Pérdidas'}));
+  children.push(new docx.Paragraph({alignment: docx.AlignmentType.CENTER, spacing:{after:300},
     children:[new docx.TextRun({text:(OPERADOR&&OPERADOR.nombre)||'', bold:false})]}));
   const fechaLarga = new Date().toLocaleDateString('es-CO', {day:'2-digit', month:'long', year:'numeric'});
   const ciudad = (typeof PZ_DEPARTAMENTO !== 'undefined' && PZ_DEPARTAMENTO) ? PZ_DEPARTAMENTO : null;
@@ -16183,7 +16221,7 @@ function informesSeccionPortada(mesClave){
 function _informesSeccionTOC(){
   return [
     _informesHeading1('Tabla de Contenido'),
-    new docx.TableOfContents('Tabla de Contenido', {hyperlink:true, headingStyleRange:'1-1'}),
+    new docx.TableOfContents('Tabla de Contenido', {hyperlink:true, headingStyleRange:'1-4'}),
     new docx.Paragraph({children:[new docx.PageBreak()]}),
   ];
 }
@@ -16305,7 +16343,7 @@ function informesTextoIpt(mesClave){
 // prueba: sin formatter, chartjs-plugin-datalabels imprime el número
 // crudo tal cual llega (ej. "15.299999999999999" por errores de punto
 // flotante) en vez de "15.30%".
-function _informesDatalabelChip(color, dark, tamano=11, sufijo='%'){
+function _informesDatalabelChip(color, dark, tamano=13, sufijo='%'){
   return {display:true, anchor:'end', align:'top', offset:6, font:{size:tamano, weight:'700'}, color,
     formatter: v => v==null ? '' : (sufijo==='%' ? v.toFixed(2)+'%' : Math.round(v).toLocaleString('es-CO')),
     backgroundColor: dark?'rgba(30,30,40,.85)':'rgba(255,255,255,.9)', borderRadius:3, padding:{left:4,right:4,top:1,bottom:1}};
@@ -16325,20 +16363,20 @@ async function informesFiguraIptAnual(mesClave){
   const fin = idx>=0 ? idx+1 : reales.length;
   const visibles = reales.slice(Math.max(0, fin-INFORMES_VENTANA_MESES), fin);
   if(visibles.length < 2) return null;
+  // Solo el % (IPT) -- pedido explícito ("quita la línea azul que son los
+  // kWh/Año, solo quiero ver el %, pero esos números más grande"): un solo
+  // eje, sin la serie de kWh que le quitaba espacio/legibilidad al %.
   return _informesGraficoAImagen({
     titulo: 'Indicador de Pérdidas Totales (IP_REG)',
     labels: visibles.map(f => labelMes(ipClaveNormal(f))),
     datasets: [
-      {type:'line', label:'PT -- Pérdida Total (kWh)', yAxisID:'y', order:2,
-        data: visibles.map(f => f.pt_kwh), borderColor:'#4361ee', backgroundColor:'transparent',
-        borderWidth:2, pointRadius:1.5, tension:.2, datalabels:{display:false}},
-      {type:'line', label:'IPT -- Índice de Pérdidas Totales (%)', yAxisID:'yPct', order:1,
-        data: visibles.map(f => f.ipt_pct*100), borderColor:'#f4a261', backgroundColor:'rgba(244,162,97,.12)',
-        fill:true, borderWidth:2.5, tension:.25, pointRadius:2, datalabels:_informesDatalabelChip('#f4a261', false, 12)},
+      {type:'line', label:'IPT -- Índice de Pérdidas Totales (%)', order:1,
+        data: visibles.map(f => f.ipt_pct*100), borderColor:'#f4a261', backgroundColor:'rgba(244,162,97,.15)',
+        fill:true, borderWidth:3, tension:.25, pointRadius:3, datalabels:_informesDatalabelChip('#f4a261', false, 15)},
     ],
     scales:{
-      y:{position:'right', grid:{drawOnChartArea:false}, ticks:{callback:v=>v.toLocaleString('es-CO')+' kWh'}},
-      yPct:{position:'left', ticks:{callback:v=>v.toFixed(1)+'%'}},
+      y:{ticks:{callback:v=>v.toFixed(1)+'%', font:{size:13}}},
+      x:{ticks:{font:{size:12}}},
     },
   });
 }
@@ -16349,16 +16387,19 @@ async function informesFiguraIptMensual(mesClave){
   const fin = idx>=0 ? idx+1 : reales.length;
   const visibles = reales.slice(Math.max(0, fin-15), fin);
   if(!visibles.length) return null;
+  // Igual que la Figura Anual: solo el % mensual, sin la barra de kWh.
   return _informesGraficoAImagen({
     titulo: 'Indicador Mensual',
     labels: visibles.map(f => labelMes(ipClaveNormal(f))),
     datasets: [
-      {type:'bar', label:'Pérdida Mensual (kWh)', yAxisID:'y', order:2, data: visibles.map(f=>f.perdida_mensual_kwh),
-        backgroundColor:'rgba(67,97,238,.35)', borderColor:'#4361ee', borderWidth:1, datalabels:{display:false}},
-      {type:'line', label:'% Pérdida Mensual', yAxisID:'yPct', order:1, data: visibles.map(f=>f.pct_perdida_mensual*100),
-        borderColor:'#f4a261', borderWidth:2.5, pointRadius:2, tension:.25, datalabels:_informesDatalabelChip('#f4a261', false)},
+      {type:'line', label:'% Pérdida Mensual', data: visibles.map(f=>f.pct_perdida_mensual*100),
+        borderColor:'#f4a261', backgroundColor:'rgba(244,162,97,.15)', fill:true,
+        borderWidth:3, pointRadius:3, tension:.25, datalabels:_informesDatalabelChip('#f4a261', false, 15)},
     ],
-    scales:{ y:{position:'left'}, yPct:{position:'right', ticks:{callback:v=>v.toFixed(1)+'%'}} },
+    scales:{
+      y:{ticks:{callback:v=>v.toFixed(1)+'%', font:{size:13}}},
+      x:{ticks:{font:{size:12}}},
+    },
   });
 }
 
@@ -16385,6 +16426,7 @@ function informesCajaBalanceIpt(mesClave){
   });
   return new docx.Table({
     width:{size:90, type:docx.WidthType.PERCENTAGE},
+    borders: INFORMES_TABLA_BORDES,
     rows:[
       new docx.TableRow({children:[
         celda('ENERGÍA DE ENTRADA', `${_informesFKwh(entrada)} kWh`),
@@ -16399,7 +16441,7 @@ function informesCajaBalanceIpt(mesClave){
 }
 
 async function informesSeccionIndicadorIPT(mesClave){
-  const children = [_informesHeading1('Indicador de Índice de Pérdidas Totales (CREG 015/2018)')];
+  const children = [_informesHeading2('Indicador de Índice de Pérdidas Totales (CREG 015/2018)')];
   const parrafos = informesTextoIpt(mesClave);
   if(!parrafos){
     children.push(new docx.Paragraph({children:[new docx.TextRun({text:'No hay datos suficientes de IP_Reg para el mes seleccionado.', italics:true})]}));
@@ -16460,17 +16502,26 @@ async function informesFiguraScatter(filasMes){
   const puntos = filasMes.filter(f => f.longitud_total>0 && f.gestionable_kwh!=null && f.perdida_kwh);
   if(!puntos.length) return null;
   const leyendas = [...new Set(puntos.map(f=>f.leyenda).filter(Boolean))].sort();
+  // Cada punto lleva su nemónico como etiqueta visible -- pedido explícito
+  // ("quítala a no ser que se mencione qué circuito es el punto rojo y el
+  // verde"): en vez de quitar la figura, se identifica cada punto.
   const datasets = leyendas.map(ley => ({
     type:'scatter', label: ley,
-    data: puntos.filter(f=>f.leyenda===ley).map(f => ({x: f.gestionable_kwh/f.perdida_kwh*100, y: f.gestionable_kwh/f.longitud_total})),
-    backgroundColor: colores[ley] || '#8a9ab5', pointRadius:5,
+    data: puntos.filter(f=>f.leyenda===ley).map(f => ({
+      x: f.gestionable_kwh/f.perdida_kwh*100, y: f.gestionable_kwh/f.longitud_total,
+      etiqueta: f.nombre_spard || f.nemonico,
+    })),
+    backgroundColor: colores[ley] || '#8a9ab5', pointRadius:6,
+    datalabels:{display:true, align:'top', offset:6, font:{size:11, weight:'700'},
+      color: colores[ley] || '#8a9ab5', formatter:(v)=>v.etiqueta,
+      backgroundColor:'rgba(255,255,255,.9)', borderRadius:3, padding:{left:3,right:3,top:1,bottom:1}},
   }));
   return _informesGraficoAImagen({
     titulo: 'Gest x Longitud Vs Gestionable % Top',
-    labels: [], datasets, ancho:560, alto:340,
+    labels: [], datasets,
     scales:{
-      x:{type:'linear', min:0, max:100, title:{display:true,text:'Gestionable % Top'}},
-      y:{title:{display:true,text:'Gest x Longitud'}},
+      x:{type:'linear', min:0, max:100, title:{display:true,text:'Gestionable % Top', font:{size:13}}},
+      y:{title:{display:true,text:'Gest x Longitud', font:{size:13}}},
     },
   });
 }
@@ -16487,8 +16538,9 @@ function informesAgruparAlimentadoresSubestacion(subestacion, hastaClave){
   ALIM_FILAS.forEach(f => {
     if(f.subestacion !== subestacion) return;
     if(f.anio*12+f.mes > claveHastaNum) return;
-    const clave = `${f.anio}-${String(f.mes).padStart(2,'0')}`;
     const nem = f.nombre_spard || f.nemonico;
+    if(_informesEsCompacto(nem) || _informesEsCompacto(f.nemonico)) return;
+    const clave = `${f.anio}-${String(f.mes).padStart(2,'0')}`;
     (porNem[nem] = porNem[nem] || []).push({
       clave, entrada:f.entrada_total||0, salida:f.salida_total||0,
       perdida:f.perdida_kwh||0, gestionable:f.gestionable_kwh||0,
@@ -16522,11 +16574,16 @@ function informesTextoSubestacion(subestacion, agregadoMes, agregadoAnterior){
 // ("las tablas de los alimentadores... yo quiero ver desde enero del
 // 2026 hasta junio 2026"), igual formato que la plantilla real (los
 // meses van en las COLUMNAS, no una tabla de un solo mes).
+// campo: 'perdida' | 'gestionable' (kWh, se formatea con _informesFKwh) o
+// 'pct' (% de pérdida, pedido explícito: "quiero otra tabla por
+// subestación donde se muestre el porcentaje de pérdida también").
 function _informesTablaAlimentadores(filasPorNem, mesClave, campo){
   const [anio, mesNum] = mesClave.split('-').map(Number);
   const meses = [];
   for(let m=1; m<=mesNum; m++) meses.push(`${anio}-${String(m).padStart(2,'0')}`);
   const nemonicos = Object.keys(filasPorNem).sort();
+  const esPct = campo === 'pct';
+  const formato = v => esPct ? `${v.toFixed(2)}%` : _informesFKwh(v);
 
   const celdaEncabezado = texto => new docx.TableCell({shading:{fill:'D9D9D9'},
     children:[new docx.Paragraph({alignment:docx.AlignmentType.CENTER, children:[new docx.TextRun({text:texto, bold:true, size:16})]})]});
@@ -16540,20 +16597,29 @@ function _informesTablaAlimentadores(filasPorNem, mesClave, campo){
     ...meses.map(m => {
       const f = filasPorNem[nem].find(x=>x.clave===m);
       const v = f ? f[campo] : null;
-      return new docx.TableCell({children:[new docx.Paragraph({alignment:docx.AlignmentType.CENTER, text: v!=null?_informesFKwh(v):'--'})]});
+      return new docx.TableCell({children:[new docx.Paragraph({alignment:docx.AlignmentType.CENTER, text: v!=null?formato(v):'--'})]});
     }),
   ]}));
 
   const totalRow = new docx.TableRow({children:[
-    new docx.TableCell({shading:{fill:'EDEDED'}, children:[new docx.Paragraph({children:[new docx.TextRun({text:'Total, Pérdida S/E', bold:true})]})]}),
+    new docx.TableCell({shading:{fill:'EDEDED'}, children:[new docx.Paragraph({children:[new docx.TextRun({text: esPct?'% Pérdida S/E':'Total, Pérdida S/E', bold:true})]})]}),
     ...meses.map(m => {
-      let suma = 0, tiene = false;
-      nemonicos.forEach(nem => { const f = filasPorNem[nem].find(x=>x.clave===m); if(f && f[campo]!=null){ suma += f[campo]; tiene = true; } });
-      return new docx.TableCell({shading:{fill:'EDEDED'}, children:[new docx.Paragraph({alignment:docx.AlignmentType.CENTER, children:[new docx.TextRun({text: tiene?_informesFKwh(suma):'--', bold:true})]})]});
+      let texto = '--';
+      if(esPct){
+        // % de la subestación completa = pérdida total / entrada total del mes (no el promedio de los % por alimentador).
+        let entrada=0, perdida=0, tiene=false;
+        nemonicos.forEach(nem => { const f = filasPorNem[nem].find(x=>x.clave===m); if(f){ entrada+=f.entrada||0; perdida+=f.perdida||0; tiene=true; } });
+        if(tiene && entrada) texto = `${(perdida/entrada*100).toFixed(2)}%`;
+      }else{
+        let suma = 0, tiene = false;
+        nemonicos.forEach(nem => { const f = filasPorNem[nem].find(x=>x.clave===m); if(f && f[campo]!=null){ suma += f[campo]; tiene = true; } });
+        if(tiene) texto = _informesFKwh(suma);
+      }
+      return new docx.TableCell({shading:{fill:'EDEDED'}, children:[new docx.Paragraph({alignment:docx.AlignmentType.CENTER, children:[new docx.TextRun({text: texto, bold:true})]})]});
     }),
   ]});
 
-  return new docx.Table({width:{size:100, type:docx.WidthType.PERCENTAGE}, rows:[encabezado, ...filas, totalRow]});
+  return new docx.Table({width:{size:100, type:docx.WidthType.PERCENTAGE}, borders: INFORMES_TABLA_BORDES, rows:[encabezado, ...filas, totalRow]});
 }
 
 // esSubtitulo=true (default): la subestación va como Heading 2, subtítulo
@@ -16562,7 +16628,7 @@ function _informesTablaAlimentadores(filasPorNem, mesClave, campo){
 // subestación específica" (sin zona por encima), se llama con false para
 // que quede como título de primer nivel.
 async function informesSeccionSubestacion(subestacion, mesClave, esSubtitulo=true){
-  const children = [esSubtitulo ? _informesHeading2(`Subestación ${subestacion}`) : _informesHeading1(`Subestación ${subestacion}`)];
+  const children = [esSubtitulo ? _informesHeading4(`Subestación ${subestacion}`) : _informesHeading1(`Subestación ${subestacion}`)];
   const porNem = informesAgruparAlimentadoresSubestacion(subestacion, mesClave);
   const nemonicos = Object.keys(porNem);
   if(!nemonicos.length){
@@ -16594,6 +16660,12 @@ async function informesSeccionSubestacion(subestacion, mesClave, esSubtitulo=tru
   children.push(_informesTablaAlimentadores(porNem, mesClave, 'gestionable'));
   children.push(new docx.Paragraph({children:[new docx.TextRun({text:'Nota: Elaboración propia, energía de pérdida calculada corresponde a la diferencia de la registrada en la cabecera del alimentador y la venta de energía correspondiente a cada circuito teniendo en cuenta las suplencias y adicionalmente la resta de pérdidas técnicas por alimentador mediante flujos de potencia.', italics:true, size:18})], spacing:{before:100,after:200}}));
 
+  // Tabla del % de pérdida por alimentador -- pedido explícito ("quiero
+  // otra tabla por subestación donde se muestre el porcentaje de pérdida también").
+  children.push(_informesCaption('Tabla', `Porcentaje de pérdida Subestación ${subestacion}`));
+  children.push(_informesTablaAlimentadores(porNem, mesClave, 'pct'));
+  children.push(new docx.Paragraph({text:''}));
+
   const negativos = informesDetectarNegativos(filasMes);
   if(negativos.length){
     children.push(informesTextoNegativos(negativos));
@@ -16622,14 +16694,14 @@ async function informesFiguraSubestacion(porNem, nemonicos, mesClave){
       data: visibles.map(c => { const f = porNem[nem].find(x=>x.clave===c); return f && f.pct!=null ? f.pct : null; }),
       borderColor: color, backgroundColor:'transparent', borderWidth:2, tension:.2, pointRadius:2, spanGaps:true,
       datalabels:{display:true, anchor:'end', align:'top', offset:4, formatter:v=>v==null?'':v.toFixed(2)+'%',
-        font:{size:10, weight:'700'}, color, backgroundColor:'rgba(255,255,255,.85)', borderRadius:3, padding:{left:4,right:4,top:1,bottom:1}},
+        font:{size:12, weight:'700'}, color, backgroundColor:'rgba(255,255,255,.85)', borderRadius:3, padding:{left:4,right:4,top:1,bottom:1}},
     };
   });
   return _informesGraficoAImagen({
     titulo: 'Pérdida % por Alimentador',
     labels: visibles.map(c => labelMesLargo(c)),
     datasets,
-    scales:{ y:{ticks:{callback:v=>v.toFixed(0)+'%'}, title:{display:true,text:'Pérdida (%)'}} },
+    scales:{ y:{ticks:{callback:v=>v.toFixed(0)+'%'}, title:{display:true,text:'Pérdida (%)', font:{size:13}}} },
   });
 }
 
@@ -16683,7 +16755,7 @@ async function informesFiguraN21(serie, idx, etiqueta){
         borderWidth:2, pointRadius:1.5, spanGaps:true, tension:.2, datalabels:{display:false}},
       {type:'line', label:`Pérdida % ${etiqueta}`, yAxisID:'yPct', order:1,
         data: visibles.map(f=>f.pct), borderColor:'#7b2fff', backgroundColor:'transparent',
-        borderWidth:2.5, pointRadius:2, spanGaps:true, tension:.25, datalabels:_informesDatalabelChip('#7b2fff', false)},
+        borderWidth:3, pointRadius:3, spanGaps:true, tension:.25, datalabels:_informesDatalabelChip('#7b2fff', false, 15)},
     ],
     scales:{
       yPct:{position:'right', grid:{drawOnChartArea:false}, ticks:{callback:v=>v.toFixed(1)+'%'}},
@@ -16767,36 +16839,48 @@ async function informesFiguraMapaZonas(mesClave){
     });
   });
 
+  // Solo el NOMBRE de zona sobre el mapa (corto, un solo texto) -- las
+  // cifras (Entrada/Salida/Pérdida/%) van en una tabla aparte debajo,
+  // no en tarjetas superpuestas sobre el croquis -- pedido explícito
+  // ("en el mapa se ven las tarjetas encima, no se ve bien").
   Object.keys(centroides).forEach(zona => {
     const c = centroides[zona];
     const cx = c.sx/c.n, cy = c.sy/c.n;
-    const datos = datosPorZona[zona];
-    const color = colorParaZona(zona);
-    const lineas = [`ZONA ${zona}`, datos && datos.pct!=null ? `${datos.pct.toFixed(2)}%` : 'Sin datos'];
-    if(datos){
-      lineas.push(`Entrada: ${_informesFKwh(datos.entrada)}`);
-      lineas.push(`Salida: ${_informesFKwh(datos.salida)}`);
-      lineas.push(`Pérdida: ${_informesFKwh(datos.perdida)}`);
-    }
-    const cajaAncho = 140, lineaAlto = 15, cajaAlto = 12 + lineas.length*lineaAlto;
-    const bx = Math.max(4, Math.min(ancho-cajaAncho-4, cx-cajaAncho/2));
-    const by = Math.max(4, Math.min(alto-cajaAlto-4, cy-cajaAlto/2));
-    ctx.fillStyle = 'rgba(255,255,255,.94)';
-    ctx.strokeStyle = color; ctx.lineWidth = 2;
-    ctx.beginPath();
-    if(ctx.roundRect) ctx.roundRect(bx, by, cajaAncho, cajaAlto, 6); else ctx.rect(bx, by, cajaAncho, cajaAlto);
-    ctx.fill(); ctx.stroke();
-    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-    lineas.forEach((linea, i) => {
-      ctx.fillStyle = i===0 ? color : (i===1 ? '#111111' : '#444444');
-      ctx.font = i===0 ? 'bold 11px Arial' : (i===1 ? 'bold 13px Arial' : '10px Arial');
-      ctx.fillText(linea, bx+cajaAncho/2, by+6+i*lineaAlto);
-    });
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.font = 'bold 13px Arial';
+    ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(255,255,255,.9)';
+    ctx.strokeText(zona, cx, cy);
+    ctx.fillStyle = '#111111';
+    ctx.fillText(zona, cx, cy);
   });
 
   const dataUrl = cv.toDataURL('image/png', 1.0);
   document.body.removeChild(cont);
-  return {bytes: _informesDataUrlAUint8(dataUrl), width: ancho, height: alto};
+  const filas = informesZonasDisponibles().map(z => ({zona:z, color:colorParaZona(z), datos:datosPorZona[z]||null}));
+  return {bytes: _informesDataUrlAUint8(dataUrl), width: ancho, height: alto, filas};
+}
+
+// Tabla-leyenda del mapa de zonas -- Entrada/Salida/Pérdida/% por zona,
+// con una celda de color a modo de referencia visual (reemplaza a las
+// tarjetas que antes se dibujaban encima del mapa y se superponían).
+function _informesTablaLeyendaZonas(filas){
+  if(!filas || !filas.length) return null;
+  const celda = (texto, opts) => new docx.TableCell({children:[new docx.Paragraph({alignment:docx.AlignmentType.CENTER, children:[new docx.TextRun({text:texto, ...opts})]})], ...(opts&&opts.shading?{shading:opts.shading}:{})});
+  const encabezado = new docx.TableRow({tableHeader:true, children:[
+    new docx.TableCell({shading:{fill:'D9D9D9'}, children:[new docx.Paragraph({alignment:docx.AlignmentType.CENTER, children:[new docx.TextRun({text:'Zona', bold:true, size:18})]})]}),
+    new docx.TableCell({shading:{fill:'D9D9D9'}, children:[new docx.Paragraph({alignment:docx.AlignmentType.CENTER, children:[new docx.TextRun({text:'% Pérdida', bold:true, size:18})]})]}),
+    new docx.TableCell({shading:{fill:'D9D9D9'}, children:[new docx.Paragraph({alignment:docx.AlignmentType.CENTER, children:[new docx.TextRun({text:'Entrada (kWh)', bold:true, size:18})]})]}),
+    new docx.TableCell({shading:{fill:'D9D9D9'}, children:[new docx.Paragraph({alignment:docx.AlignmentType.CENTER, children:[new docx.TextRun({text:'Salida (kWh)', bold:true, size:18})]})]}),
+    new docx.TableCell({shading:{fill:'D9D9D9'}, children:[new docx.Paragraph({alignment:docx.AlignmentType.CENTER, children:[new docx.TextRun({text:'Pérdida (kWh)', bold:true, size:18})]})]}),
+  ]});
+  const filasTabla = filas.map(f => new docx.TableRow({children:[
+    new docx.TableCell({shading:{fill:f.color.replace('#','')}, children:[new docx.Paragraph({alignment:docx.AlignmentType.CENTER, children:[new docx.TextRun({text:`ZONA ${f.zona}`, bold:true, size:18, color:'FFFFFF'})]})]}),
+    new docx.TableCell({children:[new docx.Paragraph({alignment:docx.AlignmentType.CENTER, text: f.datos&&f.datos.pct!=null?`${f.datos.pct.toFixed(2)}%`:'--'})]}),
+    new docx.TableCell({children:[new docx.Paragraph({alignment:docx.AlignmentType.CENTER, text: f.datos?_informesFKwh(f.datos.entrada):'--'})]}),
+    new docx.TableCell({children:[new docx.Paragraph({alignment:docx.AlignmentType.CENTER, text: f.datos?_informesFKwh(f.datos.salida):'--'})]}),
+    new docx.TableCell({children:[new docx.Paragraph({alignment:docx.AlignmentType.CENTER, text: f.datos?_informesFKwh(f.datos.perdida):'--'})]}),
+  ]}));
+  return new docx.Table({width:{size:100, type:docx.WidthType.PERCENTAGE}, borders: INFORMES_TABLA_BORDES, rows:[encabezado, ...filasTabla]});
 }
 
 // Análisis más completo para el Total N2-1 (MoM + YoY + tendencia de los
@@ -16858,7 +16942,7 @@ function informesTextoN21Total(serie, idx){
 }
 
 async function informesSeccionIndicadorN21Total(mesClave){
-  const children = [_informesHeading1('Indicador Total N2-1')];
+  const children = [_informesHeading2('Indicador Total N2-1')];
   const serie = alimN21AgregarMensual(new Set());
   const idx = serie.findIndex(f => f.clave === mesClave);
   if(idx < 0){
@@ -16867,7 +16951,12 @@ async function informesSeccionIndicadorN21Total(mesClave){
   }
   informesTextoN21Total(serie, idx).forEach(p => children.push(p));
   const mapa = await informesFiguraMapaZonas(mesClave);
-  if(mapa){ children.push(_informesParrafoImagen(mapa)); children.push(_informesCaption('Figura', 'Indicador N2-1 por zona')); }
+  if(mapa){
+    children.push(_informesParrafoImagen(mapa));
+    children.push(_informesCaption('Figura', 'Indicador N2-1 por zona'));
+    const tablaLeyenda = _informesTablaLeyendaZonas(mapa.filas);
+    if(tablaLeyenda){ children.push(tablaLeyenda); children.push(new docx.Paragraph({text:''})); }
+  }
   const fig = await informesFiguraN21(serie, idx, 'Total');
   if(fig){ children.push(_informesParrafoImagen(fig)); children.push(_informesCaption('Figura', 'Indicador Total N2-1 -- pérdida mensual (kWh y %)')); }
   children.push(new docx.Paragraph({text:''}));
@@ -16875,14 +16964,14 @@ async function informesSeccionIndicadorN21Total(mesClave){
 }
 
 async function informesSeccionZonaN21(zona, mesClave){
-  const children = [_informesHeading1(`Indicador N2-1 ZONA ${zona}`)];
+  const children = [_informesHeading3(`Indicador N2-1 ZONA ${zona}`)];
   const serie = alimN21AgregarMensual(new Set([zona]));
   const idx = serie.findIndex(f => f.clave === mesClave);
   if(idx >= 0){
     const actual = serie[idx], anterior = idx>0 ? serie[idx-1] : null;
     children.push(informesTextoN21(`La zona ${zona}`, actual, anterior));
   }
-  const subestaciones = [...new Set(ALIM_FILAS.filter(f=>f.zona===zona).map(f=>f.subestacion).filter(Boolean))].sort();
+  const subestaciones = [...new Set(ALIM_FILAS.filter(f=>f.zona===zona).map(f=>f.subestacion).filter(Boolean))].filter(n=>!_informesEsCompacto(n)).sort();
   for(const sub of subestaciones){
     children.push(...await informesSeccionSubestacion(sub, mesClave));
   }
@@ -17083,6 +17172,8 @@ async function informesGenerar(){
         default:{
           heading1:{run:{color:'000000', bold:true, size:26}, paragraph:{spacing:{before:280, after:140}}},
           heading2:{run:{color:'000000', bold:true, size:23}, paragraph:{spacing:{before:220, after:110}}},
+          heading3:{run:{color:'000000', bold:true, size:21}, paragraph:{spacing:{before:200, after:100}}},
+          heading4:{run:{color:'000000', bold:true, italics:true, size:20}, paragraph:{spacing:{before:180, after:90}}},
         },
       },
       numbering:{
@@ -17091,6 +17182,8 @@ async function informesGenerar(){
           levels:[
             {level:0, format:docx.LevelFormat.DECIMAL, text:'%1.', alignment:docx.AlignmentType.START, style:{paragraph:{indent:{left:260, hanging:260}}}},
             {level:1, format:docx.LevelFormat.DECIMAL, text:'%1.%2.', alignment:docx.AlignmentType.START, style:{paragraph:{indent:{left:520, hanging:320}}}},
+            {level:2, format:docx.LevelFormat.DECIMAL, text:'%1.%2.%3.', alignment:docx.AlignmentType.START, style:{paragraph:{indent:{left:780, hanging:380}}}},
+            {level:3, format:docx.LevelFormat.DECIMAL, text:'%1.%2.%3.%4.', alignment:docx.AlignmentType.START, style:{paragraph:{indent:{left:1040, hanging:440}}}},
           ],
         }],
       },
