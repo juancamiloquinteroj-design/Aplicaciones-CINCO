@@ -2046,6 +2046,13 @@ tfoot td:first-child{text-align:left}
 
   <div id="alim-nivel4-contenido" class="hidden">
     <div class="card">
+      <div class="fbar" style="margin-bottom:14px">
+        <label>Rango</label>
+        <input type="date" id="alim-nivel4-desde" onchange="alimNivel4RenderTodo()">
+        <span style="font-size:11px;color:var(--text3)">→</span>
+        <input type="date" id="alim-nivel4-hasta" onchange="alimNivel4RenderTodo()">
+        <button type="button" class="btn-theme" style="width:auto;padding:0 14px;margin-left:auto" onclick="alimNivel4DescargarCsv()">⬇ Descargar CSV</button>
+      </div>
       <div id="alim-nivel4-resumen" style="margin-bottom:16px"></div>
       <div style="text-align:center;margin-bottom:8px">
         <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Pérdida Mensual (%)</div>
@@ -2072,6 +2079,15 @@ tfoot td:first-child{text-align:left}
 
   <div id="alim-nivel3-contenido" class="hidden">
     <div class="card">
+      <div class="fbar" style="margin-bottom:14px">
+        <label>Rango</label>
+        <input type="date" id="alim-nivel3-desde" onchange="alimNivel3RenderTodo()">
+        <span style="font-size:11px;color:var(--text3)">→</span>
+        <input type="date" id="alim-nivel3-hasta" onchange="alimNivel3RenderTodo()">
+        <label style="margin-left:10px" title="Filtra el total y la gráfica mensual -- el comparativo por zona siempre muestra las 5.">Zona</label>
+        <div id="alim-nivel3-zonas" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+        <button type="button" class="btn-theme" style="width:auto;padding:0 14px;margin-left:auto" onclick="alimNivel3DescargarCsv()">⬇ Descargar CSV</button>
+      </div>
       <div id="alim-nivel3-resumen" style="margin-bottom:16px"></div>
       <div style="text-align:center;margin-bottom:8px">
         <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Pérdida Mensual (%) -- Total y por Zona</div>
@@ -9819,8 +9835,41 @@ async function _alimAsegurarDatosCargados(){
    sea que haya subido o bajado (no solo subidas). ---- */
 let ALIM_NIVEL4_FILAS = null;
 let ALIM_NIVEL3_FILAS = null;
+let ALIM_NIVEL4_TECNICA = null;
+let ALIM_NIVEL3_TECNICA = null;
+let ALIM_NIVEL3_ZONAS = [];
+let ALIM_NIVEL3_ZONAS_SEL = new Set();
 let chAlimNivel4Mensual = null, chAlimNivel4Tecnica = null;
 let chAlimNivel3Mensual = null, chAlimNivel3Tecnica = null;
+
+// Mismo criterio de filtro Rango que alimN21Visibles -- opera sobre la
+// serie YA agregada a mensual (campo .clave "AAAA-MM"), leyendo los
+// inputs date #<prefijo>-desde/#<prefijo>-hasta.
+function _alimNivelVisibles(datos, prefijo){
+  const inDesde = document.getElementById(`${prefijo}-desde`);
+  const inHasta = document.getElementById(`${prefijo}-hasta`);
+  const desde = inDesde && inDesde.value ? inDesde.value.slice(0,7) : null;
+  const hasta = inHasta && inHasta.value ? inHasta.value.slice(0,7) : null;
+  return datos.filter(f => (!desde || f.clave >= desde) && (!hasta || f.clave <= hasta));
+}
+
+// Mismo criterio de rango por defecto que alimN21Cargar (último año
+// completo, para que cualquier ventana móvil futura arranque llena) --
+// reusa alimN21Clave, ya definida más abajo en el módulo de N2-1.
+function _alimNivelPoblarRangoDefecto(prefijo, claves){
+  const inDesde = document.getElementById(`${prefijo}-desde`);
+  const inHasta = document.getElementById(`${prefijo}-hasta`);
+  if((inDesde.value && inHasta.value) || !claves.length) return;
+  const ultima = claves[claves.length-1];
+  if(!inHasta.value) inHasta.value = ultima + '-01';
+  if(!inDesde.value){
+    const [aH, mH] = ultima.split('-').map(Number);
+    const idx = aH*12 + (mH-1) - 11;
+    const aD = Math.floor(idx/12), mD = (idx%12)+1;
+    const claveD = alimN21Clave(aD, mD);
+    inDesde.value = (claves.includes(claveD) ? claveD : claves[0]) + '-01';
+  }
+}
 
 async function _alimNivel34Filas(nivel){
   if(nivel===4 && ALIM_NIVEL4_FILAS) return ALIM_NIVEL4_FILAS;
@@ -9831,11 +9880,14 @@ async function _alimNivel34Filas(nivel){
 }
 
 // Agrega filas diarias a mensual, sumando TODAS las estructuras (para
-// Nivel 3 esto es el total de las 5 zonas) -- el % se recalcula sobre la
-// suma del mes, no se promedian los % diarios.
-function _alimNivel34MensualTotal(filas){
+// Nivel 3 esto es el total de las 5 zonas, salvo que `zonas` acote a un
+// subconjunto -- filtro de chips de Zona, solo aplica en Nivel 3, Nivel 4
+// no tiene este concepto) -- el % se recalcula sobre la suma del mes, no
+// se promedian los % diarios.
+function _alimNivel34MensualTotal(filas, zonas){
   const mapa = new Map();
   for(const f of filas){
+    if(zonas && zonas.size && !zonas.has(f.estructura)) continue;
     const clave = f.fecha.slice(0,7);
     if(!mapa.has(clave)) mapa.set(clave, {clave, entrada:0, salida:0});
     const a = mapa.get(clave);
@@ -10128,9 +10180,21 @@ async function alimNivel4Cargar(){
     return;
   }
   vacio.classList.add('hidden'); contenido.classList.remove('hidden');
+  ALIM_NIVEL4_TECNICA = tecnicaResp;
 
-  const mensual = _alimNivel34MensualTotal(filas);
-  const tecnicaPorMes = _alimNivelTecnicaPorMes(tecnicaResp);
+  const claves = [...new Set(filas.map(f => f.fecha.slice(0,7)))].sort();
+  _alimNivelPoblarRangoDefecto('alim-nivel4', claves);
+  alimNivel4RenderTodo();
+}
+
+// Filtro Rango (fbar, misma organización que Indicador N2-1) -- Nivel 4
+// no tiene Zona (pedido explícito: "Nivel 4 ignorar las zonas", es un
+// único agregado sin desglose por zona, ver _alimNivel34MensualTotal).
+function alimNivel4RenderTodo(){
+  const filas = ALIM_NIVEL4_FILAS || [];
+  if(!filas.length) return;
+  const mensual = _alimNivelVisibles(_alimNivel34MensualTotal(filas), 'alim-nivel4');
+  const tecnicaPorMes = _alimNivelTecnicaPorMes(ALIM_NIVEL4_TECNICA);
   const {resumenHtml, porQueHtml} = _alimNivelResumenHtml(mensual, tecnicaPorMes, 'Nivel 4', null);
   document.getElementById('alim-nivel4-resumen').innerHTML = resumenHtml + porQueHtml;
 
@@ -10138,6 +10202,23 @@ async function alimNivel4Cargar(){
   chAlimNivel4Mensual = _alimNivelConstruirChartMensual(document.getElementById('ch-alim-nivel4-mensual'), mensual, 'Nivel 4');
   if(chAlimNivel4Tecnica) chAlimNivel4Tecnica.destroy();
   chAlimNivel4Tecnica = _alimNivelConstruirChartTecnica(document.getElementById('ch-alim-nivel4-tecnica'), mensual, tecnicaPorMes, 'Nivel 4');
+}
+
+function alimNivel4DescargarCsv(){
+  const mensual = _alimNivelVisibles(_alimNivel34MensualTotal(ALIM_NIVEL4_FILAS || []), 'alim-nivel4');
+  const encabezado = ['Mes','Entrada (kWh)','Salida (kWh)','Pérdida (kWh)','Pérdida (%)'];
+  const filas = mensual.map(f => [labelMesLargo(f.clave), f.entrada, f.salida, f.perdida, f.pct]);
+  const linea = fila => fila.map(v => {
+    if(v==null||v===undefined) return '';
+    return typeof v === 'number' ? String(v).replace('.',',') : String(v);
+  }).join(';');
+  const csv = [linea(encabezado), ...filas.map(linea)].join('\r\n');
+  const blob = new Blob(['﻿'+csv], {type:'text/csv;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `ip_nivel4_${OPERADOR.slug}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
 }
 
 async function alimNivel3Cargar(){
@@ -10160,10 +10241,45 @@ async function alimNivel3Cargar(){
     return;
   }
   vacio.classList.add('hidden'); contenido.classList.remove('hidden');
+  ALIM_NIVEL3_TECNICA = tecnicaResp;
+  ALIM_NIVEL3_ZONAS = [...new Set(filas.map(f => f.estructura).filter(Boolean))].sort();
+  alimNivel3RenderZonasChips();
 
-  const mensual = _alimNivel34MensualTotal(filas);
+  const claves = [...new Set(filas.map(f => f.fecha.slice(0,7)))].sort();
+  _alimNivelPoblarRangoDefecto('alim-nivel3', claves);
+  alimNivel3RenderTodo();
+}
+
+// Chip por zona -- mismo patrón visual/color que alimN21RenderZonasChips
+// (colorParaZona parametrizado, relleno si está activa).
+function alimNivel3RenderZonasChips(){
+  const cont = document.getElementById('alim-nivel3-zonas');
+  if(!cont) return;
+  cont.innerHTML = ALIM_NIVEL3_ZONAS.map(z => {
+    const color = colorParaZona(z);
+    const activa = ALIM_NIVEL3_ZONAS_SEL.has(z);
+    const estilo = activa
+      ? `background:${color};border-color:${color};color:#fff`
+      : `border-color:${color};color:${color};background:transparent`;
+    return `<button type="button" class="be-modo-btn" style="${estilo}" onclick="alimNivel3ToggleZona('${z}')">${z}</button>`;
+  }).join('');
+}
+
+function alimNivel3ToggleZona(zona){
+  if(ALIM_NIVEL3_ZONAS_SEL.has(zona)) ALIM_NIVEL3_ZONAS_SEL.delete(zona); else ALIM_NIVEL3_ZONAS_SEL.add(zona);
+  alimNivel3RenderZonasChips();
+  alimNivel3RenderTodo();
+}
+
+// Filtro Rango acota el total (línea + tarjetas); filtro de chips de Zona
+// acota solo el total, NUNCA el comparativo por zona de abajo -- mismo
+// criterio que Indicador N2-1 (alimN21RenderTodo/alimN21RenderTablaZonas).
+function alimNivel3RenderTodo(){
+  const filas = ALIM_NIVEL3_FILAS || [];
+  if(!filas.length) return;
+  const mensual = _alimNivelVisibles(_alimNivel34MensualTotal(filas, ALIM_NIVEL3_ZONAS_SEL), 'alim-nivel3');
   const porZona = _alimNivel34MensualPorZona(filas);
-  const tecnicaPorMes = _alimNivelTecnicaPorMes(tecnicaResp);
+  const tecnicaPorMes = _alimNivelTecnicaPorMes(ALIM_NIVEL3_TECNICA);
   const {resumenHtml, porQueHtml} = _alimNivelResumenHtml(mensual, tecnicaPorMes, 'Total (Nivel 3)', porZona);
   document.getElementById('alim-nivel3-resumen').innerHTML = resumenHtml + porQueHtml;
 
@@ -10176,6 +10292,25 @@ async function alimNivel3Cargar(){
   const conDato = mensual.filter(f=>f.pct!=null);
   const actualClave = conDato.length ? conDato[conDato.length-1].clave : null;
   document.getElementById('alim-nivel3-zonas-tabla').innerHTML = _alimNivel3TablaZonas(porZona, actualClave);
+}
+
+function alimNivel3DescargarCsv(){
+  const mensual = _alimNivelVisibles(
+    _alimNivel34MensualTotal(ALIM_NIVEL3_FILAS || [], ALIM_NIVEL3_ZONAS_SEL), 'alim-nivel3');
+  const encabezado = ['Mes','Entrada (kWh)','Salida (kWh)','Pérdida (kWh)','Pérdida (%)'];
+  const filas = mensual.map(f => [labelMesLargo(f.clave), f.entrada, f.salida, f.perdida, f.pct]);
+  const linea = fila => fila.map(v => {
+    if(v==null||v===undefined) return '';
+    return typeof v === 'number' ? String(v).replace('.',',') : String(v);
+  }).join(';');
+  const zonasTxt = ALIM_NIVEL3_ZONAS_SEL.size ? [...ALIM_NIVEL3_ZONAS_SEL].join('-') : 'todas';
+  const csv = [linea(encabezado), ...filas.map(linea)].join('\r\n');
+  const blob = new Blob(['﻿'+csv], {type:'text/csv;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `ip_nivel3_${zonasTxt}_${OPERADOR.slug}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
 }
 
 async function cargarAlimentadoresModulo(nombreVista){
