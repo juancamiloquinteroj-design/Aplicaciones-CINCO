@@ -834,6 +834,8 @@ tfoot td:first-child{text-align:left}
     <span class="sidebar-caret" id="sidebar-alim-caret">▾</span>
   </button>
   <div class="sidebar-submenu hidden" id="sidebar-submenu-alim">
+    <button class="sidebar-sublink" data-vista="alim-nivel4" onclick="mostrarVista('alim-nivel4')">IP Nivel 4</button>
+    <button class="sidebar-sublink" data-vista="alim-nivel3" onclick="mostrarVista('alim-nivel3')">IP Nivel 3</button>
     <button class="sidebar-sublink" data-vista="alim-n21" onclick="mostrarVista('alim-n21')">Indicador N2-1</button>
     <button class="sidebar-sublink" data-vista="alim-subestaciones" onclick="mostrarVista('alim-subestaciones')">Subestaciones</button>
     <button class="sidebar-sublink" data-vista="alim-alimentadores" onclick="mostrarVista('alim-alimentadores')">Alimentadores</button>
@@ -2023,6 +2025,66 @@ tfoot td:first-child{text-align:left}
 <!-- ---------------- ALIMENTADORES -- 3 submódulos, todos sobre el mismo
      dato crudo de "Resumen de Alimentadores.csv" (ver load_alimentadores.py).
      Se van armando de a uno, por ahora solo confirman que el dato cargó. ---------------- -->
+<!-- ---------------- ALIMENTADORES · IP NIVEL 4 -- balance diario real
+     (Entrada/Salida medidas), depende de "Consolidado Nivel 4.csv" (ver
+     load_nivel34.py / GET /api/nivel34?nivel=4). Nivel 4 es un único
+     agregado (sin zona) -- el "por qué" compara contra la pérdida
+     TÉCNICA ya calculada (GET /api/resumen?nivel=4, mismo módulo que
+     Pérdidas Técnicas) y contra qué zona (Nivel 3) pesa más en el
+     cambio. ---------------- -->
+<div id="vista-alim-nivel4" class="vista-modulo hidden">
+  <div class="sec-hdr">
+    <div class="sec-title">IP Nivel 4</div>
+    <div class="sec-sub">Balance real de energía (Entrada - Salida) a Nivel de Tensión 4, comparado contra la pérdida técnica calculada.</div>
+  </div>
+
+  <div id="alim-nivel4-vacio" class="card"><div style="color:var(--text3)">Cargando…</div></div>
+
+  <div id="alim-nivel4-contenido" class="hidden">
+    <div class="card">
+      <div id="alim-nivel4-resumen" style="margin-bottom:16px"></div>
+      <div style="text-align:center;margin-bottom:8px">
+        <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Pérdida Mensual (%)</div>
+      </div>
+      <div class="chart-wrap" style="height:320px"><canvas id="ch-alim-nivel4-mensual"></canvas></div>
+      <div style="text-align:center;margin:20px 0 8px">
+        <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Pérdida Total vs Pérdida Técnica</div>
+      </div>
+      <div class="chart-wrap" style="height:320px"><canvas id="ch-alim-nivel4-tecnica"></canvas></div>
+    </div>
+  </div>
+</div>
+
+<!-- ---------------- ALIMENTADORES · IP NIVEL 3 -- igual que Nivel 4 pero
+     POR ZONA (ZE/ZN/ZC/ZS/ZO), depende de "Consolidado Zonas N3.csv"
+     (GET /api/nivel34?nivel=3). ---------------- -->
+<div id="vista-alim-nivel3" class="vista-modulo hidden">
+  <div class="sec-hdr">
+    <div class="sec-title">IP Nivel 3</div>
+    <div class="sec-sub">Balance real de energía (Entrada - Salida) a Nivel de Tensión 3, por zona, comparado contra la pérdida técnica calculada.</div>
+  </div>
+
+  <div id="alim-nivel3-vacio" class="card"><div style="color:var(--text3)">Cargando…</div></div>
+
+  <div id="alim-nivel3-contenido" class="hidden">
+    <div class="card">
+      <div id="alim-nivel3-resumen" style="margin-bottom:16px"></div>
+      <div style="text-align:center;margin-bottom:8px">
+        <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Pérdida Mensual (%) -- Total y por Zona</div>
+      </div>
+      <div class="chart-wrap" style="height:320px"><canvas id="ch-alim-nivel3-mensual"></canvas></div>
+      <div style="text-align:center;margin:20px 0 8px">
+        <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Pérdida Total vs Pérdida Técnica</div>
+      </div>
+      <div class="chart-wrap" style="height:320px"><canvas id="ch-alim-nivel3-tecnica"></canvas></div>
+      <div style="text-align:center;margin:20px 0 8px">
+        <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Comparativo por Zona</div>
+      </div>
+      <div id="alim-nivel3-zonas-tabla"></div>
+    </div>
+  </div>
+</div>
+
 <div id="vista-alim-n21" class="vista-modulo hidden">
   <div class="sec-hdr">
     <div class="sec-title">Indicador N2-1</div>
@@ -3573,7 +3635,7 @@ function toggleSubmenuAlim(){
   }
 }
 
-let vistaCargada = {perdidas:false, parametrizacion:false, telemedidos:false, balancesEstructura:false, ipReg:false, ipComercial:false, ipNivel1:false, reportesSspd:false, tridevanados:false, alimN21:false, alimSubestaciones:false, alimAlimentadores:false, tempEntrada:false, informes:false};
+let vistaCargada = {perdidas:false, parametrizacion:false, telemedidos:false, balancesEstructura:false, ipReg:false, ipComercial:false, ipNivel1:false, reportesSspd:false, tridevanados:false, alimNivel4:false, alimNivel3:false, alimN21:false, alimSubestaciones:false, alimAlimentadores:false, tempEntrada:false, informes:false};
 
 async function mostrarVista(nombre){
   document.querySelectorAll('.vista-modulo').forEach(v=>v.classList.add('hidden'));
@@ -3637,6 +3699,14 @@ async function mostrarVista(nombre){
   if(nombre==='tridevanados' && !vistaCargada.tridevanados){
     vistaCargada.tridevanados = true;
     await cargarTridevanados();
+  }
+  if(nombre==='alim-nivel4' && !vistaCargada.alimNivel4){
+    vistaCargada.alimNivel4 = true;
+    await cargarAlimentadoresModulo('alim-nivel4');
+  }
+  if(nombre==='alim-nivel3' && !vistaCargada.alimNivel3){
+    vistaCargada.alimNivel3 = true;
+    await cargarAlimentadoresModulo('alim-nivel3');
   }
   if(nombre==='alim-n21' && !vistaCargada.alimN21){
     vistaCargada.alimN21 = true;
@@ -9688,7 +9758,379 @@ async function _alimAsegurarDatosCargados(){
   return ALIM_FILAS;
 }
 
+/* ---- IP Nivel 4 / IP Nivel 3 -- balance DIARIO real (Entrada/Salida
+   medidas), depende de "Consolidado Nivel 4.csv" / "Consolidado Zonas
+   N3.csv" (ver load_nivel34.py / GET /api/nivel34?nivel=). El "por qué"
+   se arma comparando ese balance real contra la pérdida TÉCNICA ya
+   calculada (GET /api/resumen?nivel=, el mismo dato que usa Pérdidas
+   Técnicas): cuánto de la variación del balance real se explica por
+   pérdida técnica y cuánto queda sin explicar. Nivel 3 además desglosa
+   por zona (ZE/ZN/ZC/ZS/ZO) para decir cuál zona pesó más en el cambio,
+   sea que haya subido o bajado (no solo subidas). ---- */
+let ALIM_NIVEL4_FILAS = null;
+let ALIM_NIVEL3_FILAS = null;
+let chAlimNivel4Mensual = null, chAlimNivel4Tecnica = null;
+let chAlimNivel3Mensual = null, chAlimNivel3Tecnica = null;
+
+async function _alimNivel34Filas(nivel){
+  if(nivel===4 && ALIM_NIVEL4_FILAS) return ALIM_NIVEL4_FILAS;
+  if(nivel===3 && ALIM_NIVEL3_FILAS) return ALIM_NIVEL3_FILAS;
+  const filas = DEMO ? [] : (await apiGet(`/api/nivel34?nivel=${nivel}`, AUTH_TIMEOUT_MS)).filas;
+  if(nivel===4) ALIM_NIVEL4_FILAS = filas; else ALIM_NIVEL3_FILAS = filas;
+  return filas;
+}
+
+// Agrega filas diarias a mensual, sumando TODAS las estructuras (para
+// Nivel 3 esto es el total de las 5 zonas) -- el % se recalcula sobre la
+// suma del mes, no se promedian los % diarios.
+function _alimNivel34MensualTotal(filas){
+  const mapa = new Map();
+  for(const f of filas){
+    const clave = f.fecha.slice(0,7);
+    if(!mapa.has(clave)) mapa.set(clave, {clave, entrada:0, salida:0});
+    const a = mapa.get(clave);
+    a.entrada += f.entrada_kwh;
+    a.salida += f.salida_kwh;
+  }
+  return [...mapa.values()]
+    .sort((a,b) => a.clave < b.clave ? -1 : a.clave > b.clave ? 1 : 0)
+    .map(a => ({...a, perdida: a.entrada-a.salida, pct: a.entrada ? (a.entrada-a.salida)/a.entrada*100 : null}));
+}
+
+// Igual que arriba pero desglosado por `estructura` (zona en Nivel 3) --
+// devuelve la serie mensual completa por cada zona, con huecos en null
+// donde esa zona no tenga dato ese mes (no debería pasar, pero por si acaso).
+function _alimNivel34MensualPorZona(filas){
+  const zonas = [...new Set(filas.map(f=>f.estructura))].sort();
+  const mapa = new Map(); // clave (mes) -> {zona -> {entrada,salida}}
+  for(const f of filas){
+    const clave = f.fecha.slice(0,7);
+    if(!mapa.has(clave)) mapa.set(clave, {});
+    const porZona = mapa.get(clave);
+    if(!porZona[f.estructura]) porZona[f.estructura] = {entrada:0, salida:0};
+    porZona[f.estructura].entrada += f.entrada_kwh;
+    porZona[f.estructura].salida += f.salida_kwh;
+  }
+  const claves = [...mapa.keys()].sort();
+  const porZona = {};
+  zonas.forEach(z => {
+    porZona[z] = claves.map(clave => {
+      const d = mapa.get(clave)[z];
+      if(!d) return {clave, entrada:0, salida:0, perdida:0, pct:null};
+      return {clave, entrada:d.entrada, salida:d.salida, perdida:d.entrada-d.salida, pct: d.entrada ? (d.entrada-d.salida)/d.entrada*100 : null};
+    });
+  });
+  return {zonas, claves, porZona};
+}
+
+function _alimNivelFKwh(v){ return v==null ? '--' : v.toLocaleString('es-CO',{maximumFractionDigits:0})+' kWh'; }
+
+// {meses,entradas_kwh,perdidas_kwh,perdidas_pct} de /api/resumen -> mapa
+// por clave "AAAA-MM" para cruzarlo contra el balance real mes a mes.
+function _alimNivelTecnicaPorMes(resumenResp){
+  const mapa = {};
+  (resumenResp.meses||[]).forEach((m,i) => {
+    mapa[m] = {perdida: resumenResp.perdidas_kwh[i], pct: resumenResp.perdidas_pct[i]};
+  });
+  return mapa;
+}
+
+// Tarjetas resumen (mismo patrón visual que alimN21RenderResumen) + el
+// párrafo "por qué": compara la variación del balance real contra la de
+// la pérdida técnica calculada para el MISMO par de meses, y dice qué
+// fracción del cambio se explica por causas técnicas. Si `porZona` viene
+// (solo Nivel 3), agrega un segundo párrafo con la zona de mayor
+// variación absoluta (sube o baja, sin sesgo hacia solo incrementos).
+function _alimNivelResumenHtml(mensual, tecnicaPorMes, etiquetaNivel, porZona){
+  const reales = mensual.filter(f => f.pct != null);
+  if(reales.length < 2){
+    return {resumenHtml: '<div style="color:var(--text3);font-size:12px">No hay suficiente histórico todavía.</div>', porQueHtml: ''};
+  }
+  const actual = reales[reales.length-1];
+  const anterior = reales[reales.length-2];
+  const deltaPct = actual.pct - anterior.pct;
+  const colorDelta = ipColorVariacion(actual.pct, anterior.pct, 'var(--text2)');
+
+  const tarjeta = (etiqueta, valor, sub, colorValor) => `<div class="be-resumen-tile">
+    <div class="etiqueta">${etiqueta}</div>
+    <div class="valor"${colorValor?` style="color:${colorValor}"`:''}>${valor}</div>
+    ${sub?`<div class="sub">${sub}</div>`:''}
+  </div>`;
+  const resumenHtml = [
+    tarjeta(`Pérdida ${etiquetaNivel}`, actual.pct.toFixed(2)+'%', labelMesLargo(actual.clave)),
+    tarjeta('Variación Mensual', `${deltaPct>=0?'▲':'▼'} ${Math.abs(deltaPct).toFixed(2)} pp`, `${labelMes(anterior.clave)} → ${labelMes(actual.clave)}`, colorDelta),
+    tarjeta('Entrada', _alimNivelFKwh(actual.entrada), labelMesLargo(actual.clave)),
+    tarjeta('Salida', _alimNivelFKwh(actual.salida), labelMesLargo(actual.clave)),
+  ].join('');
+
+  let porQueHtml = '';
+  const tActual = tecnicaPorMes[actual.clave];
+  const tAnterior = tecnicaPorMes[anterior.clave];
+  if(tActual && tAnterior){
+    const deltaTecnicaPct = tActual.pct - tAnterior.pct;
+    const deltaKwhBalance = actual.perdida - anterior.perdida;
+    const deltaKwhTecnica = tActual.perdida - tAnterior.perdida;
+    const explicado = deltaKwhBalance ? deltaKwhTecnica/deltaKwhBalance*100 : null;
+    const dirBalance = deltaPct>=0 ? 'subió' : 'bajó';
+    const dirTecnica = deltaTecnicaPct>=0 ? 'subió' : 'bajó';
+    let texto = `El balance real ${dirBalance} ${Math.abs(deltaPct).toFixed(2)} pp frente a ${labelMes(anterior.clave)}, mientras que la pérdida técnica calculada ${dirTecnica} ${Math.abs(deltaTecnicaPct).toFixed(2)} pp en el mismo periodo.`;
+    if(explicado != null && explicado >= 0 && explicado <= 100){
+      texto += explicado >= 70
+        ? ` La variación de pérdida técnica explica la mayor parte de ese cambio (${explicado.toFixed(0)}%), es decir que el movimiento del balance real responde principalmente a causas técnicas.`
+        : ` La pérdida técnica solo explica ${explicado.toFixed(0)}% del cambio en el balance real -- el resto corresponde a otros factores (pérdida no técnica, comercial o desajustes de medida) que los circuitos ya calculados no capturan.`;
+    }else if(explicado != null){
+      texto += ` La pérdida técnica se movió en dirección contraria (o en mayor proporción que) el balance real, lo que indica que el cambio no se explica por causas técnicas y debe revisarse por el lado comercial o de medida.`;
+    }
+    porQueHtml = `<p style="margin:10px 0 0;font-size:13px;line-height:1.5;color:var(--text2)">${texto}</p>`;
+  }
+
+  if(porZona && porZona.zonas.length){
+    const deltas = porZona.zonas.map(z => {
+      const serie = porZona.porZona[z].filter(f=>f.pct!=null);
+      const idx = serie.findIndex(f => f.clave === actual.clave);
+      if(idx <= 0) return null;
+      const a = serie[idx], an = serie[idx-1];
+      return {zona:z, deltaKwh: a.perdida-an.perdida, deltaPct: a.pct-an.pct, pctActual:a.pct};
+    }).filter(Boolean);
+    if(deltas.length){
+      deltas.sort((x,y) => Math.abs(y.deltaKwh) - Math.abs(x.deltaKwh));
+      const top = deltas[0];
+      const dir = top.deltaKwh>=0 ? 'el mayor incremento' : 'la mayor reducción';
+      porQueHtml += `<p style="margin:6px 0 0;font-size:13px;line-height:1.5;color:var(--text2)">La zona <b>${top.zona}</b> presenta ${dir} de pérdida en kWh (${top.deltaKwh>=0?'+':''}${_alimNivelFKwh(top.deltaKwh)}, ${top.deltaPct>=0?'▲':'▼'} ${Math.abs(top.deltaPct).toFixed(2)} pp), quedando en ${top.pctActual.toFixed(2)}% de pérdida.</p>`;
+    }
+  }
+
+  return {resumenHtml, porQueHtml};
+}
+
+// Combo bar+línea Entrada/Salida (kWh) + Pérdida % -- mismo patrón visual
+// que alimN21RenderChartMensual, sin los botones de variación/toggle
+// (acá no hacen falta, es un solo indicador). `seriesExtra` son líneas
+// adicionales sobre el eje yPct (usado por Nivel 3 para las 5 zonas).
+function _alimNivelConstruirChartMensual(cv, mensual, etiquetaNivel, seriesExtra){
+  if(!cv) return null;
+  const visibles = mensual.filter(f => f.pct != null);
+  if(!visibles.length) return null;
+  const dark = document.documentElement.getAttribute('data-theme')==='dark';
+  const tickC = dark ? '#aab8d1' : '#4b5e7a';
+  const tickXFuerte = dark ? '#ffffff' : '#000000';
+  const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
+  const etiquetas = visibles.map(f => labelMesLargo(f.clave));
+
+  const datasets = [
+    {type:'line', label:'Entrada kWh/Mes', yAxisID:'y', order:5, fill:'origin',
+      data: visibles.map(f=>f.entrada), borderColor:'#06d6a0', backgroundColor:'rgba(6,214,160,.20)',
+      borderWidth:2, pointRadius:1.5, spanGaps:true, tension:.2, datalabels:{display:false}},
+    {type:'line', label:'Salida kWh/Mes', yAxisID:'y', order:4, fill:'origin',
+      data: visibles.map(f=>f.salida), borderColor:'#ef476f', backgroundColor:'rgba(239,71,111,.20)',
+      borderWidth:2, pointRadius:1.5, spanGaps:true, tension:.2, datalabels:{display:false}},
+    {type:'line', label:`Pérdida % ${etiquetaNivel}`, yAxisID:'yPct', order:1,
+      data: visibles.map(f=>f.pct), borderColor:'#7b2fff', backgroundColor:'transparent',
+      borderWidth:2.5, pointRadius:2, spanGaps:true, tension:.25,
+      datalabels:{display:true, anchor:'end', align:'top', offset:6, formatter:v=>v==null?'':v.toFixed(2)+'%',
+        font:{size:10, weight:'700'}, color:'#7b2fff',
+        backgroundColor: dark?'rgba(30,30,40,.85)':'rgba(255,255,255,.85)', borderRadius:3, padding:{left:4,right:4,top:1,bottom:1}}},
+    ...(seriesExtra||[]),
+  ];
+
+  return new Chart(cv, {
+    plugins:[tmPluginCrosshair],
+    data:{ labels: etiquetas, datasets },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      layout:{padding:{top:28, right:20}},
+      interaction:{mode:'index', intersect:false},
+      plugins:{
+        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:10}, color:tickC}},
+        tooltip:{callbacks:{label:c=>{
+          if(c.raw==null) return null;
+          return c.dataset.yAxisID==='yPct' ? `${c.dataset.label}: ${c.raw.toFixed(2)}%` : `${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`;
+        }}},
+      },
+      scales:{
+        x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:45, minRotation:45}},
+        yPct:{type:'linear', position:'right', grid:{drawOnChartArea:false},
+          ticks:{color:'#7b2fff', font:{size:11}, callback:v=>v.toFixed(1)+'%'},
+          title:{display:true, text:`Pérdida ${etiquetaNivel} (%)`, color:'#7b2fff', font:{size:11}}},
+        y:{position:'left', grid:{color:gridC},
+          ticks:{color:tickC, font:{size:10}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
+          title:{display:true, text:'Energía (kWh)', color:tickC, font:{size:10}}},
+      },
+    },
+  });
+}
+
+// Una línea punteada por zona (color de colorParaZona, igual que el resto
+// de la app), sobre el mismo eje yPct de la Pérdida % total -- así se ve
+// de un vistazo cuál zona está por encima/debajo del total.
+function _alimNivelSeriesZonas(mensualTotal, porZona){
+  const clavesTotal = mensualTotal.filter(f=>f.pct!=null).map(f=>f.clave);
+  return porZona.zonas.map(z => {
+    const porClave = new Map(porZona.porZona[z].map(f=>[f.clave, f.pct]));
+    return {
+      type:'line', label:`Zona ${z}`, yAxisID:'yPct', order:2,
+      data: clavesTotal.map(c => porClave.has(c) ? porClave.get(c) : null),
+      borderColor: colorParaZona(z), backgroundColor:'transparent',
+      borderWidth:1.5, borderDash:[5,3], pointRadius:1, spanGaps:true, tension:.2,
+      datalabels:{display:false},
+    };
+  });
+}
+
+// Pérdida Total (balance real, este módulo) vs Pérdida Técnica (calculada,
+// módulo Pérdidas Técnicas) -- ambas en kWh sobre el mismo eje, para que
+// la brecha entre las dos líneas sea visualmente la parte "no explicada".
+function _alimNivelConstruirChartTecnica(cv, mensual, tecnicaPorMes, etiquetaNivel){
+  if(!cv) return null;
+  const visibles = mensual.filter(f => f.pct != null && tecnicaPorMes[f.clave]);
+  if(!visibles.length) return null;
+  const dark = document.documentElement.getAttribute('data-theme')==='dark';
+  const tickC = dark ? '#aab8d1' : '#4b5e7a';
+  const tickXFuerte = dark ? '#ffffff' : '#000000';
+  const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
+  const etiquetas = visibles.map(f => labelMesLargo(f.clave));
+
+  return new Chart(cv, {
+    plugins:[tmPluginCrosshair],
+    data:{
+      labels: etiquetas,
+      datasets:[
+        {type:'line', label:'Pérdida Total (balance real)', order:2,
+          data: visibles.map(f=>f.perdida), borderColor:'#4361ee', backgroundColor:'rgba(67,97,238,.15)', fill:'origin',
+          borderWidth:2.5, pointRadius:2, spanGaps:true, tension:.2, datalabels:{display:false}},
+        {type:'line', label:'Pérdida Técnica (calculada)', order:1,
+          data: visibles.map(f=>tecnicaPorMes[f.clave].perdida), borderColor:'#f4a261', backgroundColor:'transparent',
+          borderWidth:2.5, pointRadius:2, spanGaps:true, tension:.2, borderDash:[6,3], datalabels:{display:false}},
+      ],
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      layout:{padding:{top:20, right:20}},
+      interaction:{mode:'index', intersect:false},
+      plugins:{
+        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:10}, color:tickC}},
+        tooltip:{callbacks:{label:c=> c.raw==null?null:`${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`}},
+      },
+      scales:{
+        x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:45, minRotation:45}},
+        y:{position:'left', grid:{color:gridC},
+          ticks:{color:tickC, font:{size:10}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
+          title:{display:true, text:'Pérdida (kWh)', color:tickC, font:{size:10}}},
+      },
+    },
+  });
+}
+
+// Tabla comparativa por zona (Nivel 3) -- ordenada por % actual, con la
+// variación mensual de cada una (rojo/verde), para que se vea de una todo
+// el panorama de zonas y no solo la que más subió.
+function _alimNivel3TablaZonas(porZona, claveActual){
+  if(!porZona || !porZona.zonas.length || !claveActual){
+    return '<div style="color:var(--text3);font-size:12px">Sin datos por zona.</div>';
+  }
+  const filas = porZona.zonas.map(z => {
+    const serie = porZona.porZona[z].filter(f=>f.pct!=null);
+    const idx = serie.findIndex(f => f.clave === claveActual);
+    if(idx < 0) return null;
+    const actual = serie[idx];
+    const delta = idx > 0 ? actual.pct - serie[idx-1].pct : null;
+    return {zona:z, pct:actual.pct, delta};
+  }).filter(Boolean).sort((a,b) => b.pct - a.pct);
+  if(!filas.length) return '<div style="color:var(--text3);font-size:12px">Sin datos por zona.</div>';
+
+  const filasHtml = filas.map(f => {
+    const color = colorParaZona(f.zona);
+    const deltaTxt = f.delta==null ? '--' : `${f.delta>=0?'▲':'▼'} ${Math.abs(f.delta).toFixed(2)} pp`;
+    const deltaColor = f.delta==null ? 'var(--text3)' : (f.delta>=0 ? '#ef476f' : '#06d6a0');
+    return `<tr>
+      <td style="padding:6px 10px;border-bottom:1px solid var(--border)"><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${color};margin-right:6px"></span>Zona ${f.zona}</td>
+      <td style="padding:6px 10px;border-bottom:1px solid var(--border);text-align:right;font-weight:700">${f.pct.toFixed(2)}%</td>
+      <td style="padding:6px 10px;border-bottom:1px solid var(--border);text-align:right;color:${deltaColor}">${deltaTxt}</td>
+    </tr>`;
+  }).join('');
+  return `<table style="width:100%;border-collapse:collapse;font-size:12.5px">
+    <thead><tr style="color:var(--text3);font-size:11px;text-transform:uppercase">
+      <th style="text-align:left;padding:6px 10px">Zona</th>
+      <th style="text-align:right;padding:6px 10px">Pérdida %</th>
+      <th style="text-align:right;padding:6px 10px">Variación Mensual</th>
+    </tr></thead>
+    <tbody>${filasHtml}</tbody>
+  </table>`;
+}
+
+async function alimNivel4Cargar(){
+  const vacio = document.getElementById('alim-nivel4-vacio');
+  const contenido = document.getElementById('alim-nivel4-contenido');
+  let filas, tecnicaResp;
+  try{
+    [filas, tecnicaResp] = await Promise.all([
+      _alimNivel34Filas(4),
+      DEMO ? Promise.resolve({meses:[], perdidas_kwh:[], perdidas_pct:[]}) : apiGet('/api/resumen?nivel=4', AUTH_TIMEOUT_MS),
+    ]);
+  }catch(e){
+    vacio.classList.remove('hidden'); contenido.classList.add('hidden');
+    vacio.querySelector('div').textContent = e.message || 'No se pudo cargar IP Nivel 4.';
+    return;
+  }
+  if(!filas.length){
+    vacio.classList.remove('hidden'); contenido.classList.add('hidden');
+    vacio.querySelector('div').textContent = 'Sin datos cargados todavía.';
+    return;
+  }
+  vacio.classList.add('hidden'); contenido.classList.remove('hidden');
+
+  const mensual = _alimNivel34MensualTotal(filas);
+  const tecnicaPorMes = _alimNivelTecnicaPorMes(tecnicaResp);
+  const {resumenHtml, porQueHtml} = _alimNivelResumenHtml(mensual, tecnicaPorMes, 'Nivel 4', null);
+  document.getElementById('alim-nivel4-resumen').innerHTML = resumenHtml + porQueHtml;
+
+  if(chAlimNivel4Mensual) chAlimNivel4Mensual.destroy();
+  chAlimNivel4Mensual = _alimNivelConstruirChartMensual(document.getElementById('ch-alim-nivel4-mensual'), mensual, 'Nivel 4');
+  if(chAlimNivel4Tecnica) chAlimNivel4Tecnica.destroy();
+  chAlimNivel4Tecnica = _alimNivelConstruirChartTecnica(document.getElementById('ch-alim-nivel4-tecnica'), mensual, tecnicaPorMes, 'Nivel 4');
+}
+
+async function alimNivel3Cargar(){
+  const vacio = document.getElementById('alim-nivel3-vacio');
+  const contenido = document.getElementById('alim-nivel3-contenido');
+  let filas, tecnicaResp;
+  try{
+    [filas, tecnicaResp] = await Promise.all([
+      _alimNivel34Filas(3),
+      DEMO ? Promise.resolve({meses:[], perdidas_kwh:[], perdidas_pct:[]}) : apiGet('/api/resumen?nivel=3', AUTH_TIMEOUT_MS),
+    ]);
+  }catch(e){
+    vacio.classList.remove('hidden'); contenido.classList.add('hidden');
+    vacio.querySelector('div').textContent = e.message || 'No se pudo cargar IP Nivel 3.';
+    return;
+  }
+  if(!filas.length){
+    vacio.classList.remove('hidden'); contenido.classList.add('hidden');
+    vacio.querySelector('div').textContent = 'Sin datos cargados todavía.';
+    return;
+  }
+  vacio.classList.add('hidden'); contenido.classList.remove('hidden');
+
+  const mensual = _alimNivel34MensualTotal(filas);
+  const porZona = _alimNivel34MensualPorZona(filas);
+  const tecnicaPorMes = _alimNivelTecnicaPorMes(tecnicaResp);
+  const {resumenHtml, porQueHtml} = _alimNivelResumenHtml(mensual, tecnicaPorMes, 'Total (Nivel 3)', porZona);
+  document.getElementById('alim-nivel3-resumen').innerHTML = resumenHtml + porQueHtml;
+
+  if(chAlimNivel3Mensual) chAlimNivel3Mensual.destroy();
+  chAlimNivel3Mensual = _alimNivelConstruirChartMensual(
+    document.getElementById('ch-alim-nivel3-mensual'), mensual, 'Total (Nivel 3)', _alimNivelSeriesZonas(mensual, porZona));
+  if(chAlimNivel3Tecnica) chAlimNivel3Tecnica.destroy();
+  chAlimNivel3Tecnica = _alimNivelConstruirChartTecnica(document.getElementById('ch-alim-nivel3-tecnica'), mensual, tecnicaPorMes, 'Total (Nivel 3)');
+
+  const conDato = mensual.filter(f=>f.pct!=null);
+  const actualClave = conDato.length ? conDato[conDato.length-1].clave : null;
+  document.getElementById('alim-nivel3-zonas-tabla').innerHTML = _alimNivel3TablaZonas(porZona, actualClave);
+}
+
 async function cargarAlimentadoresModulo(nombreVista){
+  if(nombreVista === 'alim-nivel4'){ await alimNivel4Cargar(); return; }
+  if(nombreVista === 'alim-nivel3'){ await alimNivel3Cargar(); return; }
   if(nombreVista === 'alim-n21'){ await alimN21Cargar(); return; }
   if(nombreVista === 'alim-subestaciones'){ await alimSubCargar(); return; }
   if(nombreVista === 'alim-alimentadores'){ await alim3Cargar(); return; }
