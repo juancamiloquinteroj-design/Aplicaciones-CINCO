@@ -2427,8 +2427,11 @@ tfoot td:first-child{text-align:left}
   <div id="informes-contenido" class="hidden">
     <div class="card">
       <div class="fbar" style="margin-bottom:10px">
-        <label>Mes a informar</label>
+        <label>Mes IP_Reg</label>
         <select id="informes-mes" style="min-width:180px"></select>
+        <label style="margin-left:16px">Mes N2-1</label>
+        <select id="informes-mes-n21" style="min-width:180px"></select>
+        <span style="font-size:10.5px;color:var(--text3);margin-left:auto;max-width:280px">IP_Reg y N2-1 corren en calendarios distintos (el mismo comportamiento que ves en la plantilla) -- por eso cada uno tiene su propio mes.</span>
       </div>
 
       <div class="fbar" style="margin-bottom:6px">
@@ -15973,8 +15976,24 @@ async function informesCargar(){
   contenido.classList.remove('hidden');
 
   ipPoblarSelectorAnalisisMes('informes-mes');
+  informesPoblarSelectorMesN21();
   informesPoblarSubestaciones();
   await informesCargarLogoGuardado();
+}
+
+// N2-1 corre en su PROPIO calendario (fecha real de cada mes), distinto
+// al de IP_Reg (que reporta con 3 meses de rezago regulatorio) -- pedido
+// explícito del usuario ("tener presente que el IP_reg tiene una fecha
+// diferente al Indicador N2-1", visible en la plantilla real: JULIO para
+// IP_Reg vs JUNIO para Zona Norte el mismo informe). Selector propio,
+// mismo patrón que ipPoblarSelectorAnalisisMes pero sobre la serie N2-1.
+function informesPoblarSelectorMesN21(){
+  const sel = document.getElementById('informes-mes-n21');
+  if(!sel) return;
+  const anterior = sel.value;
+  const serie = alimN21AgregarMensual(new Set()).filter(f => f.pct != null);
+  sel.innerHTML = [...serie].reverse().map(f => `<option value="${f.clave}">${labelMes(f.clave)}</option>`).join('');
+  sel.value = (anterior && [...sel.options].some(o=>o.value===anterior)) ? anterior : (serie.length ? serie[serie.length-1].clave : '');
 }
 
 // Lista TODAS las subestaciones (sin filtrar por el chip de zona activo del
@@ -16042,19 +16061,27 @@ const _informesFKwh = v => v==null ? '--' : Math.round(v).toLocaleString('es-CO'
 // ---- Gráficos offscreen -> imagen PNG (Uint8Array) para embeber en el .docx.
 // animation:false es necesario para que toDataURL() capture el chart ya
 // pintado sin esperar un frame de animación. ----
-async function _informesGraficoAImagen({labels, datasets, scales, ancho=620, alto=300}){
+async function _informesGraficoAImagen({labels, datasets, scales, titulo, ancho=680, alto=340}){
   const cont = document.createElement('div');
   cont.style.cssText = 'position:fixed;left:-9999px;top:0';
   const cv = document.createElement('canvas');
-  cv.width = ancho; cv.height = alto;
+  // x2 para que se vea nítido en Word (se muestra más chico de lo que
+  // mide el canvas -- ver _informesParrafoImagen) -- mismo criterio que
+  // exportChartPNG (única exportación a imagen que ya existía en la app).
+  const escala = 2;
+  cv.width = ancho*escala; cv.height = alto*escala;
+  cv.style.width = ancho+'px'; cv.style.height = alto+'px';
   cont.appendChild(cv);
   document.body.appendChild(cont);
   const chart = new Chart(cv, {
     data:{labels: labels||[], datasets},
     options:{
-      responsive:false, animation:false,
-      layout:{padding:16},
-      plugins:{legend:{display:true, position:'bottom', labels:{font:{size:11}}}},
+      responsive:false, animation:false, devicePixelRatio:escala,
+      layout:{padding:{top: titulo?26:16, right:16, bottom:8, left:8}},
+      plugins:{
+        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:11}}},
+        title: titulo ? {display:true, text:titulo.toUpperCase(), align:'end', font:{size:14, weight:'700'}, color:'#1a2a4a', padding:{bottom:14}} : {display:false},
+      },
       scales: scales || {},
     },
   });
@@ -16073,9 +16100,20 @@ function _informesParrafoImagen(imgResultado, anchoDoc=500){
   });
 }
 
-function _informesParrafoCaption(texto){
-  return new docx.Paragraph({alignment: docx.AlignmentType.CENTER, spacing:{after:200},
-    children:[new docx.TextRun({text:texto, italics:true, size:20})]});
+// Numeración automática real de Word (campo SEQ) -- pedido explícito
+// ("todo está enumerado con referencias"): Word cuenta "Figura 1, Figura
+// 2..." y "Tabla 1, Tabla 2..." cada uno por su cuenta según el `tipo`
+// usado acá, y esos números quedan disponibles para "Insertar referencia
+// cruzada" en Word (no hace falta un Bookmark aparte para eso). Se
+// actualizan solos al abrir gracias a features:{updateFields:true} del
+// Document.
+function _informesCaption(tipo, texto){
+  return new docx.Paragraph({alignment: docx.AlignmentType.CENTER, spacing:{before:100, after:200},
+    children:[
+      new docx.TextRun({text:`${tipo} `, italics:true, bold:true, size:20}),
+      new docx.SequentialIdentifier(tipo),
+      new docx.TextRun({text:`: ${texto}`, italics:true, size:20}),
+    ]});
 }
 
 function _informesHeading1(texto){
@@ -16108,6 +16146,18 @@ function informesSeccionPortada(mesClave){
   return children;
 }
 
+// Tabla de contenido REAL de Word (campo TOC), no una lista escrita a
+// mano -- se arma sola a partir de los Heading 1 del documento y queda
+// clickeable/actualizable (F9) en Word. Pedido explícito ("todo está
+// enumerado con referencias y tabla de contenido").
+function _informesSeccionTOC(){
+  return [
+    _informesHeading1('Tabla de Contenido'),
+    new docx.TableOfContents('Tabla de Contenido', {hyperlink:true, headingStyleRange:'1-1'}),
+    new docx.Paragraph({children:[new docx.PageBreak()]}),
+  ];
+}
+
 function informesSeccionIntroduccion(mesClave, alcanceTexto){
   return [
     _informesHeading1('Introducción y objetivo'),
@@ -16119,12 +16169,33 @@ function informesSeccionIntroduccion(mesClave, alcanceTexto){
 // ==========================================================================
 // IP_REG (Indicador de Índice de Pérdidas Totales -- CREG 015/2018)
 // ==========================================================================
-function informesSeccionMetodologiaIPT(){
-  return [
+// Fórmulas oficiales PT/IPT -- extraídas de la plantilla real (imágenes
+// exactas del documento provisto por el usuario, no una recreación) y
+// guardadas en assets/formula_pt.png / formula_ipt.png. Se leen como
+// bytes crudos (no dataURL) porque son archivos locales de la app, no
+// canvases -- fetch + arrayBuffer alcanza, sin pasar por toDataURL.
+const _informesFormulaDim = {'formula_pt.png':{w:508,h:94}, 'formula_ipt.png':{w:609,h:92}};
+async function _informesCargarAssetImagen(nombreArchivo){
+  const resp = await fetch(`assets/${nombreArchivo}`);
+  if(!resp.ok) return null;
+  const buf = await resp.arrayBuffer();
+  const dim = _informesFormulaDim[nombreArchivo];
+  return {bytes: new Uint8Array(buf), width: dim.w, height: dim.h};
+}
+
+async function informesSeccionMetodologiaIPT(){
+  const children = [
     _informesHeading1('Metodología de Calculo Índice de Pérdidas Totales'),
     new docx.Paragraph({text:'La metodología establecida en la Resolución CREG 015/2018 permite determinar el indicador de pérdidas de energía mediante la relación entre las pérdidas totales de energía y la energía de entrada al sistema de distribución, diferenciando el análisis de acuerdo con el nivel de tensión. Para su cálculo se parte de un balance energético en el que se determina la diferencia entre la energía que ingresa al sistema y la energía entregada o registrada a los usuarios, considerando los ajustes y variables definidos en la metodología regulatoria. El resultado se expresa como un porcentaje de pérdidas y permite evaluar el desempeño del sistema frente a los niveles de referencia establecidos por la regulación.'}),
-    new docx.Paragraph({text:''}),
   ];
+  try{
+    const formulaPt = await _informesCargarAssetImagen('formula_pt.png');
+    if(formulaPt) children.push(_informesParrafoImagen(formulaPt, 350));
+    const formulaIpt = await _informesCargarAssetImagen('formula_ipt.png');
+    if(formulaIpt) children.push(_informesParrafoImagen(formulaIpt, 400));
+  }catch(e){ /* si no cargan las fórmulas, el resto del informe sigue igual */ }
+  children.push(new docx.Paragraph({text:''}));
+  return children;
 }
 
 function _informesMesAnteriorClave(mesClave){
@@ -16193,30 +16264,69 @@ function informesTextoIpt(mesClave){
   return parrafos;
 }
 
+// Etiqueta de dato blanca con esquinas redondeadas -- mismo estilo que
+// usan TODOS los gráficos en vivo de la app (ver datalabels en
+// ipRenderChart/alimN21RenderChartMensual/alimSubRenderChartAlimentadores)
+// y que se ve en las capturas reales que mandó el usuario como
+// referencia. Se reusa acá tal cual para que el informe se vea IGUAL,
+// no una versión simplificada.
+// sufijo='%' formatea como porcentaje (v.toFixed(2)+'%'); '' formatea
+// como kWh con separador de miles -- BUG real encontrado en la primera
+// prueba: sin formatter, chartjs-plugin-datalabels imprime el número
+// crudo tal cual llega (ej. "15.299999999999999" por errores de punto
+// flotante) en vez de "15.30%".
+function _informesDatalabelChip(color, dark, tamano=11, sufijo='%'){
+  return {display:true, anchor:'end', align:'top', offset:6, font:{size:tamano, weight:'700'}, color,
+    formatter: v => v==null ? '' : (sufijo==='%' ? v.toFixed(2)+'%' : Math.round(v).toLocaleString('es-CO')),
+    backgroundColor: dark?'rgba(30,30,40,.85)':'rgba(255,255,255,.9)', borderRadius:3, padding:{left:4,right:4,top:1,bottom:1}};
+}
+
+// Ventana de 24 meses -- mismo largo que la Figura 1 de la plantilla real
+// (Ago 2024 -> Jul 2026) -- pedido explícito ("que no se muestre todos
+// los datos de las gráficas ya que no se ve bien"): con el HISTÓRICO
+// COMPLETO (puede ser 3+ años) las etiquetas de cada punto se superponen
+// y queda ilegible: se recorta a una ventana razonable, igual que hace la
+// plantilla.
+const INFORMES_VENTANA_MESES = 24;
+
 async function informesFiguraIptAnual(mesClave){
   const reales = ipUltimasFilasReales();
   const idx = reales.findIndex(f => ipClaveNormal(f) === mesClave);
-  const visibles = idx>=0 ? reales.slice(0, idx+1) : reales;
+  const fin = idx>=0 ? idx+1 : reales.length;
+  const visibles = reales.slice(Math.max(0, fin-INFORMES_VENTANA_MESES), fin);
   if(visibles.length < 2) return null;
   return _informesGraficoAImagen({
+    titulo: 'Indicador de Pérdidas Totales (IP_REG)',
     labels: visibles.map(f => labelMes(ipClaveNormal(f))),
-    datasets: [{type:'line', label:'IPT -- Índice de Pérdidas Totales (%)',
-      data: visibles.map(f => f.ipt_pct*100), borderColor:'#f4a261', backgroundColor:'rgba(244,162,97,.15)',
-      fill:true, borderWidth:2.5, tension:.2, pointRadius:2}],
-    scales:{ y:{ticks:{callback:v=>v.toFixed(1)+'%'}} },
+    datasets: [
+      {type:'line', label:'PT -- Pérdida Total (kWh)', yAxisID:'y', order:2,
+        data: visibles.map(f => f.pt_kwh), borderColor:'#4361ee', backgroundColor:'transparent',
+        borderWidth:2, pointRadius:1.5, tension:.2, datalabels:{display:false}},
+      {type:'line', label:'IPT -- Índice de Pérdidas Totales (%)', yAxisID:'yPct', order:1,
+        data: visibles.map(f => f.ipt_pct*100), borderColor:'#f4a261', backgroundColor:'rgba(244,162,97,.12)',
+        fill:true, borderWidth:2.5, tension:.25, pointRadius:2, datalabels:_informesDatalabelChip('#f4a261', false, 12)},
+    ],
+    scales:{
+      y:{position:'right', grid:{drawOnChartArea:false}, ticks:{callback:v=>v.toLocaleString('es-CO')+' kWh'}},
+      yPct:{position:'left', ticks:{callback:v=>v.toFixed(1)+'%'}},
+    },
   });
 }
 
 async function informesFiguraIptMensual(mesClave){
   const reales = IP_REG_FILAS.filter(f => f.pct_perdida_mensual != null).sort((a,b)=> ipClaveNormal(a) < ipClaveNormal(b) ? -1 : 1);
   const idx = reales.findIndex(f => ipClaveNormal(f) === mesClave);
-  const visibles = idx>=0 ? reales.slice(Math.max(0, idx-11), idx+1) : reales.slice(-12);
+  const fin = idx>=0 ? idx+1 : reales.length;
+  const visibles = reales.slice(Math.max(0, fin-15), fin);
   if(!visibles.length) return null;
   return _informesGraficoAImagen({
+    titulo: 'Indicador Mensual',
     labels: visibles.map(f => labelMes(ipClaveNormal(f))),
     datasets: [
-      {type:'bar', label:'Pérdida Mensual (kWh)', yAxisID:'y', data: visibles.map(f=>f.perdida_mensual_kwh), backgroundColor:'rgba(67,97,238,.35)', borderColor:'#4361ee', borderWidth:1},
-      {type:'line', label:'% Pérdida Mensual', yAxisID:'yPct', data: visibles.map(f=>f.pct_perdida_mensual*100), borderColor:'#f4a261', borderWidth:2, pointRadius:2, tension:.2},
+      {type:'bar', label:'Pérdida Mensual (kWh)', yAxisID:'y', order:2, data: visibles.map(f=>f.perdida_mensual_kwh),
+        backgroundColor:'rgba(67,97,238,.35)', borderColor:'#4361ee', borderWidth:1, datalabels:{display:false}},
+      {type:'line', label:'% Pérdida Mensual', yAxisID:'yPct', order:1, data: visibles.map(f=>f.pct_perdida_mensual*100),
+        borderColor:'#f4a261', borderWidth:2.5, pointRadius:2, tension:.25, datalabels:_informesDatalabelChip('#f4a261', false)},
     ],
     scales:{ y:{position:'left'}, yPct:{position:'right', ticks:{callback:v=>v.toFixed(1)+'%'}} },
   });
@@ -16252,13 +16362,16 @@ async function informesSeccionIndicadorIPT(mesClave){
   }
   children.push(parrafos[0]);
   const fig1 = await informesFiguraIptAnual(mesClave);
-  if(fig1){ children.push(_informesParrafoImagen(fig1)); children.push(_informesParrafoCaption('Figura 1: Índice de pérdidas totales CREG 015/2018 (Anual)')); }
+  if(fig1){ children.push(_informesParrafoImagen(fig1)); children.push(_informesCaption('Figura', 'Índice de pérdidas totales CREG 015/2018 (Anual)')); }
   parrafos.slice(1).forEach(p => children.push(p));
   const fig2 = await informesFiguraIptMensual(mesClave);
-  if(fig2){ children.push(_informesParrafoImagen(fig2)); children.push(_informesParrafoCaption('Figura 2: Índice de pérdidas totales mensuales')); }
-  children.push(new docx.Paragraph({text:'Información del balance energético', spacing:{before:200, after:100}}));
+  if(fig2){ children.push(_informesParrafoImagen(fig2)); children.push(_informesCaption('Figura', 'Índice de pérdidas totales mensuales')); }
+  children.push(new docx.Paragraph({spacing:{before:200, after:100}, children:[new docx.TextRun({text:'Información del balance energético', bold:true})]}));
   const tabla = informesTablaBalanceMes(mesClave);
-  if(tabla) children.push(tabla);
+  if(tabla){
+    children.push(_informesCaption('Tabla', `Balance energético ${labelMesLargo(mesClave)}`));
+    children.push(tabla);
+  }
   children.push(new docx.Paragraph({text:''}));
   return children;
 }
@@ -16311,6 +16424,7 @@ async function informesFiguraScatter(filasMes){
     backgroundColor: colores[ley] || '#8a9ab5', pointRadius:5,
   }));
   return _informesGraficoAImagen({
+    titulo: 'Gest x Longitud Vs Gestionable % Top',
     labels: [], datasets, ancho:560, alto:340,
     scales:{
       x:{type:'linear', min:0, max:100, title:{display:true,text:'Gestionable % Top'}},
@@ -16403,13 +16517,13 @@ async function informesSeccionSubestacion(subestacion, mesClave){
 
   const filasMes = informesFilasAlimMes(mesClave, f => f.subestacion === subestacion);
   const fig = await informesFiguraSubestacion(porNem, nemonicos, mesClave);
-  if(fig){ children.push(_informesParrafoImagen(fig)); children.push(_informesParrafoCaption(`Figura: Indicador de pérdidas Mensual S/E ${subestacion}`)); }
+  if(fig){ children.push(_informesParrafoImagen(fig)); children.push(_informesCaption('Figura', `Indicador de pérdidas Mensual S/E ${subestacion}`)); }
 
-  children.push(new docx.Paragraph({text:'Pérdidas totales Subestación '+subestacion+'.', spacing:{before:200}}));
+  children.push(_informesCaption('Tabla', `Pérdidas totales Subestación ${subestacion}`));
   children.push(_informesTablaAlimentadores('perdidas', porNem, mesClave, 'Pérdida %'));
   children.push(new docx.Paragraph({children:[new docx.TextRun({text:'Nota: Elaboración propia, energía de pérdida calculada corresponde a la diferencia de la registrada en la cabecera del alimentador y la venta de energía correspondiente a cada circuito teniendo en cuenta las suplencias.', italics:true, size:18})], spacing:{before:100,after:200}}));
 
-  children.push(new docx.Paragraph({text:'Pérdidas totales gestionables Subestación '+subestacion+'.'}));
+  children.push(_informesCaption('Tabla', `Pérdidas totales gestionables Subestación ${subestacion}`));
   children.push(_informesTablaAlimentadores('gestionables', porNem, mesClave, 'Gestionable (kWh)'));
   children.push(new docx.Paragraph({children:[new docx.TextRun({text:'Nota: Elaboración propia, energía de pérdida calculada corresponde a la diferencia de la registrada en la cabecera del alimentador y la venta de energía correspondiente a cada circuito teniendo en cuenta las suplencias y adicionalmente la resta de pérdidas técnicas por alimentador mediante flujos de potencia.', italics:true, size:18})], spacing:{before:100,after:200}}));
 
@@ -16417,27 +16531,38 @@ async function informesSeccionSubestacion(subestacion, mesClave){
   if(negativos.length){
     children.push(informesTextoNegativos(negativos));
     const figScatter = await informesFiguraScatter(filasMes);
-    if(figScatter){ children.push(_informesParrafoImagen(figScatter)); children.push(_informesParrafoCaption('Figura: Gest x Longitud Vs Gestionable % Top -- validación de causa')); }
+    if(figScatter){ children.push(_informesParrafoImagen(figScatter)); children.push(_informesCaption('Figura', 'Gest x Longitud Vs Gestionable % Top -- validación de causa')); }
   }
   children.push(new docx.Paragraph({text:''}));
   return children;
 }
 
+// Mismo gráfico que "Pérdida % por Alimentador" de Subestaciones en vivo
+// (alimSubRenderChartAlimentadores): una línea por alimentador, color por
+// rotación HSL (alimSubColor), eje en % (no kWh) con etiqueta en TODOS
+// los puntos -- pedido explícito de mantener el mismo formato de la
+// plantilla real.
 async function informesFiguraSubestacion(porNem, nemonicos, mesClave){
-  const reales = ALIM_FILAS.filter(() => true);   // solo para tomar el set de claves reales del histórico
   const claves = [...new Set(nemonicos.flatMap(n => porNem[n].map(f=>f.clave)))].sort();
   const idx = claves.indexOf(mesClave);
-  const visibles = idx>=0 ? claves.slice(Math.max(0, idx-11), idx+1) : claves.slice(-12);
+  const fin = idx>=0 ? idx+1 : claves.length;
+  const visibles = claves.slice(Math.max(0, fin-15), fin);
   if(!visibles.length) return null;
-  const datasets = nemonicos.map((nem,i) => ({
-    type:'line', label: nem,
-    data: visibles.map(c => { const f = porNem[nem].find(x=>x.clave===c); return f ? f.perdida : null; }),
-    borderColor: PALETA_NIVELES[i % PALETA_NIVELES.length], backgroundColor:'transparent', borderWidth:2, tension:.2, pointRadius:2, spanGaps:true,
-  }));
+  const datasets = nemonicos.map((nem,i) => {
+    const color = alimSubColor(i, nemonicos.length);
+    return {
+      type:'line', label: nem,
+      data: visibles.map(c => { const f = porNem[nem].find(x=>x.clave===c); return f && f.pct!=null ? f.pct : null; }),
+      borderColor: color, backgroundColor:'transparent', borderWidth:2, tension:.2, pointRadius:2, spanGaps:true,
+      datalabels:{display:true, anchor:'end', align:'top', offset:4, formatter:v=>v==null?'':v.toFixed(2)+'%',
+        font:{size:10, weight:'700'}, color, backgroundColor:'rgba(255,255,255,.85)', borderRadius:3, padding:{left:4,right:4,top:1,bottom:1}},
+    };
+  });
   return _informesGraficoAImagen({
-    labels: visibles.map(c => labelMes(c)),
+    titulo: 'Pérdida % por Alimentador',
+    labels: visibles.map(c => labelMesLargo(c)),
     datasets,
-    scales:{ y:{title:{display:true,text:'Pérdida (kWh)'}} },
+    scales:{ y:{ticks:{callback:v=>v.toFixed(0)+'%'}, title:{display:true,text:'Pérdida (%)'}} },
   });
 }
 
@@ -16468,16 +16593,35 @@ function informesTextoN21(etiqueta, actual, anterior){
   return new docx.Paragraph({children: runs});
 }
 
+// Mismas 4 series y mismos colores que alimN21RenderChartMensual (el
+// gráfico real de Indicador N2-1 en la app -- Entrada/Salida/Pérdida
+// como área + Pérdida % en línea con etiqueta), no una versión
+// simplificada -- pedido explícito ("quiero que se conserve el formato").
 async function informesFiguraN21(serie, idx, etiqueta){
-  const visibles = serie.slice(Math.max(0, idx-11), idx+1);
+  const fin = idx>=0 ? idx+1 : serie.length;
+  const visibles = serie.slice(Math.max(0, fin-15), fin);
   if(!visibles.length) return null;
   return _informesGraficoAImagen({
-    labels: visibles.map(f => labelMes(f.clave)),
+    titulo: 'Pérdidas Mensuales',
+    labels: visibles.map(f => labelMesLargo(f.clave)),
     datasets: [
-      {type:'bar', label:`Pérdida ${etiqueta} (kWh)`, yAxisID:'y', data: visibles.map(f=>f.perdida), backgroundColor:'rgba(67,97,238,.35)', borderColor:'#4361ee', borderWidth:1},
-      {type:'line', label:'Pérdida %', yAxisID:'yPct', data: visibles.map(f=>f.pct), borderColor:'#f4a261', borderWidth:2, pointRadius:2, tension:.2, spanGaps:true},
+      {type:'line', label:'Entrada kWh/Mes', yAxisID:'y', order:4, fill:'origin',
+        data: visibles.map(f=>f.entrada), borderColor:'#06d6a0', backgroundColor:'rgba(6,214,160,.20)',
+        borderWidth:2, pointRadius:1.5, spanGaps:true, tension:.2, datalabels:{display:false}},
+      {type:'line', label:'Salida kWh/Mes', yAxisID:'y', order:3, fill:'origin',
+        data: visibles.map(f=>f.salida), borderColor:'#ef476f', backgroundColor:'rgba(239,71,111,.20)',
+        borderWidth:2, pointRadius:1.5, spanGaps:true, tension:.2, datalabels:{display:false}},
+      {type:'line', label:'Pérdida kWh/Mes', yAxisID:'y', order:2, fill:'origin',
+        data: visibles.map(f=>f.perdida), borderColor:'#4361ee', backgroundColor:'rgba(67,97,238,.35)',
+        borderWidth:2, pointRadius:1.5, spanGaps:true, tension:.2, datalabels:{display:false}},
+      {type:'line', label:`Pérdida % ${etiqueta}`, yAxisID:'yPct', order:1,
+        data: visibles.map(f=>f.pct), borderColor:'#7b2fff', backgroundColor:'transparent',
+        borderWidth:2.5, pointRadius:2, spanGaps:true, tension:.25, datalabels:_informesDatalabelChip('#7b2fff', false)},
     ],
-    scales:{ y:{position:'left'}, yPct:{position:'right', ticks:{callback:v=>v.toFixed(1)+'%'}} },
+    scales:{
+      yPct:{position:'right', grid:{drawOnChartArea:false}, ticks:{callback:v=>v.toFixed(1)+'%'}},
+      y:{position:'left', ticks:{callback:v=>v.toLocaleString('es-CO')+' kWh'}},
+    },
   });
 }
 
@@ -16492,7 +16636,7 @@ async function informesSeccionIndicadorN21Total(mesClave){
   const actual = serie[idx], anterior = idx>0 ? serie[idx-1] : null;
   children.push(informesTextoN21('El total N2-1 (todas las zonas)', actual, anterior));
   const fig = await informesFiguraN21(serie, idx, 'Total');
-  if(fig){ children.push(_informesParrafoImagen(fig)); children.push(_informesParrafoCaption('Figura: Indicador Total N2-1 -- pérdida mensual (kWh y %)')); }
+  if(fig){ children.push(_informesParrafoImagen(fig)); children.push(_informesCaption('Figura', 'Indicador Total N2-1 -- pérdida mensual (kWh y %)')); }
   children.push(new docx.Paragraph({text:''}));
   return children;
 }
@@ -16550,11 +16694,15 @@ function informesTextoIpComercial(mesClave){
 async function informesFiguraIpComercial(mesClave){
   const reales = ipComercialUltimasFilasReales();
   const idx = reales.findIndex(f => ipComercialClave(f) === mesClave);
-  const visibles = idx>=0 ? reales.slice(0, idx+1) : reales;
+  const fin = idx>=0 ? idx+1 : reales.length;
+  const visibles = reales.slice(Math.max(0, fin-INFORMES_VENTANA_MESES), fin);
   if(visibles.length < 2) return null;
   return _informesGraficoAImagen({
+    titulo: 'Índice de Pérdidas Comercial',
     labels: visibles.map(f => labelMes(ipComercialClave(f))),
-    datasets: [{type:'line', label:'Índice de Pérdidas Comercial (%)', data: visibles.map(f=>f.perdida_pct_12), borderColor:'#7b2fff', backgroundColor:'rgba(123,47,255,.12)', fill:true, borderWidth:2.5, tension:.2, pointRadius:2}],
+    datasets: [{type:'line', label:'Índice de Pérdidas Comercial (%)', data: visibles.map(f=>f.perdida_pct_12),
+      borderColor:'#7b2fff', backgroundColor:'rgba(123,47,255,.12)', fill:true, borderWidth:2.5, tension:.25, pointRadius:2,
+      datalabels:_informesDatalabelChip('#7b2fff', false)}],
     scales:{ y:{ticks:{callback:v=>v.toFixed(1)+'%'}} },
   });
 }
@@ -16569,7 +16717,7 @@ async function informesSeccionIPComercial(mesClave){
   }
   parrafos.forEach(p => children.push(p));
   const fig = await informesFiguraIpComercial(mesClave);
-  if(fig){ children.push(_informesParrafoImagen(fig)); children.push(_informesParrafoCaption('Figura: Índice de Pérdidas Comercial')); }
+  if(fig){ children.push(_informesParrafoImagen(fig)); children.push(_informesCaption('Figura', 'Índice de Pérdidas Comercial')); }
   children.push(new docx.Paragraph({text:''}));
   return children;
 }
@@ -16580,6 +16728,7 @@ async function informesSeccionIPComercial(mesClave){
 async function informesFiguraTemperaturaEntrada(dias){
   if(!dias.length) return null;
   return _informesGraficoAImagen({
+    titulo: 'Relación Temperatura vs Energía de Entrada',
     labels: dias.map(f=>f.fecha),
     datasets: [
       {type:'line', label:'Entrada (kWh)', yAxisID:'y', data: dias.map(f=>TEMP_ENTRADA_BALANCE_DIARIO[f.fecha] ?? null), borderColor:'#4361ee', backgroundColor:'transparent', borderWidth:1.5, pointRadius:0, spanGaps:true, tension:.2},
@@ -16612,7 +16761,7 @@ async function informesSeccionTemperaturaEntrada(){
   runs.push(new docx.TextRun(`.`));
   children.push(new docx.Paragraph({children: runs}));
   const fig = await informesFiguraTemperaturaEntrada(dias);
-  if(fig){ children.push(_informesParrafoImagen(fig)); children.push(_informesParrafoCaption('Figura: Relación Temperatura vs Energía de Entrada')); }
+  if(fig){ children.push(_informesParrafoImagen(fig)); children.push(_informesCaption('Figura', 'Relación Temperatura vs Energía de Entrada')); }
   children.push(new docx.Paragraph({text:''}));
   return children;
 }
@@ -16620,18 +16769,18 @@ async function informesSeccionTemperaturaEntrada(){
 // ==========================================================================
 // CONCLUSIONES
 // ==========================================================================
-function informesSeccionConclusiones(mesClave){
+function informesSeccionConclusiones(mesIpReg, mesN21){
   const children = [_informesHeading1('Conclusiones')];
   const bullets = [];
-  const ipReg = IP_MAPA_POR_NORMAL.get(mesClave);
+  const ipReg = IP_MAPA_POR_NORMAL.get(mesIpReg);
   if(ipReg && ipReg.ipt_pct != null){
-    bullets.push(`El índice de pérdidas totales regulatorio (IP_Reg) para ${labelMesLargo(mesClave)} fue de ${(ipReg.ipt_pct*100).toFixed(2)}%, equivalente a ${_informesFKwh(ipReg.pt_kwh)} kWh/Anual.`);
+    bullets.push(`El índice de pérdidas totales regulatorio (IP_Reg) para ${labelMesLargo(mesIpReg)} fue de ${(ipReg.ipt_pct*100).toFixed(2)}%, equivalente a ${_informesFKwh(ipReg.pt_kwh)} kWh/Anual.`);
   }
-  const n21 = alimN21AgregarMensual(new Set()).find(f=>f.clave===mesClave);
+  const n21 = alimN21AgregarMensual(new Set()).find(f=>f.clave===mesN21);
   if(n21 && n21.pct != null){
-    bullets.push(`El indicador N2-1 total (todas las zonas) fue de ${n21.pct.toFixed(2)}%, con una pérdida mensual de ${_informesFKwh(n21.perdida)} kWh.`);
+    bullets.push(`El indicador N2-1 total (todas las zonas) para ${labelMesLargo(mesN21)} fue de ${n21.pct.toFixed(2)}%, con una pérdida mensual de ${_informesFKwh(n21.perdida)} kWh.`);
   }
-  const comercial = IP_COMERCIAL_FILAS && IP_COMERCIAL_FILAS.find(f=>ipComercialClave(f)===mesClave && f.perdida_pct_12!=null);
+  const comercial = IP_COMERCIAL_FILAS && IP_COMERCIAL_FILAS.find(f=>ipComercialClave(f)===mesIpReg && f.perdida_pct_12!=null);
   if(comercial){
     bullets.push(`El índice de pérdidas comercial fue de ${comercial.perdida_pct_12.toFixed(2)}%.`);
   }
@@ -16655,48 +16804,56 @@ function _informesAlcanceTexto(){
 async function informesGenerar(){
   const btn = document.getElementById('informes-btn-generar');
   const msg = document.getElementById('informes-msg');
-  const mesClave = document.getElementById('informes-mes').value;
-  if(!mesClave){ msg.textContent = 'Elige un mes para el informe.'; return; }
+  const mesIpReg = document.getElementById('informes-mes').value;
+  const mesN21 = document.getElementById('informes-mes-n21').value;
+  if(!mesIpReg && !mesN21){ msg.textContent = 'Elige al menos un mes.'; return; }
   if(INFORMES_ALCANCE==='subestacion' && !document.getElementById('informes-subestacion').value){
     msg.textContent = 'Elige una subestación.'; return;
   }
   btn.disabled = true; msg.textContent = 'Generando informe…';
   try{
+    // El mes de portada es el N2-1 (el "mes del periodo" que se percibe
+    // como el real) salvo en el alcance Solo IP_Reg, donde no hay N2-1.
+    const mesPortada = (INFORMES_ALCANCE==='ip_reg' ? mesIpReg : mesN21) || mesIpReg || mesN21;
     const children = [];
-    children.push(...informesSeccionPortada(mesClave));
+    children.push(...informesSeccionPortada(mesPortada));
+    children.push(..._informesSeccionTOC());
 
     if(INFORMES_ALCANCE === 'completo'){
-      children.push(...informesSeccionIntroduccion(mesClave, _informesAlcanceTexto()));
-      children.push(...informesSeccionMetodologiaIPT());
-      children.push(...await informesSeccionIndicadorIPT(mesClave));
+      children.push(...informesSeccionIntroduccion(mesPortada, _informesAlcanceTexto()));
+      children.push(...await informesSeccionMetodologiaIPT());
+      children.push(...await informesSeccionIndicadorIPT(mesIpReg));
       children.push(...informesSeccionMetodologiaN21());
-      children.push(...await informesSeccionIndicadorN21Total(mesClave));
-      for(const zona of informesZonasDisponibles()){ children.push(...await informesSeccionZonaN21(zona, mesClave)); }
-      children.push(...await informesSeccionIPComercial(mesClave));
+      children.push(...await informesSeccionIndicadorN21Total(mesN21));
+      for(const zona of informesZonasDisponibles()){ children.push(...await informesSeccionZonaN21(zona, mesN21)); }
+      children.push(...await informesSeccionIPComercial(mesIpReg));
       children.push(...await informesSeccionTemperaturaEntrada());
-      children.push(...informesSeccionConclusiones(mesClave));
+      children.push(...informesSeccionConclusiones(mesIpReg, mesN21));
     }else if(INFORMES_ALCANCE === 'ip_reg'){
-      children.push(...informesSeccionMetodologiaIPT());
-      children.push(...await informesSeccionIndicadorIPT(mesClave));
+      children.push(...await informesSeccionMetodologiaIPT());
+      children.push(...await informesSeccionIndicadorIPT(mesIpReg));
     }else if(INFORMES_ALCANCE === 'n21'){
       children.push(...informesSeccionMetodologiaN21());
-      children.push(...await informesSeccionIndicadorN21Total(mesClave));
-      for(const zona of informesZonasDisponibles()){ children.push(...await informesSeccionZonaN21(zona, mesClave)); }
+      children.push(...await informesSeccionIndicadorN21Total(mesN21));
+      for(const zona of informesZonasDisponibles()){ children.push(...await informesSeccionZonaN21(zona, mesN21)); }
     }else if(INFORMES_ALCANCE === 'subestacion'){
-      children.push(...await informesSeccionSubestacion(document.getElementById('informes-subestacion').value, mesClave));
+      children.push(...await informesSeccionSubestacion(document.getElementById('informes-subestacion').value, mesN21));
     }
 
-    const doc = new docx.Document({sections:[{
-      properties:{page:{size:{width:12240, height:15840}, margin:{top:1440,bottom:1440,left:1440,right:1440}}},
-      children,
-    }]});
+    const doc = new docx.Document({
+      features: {updateFields: true},   // Word actualiza TOC/numeración de figuras al abrir, sin que el usuario tenga que apretar F9
+      sections:[{
+        properties:{page:{size:{width:12240, height:15840}, margin:{top:1440,bottom:1440,left:1440,right:1440}}},
+        children,
+      }],
+    });
     const blob = await docx.Packer.toBlob(doc);
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = `informe_${INFORMES_ALCANCE}_${mesClave}_${(OPERADOR&&OPERADOR.slug)||'operador'}.docx`;
+    a.href = url; a.download = `informe_${INFORMES_ALCANCE}_${mesPortada}_${(OPERADOR&&OPERADOR.slug)||'operador'}.docx`;
     document.body.appendChild(a); a.click(); a.remove();
     URL.revokeObjectURL(url);
-    msg.textContent = 'Informe descargado.';
+    msg.textContent = 'Informe descargado. Al abrirlo, Word va a preguntar si actualizar los campos -- di que sí para que se vea bien la tabla de contenido y la numeración de figuras.';
   }catch(e){
     console.error(e);
     msg.textContent = 'No se pudo generar el informe: ' + (e.message || e);
