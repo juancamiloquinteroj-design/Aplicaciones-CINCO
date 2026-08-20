@@ -21425,48 +21425,6 @@ function _informesBloquesCrecimientoPorZona(filas, tablaFn){
   return bloques;
 }
 
-// Solo se listan las subestaciones "destacadas" de cada zona -- pedido
-// explícito ("solo se debe colocar en el informe aquellas S/E donde su
-// pérdida gestionable/km sea la más grande y también de aquellas que
-// hayan tenido un crecimiento destacable frente al mes anterior, la
-// variación es la clave"). Umbral de "destacable": +1 pp o más frente al
-// mes anterior.
-const INFORMES_UMBRAL_CRECIMIENTO_PP = 1;
-function informesSubestacionesDestacadas(zona, mesClave){
-  const todas = [...new Set(ALIM_FILAS.filter(f=>f.zona===zona).map(f=>f.subestacion).filter(Boolean))].filter(n=>!_informesEsCompacto(n));
-  const anteriorClave = _informesMesAnteriorClave(mesClave);
-  const [anio, mesNum] = mesClave.split('-').map(Number);
-  const resumen = todas.map(sub => {
-    const porNem = informesAgruparAlimentadoresSubestacion(sub, mesClave);
-    const nemonicos = Object.keys(porNem);
-    if(!nemonicos.length) return null;
-    const sumar = clave => {
-      let entrada=0, perdida=0, gestionable=0, tiene=false;
-      nemonicos.forEach(nem => {
-        const f = porNem[nem].find(x=>x.clave===clave);
-        if(f){ entrada+=f.entrada; perdida+=f.perdida; gestionable+=f.gestionable||0; tiene=true; }
-      });
-      return tiene ? {entrada, perdida, gestionable, pct: entrada?perdida/entrada*100:null} : null;
-    };
-    const actual = sumar(mesClave);
-    if(!actual) return null;
-    const anterior = sumar(anteriorClave);
-    const longitud = ALIM_FILAS
-      .filter(f => f.subestacion===sub && f.anio===anio && f.mes===mesNum && !_informesEsCompacto(f.nombre_spard) && !_informesEsCompacto(f.nemonico))
-      .reduce((s,f) => s+(f.longitud_total||0), 0);
-    const gestionablePorKm = longitud>0 ? actual.gestionable/longitud : null;
-    const deltaPct = (anterior && anterior.pct!=null && actual.pct!=null) ? actual.pct-anterior.pct : null;
-    return {subestacion: sub, gestionablePorKm, deltaPct};
-  }).filter(Boolean);
-  if(!resumen.length) return [];
-
-  const conMayorGestionablePorKm = resumen.reduce((max,r) => (r.gestionablePorKm!=null && (!max || r.gestionablePorKm>max.gestionablePorKm)) ? r : max, null);
-  const destacadas = new Set();
-  if(conMayorGestionablePorKm) destacadas.add(conMayorGestionablePorKm.subestacion);
-  resumen.forEach(r => { if(r.deltaPct!=null && r.deltaPct >= INFORMES_UMBRAL_CRECIMIENTO_PP) destacadas.add(r.subestacion); });
-  return todas.filter(s => destacadas.has(s));
-}
-
 async function informesSeccionZonaN21(zona, mesClave){
   const children = [_informesHeading2(`Indicador N2-1 ZONA ${zona}`)];
   const serie = alimN21AgregarMensual(new Set([zona]));
@@ -21480,10 +21438,15 @@ async function informesSeccionZonaN21(zona, mesClave){
     const figZona = await informesFiguraN21(serie, idx, `Zona ${zona}`);
     if(figZona){ children.push(_informesParrafoImagen(figZona)); children.push(_informesCaption('Figura', `Indicador N2-1 Mensual -- Zona ${zona}`)); }
   }
-  const subestaciones = informesSubestacionesDestacadas(zona, mesClave);
-  for(const sub of subestaciones){
-    children.push(...await informesSeccionSubestacion(sub, mesClave));
-  }
+  // El detalle completo por Subestación (narrativa+gráfica+3 tablas anchas
+  // por S/E, antes seleccionado con informesSubestacionesDestacadas) se
+  // QUITÓ del flujo automático -- pedido explícito: la plantilla de
+  // referencia ("Informe Balances Indicadores.docx") no trae ese detalle,
+  // solo las tablas resumen de crecimiento >5% que ya se agregan en
+  // informesSeccionIndicadorN21Total. informesSeccionSubestacion se
+  // conserva TAL CUAL para el modo "Solo una subestación" (ver
+  // informesGenerar, sel.subestacion), que sigue siendo un reporte aparte
+  // a propósito.
   return children;
 }
 
@@ -22182,10 +22145,9 @@ async function _informesPdfCuerpo(doc, sel, mesIpReg, mesN21, toc){
         const figZona = await informesFiguraN21(serieZona, idxZona, `Zona ${zona}`);
         y = await _informesPdfImagen(doc, figZona, y, `Indicador N2-1 Mensual -- Zona ${zona}`);
       }
-      const subestaciones = informesSubestacionesDestacadas(zona, mesN21);
-      for(const sub of subestaciones){
-        y = await _informesPdfSeccionSubestacion(doc, contador, 2, sub, mesN21, y, toc);
-      }
+      // El detalle completo por Subestación se quitó del flujo automático --
+      // mismo criterio que el .docx (informesSeccionZonaN21): la plantilla
+      // de referencia no lo trae.
     }
   }
 
