@@ -2138,13 +2138,23 @@ tfoot td:first-child{text-align:left}
          niveles abajo, TODOS mirando el mismo selector de Mes (antes
          IP_Reg corría en su propio calendario, siempre el último mes
          real -- ahora responde al mismo Mes que las tarjetas de nivel). -->
-    <div class="card">
+    <div class="card" id="alim-resumen-card">
       <!-- Título DENTRO de la card, con Mes/Tarifa centrados justo debajo
            -- pedido explícito ("para saber a cuál corresponde"): al
            recortar y pegar solo la card en Word, antes se perdía el
            título (vivía afuera, en el sec-hdr) y no quedaba claro de qué
            mes/tarifa son los valores. -->
-      <div style="text-align:center;font-size:18px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase;margin-bottom:16px">Resumen por Nivel de Tensión</div>
+      <!-- Botón "Exportar (PNG)" de toda la card -- pedido explícito
+           ("eso también debe tener un botón para poder descargar en
+           png"), para no tener que recortar la captura de pantalla a
+           mano. class="no-exportar" -- se saca del clon antes de
+           rasterizar (ver _expImagenBloque), así no sale el botón mismo
+           en la imagen. position:absolute para no correr el título
+           centrado. -->
+      <div style="position:relative;margin-bottom:16px">
+        <button type="button" class="be-modo-btn no-exportar" style="position:absolute;right:0;top:50%;transform:translateY(-50%)" onclick="_expImagenBloque('alim-resumen-card','resumen_por_nivel_de_tension', event)">⬇ Exportar (PNG)</button>
+        <div style="text-align:center;font-size:18px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Resumen por Nivel de Tensión</div>
+      </div>
       <div style="display:flex;justify-content:center;gap:16px;margin-bottom:20px">
         <div class="resnivel-campo" style="min-width:170px">
           <div class="resnivel-campo-label">Mes</div>
@@ -4030,6 +4040,63 @@ async function _expImagenTabla(wrapId, nombreBase, ev){
     // renderiza mal (queda flotando en cualquier lado, pedido explícito:
     // "mira como exporta la imagen de feo"). Se pasa a 'static' en el
     // clon, así queda en su lugar normal dentro de la tabla.
+    if(cs.position === 'sticky'){
+      n.style.position = 'static';
+      n.style.top = 'auto';
+      n.style.left = 'auto';
+    }
+  });
+
+  try{
+    const canvas = await html2canvas(temporal, {backgroundColor: bg, scale: 2, useCORS: true, logging: false});
+    canvas.toBlob(blob => { if(blob) _expDescargarBlob(blob, `${_expNombreArchivo(nombreBase)}.png`); });
+  }catch(e){
+    console.error('Exportar imagen falló:', e);
+  }finally{
+    temporal.remove();
+  }
+}
+
+// Exporta un BLOQUE cualquiera (no una tabla ni un chart, ej. la card
+// completa de "Resumen por Nivel de Tensión") a PNG -- mismo criterio que
+// _expImagenTabla (clona, libera overflow/sticky, rasteriza con
+// html2canvas), pero sin asumir que adentro hay un <table>. Se le pasa el
+// id del contenedor directo (no un "wrapId" genérico) porque estos
+// bloques ya traen su propio título adentro -- no hace falta ir a buscar
+// hermanos-de-título como en las gráficas/tablas sueltas.
+async function _expImagenBloque(elId, nombreBase, ev){
+  if(ev) ev.stopPropagation();
+  _expCerrarMenus();
+  const el = document.getElementById(elId);
+  if(!el || typeof html2canvas === 'undefined') return;
+  const bg = getComputedStyle(document.documentElement).getPropertyValue('--card-bg').trim() || '#ffffff';
+
+  const temporal = document.createElement('div');
+  temporal.style.cssText = `position:fixed;left:-99999px;top:0;background:${bg};padding:16px;display:inline-block`;
+  const clonEl = el.cloneNode(true);
+  clonEl.querySelectorAll('.exp-wrap, .no-exportar').forEach(b => b.remove());
+  temporal.appendChild(clonEl);
+  document.body.appendChild(temporal);
+
+  // Los <select>/<input> clonados no copian lo que el usuario eligió/
+  // escribió (solo el value original del HTML) -- se copia a mano para
+  // que la imagen muestre el Mes/Tarifa actuales, no vacíos.
+  const origInputs = el.querySelectorAll('select,input');
+  const clonInputs = clonEl.querySelectorAll('select,input');
+  origInputs.forEach((orig,i) => {
+    const clon = clonInputs[i];
+    if(!clon) return;
+    if(orig.tagName === 'SELECT') clon.value = orig.value; else clon.setAttribute('value', orig.value);
+  });
+
+  [clonEl, ...clonEl.querySelectorAll('*')].forEach(n => {
+    const cs = getComputedStyle(n);
+    if(cs.maxHeight !== 'none' || ['auto','scroll'].includes(cs.overflowY) || ['auto','scroll'].includes(cs.overflowX)){
+      n.style.maxHeight = 'none';
+      n.style.overflow = 'visible';
+      n.style.overflowX = 'visible';
+      n.style.overflowY = 'visible';
+    }
     if(cs.position === 'sticky'){
       n.style.position = 'static';
       n.style.top = 'auto';
