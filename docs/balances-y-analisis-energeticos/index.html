@@ -1494,7 +1494,10 @@ tfoot td:first-child{text-align:left}
     <div style="text-align:center;margin-bottom:8px">
       <div style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Índice de Pérdidas Comercial</div>
     </div>
-    <div class="chart-wrap" style="height:420px"><canvas id="ch-ip-comercial"></canvas></div>
+    <!-- data-export-w/h -- pedido explícito ("necesito que sea más
+         rectangular"): serie larga en el tiempo, el 760x560 default de
+         _expImagenChart la dejaba muy cuadrada/apretada. -->
+    <div class="chart-wrap" style="height:420px" data-export-w="1100" data-export-h="500"><canvas id="ch-ip-comercial"></canvas></div>
     <div class="be-resumen-cards" id="ip-com-resumen" style="margin:16px 0 0"></div>
   </div>
 
@@ -4012,8 +4015,15 @@ function _expHermanosDeTitulo(el){
 // "Entrada / Salida / Pérdida por SubestaciónEntradaSalidaPérdida") --
 // usado para componer el PNG de una gráfica a mano (ver _expImagenChart).
 function _expTextoTitulo(el){
-  for(const h of _expHermanosDeTitulo(el)){
-    const clon = h.cloneNode(true);
+  // De atrás para adelante (el hermano MÁS CERCA de la gráfica primero) --
+  // pedido explícito ("no sale con el título, sale 'Rango →'"): cuando hay
+  // varias filas sueltas antes del título real (ej. un filtro "Rango" con
+  // <label>+flecha que sobrevive el filtro de abajo), el orden documental
+  // agarraba esa fila de filtro en vez del título, que suele ser la más
+  // cercana a la gráfica.
+  const hermanos = _expHermanosDeTitulo(el);
+  for(let i = hermanos.length - 1; i >= 0; i--){
+    const clon = hermanos[i].cloneNode(true);
     clon.querySelectorAll('button,select,input').forEach(x => x.remove());
     const texto = clon.textContent.replace(/\s+/g, ' ').trim();
     if(texto) return texto;
@@ -4231,7 +4241,12 @@ async function _expImagenChart(wrapId, nombreBase, ev){
   // se devuelve a su tamaño normal apenas después -- todo en el mismo
   // tramo síncrono (sin ningún await entre medio), así el navegador no
   // llega a pintar el tamaño intermedio en pantalla (nada de parpadeo).
-  chart.resize(760, 560);
+  // 760x560 es el default -- data-export-w/h en el .chart-wrap lo pisa
+  // para series largas en el tiempo que necesitan MÁS ancho, no menos
+  // (pedido explícito: "necesito que sea más rectangular").
+  const expW = Number(wrap.dataset.exportW) || 760;
+  const expH = Number(wrap.dataset.exportH) || 560;
+  chart.resize(expW, expH);
   const dataUrl = chart.toBase64Image('image/png', 1);
   chart.resize();  // sin argumentos -- vuelve a leer el tamaño real del .chart-wrap en pantalla
 
@@ -16057,7 +16072,11 @@ function ipComercialRenderChart(){
     }
     scales = {
       x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:45, minRotation:45}},
-      yPct:{type:'linear', position:'left', grid:{color:gridC},
+      // min:16 -- pedido explícito ("ajustar el eje Y que inicie desde
+      // 16% para que no se vea tan variable"): sin piso, Chart.js autoescala
+      // pegado al rango real de los datos (ej. 20.6%-22.2%) y una variación
+      // de menos de 2 puntos porcentuales se ve como un electrocardiograma.
+      yPct:{type:'linear', position:'left', min:16, grid:{color:gridC},
         ticks:{color:'#f4a261', font:{size:11}, callback:v=>v.toFixed(1)+'%'},
         title:{display:true, text:'Pérdida Anual (%)', color:'#f4a261', font:{size:11}}},
       y:{position:'right', grid:{drawOnChartArea:false},
