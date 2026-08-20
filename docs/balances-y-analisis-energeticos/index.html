@@ -2153,6 +2153,14 @@ tfoot td:first-child{text-align:left}
         <select id="alim-nivel3-analisis-mes" onchange="alimNivel3RenderTodo()"></select>
       </div>
       <div id="alim-nivel3-analisis" class="tarjetas-fila-unica"></div>
+
+      <div style="margin-top:22px;display:flex;flex-direction:column;align-items:center">
+        <div style="font-size:13px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase;margin-bottom:8px">Distribución de Pérdida por Zona</div>
+        <div style="width:220px">
+          <div class="chart-wrap" style="height:190px"><canvas id="ch-alim-nivel3-dona-zonas"></canvas></div>
+          <div id="alim-nivel3-dona-leyenda" style="display:flex;flex-direction:column;gap:4px;margin-top:10px"></div>
+        </div>
+      </div>
     </div>
 
     <div class="card">
@@ -9926,9 +9934,10 @@ let chAlimNivel4Mensual = null, chAlimNivel4Anual = null, chAlimNivel4Tecnica = 
 let chAlimNivel3Mensual = null, chAlimNivel3Anual = null, chAlimNivel3Tecnica = null;
 // Botón "Δ Variación" -- agrega/oculta las tarjetas Δ Entrada/Δ Salida/Δ
 // Pérdida % en la fila de tarjetas (pedido explícito, mismo patrón que el
-// botón Δ Variación de Indicador N2-1). Arranca oculto.
-let ALIM_NIVEL4_VAR = false;
-let ALIM_NIVEL3_VAR = false;
+// botón Δ Variación de Indicador N2-1). Arranca SIEMPRE activo (pedido
+// explícito) -- el botón sigue estando para poder apagarlo si molesta.
+let ALIM_NIVEL4_VAR = true;
+let ALIM_NIVEL3_VAR = true;
 
 // Mismo criterio de filtro Rango que alimN21Visibles -- opera sobre la
 // serie YA agregada a mensual (campo .clave "AAAA-MM"), leyendo los
@@ -10379,6 +10388,58 @@ function alimNivel3RenderTablaZonas(porZona){
 let ALIM_NIVEL3_ZONAS_CHART_TIPO = 'line';
 let chAlimNivel3ZonasComparativo = null;
 
+// Dona "Distribución de Pérdida por Zona" -- mismo patrón que la dona de
+// Indicador N2-1 (alimN21RenderDonutZonas: colorParaZona, leyenda con %),
+// del mes elegido en "Mes a comparar" (mismo selector que las tarjetas
+// Real vs Técnica de arriba, para que todo el card hable del mismo mes).
+let chAlimNivel3DonaZonas = null;
+function alimNivel3RenderDonutZonas(porZona, claveSeleccionada){
+  const cv = document.getElementById('ch-alim-nivel3-dona-zonas');
+  const leyenda = document.getElementById('alim-nivel3-dona-leyenda');
+  if(!cv) return;
+  if(chAlimNivel3DonaZonas){ chAlimNivel3DonaZonas.destroy(); chAlimNivel3DonaZonas = null; }
+
+  const zonas = porZona.zonas.filter(z => {
+    const fila = porZona.porZona[z].find(f => f.clave === claveSeleccionada);
+    return fila && fila.perdida != null;
+  });
+  if(!claveSeleccionada || !zonas.length){
+    if(leyenda) leyenda.innerHTML = '<div style="font-size:11px;color:var(--text3);text-align:center">Sin datos.</div>';
+    return;
+  }
+  const colores = zonas.map(z => colorParaZona(z));
+  const valores = zonas.map(z => Math.max(0, porZona.porZona[z].find(f => f.clave === claveSeleccionada).perdida || 0));
+  const total = valores.reduce((s,v)=>s+v, 0);
+  const dark = document.documentElement.getAttribute('data-theme')==='dark';
+
+  chAlimNivel3DonaZonas = new Chart(cv, {
+    type: 'doughnut',
+    data:{ labels: zonas, datasets:[{ data: valores, backgroundColor: colores, borderColor: dark?'#161b27':'#ffffff', borderWidth:2 }] },
+    options:{
+      responsive:true, maintainAspectRatio:false, cutout:'62%',
+      plugins:{
+        legend:{display:false},
+        tooltip:{callbacks:{label:c=>{
+          const pct = total ? (c.raw/total*100) : 0;
+          return `Zona ${c.label}: ${Math.round(c.raw).toLocaleString('es-CO')} kWh (${pct.toFixed(1)}%)`;
+        }}},
+        datalabels:{display:false},
+      },
+    },
+  });
+
+  if(leyenda){
+    leyenda.innerHTML = zonas.map((z,i) => {
+      const pct = total ? (valores[i]/total*100) : 0;
+      return `<div style="display:flex;align-items:center;gap:6px;font-size:11px">
+        <span style="width:10px;height:10px;border-radius:50%;background:${colores[i]};flex-shrink:0"></span>
+        <span style="flex:1;color:var(--text2)">Zona ${z}</span>
+        <b style="color:var(--text)">${pct.toFixed(1)}%</b>
+      </div>`;
+    }).join('');
+  }
+}
+
 function alimNivel3ToggleTipoGraficaZonas(tipo){
   ALIM_NIVEL3_ZONAS_CHART_TIPO = tipo;
   document.getElementById('alim-nivel3-zonas-chart-btn-line').classList.toggle('activo', tipo==='line');
@@ -10412,15 +10473,22 @@ function alimNivel3RenderChartZonasComparativo(){
     plugins:[tmPluginCrosshair],
     data:{
       labels: etiquetas,
-      datasets: porZona.zonas.map(z => ({
-        type: tipo, label:`Zona ${z}`, data: porZonaVisible[z],
-        borderColor: colorParaZona(z), backgroundColor: tipo==='bar' ? colorParaZona(z) : 'transparent',
-        borderWidth: tipo==='bar' ? 1 : 2, pointRadius:1.5, spanGaps:true, tension:.25, datalabels:{display:false},
-      })),
+      datasets: porZona.zonas.map(z => {
+        const color = colorParaZona(z);
+        return {
+          type: tipo, label:`Zona ${z}`, data: porZonaVisible[z],
+          borderColor: color, backgroundColor: tipo==='bar' ? color : 'transparent',
+          borderWidth: tipo==='bar' ? 1 : 2, pointRadius:1.5, spanGaps:true, tension:.25,
+          datalabels:{display:true, anchor:'end', align:'top', offset:2,
+            formatter:v=>v==null?'':v.toFixed(1)+'%',
+            font:{size:8, weight:'700'}, color,
+            backgroundColor: dark?'rgba(30,30,40,.75)':'rgba(255,255,255,.75)', borderRadius:2, padding:{left:2,right:2,top:0,bottom:0}},
+        };
+      }),
     },
     options:{
       responsive:true, maintainAspectRatio:false,
-      layout:{padding:{top:20, right:20}},
+      layout:{padding:{top:26, right:20}},
       interaction:{mode:'index', intersect:false},
       plugins:{
         legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:10}, color:tickC}},
@@ -10558,6 +10626,7 @@ function alimNivel4RenderTodo(){
   const anual = _alimNivelVisibles(datos12Completo, 'alim-nivel4').filter(f => f.pct12 != null);
   const tecnicaPorMes = _alimNivelTecnicaPorMes(ALIM_NIVEL4_TECNICA);
   const claveAnalisis = _alimNivelPoblarSelectorAnalisis('alim-nivel4', mensualCompleto);
+  document.getElementById('alim-nivel4-btn-var').classList.toggle('activo', ALIM_NIVEL4_VAR);
 
   document.getElementById('alim-nivel4-tarjetas').innerHTML = _alimNivelTarjetasHtml(mensual, ALIM_NIVEL4_VAR);
   document.getElementById('alim-nivel4-analisis').innerHTML = _alimNivelComparativoTarjetasHtml(mensualCompleto, tecnicaPorMes, claveAnalisis);
@@ -10664,6 +10733,7 @@ function alimNivel3RenderTodo(){
   const porZona = _alimNivel34MensualPorZona(filas);
   const tecnicaPorMes = _alimNivelTecnicaPorMes(ALIM_NIVEL3_TECNICA);
   const claveAnalisis = _alimNivelPoblarSelectorAnalisis('alim-nivel3', mensualCompleto);
+  document.getElementById('alim-nivel3-btn-var').classList.toggle('activo', ALIM_NIVEL3_VAR);
 
   document.getElementById('alim-nivel3-tarjetas').innerHTML = _alimNivelTarjetasHtml(mensual, ALIM_NIVEL3_VAR);
   document.getElementById('alim-nivel3-analisis').innerHTML = _alimNivelComparativoTarjetasHtml(mensualCompleto, tecnicaPorMes, claveAnalisis);
@@ -10679,6 +10749,7 @@ function alimNivel3RenderTodo(){
 
   alimNivel3RenderTablaZonas(porZona);
   alimNivel3RenderChartZonasComparativo();
+  alimNivel3RenderDonutZonas(porZona, claveAnalisis);
 }
 
 function alimNivel3DescargarCsv(){
