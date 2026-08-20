@@ -2107,6 +2107,7 @@ tfoot td:first-child{text-align:left}
       <div style="text-align:center;margin-bottom:8px">
         <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Pérdida Total vs Pérdida Técnica</div>
       </div>
+      <div id="alim-nivel4-var-tecnica" style="max-width:300px;margin:0 auto 14px"></div>
       <div class="chart-wrap" style="height:320px"><canvas id="ch-alim-nivel4-tecnica"></canvas></div>
       <div class="fbar" style="justify-content:center;margin:16px 0 10px">
         <label>Mes a comparar</label>
@@ -2180,6 +2181,7 @@ tfoot td:first-child{text-align:left}
           <div style="text-align:center;margin-bottom:8px">
             <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Pérdida Total vs Pérdida Técnica</div>
           </div>
+          <div id="alim-nivel3-var-tecnica" style="max-width:300px;margin:0 auto 14px"></div>
           <div class="chart-wrap" style="height:320px"><canvas id="ch-alim-nivel3-tecnica"></canvas></div>
         </div>
         <div style="flex:0 0 260px;max-width:260px">
@@ -3831,7 +3833,14 @@ async function _expImagenChart(wrapId, nombreBase, ev){
   const img = new Image();
   await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = chart.toBase64Image('image/png', 1); });
 
-  const margenLat = 24, margenSup = tituloTexto ? Math.round(img.width*0.05)+24 : 16;
+  // Antes escalaba 0.022×ancho sin techo -- en gráficas anchas (~1600px+
+  // ya al doble de resolución) el título salía enorme, desproporcionado
+  // frente al resto del texto de la gráfica (pedido explícito: "el
+  // título cuando se exporta sale muy grande"). Ahora 1.4%×ancho con
+  // techo de 30px -- similar proporción al título real en pantalla
+  // (15px CSS × 2 de escala ≈ 30px).
+  const fontTitulo = Math.max(18, Math.min(30, Math.round(img.width*0.014)));
+  const margenLat = 24, margenSup = tituloTexto ? fontTitulo + 40 : 16;
   const cv = document.createElement('canvas');
   cv.width = img.width + margenLat*2;
   cv.height = img.height + margenSup + 16;
@@ -3840,7 +3849,7 @@ async function _expImagenChart(wrapId, nombreBase, ev){
   ctx.fillRect(0, 0, cv.width, cv.height);
   if(tituloTexto){
     ctx.fillStyle = colorTexto;
-    ctx.font = `bold ${Math.max(16, Math.round(img.width*0.022))}px "Segoe UI", sans-serif`;
+    ctx.font = `bold ${fontTitulo}px "Segoe UI", sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(tituloTexto, cv.width/2, margenSup/2 + 8, cv.width - margenLat*2);
@@ -10451,6 +10460,26 @@ function _alimNivelTarjetasHtml(mensual, mostrarVar){
   return tarjetas.join('');
 }
 
+// Tarjeta chica de Variación (Pérdida Total -- balance real) del último
+// mes visible contra el anterior, pegada arriba de la gráfica "Pérdida
+// Total vs Pérdida Técnica" -- pedido explícito ("la variación... de un
+// mes a otro y cuándo varió"). Muestra el kWh de cambio y el rango de
+// meses -- complementa (no reemplaza) las tarjetas Diferencia/Variación
+// de más abajo, que comparan Real vs Técnica, no Real contra sí mismo.
+function _alimNivelVariacionTotalHtml(mensual){
+  const reales = mensual.filter(f => f.pct != null);
+  if(reales.length < 2) return '';
+  const actual = reales[reales.length-1];
+  const anterior = reales[reales.length-2];
+  const delta = actual.perdida - anterior.perdida;
+  const color = delta >= 0 ? '#e63946' : '#2a9d8f';
+  return `<div class="be-resumen-tile" style="text-align:center">
+    <div class="etiqueta">Variación Pérdida Total (Balance Real)</div>
+    <div class="valor" style="color:${color}">${delta>=0?'▲':'▼'} ${_alimNivelFKwh(Math.abs(delta))}</div>
+    <div class="sub">${labelMes(anterior.clave)} → ${labelMes(actual.clave)}</div>
+  </div>`;
+}
+
 // Fila de tarjetas comparativo Balance Real vs Pérdida Técnica -- pedido
 // explícito (reemplaza el párrafo de análisis anterior: "quita esa
 // explicación", "quiero una tarjeta mejor"): Pérdida Técnica, Pérdida
@@ -11005,6 +11034,7 @@ function alimNivel4RenderTodo(){
   chAlimNivel4Anual = _alimNivelConstruirChartMensual(document.getElementById('ch-alim-nivel4-anual'), anual, 'Nivel 4', null, '12');
   if(chAlimNivel4Tecnica) chAlimNivel4Tecnica.destroy();
   chAlimNivel4Tecnica = _alimNivelConstruirChartTecnica(document.getElementById('ch-alim-nivel4-tecnica'), mensual, tecnicaPorMes, 'Nivel 4');
+  document.getElementById('alim-nivel4-var-tecnica').innerHTML = _alimNivelVariacionTotalHtml(mensual);
 
   const importExport = _alimNivelVisibles(_alimNivel4MensualImportExport(filas), 'alim-nivel4');
   const vacioIE = document.getElementById('alim-nivel4-importexport-vacio');
@@ -11114,6 +11144,7 @@ function alimNivel3RenderTodo(){
     document.getElementById('ch-alim-nivel3-anual'), anual, 'Total (Nivel 3)', _alimNivelSeriesZonasAnual(anual, porZona, ALIM_NIVEL3_ZONAS_SEL), '12');
   if(chAlimNivel3Tecnica) chAlimNivel3Tecnica.destroy();
   chAlimNivel3Tecnica = _alimNivelConstruirChartTecnica(document.getElementById('ch-alim-nivel3-tecnica'), mensual, tecnicaPorMes, 'Total (Nivel 3)');
+  document.getElementById('alim-nivel3-var-tecnica').innerHTML = _alimNivelVariacionTotalHtml(mensual);
 
   alimNivel3RenderTablaZonas(porZona);
   alimNivel3RenderChartZonasComparativo();
