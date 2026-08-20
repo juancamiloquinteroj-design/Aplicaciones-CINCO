@@ -2535,10 +2535,15 @@ tfoot td:first-child{text-align:left}
             <div style="font-size:13px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Top Subestaciones por Pérdida</div>
             <div style="font-size:10.5px;color:var(--text3);margin-top:2px">Click en una fila para verla abajo en "Pérdida % por Alimentador"</div>
             <button type="button" class="be-modo-btn" id="alim-sub-top-btn-var" style="margin-top:6px" onclick="alimSubToggleTopVar()" title="Agrega la variación de Entrada, Salida y Pérdida Mensual vs. el mes anterior">Δ Variación</button>
+            <!-- pedido explícito: "la que haya tenido un crecimiento
+                 superior al 5% que se exporte" -- filtra a esas y las
+                 ordena de mayor a menor; el botón ⬇ de exportar (arriba a
+                 la derecha de la tabla) ya sale solo en cualquier tabla. -->
+            <button type="button" class="be-modo-btn" id="alim-sub-top-btn-crecimiento" style="margin-top:6px" onclick="alimSubToggleTopCrecimiento()" title="Muestra solo las subestaciones con Var. Pérdida (%) mayor a 5% vs. el mes anterior, para exportar">Crecimiento &gt; 5%</button>
           </div>
           <div class="tbl-wrap tbl-compacta" id="alim-sub-tbl-top-wrap" style="max-height:420px;overflow-y:auto">
             <table>
-              <thead><tr><th style="text-align:left">Subestación</th><th>Zona</th><th>Entrada</th><th class="alimsub-col-var">Δ Entrada</th><th>Salida</th><th class="alimsub-col-var">Δ Salida</th><th>Pérd. Mensual</th><th class="alimsub-col-var">Δ Pérdida</th><th>Pérd. Anual</th></tr></thead>
+              <thead><tr><th style="text-align:left">Subestación</th><th>Zona</th><th>Entrada</th><th class="alimsub-col-var">Δ Entrada</th><th>Salida</th><th class="alimsub-col-var">Δ Salida</th><th>Pérdida</th><th class="alimsub-col-var">Δ pp</th><th>Var. Pérdida %</th><th>Pérd. Mensual %</th><th>Pérd. Anual</th></tr></thead>
               <tbody id="alim-sub-tabla-top"></tbody>
             </table>
           </div>
@@ -2702,6 +2707,11 @@ tfoot td:first-child{text-align:left}
       <div class="fbar" style="justify-content:center;margin-bottom:10px">
         <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Variación de Pérdida por Alimentador</div>
         <button type="button" class="be-modo-btn" id="alim3-var-btn-anterior" style="margin-left:12px" onclick="alim3ToggleVarAnterior()" title="Muestra/oculta las columnas de Entrada y Salida del Mes Anterior, para comparar contra el Mes Actual">Mes Anterior</button>
+        <!-- pedido explícito: "la que haya tenido un crecimiento superior
+             al 5% que se exporte" -- filtra a esos y los ordena de mayor a
+             menor; el botón ⬇ de exportar (arriba a la derecha de la
+             tabla) ya sale solo en cualquier tabla. -->
+        <button type="button" class="be-modo-btn" id="alim3-var-btn-crecimiento" style="margin-left:10px" onclick="alim3ToggleVarCrecimiento()" title="Muestra solo los alimentadores con Var. Pérdida (%) mayor a 5% vs. el mes anterior, para exportar">Crecimiento &gt; 5%</button>
       </div>
       <div id="alim3-var-caption" style="text-align:center;font-size:11px;color:var(--text3);margin-bottom:8px"></div>
       <div class="tbl-wrap tbl-compacta alim3-tabla-sticky" id="alim3-var-tbl-wrap" style="max-height:520px;overflow-y:auto">
@@ -2717,6 +2727,7 @@ tfoot td:first-child{text-align:left}
             <th style="cursor:pointer" onclick="alim3OrdenarVariacion('deltaSalida')" title="Click para ordenar">Δ Salida <span id="alim3-var-th-deltaSalida" class="alim3-th-flecha"></span></th>
             <th style="cursor:pointer" onclick="alim3OrdenarVariacion('perdida')" title="Click para ordenar">Pérdida <span id="alim3-var-th-perdida" class="alim3-th-flecha"></span></th>
             <th style="cursor:pointer" onclick="alim3OrdenarVariacion('deltaPerdida')" title="Click para ordenar">Δ Pérdida <span id="alim3-var-th-deltaPerdida" class="alim3-th-flecha"></span></th>
+            <th style="cursor:pointer" onclick="alim3OrdenarVariacion('deltaPerdidaCrec')" title="Click para ordenar -- crecimiento real del kWh vs. el mes anterior">Var. Pérdida % <span id="alim3-var-th-deltaPerdidaCrec" class="alim3-th-flecha"></span></th>
             <th style="cursor:pointer" onclick="alim3OrdenarVariacion('pct')" title="Click para ordenar">Pérdida % <span id="alim3-var-th-pct" class="alim3-th-flecha"></span></th>
             <th style="cursor:pointer" onclick="alim3OrdenarVariacion('deltaPct')" title="Click para ordenar">Δ pp <span id="alim3-var-th-deltaPct" class="alim3-th-flecha"></span></th>
           </tr></thead>
@@ -12163,6 +12174,22 @@ function alimSubDescargarCsv(){
 // "TOP de pérdida". Click en una fila selecciona esa subestación en el
 // multiselect de abajo (mismo que alimenta "Pérdida % por Alimentador" y
 // las tarjetas de comportamiento) -- pedido explícito.
+// Botón "Crecimiento > 5%" -- pedido explícito ("la que haya tenido un
+// crecimiento superior al 5% que se exporte"): filtra la tabla a solo las
+// subestaciones con Var. Pérdida (%) -- crecimiento real del kWh mes a
+// mes, no puntos porcentuales del índice -- mayor a 5%, ordenadas de
+// mayor a menor crecimiento (mismo criterio que "Cuadro 8" que mostró:
+// "Alimentadores con mayor crecimiento de pérdidas"). El botón de
+// exportar (⬇, arriba a la derecha de la tabla) ya sale solo -- lo agrega
+// _expEscanear a cualquier .tbl-wrap -- así que solo hace falta filtrar
+// lo que se ve antes de que el usuario le dé exportar.
+let ALIM_SUB_TOP_SOLO_CRECIMIENTO = false;
+function alimSubToggleTopCrecimiento(){
+  ALIM_SUB_TOP_SOLO_CRECIMIENTO = !ALIM_SUB_TOP_SOLO_CRECIMIENTO;
+  document.getElementById('alim-sub-top-btn-crecimiento').classList.toggle('activo', ALIM_SUB_TOP_SOLO_CRECIMIENTO);
+  alimSubRenderTablaTop();
+}
+
 function alimSubRenderTablaTop(){
   const cont = document.getElementById('alim-sub-tabla-top');
   if(!cont) return;
@@ -12175,7 +12202,7 @@ function alimSubRenderTablaTop(){
   if(!subestaciones.length){ cont.innerHTML = ''; return; }
   const seleccionadas = new Set(mselValores('msel-alim-sub-subestacion'));
 
-  const filas = subestaciones.map(sub => {
+  let filas = subestaciones.map(sub => {
     const serie = alimSubVisibles(porGrupo[sub]).filter(f => f.pct != null);
     if(!serie.length) return null;
     const actual = serie[serie.length-1];
@@ -12183,20 +12210,34 @@ function alimSubRenderTablaTop(){
     const actual12 = anual.find(f => f.clave === actual.clave && f.pct12 != null) || null;
     const anterior = serie.length >= 2 ? serie[serie.length-2] : null;
     const filaZona = ALIM_FILAS.find(f => f.subestacion === sub && f.zona);
+    const deltaPerdidaKwh = anterior ? actual.perdida - anterior.perdida : null;
+    const deltaPerdidaCrec = (deltaPerdidaKwh!=null && anterior.perdida) ? deltaPerdidaKwh/Math.abs(anterior.perdida)*100 : null;
     return {
       sub, zona: filaZona ? filaZona.zona : '--',
-      entrada: actual.entrada, salida: actual.salida,
+      entrada: actual.entrada, salida: actual.salida, perdida: actual.perdida,
       pctMensual: actual.pct, pctAnual: actual12 ? actual12.pct12 : null,
       deltaEntrada: anterior ? actual.entrada - anterior.entrada : null,
       deltaSalida: anterior ? actual.salida - anterior.salida : null,
       deltaPct: anterior ? actual.pct - anterior.pct : null,
+      deltaPerdidaKwh, deltaPerdidaCrec,
     };
   }).filter(Boolean);
-  filas.sort((a,b) => (b.pctMensual ?? -Infinity) - (a.pctMensual ?? -Infinity));
+
+  if(ALIM_SUB_TOP_SOLO_CRECIMIENTO){
+    filas = filas.filter(f => f.deltaPerdidaCrec != null && f.deltaPerdidaCrec > 5);
+    filas.sort((a,b) => b.deltaPerdidaCrec - a.deltaPerdidaCrec);
+  } else {
+    filas.sort((a,b) => (b.pctMensual ?? -Infinity) - (a.pctMensual ?? -Infinity));
+  }
 
   const fmtPct = v => v==null ? '--' : `${v.toFixed(2)}%`;
   const fmtKwh = v => v==null ? '--' : v.toLocaleString('es-CO',{maximumFractionDigits:0});
   const fmtDeltaKwh = v => v==null ? '--' : `${v>=0?'+':''}${v.toLocaleString('es-CO',{maximumFractionDigits:0})}`;
+
+  if(!filas.length){
+    cont.innerHTML = `<tr><td colspan="11" style="text-align:center;color:var(--text3)">${ALIM_SUB_TOP_SOLO_CRECIMIENTO ? 'Ninguna subestación creció más de 5% vs. el mes anterior.' : 'Sin datos.'}</td></tr>`;
+    return;
+  }
 
   cont.innerHTML = filas.map(f => {
     const color = colorParaZona(f.zona);
@@ -12204,6 +12245,7 @@ function alimSubRenderTablaTop(){
     const colorDeltaEntrada = f.deltaEntrada==null ? 'var(--text3)' : (f.deltaEntrada>=0 ? '#ef476f' : '#06d6a0');
     const colorDeltaSalida = f.deltaSalida==null ? 'var(--text3)' : (f.deltaSalida>=0 ? '#ef476f' : '#06d6a0');
     const colorDelta = f.deltaPct==null ? 'var(--text3)' : (f.deltaPct>=0 ? '#ef476f' : '#06d6a0');
+    const colorCrec = f.deltaPerdidaCrec==null ? 'var(--text3)' : (f.deltaPerdidaCrec>=0 ? '#ef476f' : '#06d6a0');
     return `<tr onclick="alimSubSeleccionarSubestacionTabla('${f.sub}')" style="cursor:pointer${activa?';background:var(--bg3)':''}">
       <td style="text-align:left;font-weight:700">${f.sub}</td>
       <td><span class="zb" style="background:${color}22;color:${color}">${f.zona}</span></td>
@@ -12211,8 +12253,10 @@ function alimSubRenderTablaTop(){
       <td class="alimsub-col-var" style="color:${colorDeltaEntrada}">${fmtDeltaKwh(f.deltaEntrada)}</td>
       <td>${fmtKwh(f.salida)}</td>
       <td class="alimsub-col-var" style="color:${colorDeltaSalida}">${fmtDeltaKwh(f.deltaSalida)}</td>
-      <td>${fmtPct(f.pctMensual)}</td>
+      <td>${fmtKwh(f.perdida)}</td>
       <td class="alimsub-col-var" style="color:${colorDelta}">${f.deltaPct==null?'--':`${f.deltaPct>=0?'▲':'▼'} ${Math.abs(f.deltaPct).toFixed(2)} pp`}</td>
+      <td style="color:${colorCrec};font-weight:700">${f.deltaPerdidaCrec==null?'--':`${f.deltaPerdidaCrec>=0?'+':''}${f.deltaPerdidaCrec.toFixed(2)}%`}</td>
+      <td>${fmtPct(f.pctMensual)}</td>
       <td>${fmtPct(f.pctAnual)}</td>
     </tr>`;
   }).join('');
@@ -12614,6 +12658,10 @@ let ALIM3_TOP_ORDEN_DIR = 'desc';          // 'asc' | 'desc'
 let ALIM3_VAR_ORDEN_COL = 'deltaPct';  // columna de orden de "Variación de Pérdida por Alimentador"
 let ALIM3_VAR_ORDEN_DIR = 'desc';      // arranca mostrando primero los que más empeoraron
 let ALIM3_VAR_MOSTRAR_ANTERIOR = false;  // botón "Mes Anterior" -- columnas Entrada/Salida Anterior ocultas por defecto
+// Botón "Crecimiento > 5%" -- pedido explícito ("la que haya tenido un
+// crecimiento superior al 5% que se exporte"), mismo criterio que la
+// tabla equivalente de Subestaciones (alimSubToggleTopCrecimiento).
+let ALIM3_VAR_SOLO_CRECIMIENTO = false;
 
 function alim3ToggleVarAnterior(){
   ALIM3_VAR_MOSTRAR_ANTERIOR = !ALIM3_VAR_MOSTRAR_ANTERIOR;
@@ -12801,14 +12849,20 @@ function alim3FilasVariacionPorAlimentador(){
     if(!mesActual || actual.clave > mesActual){ mesActual = actual.clave; mesAnterior = anterior ? anterior.clave : mesAnterior; }
     const pct = actual.entrada ? actual.perdida/actual.entrada*100 : null;
     const pctAnterior = anterior && anterior.entrada ? anterior.perdida/anterior.entrada*100 : null;
+    const deltaPerdida = anterior ? actual.perdida-anterior.perdida : null;
+    // Var. Pérdida (%) -- crecimiento REAL del kWh de un mes a otro (no
+    // puntos porcentuales del índice, eso ya lo da deltaPct) -- pedido
+    // explícito ("crecimiento superior al 5%").
+    const deltaPerdidaCrec = (deltaPerdida!=null && anterior.perdida) ? deltaPerdida/Math.abs(anterior.perdida)*100 : null;
     filas.push({
       nemonico: nem, nombre: info.nombre, zona: info.zona,
       entrada: actual.entrada, entradaAnterior: anterior ? anterior.entrada : null,
       deltaEntrada: anterior ? actual.entrada-anterior.entrada : null,
       salida: actual.salida, salidaAnterior: anterior ? anterior.salida : null,
       deltaSalida: anterior ? actual.salida-anterior.salida : null,
-      perdida: actual.perdida, deltaPerdida: anterior ? actual.perdida-anterior.perdida : null,
+      perdida: actual.perdida, deltaPerdida,
       pct, deltaPct: (pct!=null && pctAnterior!=null) ? pct-pctAnterior : null,
+      deltaPerdidaCrec,
     });
   });
   return {filas, mesActual, mesAnterior};
@@ -12818,12 +12872,15 @@ function alim3RenderTablaVariacion(){
   const cont = document.getElementById('alim3-tabla-var');
   const caption = document.getElementById('alim3-var-caption');
   if(!cont) return;
-  const {filas, mesActual, mesAnterior} = alim3FilasVariacionPorAlimentador();
+  let {filas, mesActual, mesAnterior} = alim3FilasVariacionPorAlimentador();
   if(caption) caption.textContent = mesActual
     ? (mesAnterior ? `${labelMesLargo(mesAnterior)} → ${labelMesLargo(mesActual)}` : labelMesLargo(mesActual))
     : '';
+
+  if(ALIM3_VAR_SOLO_CRECIMIENTO) filas = filas.filter(f => f.deltaPerdidaCrec != null && f.deltaPerdidaCrec > 5);
+
   if(!filas.length){
-    cont.innerHTML = '<tr><td colspan="12" style="text-align:center;color:var(--text3)">Sin datos.</td></tr>';
+    cont.innerHTML = `<tr><td colspan="13" style="text-align:center;color:var(--text3)">${ALIM3_VAR_SOLO_CRECIMIENTO ? 'Ningún alimentador creció más de 5% vs. el mes anterior.' : 'Sin datos.'}</td></tr>`;
     return;
   }
 
@@ -12844,6 +12901,7 @@ function alim3RenderTablaVariacion(){
     const anteriorPct = f.deltaPct!=null ? f.pct-f.deltaPct : null;
     const colorPerdida = ipColorVariacion(f.perdida, anteriorPerdida, 'var(--text3)');
     const colorPct = ipColorVariacion(f.pct, anteriorPct, 'var(--text3)');
+    const colorCrec = f.deltaPerdidaCrec==null ? 'var(--text3)' : (f.deltaPerdidaCrec>=0 ? '#ef476f' : '#06d6a0');
     return `<tr>
       <td style="text-align:left;font-weight:700">${f.nombre}</td>
       <td><span class="zb" style="background:${color}22;color:${color}">${f.zona||'--'}</span></td>
@@ -12855,12 +12913,13 @@ function alim3RenderTablaVariacion(){
       <td style="color:var(--text3)">${fmtDelta(f.deltaSalida)}</td>
       <td>${fmt(f.perdida)}</td>
       <td style="color:${colorPerdida}">${fmtDelta(f.deltaPerdida)}</td>
+      <td style="color:${colorCrec};font-weight:700">${f.deltaPerdidaCrec==null?'--':`${f.deltaPerdidaCrec>=0?'+':''}${f.deltaPerdidaCrec.toFixed(2)}%`}</td>
       <td style="font-weight:700">${f.pct==null?'--':f.pct.toFixed(2)+'%'}</td>
       <td style="color:${colorPct}">${f.deltaPct==null?'--':`${f.deltaPct>=0?'▲':'▼'} ${Math.abs(f.deltaPct).toFixed(2)} pp`}</td>
     </tr>`;
   }).join('');
 
-  ['nombre','zona','entradaAnterior','entrada','deltaEntrada','salidaAnterior','salida','deltaSalida','perdida','deltaPerdida','pct','deltaPct'].forEach(col => {
+  ['nombre','zona','entradaAnterior','entrada','deltaEntrada','salidaAnterior','salida','deltaSalida','perdida','deltaPerdida','deltaPerdidaCrec','pct','deltaPct'].forEach(col => {
     const el = document.getElementById(`alim3-var-th-${col}`);
     if(el) el.textContent = col===ALIM3_VAR_ORDEN_COL ? (ALIM3_VAR_ORDEN_DIR==='asc' ? '▲' : '▼') : '';
   });
@@ -12873,6 +12932,14 @@ function alim3OrdenarVariacion(col){
     ALIM3_VAR_ORDEN_COL = col;
     ALIM3_VAR_ORDEN_DIR = 'desc';
   }
+  alim3RenderTablaVariacion();
+}
+
+function alim3ToggleVarCrecimiento(){
+  ALIM3_VAR_SOLO_CRECIMIENTO = !ALIM3_VAR_SOLO_CRECIMIENTO;
+  const btn = document.getElementById('alim3-var-btn-crecimiento');
+  if(btn) btn.classList.toggle('activo', ALIM3_VAR_SOLO_CRECIMIENTO);
+  if(ALIM3_VAR_SOLO_CRECIMIENTO){ ALIM3_VAR_ORDEN_COL = 'deltaPerdidaCrec'; ALIM3_VAR_ORDEN_DIR = 'desc'; }
   alim3RenderTablaVariacion();
 }
 
