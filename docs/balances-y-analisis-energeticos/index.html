@@ -3759,12 +3759,31 @@ async function _expImagenTabla(wrapId, nombreBase, ev){
   const bg = getComputedStyle(document.documentElement).getPropertyValue('--card-bg').trim() || '#ffffff';
 
   const temporal = document.createElement('div');
-  temporal.style.cssText = `position:fixed;left:-99999px;top:0;background:${bg};padding:16px;width:${el.offsetWidth}px`;
+  temporal.style.cssText = `position:fixed;left:-99999px;top:0;background:${bg};padding:16px;display:inline-block`;
   _expHermanosDeTitulo(el).forEach(h => temporal.appendChild(h.cloneNode(true)));
   const clonEl = el.cloneNode(true);
   clonEl.querySelectorAll('.exp-wrap').forEach(b => b.remove());
   temporal.appendChild(clonEl);
   document.body.appendChild(temporal);
+
+  // Muchas tablas tienen scroll interno EN PANTALLA (max-height +
+  // overflow-y:auto, para no ocupar toda la página) -- para la imagen se
+  // libera del todo (acá, ya insertado en el documento, para que
+  // getComputedStyle refleje las reglas CSS por clase, no solo el style
+  // inline), así sale la tabla COMPLETA -- todas las filas, no solo lo
+  // que entraba en el recorte visible al momento de exportar (pedido
+  // explícito: "cuando descargo la tabla en png no sale completa"). Debe
+  // ir DESPUÉS de insertar en el documento -- getComputedStyle de un nodo
+  // todavía desconectado no refleja las reglas CSS reales.
+  [clonEl, ...clonEl.querySelectorAll('*')].forEach(n => {
+    const cs = getComputedStyle(n);
+    if(cs.maxHeight !== 'none' || ['auto','scroll'].includes(cs.overflowY) || ['auto','scroll'].includes(cs.overflowX)){
+      n.style.maxHeight = 'none';
+      n.style.overflow = 'visible';
+      n.style.overflowX = 'visible';
+      n.style.overflowY = 'visible';
+    }
+  });
 
   try{
     const canvas = await html2canvas(temporal, {backgroundColor: bg, scale: 2, useCORS: true, logging: false});
