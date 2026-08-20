@@ -2456,6 +2456,19 @@ tfoot td:first-child{text-align:left}
       </div>
     </div>
 
+    <!-- Pérdida Total vs Técnica por zona, UN gráfico de líneas por zona
+         apilados abajo (pedido explícito, captura de pantalla de 5
+         gráficos "Pérdida Nivel 21 (Anual) en % Nivel 2-1 Ajustada" por
+         zona) -- botón Mensual/Anual (12M) para cambiar el eje X. -->
+    <div class="card">
+      <div class="fbar" style="justify-content:center;margin-bottom:12px">
+        <div style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Pérdida Total vs Técnica por Zona (%)</div>
+        <button type="button" class="be-modo-btn" id="alim-n21-porzona-btn-mensual" style="margin-left:12px" onclick="alimN21TogglePorZonaModo('mensual')">Mensual</button>
+        <button type="button" class="be-modo-btn activo" id="alim-n21-porzona-btn-anual" onclick="alimN21TogglePorZonaModo('anual')">Anual (12M)</button>
+      </div>
+      <div id="alim-n21-porzona-charts"></div>
+    </div>
+
   </div>
 </div>
 <!-- fin vista-alim-n21 -->
@@ -14577,6 +14590,125 @@ function alimN21RenderTodo(){
   alimN21RenderChartZonas();
   alimN21RenderTablaZonas();
   alimN21RenderResumen(datos12);
+  alimN21RenderPorZonaCharts();
+}
+
+// "Pérdida Total vs Técnica por Zona" -- un gráfico de líneas POR ZONA,
+// apilados (pedido explícito, captura de pantalla de 5 gráficos "Pérdida
+// Nivel 21 (Anual)... por zona"), SIEMPRE las 5 zonas completas (ignora
+// filtro de chips, igual criterio que el resto de esta vista) y TODO el
+// histórico cargado (ignora el filtro Rango -- es una vista de tendencia
+// larga, no de un rango puntual). Botón Mensual/Anual (12M) cambia qué
+// serie se grafica en el eje X -- pedido explícito ("cambiar la gráfica
+// en el eje X").
+let ALIM_N21_PORZONA_MODO = 'anual';
+let ALIM_N21_PORZONA_CHARTS = {};
+
+function alimN21TogglePorZonaModo(modo){
+  ALIM_N21_PORZONA_MODO = modo;
+  document.getElementById('alim-n21-porzona-btn-mensual').classList.toggle('activo', modo==='mensual');
+  document.getElementById('alim-n21-porzona-btn-anual').classList.toggle('activo', modo==='anual');
+  alimN21RenderPorZonaCharts();
+}
+
+// Serie mensual COMPLETA de una zona (Total real + Técnica), más la
+// versión Anual (12M móvil) de cada una -- para Técnica 12M solo se
+// calcula si los 12 meses de la ventana tienen dato (si falta uno, null:
+// mejor un hueco visible que una ventana con meses "faltantes" invisibles).
+function _alimN21SerieZonaConTecnica(zona){
+  const serie = alimN21AgregarMensual(new Set([zona]));
+  const tecZona = ALIM_N21_TECNICA_POR_ZONA[zona] || {};
+  return serie.map((f,i) => {
+    const tecPct = tecZona[f.clave] ? tecZona[f.clave].pct : null;
+    let pct12 = null, tecPct12 = null;
+    if(i >= 11){
+      const ventana = serie.slice(i-11, i+1);
+      const entrada12 = ventana.reduce((s,x)=>s+x.entrada, 0);
+      const perdida12 = ventana.reduce((s,x)=>s+x.perdida, 0);
+      pct12 = entrada12 ? perdida12/entrada12*100 : null;
+      const tecCompleta = ventana.every(x => tecZona[x.clave] && tecZona[x.clave].perdida != null);
+      if(tecCompleta && entrada12){
+        const tecPerdida12 = ventana.reduce((s,x)=>s+tecZona[x.clave].perdida, 0);
+        tecPct12 = tecPerdida12/entrada12*100;
+      }
+    }
+    return {clave: f.clave, pct: f.pct, tecPct, pct12, tecPct12};
+  });
+}
+
+// Versión oscurecida de un color hex -- la línea de Pérdida Técnica usa
+// el mismo tono de la zona pero más oscuro (mismo criterio visual que la
+// plantilla de referencia: cada zona con su color + una variante oscura).
+function _colorOscurecer(hex, factor=0.55){
+  hex = String(hex||'#888888').replace('#','');
+  if(hex.length===3) hex = hex.split('').map(c=>c+c).join('');
+  const r = parseInt(hex.slice(0,2),16)||0, g = parseInt(hex.slice(2,4),16)||0, b = parseInt(hex.slice(4,6),16)||0;
+  const f = c => Math.round(c*factor).toString(16).padStart(2,'0');
+  return `#${f(r)}${f(g)}${f(b)}`;
+}
+
+function _alimN21ConstruirChartPorZona(cv, zona, modo){
+  if(!cv) return null;
+  const dark = document.documentElement.getAttribute('data-theme')==='dark';
+  const tickC = dark ? '#aab8d1' : '#4b5e7a';
+  const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
+  const serie = _alimN21SerieZonaConTecnica(zona);
+  const campoTotal = modo==='anual' ? 'pct12' : 'pct';
+  const campoTec = modo==='anual' ? 'tecPct12' : 'tecPct';
+  const visibles = modo==='anual' ? serie.filter(f => f[campoTotal] != null) : serie;
+  if(!visibles.length) return null;
+  const etiquetas = visibles.map(f => labelMesLargo(f.clave));
+  const colorTotal = colorParaZona(zona);
+  const colorTecnica = _colorOscurecer(colorTotal);
+  const valoresTotal = visibles.map(f => f[campoTotal]);
+  const valoresTec = visibles.map(f => f[campoTec]);
+  const fp = v => v==null ? '' : v.toFixed(2)+'%';
+
+  return new Chart(cv, {
+    data:{
+      labels: etiquetas,
+      datasets:[
+        {type:'line', label:`Pérdida Total ${zona}`, data: valoresTotal, borderColor: colorTotal, backgroundColor:'transparent',
+          borderWidth:2.5, pointRadius:2, pointBackgroundColor:colorTotal, spanGaps:true, tension:.25,
+          datalabels:{display:true, anchor:'end', align:'top', offset:3, formatter:fp, font:{size:8, weight:'700'}, color:colorTotal}},
+        {type:'line', label:`Pérdida Técnica ${zona}`, data: valoresTec, borderColor: colorTecnica, backgroundColor:'transparent',
+          borderWidth:2, pointRadius:2, pointBackgroundColor:colorTecnica, spanGaps:true, tension:.25,
+          datalabels:{display:true, anchor:'end', align:'bottom', offset:3, formatter:fp, font:{size:8, weight:'700'}, color:colorTecnica}},
+      ],
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      layout:{padding:{top:18, right:14, bottom:14}},
+      interaction:{mode:'index', intersect:false},
+      plugins:{
+        legend:{display:true, position:'bottom', labels:{boxWidth:10, font:{size:9}, color:tickC}},
+        tooltip:{callbacks:{label:c => c.raw==null ? null : `${c.dataset.label}: ${c.raw.toFixed(2)}%`}},
+        zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:3}}},
+      },
+      scales:{
+        x:{grid:{display:false}, ticks:{color:tickC, font:{size:8}, maxRotation:45, minRotation:45}},
+        y:{grid:{color:gridC}, ticks:{color:tickC, font:{size:9}, callback:v=>v.toFixed(1)+'%'}},
+      },
+    },
+  });
+}
+
+function alimN21RenderPorZonaCharts(){
+  const cont = document.getElementById('alim-n21-porzona-charts');
+  if(!cont) return;
+  const zonas = _alimN21OrdenarZonasTabla(ALIM_N21_ZONAS);
+
+  cont.innerHTML = zonas.map(z => `
+    <div style="margin-bottom:20px">
+      <div style="text-align:center;font-size:12.5px;font-weight:700;color:var(--text2);margin-bottom:4px">Zona ${z}</div>
+      <div class="chart-wrap" style="height:220px"><canvas id="ch-alim-n21-porzona-${z}"></canvas></div>
+    </div>`).join('');
+
+  Object.values(ALIM_N21_PORZONA_CHARTS).forEach(ch => ch && ch.destroy());
+  ALIM_N21_PORZONA_CHARTS = {};
+  zonas.forEach(z => {
+    ALIM_N21_PORZONA_CHARTS[z] = _alimN21ConstruirChartPorZona(document.getElementById(`ch-alim-n21-porzona-${z}`), z, ALIM_N21_PORZONA_MODO);
+  });
 }
 
 // Orden fijo pedido para la tabla comparativa (no alfabético) -- cualquier
