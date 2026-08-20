@@ -2196,6 +2196,15 @@ tfoot td:first-child{text-align:left}
         <button type="button" class="be-modo-btn activo" id="alim-nivel3-zonas-chart-btn-line" style="margin-left:12px" onclick="alimNivel3ToggleTipoGraficaZonas('line')">Líneas</button>
         <button type="button" class="be-modo-btn" id="alim-nivel3-zonas-chart-btn-bar" onclick="alimNivel3ToggleTipoGraficaZonas('bar')">Barras</button>
       </div>
+      <!-- Filtro de fechas PROPIO de esta gráfica (independiente del
+           Rango general de arriba, que también maneja Mensual/Anual/
+           tarjetas) -- pedido explícito, arranca en Enero-2026 hasta hoy. -->
+      <div class="fbar" style="justify-content:center;margin-bottom:10px">
+        <label>Rango</label>
+        <input type="date" id="alim-nivel3-zonas-chart-desde" onchange="alimNivel3RenderChartZonasComparativo()">
+        <span style="font-size:11px;color:var(--text3)">→</span>
+        <input type="date" id="alim-nivel3-zonas-chart-hasta" onchange="alimNivel3RenderChartZonasComparativo()">
+      </div>
       <div class="chart-wrap" style="height:380px"><canvas id="ch-alim-nivel3-zonas-comparativo"></canvas></div>
     </div>
 
@@ -10847,10 +10856,14 @@ function alimNivel3RenderChartZonasComparativo(){
   const tickXFuerte = dark ? '#ffffff' : '#000000';
   const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
 
+  // Filtro de fechas PROPIO de esta gráfica (prefijo "alim-nivel3-zonas-
+  // chart", NO el "alim-nivel3" del Rango general de arriba) -- pedido
+  // explícito, independiente de lo que esté eligiendo el resto del
+  // módulo (Mensual/Anual/tarjetas).
   const porZonaVisible = {};
   let etiquetas = null;
   for(const z of porZona.zonas){
-    const visibles = _alimNivelVisibles(porZona.porZona[z], 'alim-nivel3');
+    const visibles = _alimNivelVisibles(porZona.porZona[z], 'alim-nivel3-zonas-chart');
     if(!etiquetas) etiquetas = visibles.map(f => labelMesLargo(f.clave));
     porZonaVisible[z] = visibles.map(f => f.pct);
   }
@@ -10868,16 +10881,18 @@ function alimNivel3RenderChartZonasComparativo(){
           type: tipo, label:`Zona ${z}`, data: porZonaVisible[z],
           borderColor: color, backgroundColor: tipo==='bar' ? color : 'transparent',
           borderWidth: tipo==='bar' ? 1 : 2, pointRadius:1.5, spanGaps:true, tension:.25,
+          // Pedido explícito: "el valor en porcentaje que se vea más
+          // grande" -- de 8px a 11px.
           datalabels:{display:true, anchor:'end', align:'top', offset:2,
             formatter:v=>v==null?'':v.toFixed(1)+'%',
-            font:{size:8, weight:'700'}, color,
-            backgroundColor: dark?'rgba(30,30,40,.75)':'rgba(255,255,255,.75)', borderRadius:2, padding:{left:2,right:2,top:0,bottom:0}},
+            font:{size:11, weight:'700'}, color,
+            backgroundColor: dark?'rgba(30,30,40,.78)':'rgba(255,255,255,.78)', borderRadius:3, padding:{left:3,right:3,top:1,bottom:1}},
         };
       }),
     },
     options:{
       responsive:true, maintainAspectRatio:false,
-      layout:{padding:{top:26, right:20}},
+      layout:{padding:{top:34, right:20}},
       interaction:{mode:'index', intersect:false},
       plugins:{
         legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:10}, color:tickC}},
@@ -11077,6 +11092,18 @@ async function alimNivel3Cargar(){
 
   const claves = [...new Set(filas.map(f => f.fecha.slice(0,7)))].sort();
   _alimNivelPoblarRangoDefecto('alim-nivel3', claves);
+
+  // Filtro de fechas propio de "Comparativo de Índice de Pérdidas por
+  // Zona" -- pedido explícito: arranca en Enero-2026 hasta el último mes
+  // real disponible (si el histórico no llega a 2026-01, cae al primer
+  // mes que sí haya).
+  const inZonasDesde = document.getElementById('alim-nivel3-zonas-chart-desde');
+  const inZonasHasta = document.getElementById('alim-nivel3-zonas-chart-hasta');
+  if(inZonasDesde && inZonasHasta && claves.length){
+    if(!inZonasHasta.value) inZonasHasta.value = claves[claves.length-1] + '-01';
+    if(!inZonasDesde.value) inZonasDesde.value = (claves.includes('2026-01') ? '2026-01' : claves[0]) + '-01';
+  }
+
   alimNivel3RenderTodo();
 }
 
