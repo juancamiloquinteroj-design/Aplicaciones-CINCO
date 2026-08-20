@@ -354,6 +354,16 @@ canvas[id^="ch-tride-"]:active{cursor:grabbing}
 .resnivel-franja{writing-mode:vertical-rl;transform:rotate(180deg);font-weight:800;font-size:13px;letter-spacing:2px;text-transform:uppercase;padding:16px 10px;display:flex;align-items:center;justify-content:center;text-align:center;flex-shrink:0}
 .resnivel-grid{flex:1;padding:16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:14px 16px;align-content:start}
 
+/* "Variación Mensual por Zona" (Indicador N2-1) -- columnas Entrada/
+   Salida ocultas por defecto (botón "Entrada / Salida") y el pill de
+   "Impacto" (rojo = empeoró/subió, verde = mejoró/bajó -- mismo criterio
+   de color que el resto de la app). */
+.n21tab-col-es{display:none}
+.n21tab-mostrar-es .n21tab-col-es{display:table-cell}
+.n21tab-impacto{display:inline-flex;align-items:center;justify-content:center;width:22px;height:18px;border-radius:4px;font-weight:800;font-size:11px}
+.n21tab-impacto.sube{background:rgba(239,71,111,.18);color:#ef476f}
+.n21tab-impacto.baja{background:rgba(6,214,160,.18);color:#06d6a0}
+
 /* Botón "Exportar" genérico (Imagen/Excel) -- inyectado automáticamente
    por JS en TODA gráfica (.chart-wrap) y TODA tabla (.tbl-wrap) de la
    app, pedido explícito ("en cada tabla y cada gráfica"). Discreto (poca
@@ -2348,19 +2358,38 @@ tfoot td:first-child{text-align:left}
 
     <div class="card">
       <div style="display:inline-flex;flex-direction:column;align-items:center;max-width:100%">
-        <div style="margin-bottom:8px;text-align:center">
-          <div style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Comparativo Mensual por Zona</div>
-          <div id="alim-n21-tabla-zonas-caption" style="font-size:11px;color:var(--text3);margin-top:2px"></div>
+        <div class="fbar" style="margin-bottom:8px;justify-content:center">
+          <div style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Variación Mensual por Zona</div>
+          <button type="button" class="be-modo-btn" id="alim-n21-tabla-btn-es" style="margin-left:12px" onclick="alimN21ToggleTablaES()" title="Muestra/oculta las columnas de Entrada y Salida">Entrada / Salida</button>
         </div>
-        <div class="tbl-wrap tbl-compacta">
+        <div id="alim-n21-tabla-zonas-caption" style="font-size:11px;color:var(--text3);margin-bottom:8px"></div>
+        <!-- Pedido explícito: "esa tabla... quiero que sea de esta forma
+             mejor" (P.Total/P.Técnica/P.Gestionable con Δ kWh/Δ%/Impacto,
+             como el "Cuadro 7" que mostró) "pero de forma mensual" (no
+             anualizada como la referencia) "con botón para habilitar
+             entrada y salida" -- Entrada/Salida quedan ocultas por
+             defecto (id="alim-n21-tabla-zonas-wrap" + clase
+             n21tab-col-es, ver CSS). -->
+        <div class="tbl-wrap tbl-compacta" id="alim-n21-tabla-zonas-wrap">
           <table>
-            <thead><tr>
-              <th style="text-align:left">Zona</th>
-              <th>Entrada</th><th>Δ Entrada</th>
-              <th>Salida</th><th>Δ Salida</th>
-              <th>Pérdida</th><th>Δ Pérdida</th>
-              <th>Pérdida %</th><th>Δ pp</th>
-            </tr></thead>
+            <thead>
+              <tr>
+                <th rowspan="2" style="text-align:left">Zona</th>
+                <th colspan="2" class="n21tab-col-es">Entrada</th>
+                <th colspan="2" class="n21tab-col-es">Salida</th>
+                <th colspan="3">P. Total</th>
+                <th colspan="3">P. Técnica</th>
+                <th colspan="3">P. Gestionable</th>
+                <th rowspan="2">Δ Índice</th>
+              </tr>
+              <tr>
+                <th class="n21tab-col-es">kWh</th><th class="n21tab-col-es">Δ</th>
+                <th class="n21tab-col-es">kWh</th><th class="n21tab-col-es">Δ</th>
+                <th>Δ kWh</th><th>Δ %</th><th>Impacto</th>
+                <th>Δ kWh</th><th>Δ %</th><th>Impacto</th>
+                <th>Δ kWh</th><th>Δ %</th><th>Impacto</th>
+              </tr>
+            </thead>
             <tbody id="alim-n21-tabla-zonas"></tbody>
             <tfoot><tr id="alim-n21-tabla-zonas-total"></tr></tfoot>
           </table>
@@ -13970,6 +13999,15 @@ let chAlimN21Mensual = null, chAlimN21Anual = null, chAlimN21Zonas = null;
 // compartido entre Mensual y Anual (pedido explícito, antes eran 2+2).
 let ALIM_N21_VAR = false;
 let ALIM_N21_OCULTAR_ES = false;
+// "Variación Mensual por Zona" -- Pérdida Técnica y Gestionable POR ZONA
+// (pedido explícito, "Cuadro 7" que mostró el usuario): /api/resumen
+// acepta ?zona= repetido, así que se pide una vez por zona (nivel=2 --
+// N2-1 corresponde a "Nivel 2" en la taxonomía de Pérdidas Técnicas).
+// Gestionable por zona sale de ALIM_FILAS (gestionable_kwh, YA cargado
+// con el resto de columnas de Resumen de Alimentadores.csv) -- no hace
+// falta pedir nada nuevo para eso.
+let ALIM_N21_TECNICA_POR_ZONA = {};  // {zona: {clave: {perdida, pct}}}
+let ALIM_N21_TABLA_MOSTRAR_ES = false;  // botón "Entrada / Salida" de la tabla (arranca oculta)
 
 function alimN21Clave(anio, mes){ return `${anio}-${String(mes).padStart(2,'0')}`; }
 
@@ -14052,6 +14090,20 @@ async function alimN21Cargar(){
   contenido.classList.remove('hidden');
   ALIM_N21_ZONAS = [...new Set(ALIM_FILAS.map(f => f.zona).filter(Boolean))].sort();
   alimN21RenderZonasChips();
+
+  // Pérdida Técnica por zona (Nivel 2), una consulta por zona -- para
+  // "Variación Mensual por Zona" (P.Técnica). Si alguna falla no bloquea
+  // el resto de la vista (esa zona queda con "--" en esa columna).
+  if(!DEMO){
+    await Promise.all(ALIM_N21_ZONAS.map(async z => {
+      try{
+        const resp = await apiGet(`/api/resumen?nivel=2&zona=${encodeURIComponent(z)}`, AUTH_TIMEOUT_MS);
+        ALIM_N21_TECNICA_POR_ZONA[z] = _alimNivelTecnicaPorMes(resp);
+      }catch(e){
+        ALIM_N21_TECNICA_POR_ZONA[z] = {};
+      }
+    }));
+  }
 
   const inDesde = document.getElementById('alim-n21-desde');
   const inHasta = document.getElementById('alim-n21-hasta');
@@ -14379,11 +14431,67 @@ function _alimN21OrdenarZonasTabla(zonas){
   });
 }
 
-// Tabla comparativa por zona -- Entrada/Salida/Pérdida del último mes
-// visible (según el filtro Rango) vs. el mes anterior, siempre las 5 zonas
-// completas (igual que "Comparativo Pérdidas por Zona", ignora el filtro
-// de chips de Zona -- ese filtro es solo para las 2 gráficas de arriba),
-// en el orden fijo ZE/ZN/ZS/ZC/ZO pedido, con fila de Total al final.
+// Gestionable por zona y mes -- suma gestionable_kwh de ALIM_FILAS
+// agrupado por zona+mes (ese kWh YA viene en Resumen de Alimentadores.csv,
+// no hace falta pedir nada nuevo -- mismo dato que usa "Top Alimentadores").
+function _alimN21GestionablePorZonaMes(){
+  const mapa = {};
+  for(const f of ALIM_FILAS){
+    if(!f.zona) continue;
+    const clave = alimN21Clave(f.anio, f.mes);
+    if(!mapa[f.zona]) mapa[f.zona] = {};
+    mapa[f.zona][clave] = (mapa[f.zona][clave] || 0) + (f.gestionable_kwh || 0);
+  }
+  return mapa;
+}
+
+// {actual, anterior, deltaKwh, deltaPct} de un par de valores -- deltaPct
+// es % de CAMBIO del propio valor (no puntos porcentuales de índice),
+// mismo criterio que el Heatmap Mensual de Subestaciones.
+function _alimN21DeltaGrupo(actual, anterior){
+  const deltaKwh = (actual!=null && anterior!=null) ? actual-anterior : null;
+  const deltaPct = (deltaKwh!=null && anterior) ? deltaKwh/Math.abs(anterior)*100 : null;
+  return {actual, anterior, deltaKwh, deltaPct};
+}
+
+// Suma un grupo (Total/Técnica/Gestionable) a través de zonas -- solo con
+// las que tengan actual Y anterior, para la fila de Total.
+function _alimN21TotalGrupo(filas, campo){
+  const conDato = filas.filter(f => f[campo].actual!=null && f[campo].anterior!=null);
+  if(!conDato.length) return {deltaKwh:null, deltaPct:null};
+  const totActual = conDato.reduce((s,f)=>s+f[campo].actual, 0);
+  const totAnterior = conDato.reduce((s,f)=>s+f[campo].anterior, 0);
+  const deltaKwh = totActual-totAnterior;
+  return {deltaKwh, deltaPct: totAnterior ? deltaKwh/Math.abs(totAnterior)*100 : null};
+}
+
+// 3 <td> de un grupo -- Δ kWh, Δ % (de cambio) y el pill de "Impacto"
+// (rojo = subió/empeoró, verde = bajó/mejoró -- mismo criterio de color
+// que el resto de la app).
+function _alimN21CeldaGrupo(deltaKwh, deltaPct, fmt){
+  if(deltaKwh==null) return `<td>--</td><td>--</td><td>--</td>`;
+  const sube = deltaKwh >= 0;
+  const color = sube ? '#ef476f' : '#06d6a0';
+  return `<td style="color:${color}">${deltaKwh>=0?'+':''}${fmt(deltaKwh)}</td>
+    <td style="color:${color}">${deltaPct==null?'--':`${deltaPct>=0?'+':''}${deltaPct.toFixed(2)}%`}</td>
+    <td><span class="n21tab-impacto ${sube?'sube':'baja'}">${sube?'▲':'▼'}</span></td>`;
+}
+
+function alimN21ToggleTablaES(){
+  ALIM_N21_TABLA_MOSTRAR_ES = !ALIM_N21_TABLA_MOSTRAR_ES;
+  document.getElementById('alim-n21-tabla-btn-es').classList.toggle('activo', ALIM_N21_TABLA_MOSTRAR_ES);
+  document.getElementById('alim-n21-tabla-zonas-wrap').classList.toggle('n21tab-mostrar-es', ALIM_N21_TABLA_MOSTRAR_ES);
+}
+
+// "Variación Mensual por Zona" -- del último mes visible (según el
+// filtro Rango) vs. el mes anterior, siempre las 5 zonas completas
+// (igual que "Comparativo Pérdidas por Zona", ignora el filtro de chips
+// de Zona -- ese filtro es solo para las 2 gráficas de arriba), en el
+// orden fijo ZE/ZN/ZS/ZC/ZO pedido, con fila de Total al final. Rediseño
+// pedido explícito ("Cuadro 7" que mostró el usuario, versión MENSUAL en
+// vez de anualizada): P.Total/P.Técnica/P.Gestionable como Δ kWh/Δ%/
+// Impacto -- Entrada/Salida siguen ahí pero ocultas por defecto
+// (botón "Entrada / Salida").
 function alimN21RenderTablaZonas(){
   const cont = document.getElementById('alim-n21-tabla-zonas');
   const contTotal = document.getElementById('alim-n21-tabla-zonas-total');
@@ -14391,6 +14499,7 @@ function alimN21RenderTablaZonas(){
   if(!cont) return;
   const fmt = v => v==null ? '--' : v.toLocaleString('es-CO',{maximumFractionDigits:0});
   const fmtDelta = v => v==null ? '--' : `${v>=0?'+':''}${v.toLocaleString('es-CO',{maximumFractionDigits:0})}`;
+  const gestionablePorZona = _alimN21GestionablePorZonaMes();
 
   let mesActual = null, mesAnterior = null;
   const filas = _alimN21OrdenarZonasTabla(ALIM_N21_ZONAS).map(z => {
@@ -14399,12 +14508,23 @@ function alimN21RenderTablaZonas(){
     const actual = visibles[visibles.length-1];
     const anterior = visibles.length >= 2 ? visibles[visibles.length-2] : null;
     if(!mesActual){ mesActual = actual.clave; mesAnterior = anterior ? anterior.clave : null; }
+
+    const tecZona = ALIM_N21_TECNICA_POR_ZONA[z] || {};
+    const tecActual = tecZona[actual.clave] ? tecZona[actual.clave].perdida : null;
+    const tecAnterior = (anterior && tecZona[anterior.clave]) ? tecZona[anterior.clave].perdida : null;
+
+    const gesZona = gestionablePorZona[z] || {};
+    const gesActual = gesZona[actual.clave] != null ? gesZona[actual.clave] : null;
+    const gesAnterior = (anterior && gesZona[anterior.clave] != null) ? gesZona[anterior.clave] : null;
+
     return {
       zona: z,
       entrada: actual.entrada, deltaEntrada: anterior ? actual.entrada-anterior.entrada : null,
       salida: actual.salida, deltaSalida: anterior ? actual.salida-anterior.salida : null,
-      perdida: actual.perdida, deltaPerdida: anterior ? actual.perdida-anterior.perdida : null,
-      pct: actual.pct, deltaPct: anterior ? actual.pct-anterior.pct : null,
+      total: _alimN21DeltaGrupo(actual.perdida, anterior ? anterior.perdida : null),
+      tecnica: _alimN21DeltaGrupo(tecActual, tecAnterior),
+      gestionable: _alimN21DeltaGrupo(gesActual, gesAnterior),
+      deltaPct: anterior ? actual.pct - anterior.pct : null,
     };
   }).filter(Boolean);
 
@@ -14413,57 +14533,56 @@ function alimN21RenderTablaZonas(){
     : '';
 
   if(!filas.length){
-    cont.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--text3)">Sin datos.</td></tr>';
+    cont.innerHTML = '<tr><td colspan="15" style="text-align:center;color:var(--text3)">Sin datos.</td></tr>';
     if(contTotal) contTotal.innerHTML = '';
     return;
   }
 
   cont.innerHTML = filas.map(f => {
     const color = colorParaZona(f.zona);
-    const anteriorPerdida = f.deltaPerdida!=null ? f.perdida-f.deltaPerdida : null;
-    const anteriorPct = f.deltaPct!=null ? f.pct-f.deltaPct : null;
-    const colorPerdida = ipColorVariacion(f.perdida, anteriorPerdida, 'var(--text3)');
-    const colorPct = ipColorVariacion(f.pct, anteriorPct, 'var(--text3)');
+    const colorIndice = f.deltaPct==null ? 'var(--text3)' : (f.deltaPct>=0 ? '#ef476f' : '#06d6a0');
     return `<tr>
       <td style="text-align:left"><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${color};margin-right:6px"></span>Zona ${f.zona}</td>
-      <td>${fmt(f.entrada)}</td>
-      <td style="color:var(--text3)">${fmtDelta(f.deltaEntrada)}</td>
-      <td>${fmt(f.salida)}</td>
-      <td style="color:var(--text3)">${fmtDelta(f.deltaSalida)}</td>
-      <td>${fmt(f.perdida)}</td>
-      <td style="color:${colorPerdida}">${fmtDelta(f.deltaPerdida)}</td>
-      <td style="font-weight:700">${f.pct.toFixed(2)}%</td>
-      <td style="color:${colorPct}">${f.deltaPct==null?'--':`${f.deltaPct>=0?'▲':'▼'} ${Math.abs(f.deltaPct).toFixed(2)} pp`}</td>
+      <td class="n21tab-col-es">${fmt(f.entrada)}</td>
+      <td class="n21tab-col-es" style="color:var(--text3)">${fmtDelta(f.deltaEntrada)}</td>
+      <td class="n21tab-col-es">${fmt(f.salida)}</td>
+      <td class="n21tab-col-es" style="color:var(--text3)">${fmtDelta(f.deltaSalida)}</td>
+      ${_alimN21CeldaGrupo(f.total.deltaKwh, f.total.deltaPct, fmt)}
+      ${_alimN21CeldaGrupo(f.tecnica.deltaKwh, f.tecnica.deltaPct, fmt)}
+      ${_alimN21CeldaGrupo(f.gestionable.deltaKwh, f.gestionable.deltaPct, fmt)}
+      <td style="color:${colorIndice};font-weight:700">${f.deltaPct==null?'--':`${f.deltaPct>=0?'▲':'▼'} ${Math.abs(f.deltaPct).toFixed(2)} pp`}</td>
     </tr>`;
   }).join('');
 
   if(contTotal){
     const sum = campo => filas.reduce((s,f)=>s+f[campo], 0);
-    const todasConDelta = filas.every(f => f.deltaEntrada!=null && f.deltaSalida!=null && f.deltaPerdida!=null);
-    const totEntrada = sum('entrada'), totSalida = sum('salida'), totPerdida = sum('perdida');
+    const todasConDelta = filas.every(f => f.deltaEntrada!=null && f.deltaSalida!=null);
+    const totEntrada = sum('entrada'), totSalida = sum('salida');
     const totDeltaEntrada = todasConDelta ? sum('deltaEntrada') : null;
     const totDeltaSalida = todasConDelta ? sum('deltaSalida') : null;
-    const totDeltaPerdida = todasConDelta ? sum('deltaPerdida') : null;
-    const totPct = totEntrada ? totPerdida/totEntrada*100 : null;
-    let totDeltaPct = null;
-    if(todasConDelta && totEntrada){
-      const totEntradaAnterior = totEntrada - totDeltaEntrada;
-      const totPerdidaAnterior = totPerdida - totDeltaPerdida;
-      const totPctAnterior = totEntradaAnterior ? totPerdidaAnterior/totEntradaAnterior*100 : null;
-      if(totPctAnterior != null) totDeltaPct = totPct - totPctAnterior;
-    }
-    const colorTotPerdida = totDeltaPerdida==null ? 'var(--text3)' : (totDeltaPerdida>=0 ? '#ef476f' : '#06d6a0');
-    const colorTotPct = totDeltaPct==null ? 'var(--text3)' : (totDeltaPct>=0 ? '#ef476f' : '#06d6a0');
+
+    const totTotal = _alimN21TotalGrupo(filas, 'total');
+    const totTecnica = _alimN21TotalGrupo(filas, 'tecnica');
+    const totGestionable = _alimN21TotalGrupo(filas, 'gestionable');
+
+    const totPerdidaActual = filas.reduce((s,f)=>s+(f.total.actual||0), 0);
+    const totPerdidaAnterior = filas.reduce((s,f)=>s+(f.total.anterior||0), 0);
+    const totPct = totEntrada ? totPerdidaActual/totEntrada*100 : null;
+    const totEntradaAnterior = totEntrada!=null && totDeltaEntrada!=null ? totEntrada-totDeltaEntrada : null;
+    const totPctAnterior = totEntradaAnterior ? totPerdidaAnterior/totEntradaAnterior*100 : null;
+    const totDeltaPct = (totPct!=null && totPctAnterior!=null) ? totPct-totPctAnterior : null;
+    const colorTotIndice = totDeltaPct==null ? 'var(--text3)' : (totDeltaPct>=0 ? '#ef476f' : '#06d6a0');
+
     contTotal.innerHTML = `
       <td style="text-align:left">Total</td>
-      <td>${fmt(totEntrada)}</td>
-      <td>${fmtDelta(totDeltaEntrada)}</td>
-      <td>${fmt(totSalida)}</td>
-      <td>${fmtDelta(totDeltaSalida)}</td>
-      <td>${fmt(totPerdida)}</td>
-      <td style="color:${colorTotPerdida}">${fmtDelta(totDeltaPerdida)}</td>
-      <td>${totPct==null?'--':totPct.toFixed(2)+'%'}</td>
-      <td style="color:${colorTotPct}">${totDeltaPct==null?'--':`${totDeltaPct>=0?'▲':'▼'} ${Math.abs(totDeltaPct).toFixed(2)} pp`}</td>
+      <td class="n21tab-col-es">${fmt(totEntrada)}</td>
+      <td class="n21tab-col-es">${fmtDelta(totDeltaEntrada)}</td>
+      <td class="n21tab-col-es">${fmt(totSalida)}</td>
+      <td class="n21tab-col-es">${fmtDelta(totDeltaSalida)}</td>
+      ${_alimN21CeldaGrupo(totTotal.deltaKwh, totTotal.deltaPct, fmt)}
+      ${_alimN21CeldaGrupo(totTecnica.deltaKwh, totTecnica.deltaPct, fmt)}
+      ${_alimN21CeldaGrupo(totGestionable.deltaKwh, totGestionable.deltaPct, fmt)}
+      <td style="color:${colorTotIndice};font-weight:700">${totDeltaPct==null?'--':`${totDeltaPct>=0?'▲':'▼'} ${Math.abs(totDeltaPct).toFixed(2)} pp`}</td>
     `;
   }
 }
