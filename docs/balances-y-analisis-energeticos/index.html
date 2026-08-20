@@ -4064,6 +4064,18 @@ async function _expImagenTabla(wrapId, nombreBase, ev){
 // id del contenedor directo (no un "wrapId" genérico) porque estos
 // bloques ya traen su propio título adentro -- no hace falta ir a buscar
 // hermanos-de-título como en las gráficas/tablas sueltas.
+//
+// html2canvas NO rasteriza bien dos cosas que este bloque usa (pedido
+// explícito: "no se ve bien... ni el mes ni tarifa... ni los índices"):
+//   1) <select>/<input> nativos -- el texto sale recortado/ilegible, y el
+//      value puesto a mano en el clon no siempre se refleja. Se
+//      reemplazan por un div plano con el mismo estilo y el texto que
+//      corresponde (opción elegida / value).
+//   2) writing-mode:vertical-rl + rotate(180deg) (la franja lateral
+//      "NIVEL 4"/"N2-1"/etc) -- sale espejada/ilegible. Se deja el
+//      elemento vacío (mismo tamaño, para no romper el layout) y el
+//      texto se dibuja aparte, rotado, directo sobre el canvas ya
+//      capturado -- ahí sí sale bien porque es Canvas2D puro, no DOM.
 async function _expImagenBloque(elId, nombreBase, ev){
   if(ev) ev.stopPropagation();
   _expCerrarMenus();
@@ -4075,19 +4087,34 @@ async function _expImagenBloque(elId, nombreBase, ev){
   temporal.style.cssText = `position:fixed;left:-99999px;top:0;background:${bg};padding:16px;display:inline-block`;
   const clonEl = el.cloneNode(true);
   clonEl.querySelectorAll('.exp-wrap, .no-exportar').forEach(b => b.remove());
-  temporal.appendChild(clonEl);
-  document.body.appendChild(temporal);
 
-  // Los <select>/<input> clonados no copian lo que el usuario eligió/
-  // escribió (solo el value original del HTML) -- se copia a mano para
-  // que la imagen muestre el Mes/Tarifa actuales, no vacíos.
-  const origInputs = el.querySelectorAll('select,input');
+  // 1) <select>/<input> -> div plano, con el mismo texto/estilo visual (el
+  // estilo se copia del ORIGINAL, ya en el documento, para que
+  // getComputedStyle refleje las reglas CSS reales, no solo el inline).
+  const origInputs = [...el.querySelectorAll('select,input')];
   const clonInputs = clonEl.querySelectorAll('select,input');
   origInputs.forEach((orig,i) => {
     const clon = clonInputs[i];
     if(!clon) return;
-    if(orig.tagName === 'SELECT') clon.value = orig.value; else clon.setAttribute('value', orig.value);
+    const texto = orig.tagName==='SELECT' ? (orig.options[orig.selectedIndex]?.text||'') : (orig.value || orig.placeholder || '--');
+    const cs = getComputedStyle(orig);
+    const div = document.createElement('div');
+    div.textContent = texto;
+    ['border','borderRadius','padding','fontWeight','fontSize','fontFamily','color','background','backgroundColor','textAlign','width','minWidth','boxSizing','lineHeight'].forEach(p => { div.style[p] = cs[p]; });
+    clon.replaceWith(div);
   });
+
+  // 2) Franjas verticales -- se dejan TRANSPARENTES (no vacías -- si se
+  // vacía el texto, la caja pierde el ancho que ese texto vertical le
+  // daba y se aplasta, corriendo todo el layout) para que html2canvas no
+  // pinte el texto espejado, pero el tamaño de la caja no cambie. El
+  // texto real se dibuja aparte, rotado, sobre el canvas ya capturado.
+  const franjas = [...clonEl.querySelectorAll('.resnivel-franja')];
+  const datosFranja = franjas.map(f => ({texto: f.textContent.trim(), color: getComputedStyle(f).color}));
+  franjas.forEach(f => { f.style.color = 'transparent'; });
+
+  temporal.appendChild(clonEl);
+  document.body.appendChild(temporal);
 
   [clonEl, ...clonEl.querySelectorAll('*')].forEach(n => {
     const cs = getComputedStyle(n);
@@ -4104,8 +4131,32 @@ async function _expImagenBloque(elId, nombreBase, ev){
     }
   });
 
+  // Posición de cada franja DENTRO de `temporal` (mismas coordenadas que
+  // usará el canvas capturado) -- se mide ACÁ, con todo ya insertado y
+  // con el layout definitivo (post-liberar overflow/sticky).
+  const rectTemporal = temporal.getBoundingClientRect();
+  const posFranjas = franjas.map(f => {
+    const r = f.getBoundingClientRect();
+    return {x: r.left-rectTemporal.left+r.width/2, y: r.top-rectTemporal.top+r.height/2};
+  });
+
   try{
-    const canvas = await html2canvas(temporal, {backgroundColor: bg, scale: 2, useCORS: true, logging: false});
+    const escala = 2;
+    const canvas = await html2canvas(temporal, {backgroundColor: bg, scale: escala, useCORS: true, logging: false});
+    const ctx = canvas.getContext('2d');
+    posFranjas.forEach((p,i) => {
+      const {texto, color} = datosFranja[i];
+      if(!texto) return;
+      ctx.save();
+      ctx.translate(p.x*escala, p.y*escala);
+      ctx.rotate(-Math.PI/2);
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = `800 ${13*escala}px "Segoe UI", sans-serif`;
+      ctx.fillStyle = color;
+      ctx.fillText(texto, 0, 0);
+      ctx.restore();
+    });
     canvas.toBlob(blob => { if(blob) _expDescargarBlob(blob, `${_expNombreArchivo(nombreBase)}.png`); });
   }catch(e){
     console.error('Exportar imagen falló:', e);
