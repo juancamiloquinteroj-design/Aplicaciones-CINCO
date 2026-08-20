@@ -20010,19 +20010,29 @@ function informesSeccionPortada(mesClave){
   // TODOS los párrafos de la sección, así que dos párrafos separados se
   // terminaban separando tanto como cualquier otro par -- juntándolos en
   // un solo párrafo, esa separación no aplica entre ellos.
+  // La portada usa Times New Roman (NO Arial Nova Cond) en la plantilla de
+  // referencia -- confirmado abriendo el .docx con win32com (todos los
+  // párrafos de portada salen font=Times New Roman, mientras que el
+  // cuerpo del informe sale font=Arial Nova Cond). Por eso cada run de acá
+  // fija el font a mano en vez de heredar el default del documento.
+  const _informesFontPortada = 'Times New Roman';
   children.push(new docx.Paragraph({alignment: docx.AlignmentType.CENTER, spacing:{after:400},
     children:[
-      new docx.TextRun({text:'INFORME MENSUAL BALANCES Y ANALISIS ENERGETICOS', bold:true, size:24}),
-      new docx.TextRun({text: labelMesLargo(mesClave).toUpperCase(), bold:true, size:24, break:1}),
+      new docx.TextRun({text:'INFORME MENSUAL BALANCES Y ANALISIS ENERGETICOS', bold:true, size:24, font:_informesFontPortada}),
+      new docx.TextRun({text: labelMesLargo(mesClave).toUpperCase(), bold:true, size:24, font:_informesFontPortada, break:1}),
     ]}));
-  children.push(new docx.Paragraph({alignment: docx.AlignmentType.CENTER, spacing:{after:100}, text:'Presentado por:'}));
-  children.push(new docx.Paragraph({alignment: docx.AlignmentType.CENTER, spacing:{after:400}, text:'División Control de Pérdidas'}));
+  children.push(new docx.Paragraph({alignment: docx.AlignmentType.CENTER, spacing:{after:100},
+    children:[new docx.TextRun({text:'Presentado por:', font:_informesFontPortada})]}));
   children.push(new docx.Paragraph({alignment: docx.AlignmentType.CENTER, spacing:{after:400},
-    children:[new docx.TextRun({text:(OPERADOR&&OPERADOR.nombre)||'', bold:false})]}));
+    children:[new docx.TextRun({text:'División Control de Pérdidas', font:_informesFontPortada})]}));
+  children.push(new docx.Paragraph({alignment: docx.AlignmentType.CENTER, spacing:{after:400},
+    children:[new docx.TextRun({text:(OPERADOR&&OPERADOR.nombre)||'', bold:false, font:_informesFontPortada})]}));
   const fechaLarga = new Date().toLocaleDateString('es-CO', {day:'2-digit', month:'long', year:'numeric'});
   const ciudad = (typeof PZ_DEPARTAMENTO !== 'undefined' && PZ_DEPARTAMENTO) ? PZ_DEPARTAMENTO : null;
-  if(ciudad) children.push(new docx.Paragraph({alignment: docx.AlignmentType.CENTER, spacing:{after:150}, text: ciudad}));
-  children.push(new docx.Paragraph({alignment: docx.AlignmentType.CENTER, text: fechaLarga}));
+  if(ciudad) children.push(new docx.Paragraph({alignment: docx.AlignmentType.CENTER, spacing:{after:150},
+    children:[new docx.TextRun({text: ciudad, font:_informesFontPortada})]}));
+  children.push(new docx.Paragraph({alignment: docx.AlignmentType.CENTER,
+    children:[new docx.TextRun({text: fechaLarga, font:_informesFontPortada})]}));
   return children;
 }
 
@@ -21347,14 +21357,14 @@ async function informesSeccionIndicadorN21Total(mesClave){
   const filasSub = _informesFilasSubestacionesCrecimiento(mesClave);
   if(filasSub.length){
     children.push(_informesParrafo('A continuación, se muestran las subestaciones con mayor crecimiento de pérdida total de cada zona (variación superior al 5% frente al mes anterior):'));
-    children.push(...(_informesBloquesCrecimientoPorZona(filasSub, _informesTablaCrecimientoSubestaciones)));
-    children.push(_informesCaption('Tabla', 'Subestaciones con mayor crecimiento de pérdidas'));
+    children.push(...(await _informesBloquesCrecimientoPorZona(filasSub, _informesTablaHtmlSubestaciones)));
+    children.push(_informesCaption('Figura', 'Subestaciones con mayor crecimiento de pérdidas'));
   }
   const filasAlim = _informesFilasAlimentadoresCrecimiento(mesClave);
   if(filasAlim.length){
     children.push(_informesParrafo('A continuación, se muestran los alimentadores con mayor crecimiento de pérdida total de cada zona (variación superior al 5% frente al mes anterior):'));
-    children.push(...(_informesBloquesCrecimientoPorZona(filasAlim, _informesTablaCrecimientoAlimentadores)));
-    children.push(_informesCaption('Tabla', 'Alimentadores con mayor crecimiento de pérdidas'));
+    children.push(...(await _informesBloquesCrecimientoPorZona(filasAlim, _informesTablaHtmlAlimentadores)));
+    children.push(_informesCaption('Figura', 'Alimentadores con mayor crecimiento de pérdidas'));
   }
   return children;
 }
@@ -21426,61 +21436,129 @@ function _informesFilasAlimentadoresCrecimiento(mesClave){
   return filas.filter(f => f.deltaPerdidaCrec!=null && f.deltaPerdidaCrec>5).sort((a,b)=>b.deltaPerdidaCrec-a.deltaPerdidaCrec);
 }
 
-// Tablas nativas (Word) para las filas de arriba -- misma lógica de
-// columnas que las tablas en vivo (alim-sub-tabla-top / alim3-tabla-top),
-// en tamaño 8pt para que quepan las 9-11 columnas en el ancho de página.
-function _informesTablaCrecimientoSubestaciones(filas){
-  const enc = ['Subestación','Zona','Entrada (kWh)','Δ Entrada','Salida (kWh)','Δ Salida','Pérdida (kWh)','Δ pp','Var. Pérdida %','Pérd. Mensual %','Pérd. Anual %'];
-  const celdaEnc = t => new docx.TableCell({shading:{fill:'D9D9D9'}, borders:{bottom:INFORMES_BORDE},
-    children:[new docx.Paragraph({alignment:docx.AlignmentType.CENTER, children:[new docx.TextRun({text:t, bold:true, size:16})]})]});
-  const celda = (t, alinear=docx.AlignmentType.CENTER) => new docx.TableCell({children:[new docx.Paragraph({alignment:alinear, children:[new docx.TextRun({text:t, size:16})]})]});
+// La plantilla de referencia trae estas tablas como IMÁGENES a color
+// (badge de zona en píldora, deltas en rojo/verde, flechas ▲▼) -- NO como
+// tabla nativa de Word en blanco y negro, confirmado abriendo image12/17.
+// png del .docx de referencia. Por eso acá se arma el MISMO html que
+// pintan alimSubRenderTablaTop/alim3RenderTablaTop en pantalla (mismas
+// clases CSS -- .zb, .tbl-wrap, .alimsub-col-var -- así hereda el estilo
+// real de la app en vez de aproximarlo) y se captura con html2canvas,
+// igual que _informesCapturarBloque pero sobre un fragmento armado en
+// memoria, no un elemento que ya esté en el DOM.
+async function _informesCapturarHtml(htmlInterior){
+  if(typeof html2canvas === 'undefined') return null;
+  const bg = getComputedStyle(document.documentElement).getPropertyValue('--card-bg').trim() || '#ffffff';
+  const temporal = document.createElement('div');
+  temporal.style.cssText = `position:fixed;left:-99999px;top:0;background:${bg};padding:14px;display:inline-block`;
+  temporal.innerHTML = htmlInterior;
+  document.body.appendChild(temporal);
+  // .alim3-tabla-sticky pone thead th en position:sticky -- igual que en
+  // _informesCapturarBloque, hay que neutralizarlo antes de capturar.
+  [temporal, ...temporal.querySelectorAll('*')].forEach(n => {
+    if(getComputedStyle(n).position === 'sticky'){ n.style.position = 'static'; n.style.top = 'auto'; }
+  });
+  let resultado = null;
+  try{
+    const escala = 2;
+    const canvasH2C = await html2canvas(temporal, {backgroundColor: bg, scale: escala, useCORS: true, logging: false});
+    const canvas = document.createElement('canvas');
+    canvas.width = canvasH2C.width; canvas.height = canvasH2C.height;
+    canvas.getContext('2d').drawImage(canvasH2C, 0, 0);
+    const rect = temporal.getBoundingClientRect();
+    resultado = {bytes: _informesDataUrlAUint8(canvas.toDataURL('image/png')), width: rect.width, height: rect.height, tipo:'png'};
+  }catch(e){
+    console.error('Captura de tabla para informe falló:', e);
+  }finally{
+    temporal.remove();
+  }
+  return resultado;
+}
+
+// Mismo <thead>/fila que alim-sub-tbl-top-wrap (ver el HTML de "Top
+// Subestaciones por Pérdida") -- clase alimsub-mostrar-var puesta a mano
+// para que las columnas Δ (ocultas por defecto en pantalla) salgan
+// siempre, igual que en la Figura de la referencia.
+function _informesTablaHtmlSubestaciones(filas){
   const fmtKwh = v => v==null ? '--' : v.toLocaleString('es-CO',{maximumFractionDigits:0});
   const fmtDeltaKwh = v => v==null ? '--' : `${v>=0?'+':''}${v.toLocaleString('es-CO',{maximumFractionDigits:0})}`;
   const fmtPct = v => v==null ? '--' : `${v.toFixed(2)}%`;
-  const encabezado = new docx.TableRow({tableHeader:true, cantSplit:true, children: enc.map(celdaEnc)});
-  const filasDocx = filas.map(f => new docx.TableRow({cantSplit:true, children:[
-    celda(f.sub, docx.AlignmentType.LEFT), celda(f.zona), celda(fmtKwh(f.entrada)), celda(fmtDeltaKwh(f.deltaEntrada)),
-    celda(fmtKwh(f.salida)), celda(fmtDeltaKwh(f.deltaSalida)), celda(fmtKwh(f.perdida)),
-    celda(f.deltaPct==null?'--':`${f.deltaPct>=0?'+':''}${f.deltaPct.toFixed(2)} pp`),
-    celda(f.deltaPerdidaCrec==null?'--':`${f.deltaPerdidaCrec>=0?'+':''}${f.deltaPerdidaCrec.toFixed(2)}%`),
-    celda(fmtPct(f.pctMensual)), celda(fmtPct(f.pctAnual)),
-  ]}));
-  return new docx.Table({width:{size:100, type:docx.WidthType.PERCENTAGE}, borders: INFORMES_TABLA_BORDES, rows:[encabezado, ...filasDocx]});
+  const filasHtml = filas.map(f => {
+    const color = colorParaZona(f.zona);
+    const colorDeltaEntrada = f.deltaEntrada==null ? 'var(--text3)' : (f.deltaEntrada>=0 ? '#ef476f' : '#06d6a0');
+    const colorDeltaSalida = f.deltaSalida==null ? 'var(--text3)' : (f.deltaSalida>=0 ? '#ef476f' : '#06d6a0');
+    const colorDelta = f.deltaPct==null ? 'var(--text3)' : (f.deltaPct>=0 ? '#ef476f' : '#06d6a0');
+    const colorCrec = f.deltaPerdidaCrec==null ? 'var(--text3)' : (f.deltaPerdidaCrec>=0 ? '#ef476f' : '#06d6a0');
+    return `<tr>
+      <td style="text-align:left;font-weight:700">${f.sub}</td>
+      <td><span class="zb" style="background:${color}22;color:${color}">${f.zona}</span></td>
+      <td>${fmtKwh(f.entrada)}</td>
+      <td class="alimsub-col-var" style="color:${colorDeltaEntrada}">${fmtDeltaKwh(f.deltaEntrada)}</td>
+      <td>${fmtKwh(f.salida)}</td>
+      <td class="alimsub-col-var" style="color:${colorDeltaSalida}">${fmtDeltaKwh(f.deltaSalida)}</td>
+      <td>${fmtKwh(f.perdida)}</td>
+      <td class="alimsub-col-var" style="color:${colorDelta}">${f.deltaPct==null?'--':`${f.deltaPct>=0?'▲':'▼'} ${Math.abs(f.deltaPct).toFixed(2)} pp`}</td>
+      <td style="color:${colorCrec};font-weight:700">${f.deltaPerdidaCrec==null?'--':`${f.deltaPerdidaCrec>=0?'+':''}${f.deltaPerdidaCrec.toFixed(2)}%`}</td>
+      <td>${fmtPct(f.pctMensual)}</td>
+      <td>${fmtPct(f.pctAnual)}</td>
+    </tr>`;
+  }).join('');
+  return `<div class="tbl-wrap tbl-compacta alimsub-mostrar-var" style="display:inline-block">
+    <table>
+      <thead><tr><th style="text-align:left">Subestación</th><th>Zona</th><th>Entrada</th><th class="alimsub-col-var">Δ Entrada</th><th>Salida</th><th class="alimsub-col-var">Δ Salida</th><th>Pérdida</th><th class="alimsub-col-var">Δ pp</th><th>Var. Pérdida %</th><th>Pérd. Mensual %</th><th>Pérd. Anual</th></tr></thead>
+      <tbody>${filasHtml}</tbody>
+    </table>
+  </div>`;
 }
 
-function _informesTablaCrecimientoAlimentadores(filas){
-  const enc = ['Nombre Spard','Zona','Categoría','Gest x Longitud','Gestionable (kWh)','Gestionable % Top','Pérdida (kWh)','Var. Pérdida %','Longitud (km)'];
-  const celdaEnc = t => new docx.TableCell({shading:{fill:'D9D9D9'}, borders:{bottom:INFORMES_BORDE},
-    children:[new docx.Paragraph({alignment:docx.AlignmentType.CENTER, children:[new docx.TextRun({text:t, bold:true, size:16})]})]});
-  const celda = (t, alinear=docx.AlignmentType.CENTER) => new docx.TableCell({children:[new docx.Paragraph({alignment:alinear, children:[new docx.TextRun({text:t, size:16})]})]});
+// Mismo <thead>/fila que alim3-tabla-sticky (ver el HTML de "Top
+// Alimentadores").
+function _informesTablaHtmlAlimentadores(filas){
   const fmt0 = v => v==null ? '--' : v.toLocaleString('es-CO',{maximumFractionDigits:0});
   const fmt2 = v => v==null ? '--' : v.toLocaleString('es-CO',{maximumFractionDigits:2});
   const fmtPct = v => v==null ? '--' : `${v.toFixed(2)}%`;
-  const encabezado = new docx.TableRow({tableHeader:true, cantSplit:true, children: enc.map(celdaEnc)});
-  const filasDocx = filas.map(f => new docx.TableRow({cantSplit:true, children:[
-    celda(f.nombre, docx.AlignmentType.LEFT), celda(f.zona), celda(f.leyenda), celda(fmt0(f.gestLongitud)),
-    celda(fmt0(f.gestionable)), celda(fmtPct(f.gestPct)), celda(fmt0(f.perdida)),
-    celda(f.deltaPerdidaCrec==null?'--':`${f.deltaPerdidaCrec>=0?'+':''}${f.deltaPerdidaCrec.toFixed(2)}%`),
-    celda(fmt2(f.longitud)),
-  ]}));
-  return new docx.Table({width:{size:100, type:docx.WidthType.PERCENTAGE}, borders: INFORMES_TABLA_BORDES, rows:[encabezado, ...filasDocx]});
+  const filasHtml = filas.map(f => {
+    const color = colorParaZona(f.zona);
+    const colorLey = alim3ColorLeyenda(f.leyenda);
+    const colorCrec = f.deltaPerdidaCrec==null ? 'var(--text3)' : (f.deltaPerdidaCrec>=0 ? '#ef476f' : '#06d6a0');
+    return `<tr>
+      <td style="text-align:left;font-weight:700">${f.nombre}</td>
+      <td><span class="zb" style="background:${color}22;color:${color}">${f.zona}</span></td>
+      <td><span class="zb" style="background:${colorLey}22;color:${colorLey}">${f.leyenda}</span></td>
+      <td>${fmt0(f.gestLongitud)}</td>
+      <td>${fmt0(f.gestionable)}</td>
+      <td>${fmtPct(f.gestPct)}</td>
+      <td>${fmt0(f.perdida)}</td>
+      <td style="color:${colorCrec};font-weight:700">${f.deltaPerdidaCrec==null?'--':`${f.deltaPerdidaCrec>=0?'+':''}${f.deltaPerdidaCrec.toFixed(2)}%`}</td>
+      <td>${fmt2(f.longitud)}</td>
+    </tr>`;
+  }).join('');
+  return `<div class="tbl-wrap tbl-compacta" style="display:inline-block">
+    <table>
+      <thead><tr>
+        <th style="text-align:left">Nombre Spard</th><th>Zona</th><th>Categoría</th><th>Gest x Longitud</th><th>Gestionable (kWh)</th><th>Gestionable % Top</th><th>Pérdida (kWh)</th><th>Var. Pérdida %</th><th>Longitud (Km)</th>
+      </tr></thead>
+      <tbody>${filasHtml}</tbody>
+    </table>
+  </div>`;
 }
 
-// Un bloque "Zona ZE (Neiva)" + tabla, para cada una de las 5 zonas que
-// tengan al menos una fila con crecimiento > 5%. Se omiten las zonas sin
-// ninguna fila (misma lógica que la tabla en vivo: "Ninguna... creció más
-// de 5%").
-function _informesBloquesCrecimientoPorZona(filas, tablaFn){
+// Un bloque "Zona ZE (Neiva)" + Figura (imagen), para cada una de las 5
+// zonas que tengan al menos una fila con crecimiento > 5%. Se omiten las
+// zonas sin ninguna fila (misma lógica que la tabla en vivo: "Ninguna...
+// creció más de 5%"). `tablaHtmlFn` arma el HTML tal cual la tabla en
+// vivo, se captura como imagen -- ver _informesCapturarHtml.
+async function _informesBloquesCrecimientoPorZona(filas, tablaHtmlFn){
   const bloques = [];
-  ALIM_N21_ORDEN_TABLA.forEach(zona => {
+  for(const zona of ALIM_N21_ORDEN_TABLA){
     const filasZona = filas.filter(f => f.zona === zona);
-    if(!filasZona.length) return;
+    if(!filasZona.length) continue;
     bloques.push(_informesParrafo([
       new docx.TextRun({text:`Zona ${zona} (${INFORMES_ZONA_NOMBRE[zona]||zona})`, bold:true}),
     ]));
-    bloques.push(tablaFn(filasZona));
+    const img = await _informesCapturarHtml(tablaHtmlFn(filasZona));
+    if(img) bloques.push(_informesParrafoImagen(img, 620));
     bloques.push(new docx.Paragraph({text:''}));
-  });
+  }
   return bloques;
 }
 
@@ -21745,11 +21823,18 @@ async function _informesConstruirDocumento(meses, sel){
         // sin esto, docx.js no fija ninguna fuente y Word usaba lo que
         // trajera Normal.dotm en cada equipo, dando resultados
         // inconsistentes entre quien genera el .docx y quien lo abre.
+        // Tamaños de encabezado calcados de la referencia (win32com: los
+        // "Título 1" del .docx salen font=Arial Nova Cond size=10.0 -- NO
+        // 13pt como tenía antes; ese tamaño exagerado era la causa
+        // principal de que la estructura se viera "muy diferente" pese a
+        // tener el mismo contenido). Sin muestra de Título 2/3/4 en la
+        // referencia (no llega a anidar tan hondo) -- se escalonan hacia
+        // abajo desde ese mismo 10pt confirmado.
         document:{run:{font:'Arial Nova Cond', size:24}},
-        heading1:{run:{color:'000000', bold:true, size:26}, paragraph:{spacing:{before:280, after:140}}},
-        heading2:{run:{color:'000000', bold:true, size:23}, paragraph:{spacing:{before:220, after:110}}},
-        heading3:{run:{color:'000000', bold:true, size:21}, paragraph:{spacing:{before:200, after:100}}},
-        heading4:{run:{color:'000000', bold:true, italics:true, size:20}, paragraph:{spacing:{before:180, after:90}}},
+        heading1:{run:{color:'000000', bold:true, size:20}, paragraph:{spacing:{before:240, after:120}}},
+        heading2:{run:{color:'000000', bold:true, size:20}, paragraph:{spacing:{before:200, after:100}}},
+        heading3:{run:{color:'000000', bold:true, size:18}, paragraph:{spacing:{before:180, after:90}}},
+        heading4:{run:{color:'000000', bold:true, italics:true, size:18}, paragraph:{spacing:{before:160, after:80}}},
       },
     },
     numbering:{
