@@ -2106,24 +2106,20 @@ tfoot td:first-child{text-align:left}
   <div id="alim-resumen-vacio" class="card"><div style="color:var(--text3)">Cargando…</div></div>
 
   <div id="alim-resumen-contenido" class="hidden">
-    <!-- IP_Reg (Mensual y Anual/12M) arriba de todo -- pedido explícito
-         ("debe ser un resumen de todo... quiero que en la parte superior
-         este el IPreg anual y mensual"), corre en su propio calendario
-         (no depende del selector de Mes de abajo). -->
+    <!-- Un solo cuadro -- pedido explícito ("debe ser un resumen de
+         todo"): IP_Reg (Mensual y Anual/12M, con su kWh) arriba, Mes y
+         niveles abajo, TODOS mirando el mismo selector de Mes (antes
+         IP_Reg corría en su propio calendario, siempre el último mes
+         real -- ahora responde al mismo Mes que las tarjetas de nivel). -->
     <div class="card">
-      <div style="text-align:center;font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase;margin-bottom:14px">IP_Reg</div>
-      <div id="alim-resumen-ipreg" style="display:flex;justify-content:center;gap:24px;flex-wrap:wrap"></div>
-    </div>
-    <div class="card">
-      <!-- Mini-caja arriba a la derecha, estilo el bloque Inicio/Fin/
-           Periodo de la plantilla -- pedido explícito ("lo más parecido
-           como está ahí"). -->
       <div style="display:flex;justify-content:flex-end;margin-bottom:20px">
         <div class="resnivel-campo" style="min-width:170px">
           <div class="resnivel-campo-label">Mes</div>
           <select id="alim-resumen-mes" onchange="alimResumenRenderNiveles()" style="border:1.5px solid var(--border);border-radius:4px;padding:6px 8px;font-weight:700;font-size:13px;color:var(--text);background:var(--card-bg)"></select>
         </div>
       </div>
+      <div style="text-align:center;font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase;margin-bottom:14px">IP_Reg</div>
+      <div id="alim-resumen-ipreg" style="display:flex;justify-content:center;gap:24px;flex-wrap:wrap;margin-bottom:24px"></div>
       <div id="alim-resumen-niveles"></div>
     </div>
   </div>
@@ -2284,6 +2280,12 @@ tfoot td:first-child{text-align:left}
         <div class="fbar" style="margin-bottom:8px;justify-content:center">
           <div style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Comparativo Mensual por Zona</div>
           <button type="button" class="be-modo-btn" id="alim-nivel3-tabla-btn-es" style="margin-left:12px" onclick="alimNivel3ToggleTablaES()" title="Muestra/oculta las columnas de Entrada y Salida">Entrada / Salida</button>
+          <!-- Selector de mes PROPIO de esta tabla -- pedido explícito
+               ("se debe poder cambiar la fecha"): independiente del filtro
+               Rango de arriba (útil cuando el último mes real todavía no
+               tiene Pérdida Técnica calculada, ej. el mes recién cerrado). -->
+          <label style="margin-left:12px">Mes</label>
+          <select id="alim-nivel3-tabla-analisis-mes" onchange="alimNivel3RenderTodo()"></select>
         </div>
         <div id="alim-nivel3-tabla-zonas-caption" style="font-size:11px;color:var(--text3);margin-bottom:8px"></div>
         <!-- Mismo formato que "Variación Mensual por Zona" de Indicador N2-1
@@ -10811,13 +10813,13 @@ function _alimNivelConstruirChartTecnica(cv, mensual, tecnicaPorMes, etiquetaNiv
   });
 }
 
-// Tabla comparativa por zona (Nivel 3) -- MISMA tabla que "Comparativo
-// Mensual por Zona" de Indicador N2-1 (pedido explícito, captura de
-// pantalla de esa tabla): Entrada/Salida/Pérdida/Pérdida% + Δ de cada una
-// vs. el mes anterior, orden fijo ZE/ZN/ZS/ZC/ZO (reusa
-// ALIM_N21_ORDEN_TABLA/_alimN21OrdenarZonasTabla, ya genéricas), fila de
-// Total al final. Respeta el filtro Rango, ignora el filtro de chips de
-// Zona -- siempre las 5 completas, igual criterio que N2-1.
+// Tabla comparativa por zona (Nivel 3) -- MISMA tabla que "Variación
+// Mensual por Zona" de Indicador N2-1 (pedido explícito): P.Total/P.
+// Técnica + Δ de cada una vs. el mes anterior, orden fijo ZE/ZN/ZS/ZC/ZO
+// (reusa ALIM_N21_ORDEN_TABLA/_alimN21OrdenarZonasTabla, ya genéricas),
+// fila de Total al final. Tiene su PROPIO selector de Mes (independiente
+// del filtro Rango de arriba), ignora el filtro de chips de Zona --
+// siempre las 5 completas, igual criterio que N2-1.
 function alimNivel3ToggleTablaES(){
   ALIM_NIVEL3_TABLA_MOSTRAR_ES = !ALIM_NIVEL3_TABLA_MOSTRAR_ES;
   document.getElementById('alim-nivel3-tabla-btn-es').classList.toggle('activo', ALIM_NIVEL3_TABLA_MOSTRAR_ES);
@@ -10828,7 +10830,11 @@ function alimNivel3ToggleTablaES(){
 // "Variación Mensual por Zona" de Indicador N2-1 (pedido explícito) --
 // _alimN21CeldaGrupo/_alimN21DeltaGrupo/_alimN21TotalGrupo se reusan tal
 // cual. Sin P. Gestionable: Nivel 3 no trae esa columna en su CSV.
-function alimNivel3RenderTablaZonas(porZona){
+// `claveElegida` -- selector de Mes PROPIO de esta tabla (pedido
+// explícito: "se debe poder cambiar la fecha", útil cuando el mes recién
+// cerrado todavía no tiene Pérdida Técnica calculada) -- ignora el
+// filtro Rango de arriba, mira el histórico COMPLETO de cada zona.
+function alimNivel3RenderTablaZonas(porZona, claveElegida){
   const cont = document.getElementById('alim-nivel3-tabla-zonas');
   const contTotal = document.getElementById('alim-nivel3-tabla-zonas-total');
   const caption = document.getElementById('alim-nivel3-tabla-zonas-caption');
@@ -10838,10 +10844,12 @@ function alimNivel3RenderTablaZonas(porZona){
 
   let mesActual = null, mesAnterior = null;
   const filas = _alimN21OrdenarZonasTabla(porZona.zonas).map(z => {
-    const visibles = _alimNivelVisibles(porZona.porZona[z], 'alim-nivel3').filter(f => f.pct != null);
+    const visibles = (porZona.porZona[z] || []).filter(f => f.pct != null);
     if(!visibles.length) return null;
-    const actual = visibles[visibles.length-1];
-    const anterior = visibles.length >= 2 ? visibles[visibles.length-2] : null;
+    let idx = claveElegida ? visibles.findIndex(f => f.clave === claveElegida) : -1;
+    if(idx < 0) idx = visibles.length-1;
+    const actual = visibles[idx];
+    const anterior = idx >= 1 ? visibles[idx-1] : null;
     if(!mesActual){ mesActual = actual.clave; mesAnterior = anterior ? anterior.clave : null; }
 
     const tecZona = ALIM_NIVEL3_TECNICA_POR_ZONA[z] || {};
@@ -11331,6 +11339,7 @@ function alimNivel3RenderTodo(){
   const porZona = _alimNivel34MensualPorZona(filas);
   const tecnicaPorMes = _alimNivelTecnicaPorMes(ALIM_NIVEL3_TECNICA);
   const claveAnalisis = _alimNivelPoblarSelectorAnalisis('alim-nivel3', mensualCompleto);
+  const claveTabla = _alimNivelPoblarSelectorAnalisis('alim-nivel3-tabla', mensualCompleto);
   document.getElementById('alim-nivel3-btn-var').classList.toggle('activo', ALIM_NIVEL3_VAR);
 
   document.getElementById('alim-nivel3-tarjetas').innerHTML = _alimNivelTarjetasHtml(mensual, ALIM_NIVEL3_VAR);
@@ -11345,7 +11354,7 @@ function alimNivel3RenderTodo(){
   if(chAlimNivel3Tecnica) chAlimNivel3Tecnica.destroy();
   chAlimNivel3Tecnica = _alimNivelConstruirChartTecnica(document.getElementById('ch-alim-nivel3-tecnica'), mensual, tecnicaPorMes, 'Total (Nivel 3)');
 
-  alimNivel3RenderTablaZonas(porZona);
+  alimNivel3RenderTablaZonas(porZona, claveTabla);
   alimNivel3RenderChartZonasComparativo();
   alimNivel3RenderDonutZonas(porZona, claveAnalisis);
 }
@@ -11450,31 +11459,39 @@ async function alimResumenCargar(){
     sel.innerHTML = claves.map(c => `<option value="${c}"${c===actual?' selected':''}>${labelMesLargo(c)}</option>`).join('');
   }
 
-  alimResumenRenderIpReg();
   alimResumenRenderNiveles();
 }
 
-// IP_Reg (Mensual y Anual/12M) arriba de todo -- pedido explícito ("en la
-// parte superior este el IPreg anual y mensual"), mismos campos que ya
-// muestran "IP_Reg" y "Nivel de Tensión 1" (ipUltimasFilasReales, sobre
-// IP_REG_FILAS -- ver ipAsegurarDatosCargados). Corre en su propio
-// calendario (no depende del selector de Mes de esta vista, igual que en
-// las otras vistas que ya lo usan).
-function alimResumenRenderIpReg(){
+// IP_Reg (Mensual y Anual/12M, % y kWh) arriba de todo -- pedido explícito
+// ("en la parte superior este el IPreg anual y mensual" + "no veo los kWh
+// de pérdida" + "se debe poder cambiar la fecha"). Mismo dato que ya
+// muestran "IP_Reg" y "Nivel de Tensión 1" (IP_REG_FILAS/IP_MAPA_POR_NORMAL,
+// ver ipAsegurarDatosCargados), pero acá mira el MISMO Mes que las
+// tarjetas de nivel (antes corría en su propio calendario, siempre el
+// último real) -- si ese mes no tiene IP_Reg calculado todavía, muestra "--".
+function alimResumenRenderIpReg(clave){
   const cont = document.getElementById('alim-resumen-ipreg');
   if(!cont) return;
   const fmtPct = v => v==null ? '--' : (v*100).toFixed(2)+'%';
-  const ultimas = typeof ipUltimasFilasReales === 'function' ? ipUltimasFilasReales() : [];
-  const actual = ultimas.length ? ultimas[ultimas.length-1] : null;
-  const mesActual = actual ? labelMes(ipClaveNormal(actual)) : null;
+  const fmtKwh = v => v==null ? '--' : v.toLocaleString('es-CO',{maximumFractionDigits:0})+' kWh';
+  const fila = (typeof IP_MAPA_POR_NORMAL !== 'undefined' && IP_MAPA_POR_NORMAL) ? IP_MAPA_POR_NORMAL.get(clave) : null;
+  const mesLbl = clave ? labelMesLargo(clave) : '';
   cont.innerHTML = `
     <div class="resnivel-campo">
-      <div class="resnivel-campo-label">IP_Reg Mensual${mesActual?` (${mesActual})`:''}</div>
-      <div class="resnivel-campo-caja destacada">${actual?fmtPct(actual.pct_perdida_mensual):'--'}</div>
+      <div class="resnivel-campo-label">IP_Reg Mensual (%)${mesLbl?` -- ${mesLbl}`:''}</div>
+      <div class="resnivel-campo-caja destacada">${fila?fmtPct(fila.pct_perdida_mensual):'--'}</div>
     </div>
     <div class="resnivel-campo">
-      <div class="resnivel-campo-label">IP_Reg Anual (12M)${mesActual?` (${mesActual})`:''}</div>
-      <div class="resnivel-campo-caja destacada">${actual?fmtPct(actual.ipt_pct):'--'}</div>
+      <div class="resnivel-campo-label">IP_Reg Mensual (kWh)</div>
+      <div class="resnivel-campo-caja">${fila?fmtKwh(fila.perdida_mensual_kwh):'--'}</div>
+    </div>
+    <div class="resnivel-campo">
+      <div class="resnivel-campo-label">IP_Reg Anual 12M (%)${mesLbl?` -- ${mesLbl}`:''}</div>
+      <div class="resnivel-campo-caja destacada">${fila?fmtPct(fila.ipt_pct):'--'}</div>
+    </div>
+    <div class="resnivel-campo">
+      <div class="resnivel-campo-label">IP_Reg Anual 12M (kWh)</div>
+      <div class="resnivel-campo-caja">${fila?fmtKwh(fila.pt_kwh):'--'}</div>
     </div>`;
 }
 
@@ -11488,6 +11505,7 @@ function alimResumenRenderNiveles(){
   const sel = document.getElementById('alim-resumen-mes');
   if(!cont || !sel || !sel.value) return;
   const clave = sel.value;
+  alimResumenRenderIpReg(clave);
   const fmt = v => v==null ? '--' : v.toLocaleString('es-CO',{maximumFractionDigits:0});
 
   // "Campo Excel" -- etiqueta ARRIBA de una caja blanca con borde fino,
