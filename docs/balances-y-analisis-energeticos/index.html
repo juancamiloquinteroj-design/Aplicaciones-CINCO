@@ -322,9 +322,13 @@ canvas[id^="ch-tride-"]:active{cursor:grabbing}
 /* Heatmap Mensual (Subestaciones) -- separado en vez de collapse, para
    que se vea el "cuadriculado" típico de un heatmap en vez de una tabla
    común. */
-.hm-tabla{border-collapse:separate;border-spacing:2px;width:auto}
-.hm-fila-nombre{text-align:left;font-size:10.5px;font-weight:700;white-space:nowrap;padding:4px 8px;position:sticky;left:0;background:var(--card-bg)}
-.hm-celda{font-size:9px;text-align:center;padding:4px 5px;border-radius:3px;min-width:44px;white-space:nowrap}
+/* width:100%+table-layout:fixed (no width:auto) -- a propósito, a
+   diferencia de .tbl-compacta: acá SÍ conviene aprovechar el espacio de
+   más (celdas más grandes = más legible), la columna de nombre queda fija
+   y las de mes se reparten el resto en partes iguales. */
+.hm-tabla{border-collapse:separate;border-spacing:2px;width:100%;table-layout:fixed}
+.hm-fila-nombre{width:150px;text-align:left;font-size:10.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:4px 8px;position:sticky;left:0;background:var(--card-bg)}
+.hm-celda{font-size:10.5px;text-align:center;padding:6px 4px;border-radius:3px;white-space:nowrap}
 .hm-tabla thead th{position:sticky;top:0;z-index:2;background:var(--card-bg)}
 
 /* Botón "Exportar" genérico (Imagen/Excel) -- inyectado automáticamente
@@ -2353,15 +2357,16 @@ tfoot td:first-child{text-align:left}
       </div>
 
       <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">
-        <!-- Gráfica un poco más grande que antes (560px, ni tan chica ni
-             dominando la fila) + tabla en .tbl-compacta (ancho AUTO, no
-             estirado a 100% del contenedor) -- pedido explícito: la
-             gráfica había quedado muy chica y las columnas de la tabla se
-             estiraban desperdiciando espacio; con tbl-compacta cada
-             columna mide lo que su contenido necesita, aunque el
-             contenedor sea grande (mismo patrón que "Comparativo Mensual
-             por Zona"). -->
-        <div style="flex:0 0 560px;max-width:560px">
+        <!-- La columna de la gráfica/heatmap absorbe TODO el espacio
+             sobrante (flex:1) -- antes quedaba ancho fijo y la tabla de al
+             lado, al usar tbl-compacta (ancho AUTO, a propósito, ver
+             abajo), dejaba un hueco en blanco grande a la derecha sin
+             usar (pedido explícito: "todavía hay mucho espacio se está
+             desperdiciando"). La tabla se queda SIN flex-grow (mide lo
+             que su contenido necesita, columnas sin estirar) -- solo la
+             gráfica/heatmap, que sí aprovecha bien el espacio de más
+             (celdas más grandes, gráfica más legible), crece. -->
+        <div style="flex:1;min-width:480px">
           <div class="fbar" style="justify-content:center;margin-bottom:8px">
             <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Entrada / Salida / Pérdida por Subestación</div>
             <button type="button" class="be-modo-btn" id="alim-sub-btn-metrica-entrada" onclick="alimSubCambiarMetrica('entrada')">Entrada</button>
@@ -2372,10 +2377,10 @@ tfoot td:first-child{text-align:left}
             <button type="button" class="be-modo-btn activo" id="alim-sub-btn-vista-lineas" onclick="alimSubToggleVista('lineas')">📈 Gráfica</button>
             <button type="button" class="be-modo-btn" id="alim-sub-btn-vista-heatmap" onclick="alimSubToggleVista('heatmap')" title="Variación mes a mes de cada subestación, en vez de la magnitud -- pensado para ver de un vistazo dónde/cuándo hubo cambios">🔥 Heatmap Mensual (Variación)</button>
           </div>
-          <div id="alim-sub-chart-lineas-wrap" class="chart-wrap" style="height:400px"><canvas id="ch-alim-sub-subestaciones"></canvas></div>
+          <div id="alim-sub-chart-lineas-wrap" class="chart-wrap" style="height:420px"><canvas id="ch-alim-sub-subestaciones"></canvas></div>
           <div id="alim-sub-heatmap" class="hidden"></div>
         </div>
-        <div style="flex:1;min-width:480px">
+        <div style="flex:0 0 auto">
           <div style="text-align:center;margin-bottom:8px">
             <div style="font-size:13px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Top Subestaciones por Pérdida</div>
             <div style="font-size:10.5px;color:var(--text3);margin-top:2px">Click en una fila para verla abajo en "Pérdida % por Alimentador"</div>
@@ -3704,28 +3709,49 @@ function _expCerrarMenus(){
 }
 document.addEventListener('click', e => { if(!e.target.closest('.exp-wrap')) _expCerrarMenus(); });
 
-// El bloque de título casi siempre es el hermano anterior del chart-wrap/
-// tbl-wrap en el DOM (patrón repetido en toda la app: un <div
-// style="text-align:center">TÍTULO</div> o un .fbar con el título, justo
-// antes de la gráfica/tabla) -- se descarta si ese hermano es OTRA
-// gráfica/tabla (para no agarrar el título de otra cosa por error).
-function _expBuscarTitulo(el){
-  const prev = el.previousElementSibling;
-  if(!prev) return null;
-  if(prev.classList && (prev.classList.contains('chart-wrap') || prev.classList.contains('tbl-wrap'))) return null;
-  if(prev.querySelector && (prev.querySelector('canvas') || prev.querySelector('table'))) return null;
-  return prev;
+// El título casi nunca es EXACTAMENTE el hermano anterior -- muchas
+// gráficas tienen 2+ barras antes (título, botones de métrica, botones de
+// vista, etc.), y algunas tablas tienen el título 1-2 niveles de
+// ancestro más arriba (título fuera de la fila flex que contiene la
+// tabla). Sube de a un nivel de ancestro hasta encontrar el primer nivel
+// que SÍ tenga hermanos anteriores, junta TODOS esos hermanos (en orden),
+// y descarta cualquiera que sea a su vez otra gráfica/tabla (para no
+// agarrar el contenido de una sección vecina por error).
+function _expHermanosDeTitulo(el){
+  let nodo = el;
+  for(let nivel=0; nivel<3 && nodo && nodo.parentElement; nivel++){
+    const hermanos = [];
+    let prev = nodo.previousElementSibling;
+    while(prev){ hermanos.unshift(prev); prev = prev.previousElementSibling; }
+    const utiles = hermanos.filter(h => !(h.querySelector && (h.querySelector('canvas') || h.querySelector('table'))));
+    if(utiles.length) return utiles;
+    nodo = nodo.parentElement;
+  }
+  return [];
 }
 
-// Imagen -- sirve igual para gráfica o tabla. Pedido explícito: "quiero
-// que las gráficas salgan con su respectivo título" -- el título vive
-// AFUERA del .chart-wrap/.tbl-wrap (hermano anterior), así que se arma un
-// clon fuera de pantalla con título+elemento juntos y se captura ESE
-// (nunca el elemento real -- así la página no se mueve ni parpadea
-// mientras html2canvas trabaja). cloneNode no copia el bitmap ya pintado
-// de los <canvas> (quedarían en blanco), por eso se redibuja cada canvas
-// clonado a partir del original con drawImage antes de capturar.
-async function _expImagen(wrapId, nombreBase, ev){
+// Solo el TEXTO del título (sin botones/selects, para no imprimir
+// "Entrada / Salida / Pérdida por SubestaciónEntradaSalidaPérdida") --
+// usado para componer el PNG de una gráfica a mano (ver _expImagenChart).
+function _expTextoTitulo(el){
+  for(const h of _expHermanosDeTitulo(el)){
+    const clon = h.cloneNode(true);
+    clon.querySelectorAll('button,select,input').forEach(x => x.remove());
+    const texto = clon.textContent.replace(/\s+/g, ' ').trim();
+    if(texto) return texto;
+  }
+  return '';
+}
+
+// Imagen de TABLA -- arma un clon fuera de pantalla con título(s)+tabla
+// juntos y captura ESE con html2canvas (nunca el elemento real, para que
+// la página no se mueva/parpadee mientras trabaja). Las gráficas NO usan
+// esta función (ver _expImagenChart) -- html2canvas re-rasteriza el
+// <canvas> del chart a partir de su bitmap ya pintado, y si ese bitmap no
+// viene ya al doble de resolución, el scale:2 de acá solo lo estira
+// (pierde nitidez) -- Chart.js sabe exportar su propio canvas sin ese
+// problema.
+async function _expImagenTabla(wrapId, nombreBase, ev){
   if(ev) ev.stopPropagation();
   _expCerrarMenus();
   const el = document.getElementById(wrapId);
@@ -3734,18 +3760,9 @@ async function _expImagen(wrapId, nombreBase, ev){
 
   const temporal = document.createElement('div');
   temporal.style.cssText = `position:fixed;left:-99999px;top:0;background:${bg};padding:16px;width:${el.offsetWidth}px`;
-  const titulo = _expBuscarTitulo(el);
-  if(titulo) temporal.appendChild(titulo.cloneNode(true));
+  _expHermanosDeTitulo(el).forEach(h => temporal.appendChild(h.cloneNode(true)));
   const clonEl = el.cloneNode(true);
   clonEl.querySelectorAll('.exp-wrap').forEach(b => b.remove());
-  const canvasOrig = el.querySelectorAll('canvas');
-  const canvasClon = clonEl.querySelectorAll('canvas');
-  canvasOrig.forEach((co, i) => {
-    const cc = canvasClon[i];
-    if(!cc) return;
-    cc.width = co.width; cc.height = co.height;
-    cc.getContext('2d').drawImage(co, 0, 0);
-  });
   temporal.appendChild(clonEl);
   document.body.appendChild(temporal);
 
@@ -3757,6 +3774,47 @@ async function _expImagen(wrapId, nombreBase, ev){
   }finally{
     temporal.remove();
   }
+}
+
+// Imagen de GRÁFICA -- pedido explícito: "cuando la exporto en PNG
+// pierde calidad y no sale con el título, sale con los botones". Compone
+// el PNG a mano en vez de pasar por html2canvas: chart.toBase64Image()
+// devuelve el <canvas> de Chart.js EN SU RESOLUCIÓN REAL (nítido, sin
+// re-escalar un bitmap ya pintado) y el título se dibuja aparte con la
+// API de Canvas 2D, usando SOLO el texto (ver _expTextoTitulo) -- así
+// nunca sale un botón "de título" por error.
+async function _expImagenChart(wrapId, nombreBase, ev){
+  if(ev) ev.stopPropagation();
+  _expCerrarMenus();
+  const wrap = document.getElementById(wrapId);
+  const canvasOrig = wrap ? wrap.querySelector('canvas') : null;
+  const chart = canvasOrig && typeof Chart !== 'undefined' ? Chart.getChart(canvasOrig) : null;
+  if(!chart) return;
+
+  const dark = document.documentElement.getAttribute('data-theme')==='dark';
+  const colorTexto = dark ? '#e2e8f0' : '#111827';
+  const colorFondo = dark ? '#161b27' : '#ffffff';
+  const tituloTexto = _expTextoTitulo(wrap);
+
+  const img = new Image();
+  await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = chart.toBase64Image('image/png', 1); });
+
+  const margenLat = 24, margenSup = tituloTexto ? Math.round(img.width*0.05)+24 : 16;
+  const cv = document.createElement('canvas');
+  cv.width = img.width + margenLat*2;
+  cv.height = img.height + margenSup + 16;
+  const ctx = cv.getContext('2d');
+  ctx.fillStyle = colorFondo;
+  ctx.fillRect(0, 0, cv.width, cv.height);
+  if(tituloTexto){
+    ctx.fillStyle = colorTexto;
+    ctx.font = `bold ${Math.max(16, Math.round(img.width*0.022))}px "Segoe UI", sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(tituloTexto, cv.width/2, margenSup/2 + 8, cv.width - margenLat*2);
+  }
+  ctx.drawImage(img, margenLat, margenSup);
+  cv.toBlob(blob => { if(blob) _expDescargarBlob(blob, `${_expNombreArchivo(nombreBase)}.png`); });
 }
 
 // Excel de una GRÁFICA -- lee directo chart.data (Chart.js), no depende
@@ -3816,10 +3874,10 @@ function _expTablaExcel(wrapId, nombreBase, ev){
 function _expBotonHtml(wrapId, tipo, nombreBase){
   const idMenu = `exp-menu-${wrapId}`;
   const opciones = tipo === 'chart'
-    ? `<button type="button" onclick="_expImagen('${wrapId}','${nombreBase}',event)">🖼️ Imagen (PNG)</button>
+    ? `<button type="button" onclick="_expImagenChart('${wrapId}','${nombreBase}',event)">🖼️ Imagen (PNG)</button>
        <button type="button" onclick="_expChartExcel('${wrapId}','${nombreBase}',event)">📊 Excel (datos)</button>`
     : `<button type="button" onclick="_expTablaExcel('${wrapId}','${nombreBase}',event)">📊 Excel</button>
-       <button type="button" onclick="_expImagen('${wrapId}','${nombreBase}',event)">🖼️ Imagen (PNG)</button>`;
+       <button type="button" onclick="_expImagenTabla('${wrapId}','${nombreBase}',event)">🖼️ Imagen (PNG)</button>`;
   return `<div class="exp-wrap"><button type="button" class="exp-btn" title="Exportar" onclick="_expToggleMenu('${idMenu}',event)">⬇</button><div class="exp-menu" id="${idMenu}">${opciones}</div></div>`;
 }
 
