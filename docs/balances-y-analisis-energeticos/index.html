@@ -2084,10 +2084,10 @@ tfoot td:first-child{text-align:left}
       </div>
       <div class="chart-wrap" style="height:320px"><canvas id="ch-alim-nivel4-tecnica"></canvas></div>
       <div class="fbar" style="justify-content:center;margin:16px 0 10px">
-        <label>Mes a analizar</label>
+        <label>Mes a comparar</label>
         <select id="alim-nivel4-analisis-mes" onchange="alimNivel4RenderTodo()"></select>
       </div>
-      <div id="alim-nivel4-analisis" class="ip-comentario-caja"></div>
+      <div id="alim-nivel4-analisis" class="tarjetas-fila-unica"></div>
     </div>
 
     <div class="card">
@@ -2119,7 +2119,7 @@ tfoot td:first-child{text-align:left}
         <input type="date" id="alim-nivel3-desde" onchange="alimNivel3RenderTodo()">
         <span style="font-size:11px;color:var(--text3)">→</span>
         <input type="date" id="alim-nivel3-hasta" onchange="alimNivel3RenderTodo()">
-        <label style="margin-left:10px" title="Filtra el total y la gráfica mensual -- el comparativo por zona siempre muestra las 5.">Zona</label>
+        <label style="margin-left:10px" title="Filtra el total y las 2 gráficas -- vacío = todas las zonas juntas, sin desglose. El comparativo por zona (chart y tabla de abajo) siempre muestra las 5.">Zona</label>
         <div id="alim-nivel3-zonas" style="display:flex;gap:6px;flex-wrap:wrap"></div>
         <button type="button" class="btn-theme" style="width:auto;padding:0 14px;margin-left:auto" onclick="alimNivel3DescargarCsv()">⬇ Descargar CSV</button>
       </div>
@@ -2129,7 +2129,7 @@ tfoot td:first-child{text-align:left}
       <div class="alim-n21-grid-2">
         <div>
           <div style="text-align:center;margin-bottom:8px">
-            <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Índice de Pérdidas Nivel 3 (Mensual %) -- Total y por Zona</div>
+            <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Índice de Pérdidas Nivel 3 (Mensual %)</div>
           </div>
           <div class="chart-wrap" style="height:320px"><canvas id="ch-alim-nivel3-mensual"></canvas></div>
         </div>
@@ -2149,17 +2149,41 @@ tfoot td:first-child{text-align:left}
       </div>
       <div class="chart-wrap" style="height:320px"><canvas id="ch-alim-nivel3-tecnica"></canvas></div>
       <div class="fbar" style="justify-content:center;margin:16px 0 10px">
-        <label>Mes a analizar</label>
+        <label>Mes a comparar</label>
         <select id="alim-nivel3-analisis-mes" onchange="alimNivel3RenderTodo()"></select>
       </div>
-      <div id="alim-nivel3-analisis" class="ip-comentario-caja"></div>
+      <div id="alim-nivel3-analisis" class="tarjetas-fila-unica"></div>
     </div>
 
     <div class="card">
-      <div style="text-align:center;margin-bottom:8px">
-        <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Comparativo por Zona</div>
+      <div class="fbar" style="justify-content:center;margin-bottom:8px">
+        <div style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Comparativo de Índice de Pérdidas por Zona</div>
+        <button type="button" class="be-modo-btn activo" id="alim-nivel3-zonas-chart-btn-line" style="margin-left:12px" onclick="alimNivel3ToggleTipoGraficaZonas('line')">Líneas</button>
+        <button type="button" class="be-modo-btn" id="alim-nivel3-zonas-chart-btn-bar" onclick="alimNivel3ToggleTipoGraficaZonas('bar')">Barras</button>
       </div>
-      <div id="alim-nivel3-zonas-tabla"></div>
+      <div class="chart-wrap" style="height:380px"><canvas id="ch-alim-nivel3-zonas-comparativo"></canvas></div>
+    </div>
+
+    <div class="card">
+      <div style="display:inline-flex;flex-direction:column;align-items:center;max-width:100%">
+        <div style="margin-bottom:8px;text-align:center">
+          <div style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Comparativo Mensual por Zona</div>
+          <div id="alim-nivel3-tabla-zonas-caption" style="font-size:11px;color:var(--text3);margin-top:2px"></div>
+        </div>
+        <div class="tbl-wrap tbl-compacta">
+          <table>
+            <thead><tr>
+              <th style="text-align:left">Zona</th>
+              <th>Entrada</th><th>Δ Entrada</th>
+              <th>Salida</th><th>Δ Salida</th>
+              <th>Pérdida</th><th>Δ Pérdida</th>
+              <th>Pérdida %</th><th>Δ pp</th>
+            </tr></thead>
+            <tbody id="alim-nivel3-tabla-zonas"></tbody>
+            <tfoot><tr id="alim-nivel3-tabla-zonas-total"></tr></tfoot>
+          </table>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -10050,76 +10074,52 @@ function _alimNivelTarjetasHtml(mensual, mostrarVar){
   return tarjetas.join('');
 }
 
-// Análisis automático -- mismo patrón visual que ipComercialGenerarAnalisis
-// (.ip-comentario-caja: título + cifra destacada + párrafo). Compara la
-// variación del balance real (este módulo, "Indicador de Pérdidas") contra
-// la de la pérdida TÉCNICA ya calculada (Pérdidas Técnicas) para el MISMO
-// par de meses, y dice qué fracción del cambio queda explicada por causas
-// técnicas -- pedido explícito para Nivel 4 ("análisis automático... la
-// diferencia que se tiene explicando"), reusado también en Nivel 3. Si
-// `porZona` viene (solo Nivel 3), agrega un párrafo con la zona de mayor
-// variación absoluta (sube o baja, sin sesgo hacia solo incrementos).
-// `claveSeleccionada` (selector "Mes a analizar", pedido explícito: "se
-// debe poder analizar otra fecha hacia atrás") elige qué mes es el
+// Fila de tarjetas comparativo Balance Real vs Pérdida Técnica -- pedido
+// explícito (reemplaza el párrafo de análisis anterior: "quita esa
+// explicación", "quiero una tarjeta mejor"): Pérdida Técnica, Pérdida
+// Total (Balance Real), Diferencia entre ambas y la Variación de esa
+// diferencia vs. el mes anterior. `claveSeleccionada` (selector "Mes a
+// comparar", "yo puedo modificar el dato a comparar") elige qué mes es el
 // "actual" -- si no viene, no está en el histórico, o es el mes más
 // antiguo (sin anterior contra qué comparar), cae al último real.
-function _alimNivelAnalisisHtml(mensual, tecnicaPorMes, etiquetaNivel, porZona, claveSeleccionada){
+function _alimNivelComparativoTarjetasHtml(mensual, tecnicaPorMes, claveSeleccionada){
   const reales = mensual.filter(f => f.pct != null);
   if(reales.length < 2){
-    return '<p>Todavía no hay suficientes meses reales para analizar la variación.</p>';
+    return '<div style="color:var(--text3);font-size:12px">Todavía no hay suficientes meses reales para comparar.</div>';
   }
   let idx = claveSeleccionada ? reales.findIndex(f => f.clave === claveSeleccionada) : -1;
   if(idx <= 0) idx = reales.length - 1;
   const actual = reales[idx];
   const anterior = reales[idx-1];
-  const deltaPct = actual.pct - anterior.pct;
   const tActual = tecnicaPorMes[actual.clave];
   const tAnterior = tecnicaPorMes[anterior.clave];
+  const mesActual = labelMesLargo(actual.clave);
 
-  if(!tActual || !tAnterior){
-    return `<div class="ip-comentario-titulo">Balance Real vs Pérdida Técnica -- ${labelMesLargo(actual.clave)}</div>
-      <p>No hay pérdida técnica calculada (Pérdidas Técnicas) para ${labelMesLargo(actual.clave)} o ${labelMesLargo(anterior.clave)} todavía, no se puede comparar.</p>`;
+  const tarjeta = (etiqueta, valor, sub, colorValor) => `<div class="be-resumen-tile">
+    <div class="etiqueta">${etiqueta}</div>
+    <div class="valor"${colorValor?` style="color:${colorValor}"`:''}>${valor}</div>
+    ${sub?`<div class="sub">${sub}</div>`:''}
+  </div>`;
+
+  if(!tActual){
+    return [
+      tarjeta('Pérdida Técnica', 'Sin dato', mesActual, 'var(--text3)'),
+      tarjeta('Pérdida Total (Balance Real)', _alimNivelFKwh(actual.perdida), `${mesActual} · ${actual.pct.toFixed(2)}%`),
+    ].join('');
   }
 
-  const deltaTecnicaPct = tActual.pct - tAnterior.pct;
-  const deltaKwhBalance = actual.perdida - anterior.perdida;
-  const deltaKwhTecnica = tActual.perdida - tAnterior.perdida;
-  const noExplicadoKwh = deltaKwhBalance - deltaKwhTecnica;
-  const explicado = deltaKwhBalance ? deltaKwhTecnica/deltaKwhBalance*100 : null;
-  const dirBalance = deltaPct>=0 ? 'subió' : 'bajó';
-  const dirTecnica = deltaTecnicaPct>=0 ? 'subió' : 'bajó';
+  const diferencia = actual.perdida - tActual.perdida;
+  const diferenciaAnterior = tAnterior ? anterior.perdida - tAnterior.perdida : null;
+  const deltaDiferencia = diferenciaAnterior!=null ? diferencia - diferenciaAnterior : null;
+  const colorDiferencia = diferencia >= 0 ? '#e63946' : '#2a9d8f';
+  const colorDelta = deltaDiferencia==null ? 'var(--text3)' : (deltaDiferencia>=0 ? '#e63946' : '#2a9d8f');
 
-  let texto = `El balance real (Indicador de Pérdidas ${etiquetaNivel}) ${dirBalance} <b>${Math.abs(deltaPct).toFixed(2)} pp</b> frente a ${labelMes(anterior.clave)} (de ${anterior.pct.toFixed(2)}% a ${actual.pct.toFixed(2)}%), mientras que la pérdida técnica calculada (Pérdidas Técnicas) ${dirTecnica} <b>${Math.abs(deltaTecnicaPct).toFixed(2)} pp</b> (de ${tAnterior.pct.toFixed(2)}% a ${tActual.pct.toFixed(2)}%) en el mismo periodo.`;
-  if(explicado != null && explicado >= 0 && explicado <= 100){
-    texto += explicado >= 70
-      ? ` La variación de pérdida técnica explica la mayor parte de ese cambio (<b>${explicado.toFixed(0)}%</b>), es decir que el movimiento del balance real responde principalmente a causas técnicas.`
-      : ` La pérdida técnica solo explica <b>${explicado.toFixed(0)}%</b> del cambio en el balance real -- el <b>${(100-explicado).toFixed(0)}%</b> restante (${_alimNivelFKwh(Math.abs(noExplicadoKwh))}) corresponde a otros factores (pérdida no técnica, comercial o desajustes de medida) que los circuitos ya calculados no capturan.`;
-  }else if(explicado != null){
-    texto += ` La pérdida técnica se movió en dirección contraria (o en mayor proporción que) el balance real, lo que indica que el cambio no se explica por causas técnicas (diferencia sin explicar: ${_alimNivelFKwh(Math.abs(noExplicadoKwh))}) y debe revisarse por el lado comercial o de medida.`;
-  }
-
-  let parrafoZona = '';
-  if(porZona && porZona.zonas.length){
-    const deltas = porZona.zonas.map(z => {
-      const serie = porZona.porZona[z].filter(f=>f.pct!=null);
-      const idx = serie.findIndex(f => f.clave === actual.clave);
-      if(idx <= 0) return null;
-      const a = serie[idx], an = serie[idx-1];
-      return {zona:z, deltaKwh: a.perdida-an.perdida, deltaPct: a.pct-an.pct, pctActual:a.pct};
-    }).filter(Boolean);
-    if(deltas.length){
-      deltas.sort((x,y) => Math.abs(y.deltaKwh) - Math.abs(x.deltaKwh));
-      const top = deltas[0];
-      const dir = top.deltaKwh>=0 ? 'el mayor incremento' : 'la mayor reducción';
-      parrafoZona = `<p>La zona <b>${top.zona}</b> presenta ${dir} de pérdida en kWh (${top.deltaKwh>=0?'+':''}${_alimNivelFKwh(top.deltaKwh)}, ${top.deltaPct>=0?'▲':'▼'} ${Math.abs(top.deltaPct).toFixed(2)} pp), quedando en ${top.pctActual.toFixed(2)}% de pérdida.</p>`;
-    }
-  }
-
-  return `
-    <div class="ip-comentario-titulo">Balance Real vs Pérdida Técnica -- ${labelMesLargo(actual.clave)}</div>
-    <div class="ip-comentario-cifra ${explicado!=null && explicado>=70 ? 'baja' : 'sube'}">${explicado==null?'--':explicado.toFixed(0)+'%'} explicado por pérdida técnica</div>
-    <p>${texto}</p>
-    ${parrafoZona}`;
+  return [
+    tarjeta('Pérdida Técnica', _alimNivelFKwh(tActual.perdida), `${mesActual} · ${tActual.pct.toFixed(2)}%`),
+    tarjeta('Pérdida Total (Balance Real)', _alimNivelFKwh(actual.perdida), `${mesActual} · ${actual.pct.toFixed(2)}%`),
+    tarjeta('Diferencia', `${diferencia>=0?'+':''}${_alimNivelFKwh(diferencia)}`, 'Total - Técnica', colorDiferencia),
+    tarjeta('Variación', deltaDiferencia==null ? '--' : `${deltaDiferencia>=0?'▲':'▼'} ${_alimNivelFKwh(Math.abs(deltaDiferencia))}`, `Diferencia vs ${labelMes(anterior.clave)}`, colorDelta),
+  ].join('');
 }
 
 // Combo bar+línea Entrada/Salida (kWh) + Pérdida % -- mismo patrón visual
@@ -10155,7 +10155,7 @@ function _alimNivelConstruirChartMensual(cv, mensual, etiquetaNivel, seriesExtra
       datalabels:{display:true, anchor:'end', align:'top', offset:6, formatter:v=>v==null?'':v.toFixed(2)+'%',
         font:{size:10, weight:'700'}, color:'#7b2fff',
         backgroundColor: dark?'rgba(30,30,40,.85)':'rgba(255,255,255,.85)', borderRadius:3, padding:{left:4,right:4,top:1,bottom:1}}},
-    ...(sufijo === '' ? (seriesExtra||[]) : []),
+    ...(seriesExtra||[]),
   ];
 
   return new Chart(cv, {
@@ -10171,6 +10171,7 @@ function _alimNivelConstruirChartMensual(cv, mensual, etiquetaNivel, seriesExtra
           if(c.raw==null) return null;
           return c.dataset.yAxisID==='yPct' ? `${c.dataset.label}: ${c.raw.toFixed(2)}%` : `${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`;
         }}},
+        zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:3}}},
       },
       scales:{
         x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:45, minRotation:45}},
@@ -10187,14 +10188,39 @@ function _alimNivelConstruirChartMensual(cv, mensual, etiquetaNivel, seriesExtra
 
 // Una línea punteada por zona (color de colorParaZona, igual que el resto
 // de la app), sobre el mismo eje yPct de la Pérdida % total -- así se ve
-// de un vistazo cuál zona está por encima/debajo del total.
-function _alimNivelSeriesZonas(mensualTotal, porZona){
+// de un vistazo cuál zona está por encima/debajo del total. SOLO se dibuja
+// para las zonas en `zonasFiltro` (pedido explícito: "las zonas solo debe
+// mostrarlas... cuando yo seleccione algún filtro arriba de las zonas") --
+// sin filtro (vacío/null) no agrega ninguna línea, para no saturar el
+// gráfico cuando se está viendo el total combinado.
+function _alimNivelSeriesZonas(mensualTotal, porZona, zonasFiltro){
+  if(!zonasFiltro || !zonasFiltro.size) return [];
   const clavesTotal = mensualTotal.filter(f=>f.pct!=null).map(f=>f.clave);
-  return porZona.zonas.map(z => {
+  return porZona.zonas.filter(z => zonasFiltro.has(z)).map(z => {
     const porClave = new Map(porZona.porZona[z].map(f=>[f.clave, f.pct]));
     return {
       type:'line', label:`Zona ${z}`, yAxisID:'yPct', order:2,
       data: clavesTotal.map(c => porClave.has(c) ? porClave.get(c) : null),
+      borderColor: colorParaZona(z), backgroundColor:'transparent',
+      borderWidth:1.5, borderDash:[5,3], pointRadius:1, spanGaps:true, tension:.2,
+      datalabels:{display:false},
+    };
+  });
+}
+
+// Misma idea que _alimNivelSeriesZonas pero para la gráfica Anual (12M
+// móvil) -- cada zona rueda su PROPIA ventana de 12 meses (alimN21Con12Meses
+// es genérica, ya definida más abajo en el módulo de N2-1) antes de
+// alinearla a las claves visibles de la gráfica Anual del Total.
+function _alimNivelSeriesZonasAnual(anualVisible, porZona, zonasFiltro){
+  if(!zonasFiltro || !zonasFiltro.size) return [];
+  const clavesVisibles = anualVisible.map(f=>f.clave);
+  return porZona.zonas.filter(z => zonasFiltro.has(z)).map(z => {
+    const serie12 = alimN21Con12Meses(porZona.porZona[z]);
+    const porClave = new Map(serie12.map(f=>[f.clave, f.pct12]));
+    return {
+      type:'line', label:`Zona ${z}`, yAxisID:'yPct', order:2,
+      data: clavesVisibles.map(c => porClave.has(c) ? porClave.get(c) : null),
       borderColor: colorParaZona(z), backgroundColor:'transparent',
       borderWidth:1.5, borderDash:[5,3], pointRadius:1, spanGaps:true, tension:.2,
       datalabels:{display:false},
@@ -10222,19 +10248,28 @@ function _alimNivelConstruirChartTecnica(cv, mensual, tecnicaPorMes, etiquetaNiv
       datasets:[
         {type:'line', label:'Pérdida Total (balance real)', order:2,
           data: visibles.map(f=>f.perdida), borderColor:'#4361ee', backgroundColor:'rgba(67,97,238,.15)', fill:'origin',
-          borderWidth:2.5, pointRadius:2, spanGaps:true, tension:.2, datalabels:{display:false}},
+          borderWidth:2.5, pointRadius:2, spanGaps:true, tension:.2,
+          datalabels:{display:true, anchor:'end', align:'top', offset:4,
+            formatter:v=>v==null?'':v.toLocaleString('es-CO',{maximumFractionDigits:0}),
+            font:{size:9, weight:'600'}, color:'#4361ee',
+            backgroundColor: dark?'rgba(30,30,40,.75)':'rgba(255,255,255,.75)', borderRadius:3, padding:{left:3,right:3,top:1,bottom:1}}},
         {type:'line', label:'Pérdida Técnica (calculada)', order:1,
           data: visibles.map(f=>tecnicaPorMes[f.clave].perdida), borderColor:'#f4a261', backgroundColor:'transparent',
-          borderWidth:2.5, pointRadius:2, spanGaps:true, tension:.2, borderDash:[6,3], datalabels:{display:false}},
+          borderWidth:2.5, pointRadius:2, spanGaps:true, tension:.2, borderDash:[6,3],
+          datalabels:{display:true, anchor:'end', align:'bottom', offset:4,
+            formatter:v=>v==null?'':v.toLocaleString('es-CO',{maximumFractionDigits:0}),
+            font:{size:9, weight:'600'}, color:'#f4a261',
+            backgroundColor: dark?'rgba(30,30,40,.75)':'rgba(255,255,255,.75)', borderRadius:3, padding:{left:3,right:3,top:1,bottom:1}}},
       ],
     },
     options:{
       responsive:true, maintainAspectRatio:false,
-      layout:{padding:{top:20, right:20}},
+      layout:{padding:{top:24, right:20, bottom:16}},
       interaction:{mode:'index', intersect:false},
       plugins:{
         legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:10}, color:tickC}},
         tooltip:{callbacks:{label:c=> c.raw==null?null:`${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`}},
+        zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:3}}},
       },
       scales:{
         x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:45, minRotation:45}},
@@ -10246,41 +10281,159 @@ function _alimNivelConstruirChartTecnica(cv, mensual, tecnicaPorMes, etiquetaNiv
   });
 }
 
-// Tabla comparativa por zona (Nivel 3) -- ordenada por % actual, con la
-// variación mensual de cada una (rojo/verde), para que se vea de una todo
-// el panorama de zonas y no solo la que más subió.
-function _alimNivel3TablaZonas(porZona, claveActual){
-  if(!porZona || !porZona.zonas.length || !claveActual){
-    return '<div style="color:var(--text3);font-size:12px">Sin datos por zona.</div>';
-  }
-  const filas = porZona.zonas.map(z => {
-    const serie = porZona.porZona[z].filter(f=>f.pct!=null);
-    const idx = serie.findIndex(f => f.clave === claveActual);
-    if(idx < 0) return null;
-    const actual = serie[idx];
-    const delta = idx > 0 ? actual.pct - serie[idx-1].pct : null;
-    return {zona:z, pct:actual.pct, delta};
-  }).filter(Boolean).sort((a,b) => b.pct - a.pct);
-  if(!filas.length) return '<div style="color:var(--text3);font-size:12px">Sin datos por zona.</div>';
+// Tabla comparativa por zona (Nivel 3) -- MISMA tabla que "Comparativo
+// Mensual por Zona" de Indicador N2-1 (pedido explícito, captura de
+// pantalla de esa tabla): Entrada/Salida/Pérdida/Pérdida% + Δ de cada una
+// vs. el mes anterior, orden fijo ZE/ZN/ZS/ZC/ZO (reusa
+// ALIM_N21_ORDEN_TABLA/_alimN21OrdenarZonasTabla, ya genéricas), fila de
+// Total al final. Respeta el filtro Rango, ignora el filtro de chips de
+// Zona -- siempre las 5 completas, igual criterio que N2-1.
+function alimNivel3RenderTablaZonas(porZona){
+  const cont = document.getElementById('alim-nivel3-tabla-zonas');
+  const contTotal = document.getElementById('alim-nivel3-tabla-zonas-total');
+  const caption = document.getElementById('alim-nivel3-tabla-zonas-caption');
+  if(!cont) return;
+  const fmt = v => v==null ? '--' : v.toLocaleString('es-CO',{maximumFractionDigits:0});
+  const fmtDelta = v => v==null ? '--' : `${v>=0?'+':''}${v.toLocaleString('es-CO',{maximumFractionDigits:0})}`;
 
-  const filasHtml = filas.map(f => {
+  let mesActual = null, mesAnterior = null;
+  const filas = _alimN21OrdenarZonasTabla(porZona.zonas).map(z => {
+    const visibles = _alimNivelVisibles(porZona.porZona[z], 'alim-nivel3').filter(f => f.pct != null);
+    if(!visibles.length) return null;
+    const actual = visibles[visibles.length-1];
+    const anterior = visibles.length >= 2 ? visibles[visibles.length-2] : null;
+    if(!mesActual){ mesActual = actual.clave; mesAnterior = anterior ? anterior.clave : null; }
+    return {
+      zona: z,
+      entrada: actual.entrada, deltaEntrada: anterior ? actual.entrada-anterior.entrada : null,
+      salida: actual.salida, deltaSalida: anterior ? actual.salida-anterior.salida : null,
+      perdida: actual.perdida, deltaPerdida: anterior ? actual.perdida-anterior.perdida : null,
+      pct: actual.pct, deltaPct: anterior ? actual.pct-anterior.pct : null,
+    };
+  }).filter(Boolean);
+
+  if(caption) caption.textContent = mesActual
+    ? (mesAnterior ? `${labelMesLargo(mesAnterior)} → ${labelMesLargo(mesActual)}` : labelMesLargo(mesActual))
+    : '';
+
+  if(!filas.length){
+    cont.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--text3)">Sin datos.</td></tr>';
+    if(contTotal) contTotal.innerHTML = '';
+    return;
+  }
+
+  cont.innerHTML = filas.map(f => {
     const color = colorParaZona(f.zona);
-    const deltaTxt = f.delta==null ? '--' : `${f.delta>=0?'▲':'▼'} ${Math.abs(f.delta).toFixed(2)} pp`;
-    const deltaColor = f.delta==null ? 'var(--text3)' : (f.delta>=0 ? '#ef476f' : '#06d6a0');
+    const anteriorPerdida = f.deltaPerdida!=null ? f.perdida-f.deltaPerdida : null;
+    const anteriorPct = f.deltaPct!=null ? f.pct-f.deltaPct : null;
+    const colorPerdida = ipColorVariacion(f.perdida, anteriorPerdida, 'var(--text3)');
+    const colorPct = ipColorVariacion(f.pct, anteriorPct, 'var(--text3)');
     return `<tr>
-      <td style="padding:6px 10px;border-bottom:1px solid var(--border)"><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${color};margin-right:6px"></span>Zona ${f.zona}</td>
-      <td style="padding:6px 10px;border-bottom:1px solid var(--border);text-align:right;font-weight:700">${f.pct.toFixed(2)}%</td>
-      <td style="padding:6px 10px;border-bottom:1px solid var(--border);text-align:right;color:${deltaColor}">${deltaTxt}</td>
+      <td style="text-align:left"><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${color};margin-right:6px"></span>Zona ${f.zona}</td>
+      <td>${fmt(f.entrada)}</td>
+      <td style="color:var(--text3)">${fmtDelta(f.deltaEntrada)}</td>
+      <td>${fmt(f.salida)}</td>
+      <td style="color:var(--text3)">${fmtDelta(f.deltaSalida)}</td>
+      <td>${fmt(f.perdida)}</td>
+      <td style="color:${colorPerdida}">${fmtDelta(f.deltaPerdida)}</td>
+      <td style="font-weight:700">${f.pct.toFixed(2)}%</td>
+      <td style="color:${colorPct}">${f.deltaPct==null?'--':`${f.deltaPct>=0?'▲':'▼'} ${Math.abs(f.deltaPct).toFixed(2)} pp`}</td>
     </tr>`;
   }).join('');
-  return `<table style="width:100%;border-collapse:collapse;font-size:12.5px">
-    <thead><tr style="color:var(--text3);font-size:11px;text-transform:uppercase">
-      <th style="text-align:left;padding:6px 10px">Zona</th>
-      <th style="text-align:right;padding:6px 10px">Pérdida %</th>
-      <th style="text-align:right;padding:6px 10px">Variación Mensual</th>
-    </tr></thead>
-    <tbody>${filasHtml}</tbody>
-  </table>`;
+
+  if(contTotal){
+    const sum = campo => filas.reduce((s,f)=>s+f[campo], 0);
+    const todasConDelta = filas.every(f => f.deltaEntrada!=null && f.deltaSalida!=null && f.deltaPerdida!=null);
+    const totEntrada = sum('entrada'), totSalida = sum('salida'), totPerdida = sum('perdida');
+    const totDeltaEntrada = todasConDelta ? sum('deltaEntrada') : null;
+    const totDeltaSalida = todasConDelta ? sum('deltaSalida') : null;
+    const totDeltaPerdida = todasConDelta ? sum('deltaPerdida') : null;
+    const totPct = totEntrada ? totPerdida/totEntrada*100 : null;
+    let totDeltaPct = null;
+    if(todasConDelta && totEntrada){
+      const totEntradaAnterior = totEntrada - totDeltaEntrada;
+      const totPerdidaAnterior = totPerdida - totDeltaPerdida;
+      const totPctAnterior = totEntradaAnterior ? totPerdidaAnterior/totEntradaAnterior*100 : null;
+      if(totPctAnterior != null) totDeltaPct = totPct - totPctAnterior;
+    }
+    const colorTotPerdida = totDeltaPerdida==null ? 'var(--text3)' : (totDeltaPerdida>=0 ? '#ef476f' : '#06d6a0');
+    const colorTotPct = totDeltaPct==null ? 'var(--text3)' : (totDeltaPct>=0 ? '#ef476f' : '#06d6a0');
+    contTotal.innerHTML = `
+      <td style="text-align:left">Total</td>
+      <td>${fmt(totEntrada)}</td>
+      <td>${fmtDelta(totDeltaEntrada)}</td>
+      <td>${fmt(totSalida)}</td>
+      <td>${fmtDelta(totDeltaSalida)}</td>
+      <td>${fmt(totPerdida)}</td>
+      <td style="color:${colorTotPerdida}">${fmtDelta(totDeltaPerdida)}</td>
+      <td>${totPct==null?'--':totPct.toFixed(2)+'%'}</td>
+      <td style="color:${colorTotPct}">${totDeltaPct==null?'--':`${totDeltaPct>=0?'▲':'▼'} ${Math.abs(totDeltaPct).toFixed(2)} pp`}</td>
+    `;
+  }
+}
+
+// Comparativo de Índice de Pérdidas por Zona -- SIEMPRE las 5 zonas
+// completas (ignora el filtro de chips, igual que "Comparativo Pérdidas
+// por Zona" de N2-1), respeta el filtro Rango. Línea por defecto, con
+// botón para cambiar a barras -- pedido explícito.
+let ALIM_NIVEL3_ZONAS_CHART_TIPO = 'line';
+let chAlimNivel3ZonasComparativo = null;
+
+function alimNivel3ToggleTipoGraficaZonas(tipo){
+  ALIM_NIVEL3_ZONAS_CHART_TIPO = tipo;
+  document.getElementById('alim-nivel3-zonas-chart-btn-line').classList.toggle('activo', tipo==='line');
+  document.getElementById('alim-nivel3-zonas-chart-btn-bar').classList.toggle('activo', tipo==='bar');
+  alimNivel3RenderChartZonasComparativo();
+}
+
+function alimNivel3RenderChartZonasComparativo(){
+  const cv = document.getElementById('ch-alim-nivel3-zonas-comparativo');
+  if(!cv) return;
+  const filas = ALIM_NIVEL3_FILAS || [];
+  if(!filas.length) return;
+  const porZona = _alimNivel34MensualPorZona(filas);
+  const dark = document.documentElement.getAttribute('data-theme')==='dark';
+  const tickC = dark ? '#aab8d1' : '#4b5e7a';
+  const tickXFuerte = dark ? '#ffffff' : '#000000';
+  const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
+
+  const porZonaVisible = {};
+  let etiquetas = null;
+  for(const z of porZona.zonas){
+    const visibles = _alimNivelVisibles(porZona.porZona[z], 'alim-nivel3');
+    if(!etiquetas) etiquetas = visibles.map(f => labelMesLargo(f.clave));
+    porZonaVisible[z] = visibles.map(f => f.pct);
+  }
+  if(chAlimNivel3ZonasComparativo) chAlimNivel3ZonasComparativo.destroy();
+  if(!etiquetas || !etiquetas.length) return;
+
+  const tipo = ALIM_NIVEL3_ZONAS_CHART_TIPO;
+  chAlimNivel3ZonasComparativo = new Chart(cv, {
+    plugins:[tmPluginCrosshair],
+    data:{
+      labels: etiquetas,
+      datasets: porZona.zonas.map(z => ({
+        type: tipo, label:`Zona ${z}`, data: porZonaVisible[z],
+        borderColor: colorParaZona(z), backgroundColor: tipo==='bar' ? colorParaZona(z) : 'transparent',
+        borderWidth: tipo==='bar' ? 1 : 2, pointRadius:1.5, spanGaps:true, tension:.25, datalabels:{display:false},
+      })),
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      layout:{padding:{top:20, right:20}},
+      interaction:{mode:'index', intersect:false},
+      plugins:{
+        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:10}, color:tickC}},
+        tooltip:{callbacks:{label:c=> c.raw==null?null:`${c.dataset.label}: ${c.raw.toFixed(2)}%`}},
+        zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:3}}},
+      },
+      scales:{
+        x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:45, minRotation:45}},
+        y:{grid:{color:gridC}, ticks:{color:tickC, font:{size:11}, callback:v=>v.toFixed(0)+'%'},
+          title:{display:true, text:'Pérdida (%)', color:tickC, font:{size:11}}},
+      },
+    },
+  });
 }
 
 // Importaciones 230/115 kV y Exportaciones 115 kV -- SOLO Nivel 4
@@ -10345,6 +10498,7 @@ function _alimNivel4ConstruirChartImportExport(cv, mensual){
       plugins:{
         legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:10}, color:tickC}},
         tooltip:{callbacks:{label:c=> c.raw==null?null:`${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`}},
+        zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:3}}},
       },
       scales:{
         x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:45, minRotation:45}},
@@ -10406,7 +10560,7 @@ function alimNivel4RenderTodo(){
   const claveAnalisis = _alimNivelPoblarSelectorAnalisis('alim-nivel4', mensualCompleto);
 
   document.getElementById('alim-nivel4-tarjetas').innerHTML = _alimNivelTarjetasHtml(mensual, ALIM_NIVEL4_VAR);
-  document.getElementById('alim-nivel4-analisis').innerHTML = _alimNivelAnalisisHtml(mensualCompleto, tecnicaPorMes, 'Nivel 4', null, claveAnalisis);
+  document.getElementById('alim-nivel4-analisis').innerHTML = _alimNivelComparativoTarjetasHtml(mensualCompleto, tecnicaPorMes, claveAnalisis);
 
   if(chAlimNivel4Mensual) chAlimNivel4Mensual.destroy();
   chAlimNivel4Mensual = _alimNivelConstruirChartMensual(document.getElementById('ch-alim-nivel4-mensual'), mensual, 'Nivel 4');
@@ -10512,19 +10666,19 @@ function alimNivel3RenderTodo(){
   const claveAnalisis = _alimNivelPoblarSelectorAnalisis('alim-nivel3', mensualCompleto);
 
   document.getElementById('alim-nivel3-tarjetas').innerHTML = _alimNivelTarjetasHtml(mensual, ALIM_NIVEL3_VAR);
-  document.getElementById('alim-nivel3-analisis').innerHTML = _alimNivelAnalisisHtml(mensualCompleto, tecnicaPorMes, 'Total (Nivel 3)', porZona, claveAnalisis);
+  document.getElementById('alim-nivel3-analisis').innerHTML = _alimNivelComparativoTarjetasHtml(mensualCompleto, tecnicaPorMes, claveAnalisis);
 
   if(chAlimNivel3Mensual) chAlimNivel3Mensual.destroy();
   chAlimNivel3Mensual = _alimNivelConstruirChartMensual(
-    document.getElementById('ch-alim-nivel3-mensual'), mensual, 'Total (Nivel 3)', _alimNivelSeriesZonas(mensual, porZona));
+    document.getElementById('ch-alim-nivel3-mensual'), mensual, 'Total (Nivel 3)', _alimNivelSeriesZonas(mensual, porZona, ALIM_NIVEL3_ZONAS_SEL));
   if(chAlimNivel3Anual) chAlimNivel3Anual.destroy();
-  chAlimNivel3Anual = _alimNivelConstruirChartMensual(document.getElementById('ch-alim-nivel3-anual'), anual, 'Total (Nivel 3)', null, '12');
+  chAlimNivel3Anual = _alimNivelConstruirChartMensual(
+    document.getElementById('ch-alim-nivel3-anual'), anual, 'Total (Nivel 3)', _alimNivelSeriesZonasAnual(anual, porZona, ALIM_NIVEL3_ZONAS_SEL), '12');
   if(chAlimNivel3Tecnica) chAlimNivel3Tecnica.destroy();
   chAlimNivel3Tecnica = _alimNivelConstruirChartTecnica(document.getElementById('ch-alim-nivel3-tecnica'), mensual, tecnicaPorMes, 'Total (Nivel 3)');
 
-  const conDato = mensual.filter(f=>f.pct!=null);
-  const actualClave = conDato.length ? conDato[conDato.length-1].clave : null;
-  document.getElementById('alim-nivel3-zonas-tabla').innerHTML = _alimNivel3TablaZonas(porZona, actualClave);
+  alimNivel3RenderTablaZonas(porZona);
+  alimNivel3RenderChartZonasComparativo();
 }
 
 function alimNivel3DescargarCsv(){
