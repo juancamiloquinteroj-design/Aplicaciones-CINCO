@@ -2465,6 +2465,13 @@ tfoot td:first-child{text-align:left}
         <div style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Pérdida Total vs Técnica por Zona (%)</div>
         <button type="button" class="be-modo-btn" id="alim-n21-porzona-btn-mensual" style="margin-left:12px" onclick="alimN21TogglePorZonaModo('mensual')">Mensual</button>
         <button type="button" class="be-modo-btn activo" id="alim-n21-porzona-btn-anual" onclick="alimN21TogglePorZonaModo('anual')">Anual (12M)</button>
+        <!-- Filtro de fechas PROPIO de esta sección -- pedido explícito
+             ("filtro de eje X... desde enero-2026 hasta actual"), arranca
+             ahí y hasta el último mes real disponible. -->
+        <label style="margin-left:16px">Desde</label>
+        <input type="date" id="alim-n21-porzona-desde" onchange="alimN21RenderPorZonaCharts()">
+        <span style="font-size:11px;color:var(--text3)">→</span>
+        <input type="date" id="alim-n21-porzona-hasta" onchange="alimN21RenderPorZonaCharts()">
       </div>
       <div id="alim-n21-porzona-charts"></div>
     </div>
@@ -14647,12 +14654,23 @@ function _colorOscurecer(hex, factor=0.55){
   return `#${f(r)}${f(g)}${f(b)}`;
 }
 
+// Filtro Desde/Hasta PROPIO de esta sección (pedido explícito) -- se
+// aplica DESPUÉS de calcular pct12/tecPct12 (la ventana móvil de 12
+// meses necesita el histórico completo de atrás, no solo lo visible).
+function _alimN21PorZonaVisibles(serie){
+  const inDesde = document.getElementById('alim-n21-porzona-desde');
+  const inHasta = document.getElementById('alim-n21-porzona-hasta');
+  const desde = inDesde && inDesde.value ? inDesde.value.slice(0,7) : null;
+  const hasta = inHasta && inHasta.value ? inHasta.value.slice(0,7) : null;
+  return serie.filter(f => (!desde || f.clave >= desde) && (!hasta || f.clave <= hasta));
+}
+
 function _alimN21ConstruirChartPorZona(cv, zona, modo){
   if(!cv) return null;
   const dark = document.documentElement.getAttribute('data-theme')==='dark';
   const tickC = dark ? '#aab8d1' : '#4b5e7a';
   const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
-  const serie = _alimN21SerieZonaConTecnica(zona);
+  const serie = _alimN21PorZonaVisibles(_alimN21SerieZonaConTecnica(zona));
   const campoTotal = modo==='anual' ? 'pct12' : 'pct';
   const campoTec = modo==='anual' ? 'tecPct12' : 'tecPct';
   const visibles = modo==='anual' ? serie.filter(f => f[campoTotal] != null) : serie;
@@ -14698,10 +14716,23 @@ function alimN21RenderPorZonaCharts(){
   if(!cont) return;
   const zonas = _alimN21OrdenarZonasTabla(ALIM_N21_ZONAS);
 
+  // Rango por defecto Enero-2026 -> último mes real -- pedido explícito.
+  const inDesde = document.getElementById('alim-n21-porzona-desde');
+  const inHasta = document.getElementById('alim-n21-porzona-hasta');
+  if(inDesde && inHasta && !inDesde.value && !inHasta.value){
+    const claves = alimN21AgregarMensual(new Set()).map(f => f.clave);
+    if(claves.length){
+      inHasta.value = claves[claves.length-1] + '-01';
+      inDesde.value = (claves.includes('2026-01') ? '2026-01' : claves[0]) + '-01';
+    }
+  }
+
+  // Más compactas/cuadradas -- pedido explícito: menos alto y ancho
+  // acotado (centradas) en vez de estirarse todo el ancho de la card.
   cont.innerHTML = zonas.map(z => `
-    <div style="margin-bottom:20px">
+    <div style="max-width:640px;margin:0 auto 20px">
       <div style="text-align:center;font-size:12.5px;font-weight:700;color:var(--text2);margin-bottom:4px">Zona ${z}</div>
-      <div class="chart-wrap" style="height:220px"><canvas id="ch-alim-n21-porzona-${z}"></canvas></div>
+      <div class="chart-wrap" style="height:170px"><canvas id="ch-alim-n21-porzona-${z}"></canvas></div>
     </div>`).join('');
 
   Object.values(ALIM_N21_PORZONA_CHARTS).forEach(ch => ch && ch.destroy());
