@@ -10882,8 +10882,24 @@ function alimNivel3RenderChartZonasComparativo(){
           borderColor: color, backgroundColor: tipo==='bar' ? color : 'transparent',
           borderWidth: tipo==='bar' ? 1 : 2, pointRadius:1.5, spanGaps:true, tension:.25,
           // Pedido explícito: "el valor en porcentaje que se vea más
-          // grande" -- de 8px a 11px.
-          datalabels:{display:true, anchor:'end', align:'top', offset:2,
+          // grande" (8px a 11px) y "que no se sobreponga" -- con 5 zonas
+          // muy seguido quedan 2-3 valores casi iguales en el mismo mes.
+          // chartjs-plugin-datalabels no evita solapamientos solo, así
+          // que se arma un "escalerita": en cada mes se ordenan las 5
+          // zonas de mayor a menor y cada una se offsetea según su
+          // puesto (la más alta pegada al punto, la siguiente más
+          // arriba, etc.) -- así las etiquetas parecidas quedan
+          // apiladas en vez de encimadas.
+          datalabels:{display:true, anchor:'end', align:'top',
+            offset: ctx => {
+              const idx = ctx.dataIndex;
+              const valores = ctx.chart.data.datasets.map(d => d.data[idx]);
+              const miValor = valores[ctx.datasetIndex];
+              if(miValor == null) return 2;
+              const orden = [...valores].filter(v => v != null).sort((a,b) => b-a);
+              const puesto = orden.indexOf(miValor);
+              return 2 + puesto*13;
+            },
             formatter:v=>v==null?'':v.toFixed(1)+'%',
             font:{size:11, weight:'700'}, color,
             backgroundColor: dark?'rgba(30,30,40,.78)':'rgba(255,255,255,.78)', borderRadius:3, padding:{left:3,right:3,top:1,bottom:1}},
@@ -10892,7 +10908,10 @@ function alimNivel3RenderChartZonasComparativo(){
     },
     options:{
       responsive:true, maintainAspectRatio:false,
-      layout:{padding:{top:34, right:20}},
+      // Hasta 5 zonas apiladas en "escalerita" (ver offset de los
+      // datalabels arriba) -- padding de sobra para que la más alta no
+      // se corte contra el borde de la gráfica.
+      layout:{padding:{top:70, right:20}},
       interaction:{mode:'index', intersect:false},
       plugins:{
         legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:10}, color:tickC}},
