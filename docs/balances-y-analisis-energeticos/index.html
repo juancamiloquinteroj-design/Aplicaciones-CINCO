@@ -2465,6 +2465,11 @@ tfoot td:first-child{text-align:left}
         <div style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Pérdida Total vs Técnica por Zona (%)</div>
         <button type="button" class="be-modo-btn" id="alim-n21-porzona-btn-mensual" style="margin-left:12px" onclick="alimN21TogglePorZonaModo('mensual')">Mensual</button>
         <button type="button" class="be-modo-btn activo" id="alim-n21-porzona-btn-anual" onclick="alimN21TogglePorZonaModo('anual')">Anual (12M)</button>
+        <!-- Eje único (default) o doble -- pedido explícito ("no ambas
+             tienen que ser un mismo eje o que dé la opción para cambiar
+             de eje"). -->
+        <button type="button" class="be-modo-btn activo" id="alim-n21-porzona-btn-eje-unico" style="margin-left:10px" onclick="alimN21TogglePorZonaEje('unico')">Eje único</button>
+        <button type="button" class="be-modo-btn" id="alim-n21-porzona-btn-eje-doble" onclick="alimN21TogglePorZonaEje('doble')">Eje doble</button>
         <!-- Filtro de fechas PROPIO de esta sección -- pedido explícito
              ("filtro de eje X... desde enero-2026 hasta actual"), arranca
              ahí y hasta el último mes real disponible. -->
@@ -14681,11 +14686,23 @@ function alimN21RenderTodo(){
 // en el eje X").
 let ALIM_N21_PORZONA_MODO = 'anual';
 let ALIM_N21_PORZONA_CHARTS = {};
+// 'unico' (default, pedido explícito) o 'doble' -- Total y Técnica son
+// magnitudes muy distintas, con un solo eje la Técnica queda casi plana
+// abajo, pero con doble eje las dos líneas se cruzan sin que eso
+// signifique nada (cada una en su propia escala) -- botón para elegir.
+let ALIM_N21_PORZONA_EJE = 'unico';
 
 function alimN21TogglePorZonaModo(modo){
   ALIM_N21_PORZONA_MODO = modo;
   document.getElementById('alim-n21-porzona-btn-mensual').classList.toggle('activo', modo==='mensual');
   document.getElementById('alim-n21-porzona-btn-anual').classList.toggle('activo', modo==='anual');
+  alimN21RenderPorZonaCharts();
+}
+
+function alimN21TogglePorZonaEje(eje){
+  ALIM_N21_PORZONA_EJE = eje;
+  document.getElementById('alim-n21-porzona-btn-eje-unico').classList.toggle('activo', eje==='unico');
+  document.getElementById('alim-n21-porzona-btn-eje-doble').classList.toggle('activo', eje==='doble');
   alimN21RenderPorZonaCharts();
 }
 
@@ -14762,11 +14779,18 @@ function _alimN21ConstruirChartPorZona(cv, zona, modo){
     backgroundColor:fondoEtiqueta, borderRadius:3, padding:{left:3,right:3,top:1,bottom:1},
   });
 
-  // Cada línea en su PROPIO eje Y (yTotal/yTec) -- Pérdida Total y Pérdida
-  // Técnica son magnitudes muy distintas (ej. Total ~10-20%, Técnica
-  // ~1-3%): en un solo eje compartido la Técnica queda pegada abajo,
-  // casi plana, y se desperdicia todo el espacio de arriba -- pedido
-  // explícito ("que no se desperdicie tanto espacio").
+  // Eje único (default, pedido explícito -- "ambas tienen que ser un
+  // mismo eje") o doble (botón "Eje doble", para cuando Total y Técnica
+  // son magnitudes muy distintas y la Técnica queda casi plana abajo).
+  const ejeDoble = ALIM_N21_PORZONA_EJE === 'doble';
+  const idEjeTec = ejeDoble ? 'yTec' : 'yTotal';
+  const escalas = ejeDoble
+    ? {
+        yTotal:{position:'left', grid:{color:gridC}, ticks:{color:colorTotal, font:{size:9}, callback:v=>v.toFixed(1)+'%'}},
+        yTec:{position:'right', grid:{display:false}, ticks:{color:colorTecnica, font:{size:9}, callback:v=>v.toFixed(1)+'%'}},
+      }
+    : { yTotal:{position:'left', grid:{color:gridC}, ticks:{color:tickC, font:{size:9}, callback:v=>v.toFixed(1)+'%'}} };
+
   return new Chart(cv, {
     data:{
       labels: etiquetas,
@@ -14774,7 +14798,7 @@ function _alimN21ConstruirChartPorZona(cv, zona, modo){
         {type:'line', label:`Pérdida Total ${zona}`, yAxisID:'yTotal', data: valoresTotal, borderColor: colorTotal, backgroundColor:'transparent',
           borderWidth:2.5, pointRadius:2.5, pointBackgroundColor:colorTotal, spanGaps:true, tension:.25,
           datalabels:{...estiloEtiqueta(colorTotal), anchor:'end', align:'top', offset:4}},
-        {type:'line', label:`Pérdida Técnica ${zona}`, yAxisID:'yTec', data: valoresTec, borderColor: colorTecnica, backgroundColor:'transparent',
+        {type:'line', label:`Pérdida Técnica ${zona}`, yAxisID:idEjeTec, data: valoresTec, borderColor: colorTecnica, backgroundColor:'transparent',
           borderWidth:2, pointRadius:2.5, pointBackgroundColor:colorTecnica, spanGaps:true, tension:.25,
           datalabels:{...estiloEtiqueta(colorTecnica), anchor:'end', align:'bottom', offset:4}},
       ],
@@ -14790,8 +14814,7 @@ function _alimN21ConstruirChartPorZona(cv, zona, modo){
       },
       scales:{
         x:{grid:{display:false}, ticks:{color:tickC, font:{size:8}, maxRotation:45, minRotation:45}},
-        yTotal:{position:'left', grid:{color:gridC}, ticks:{color:colorTotal, font:{size:9}, callback:v=>v.toFixed(1)+'%'}},
-        yTec:{position:'right', grid:{display:false}, ticks:{color:colorTecnica, font:{size:9}, callback:v=>v.toFixed(1)+'%'}},
+        ...escalas,
       },
     },
   });
