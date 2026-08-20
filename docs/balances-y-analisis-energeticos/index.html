@@ -2159,12 +2159,12 @@ tfoot td:first-child{text-align:left}
                 <div class="resnivel-campo-caja" id="alim-resumen-tot-valorrec">--</div>
               </div>
               <div class="resnivel-campo">
-                <div class="resnivel-campo-label">Valor No Reconocido</div>
-                <div class="resnivel-campo-caja" id="alim-resumen-tot-valornorec">--</div>
+                <div class="resnivel-campo-label">Valor Total</div>
+                <div class="resnivel-campo-caja" id="alim-resumen-tot-valortotal">--</div>
               </div>
               <div class="resnivel-campo">
-                <div class="resnivel-campo-label">Valor Total Pérdida</div>
-                <div class="resnivel-campo-caja destacada" id="alim-resumen-tot-valorgeneral">--</div>
+                <div class="resnivel-campo-label">Valor No Reconocido</div>
+                <div class="resnivel-campo-caja destacada" id="alim-resumen-tot-valornorec">--</div>
               </div>
             </div>
           </div>
@@ -11602,11 +11602,14 @@ function _alimResumenGuardarTarifa(clave, valor){
 }
 const _alimResumenFmtMoney = v => v==null ? '--' : '$'+v.toLocaleString('es-CO',{maximumFractionDigits:0});
 
-// Valor Reconocido/No Reconocido ($) de un nivel, con los valores ACTUALES
-// de pantalla (input % Reconocido + input Tarifa, aunque el usuario
-// todavía no le haya dado Enter/blur) -- para poder recalcular en vivo
-// sin reconstruir toda la caja (perdería el foco de los inputs).
-// Valor No Reconocido = (Pérdida por Balance - Pérdida Reconocida) × Tarifa.
+// Valor Total/Reconocido/No Reconocido ($) de un nivel, con los valores
+// ACTUALES de pantalla (input % Reconocido + input Tarifa, aunque el
+// usuario todavía no le haya dado Enter/blur) -- para poder recalcular en
+// vivo sin reconstruir toda la caja (perdería el foco de los inputs).
+// Pedido explícito: "el valor en plata del reconocimiento y el total, y
+// la resta de esos dos sería el no reconocido" -- Valor Total = Pérdida
+// por Balance × Tarifa; Valor No Reconocido = Valor Total - Valor
+// Reconocido (no un cálculo aparte).
 function _alimResumenValorNivelCalc(nivelClave){
   const sel = document.getElementById('alim-resumen-mes');
   const clave = sel ? sel.value : null;
@@ -11623,33 +11626,36 @@ function _alimResumenValorNivelCalc(nivelClave){
   const tarifaNum = tarifaInput && tarifaInput.value !== '' ? Number(tarifaInput.value) : null;
   const tarifaValida = tarifaNum!=null && !isNaN(tarifaNum);
 
+  const valorTotal = tarifaValida ? actual.perdida * tarifaNum : null;
   const valorRec = (perdidaRec!=null && tarifaValida) ? perdidaRec * tarifaNum : null;
-  const perdidaNoRec = perdidaRec!=null ? actual.perdida - perdidaRec : null;
-  const valorNoRec = (perdidaNoRec!=null && tarifaValida) ? perdidaNoRec * tarifaNum : null;
-  return {valorRec, valorNoRec};
+  const valorNoRec = (valorTotal!=null && valorRec!=null) ? valorTotal - valorRec : null;
+  return {valorTotal, valorRec, valorNoRec};
 }
 
 function _alimResumenActualizarValorizacionNivel(nivelClave){
   const r = _alimResumenValorNivelCalc(nivelClave);
+  const elTotal = document.getElementById(`alim-resumen-valortotal-${nivelClave}`);
   const elRec = document.getElementById(`alim-resumen-valorrec-${nivelClave}`);
   const elNoRec = document.getElementById(`alim-resumen-valornorec-${nivelClave}`);
+  if(elTotal) elTotal.textContent = _alimResumenFmtMoney(r ? r.valorTotal : null);
   if(elRec) elRec.textContent = _alimResumenFmtMoney(r ? r.valorRec : null);
   if(elNoRec) elNoRec.textContent = _alimResumenFmtMoney(r ? r.valorNoRec : null);
 }
 
 function _alimResumenActualizarTotales(){
-  let totRec = 0, totNoRec = 0, huboRec = false, huboNoRec = false;
+  let totTotal = 0, totRec = 0, totNoRec = 0, huboTotal = false, huboRec = false, huboNoRec = false;
   ALIM_RESUMEN_NIVELES.forEach(n => {
     const r = _alimResumenValorNivelCalc(n.clave);
+    if(r && r.valorTotal!=null){ totTotal += r.valorTotal; huboTotal = true; }
     if(r && r.valorRec!=null){ totRec += r.valorRec; huboRec = true; }
     if(r && r.valorNoRec!=null){ totNoRec += r.valorNoRec; huboNoRec = true; }
   });
+  const elTotTotal = document.getElementById('alim-resumen-tot-valortotal');
   const elTotRec = document.getElementById('alim-resumen-tot-valorrec');
   const elTotNoRec = document.getElementById('alim-resumen-tot-valornorec');
-  const elTotGeneral = document.getElementById('alim-resumen-tot-valorgeneral');
+  if(elTotTotal) elTotTotal.textContent = huboTotal ? _alimResumenFmtMoney(totTotal) : '--';
   if(elTotRec) elTotRec.textContent = huboRec ? _alimResumenFmtMoney(totRec) : '--';
   if(elTotNoRec) elTotNoRec.textContent = huboNoRec ? _alimResumenFmtMoney(totNoRec) : '--';
-  if(elTotGeneral) elTotGeneral.textContent = (huboRec||huboNoRec) ? _alimResumenFmtMoney((huboRec?totRec:0)+(huboNoRec?totNoRec:0)) : '--';
 }
 
 // Se dispara al escribir en la Tarifa -- recalcula Valorización de los 3
@@ -11799,9 +11805,12 @@ function alimResumenRenderNiveles(){
     const tarifaGuardada = tarifaInput ? tarifaInput.value : '';
     const tarifaNum = tarifaGuardada === '' ? null : Number(tarifaGuardada);
     const tarifaValida = tarifaNum!=null && !isNaN(tarifaNum);
+    // Valor Total = Pérdida por Balance × Tarifa; Valor No Reconocido =
+    // Valor Total - Valor Reconocido (pedido explícito: "la resta de
+    // esos dos sería el no reconocido").
+    const valorTotal = tarifaValida ? actual.perdida * tarifaNum : null;
     const valorRec = (perdidaRec!=null && tarifaValida) ? perdidaRec * tarifaNum : null;
-    const perdidaNoRec = perdidaRec!=null ? actual.perdida - perdidaRec : null;
-    const valorNoRec = (perdidaNoRec!=null && tarifaValida) ? perdidaNoRec * tarifaNum : null;
+    const valorNoRec = (valorTotal!=null && valorRec!=null) ? valorTotal - valorRec : null;
 
     // Entrada/Salida y el resto de campos, todo adentro de la caja de
     // color del nivel (pedido explícito -- antes iban sueltos arriba).
@@ -11821,7 +11830,8 @@ function alimResumenRenderNiveles(){
           )}
           ${subgrupo('Valorización ($)',
             campo('Valor Reconocido', _alimResumenFmtMoney(valorRec), {id:`alim-resumen-valorrec-${n.clave}`}) +
-            campo('Valor No Reconocido', _alimResumenFmtMoney(valorNoRec), {id:`alim-resumen-valornorec-${n.clave}`})
+            campo('Valor Total', _alimResumenFmtMoney(valorTotal), {id:`alim-resumen-valortotal-${n.clave}`}) +
+            campo('Valor No Reconocido', _alimResumenFmtMoney(valorNoRec), {id:`alim-resumen-valornorec-${n.clave}`, destacada:true})
           )}
           ${subgrupo('Índices',
             campo('Real (%)', actual.pct.toFixed(2)+'%', {destacada:true}) +
