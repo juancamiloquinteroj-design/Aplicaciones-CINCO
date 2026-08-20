@@ -349,7 +349,13 @@ canvas[id^="ch-tride-"]:active{cursor:grabbing}
 .resnivel-campo input[type=number]{border:1.5px solid var(--border);border-radius:4px;padding:5px 8px;text-align:right;font-weight:700;font-size:12.5px;background:var(--card-bg);color:var(--text);width:100%;outline:none;-moz-appearance:textfield;box-sizing:border-box}
 .resnivel-campo input[type=number]:focus{border-color:var(--accent)}
 .resnivel-campo input[type=number]::-webkit-outer-spin-button,.resnivel-campo input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
-.resnivel-box{display:flex;border:2px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:16px}
+/* Centrado -- pedido explícito ("se está desperdiciando espacio a la
+   derecha"): antes .resnivel-box era block (ancho completo de la card)
+   aunque su contenido fuera angosto, dejando todo ese hueco vacío a la
+   derecha. Ahora se ajusta a su contenido y #alim-resumen-niveles lo
+   centra. */
+#alim-resumen-niveles{display:flex;flex-direction:column;align-items:center}
+.resnivel-box{display:flex;width:fit-content;max-width:100%;border:2px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:16px}
 .resnivel-franja{writing-mode:vertical-rl;transform:rotate(180deg);font-weight:800;font-size:13px;letter-spacing:2px;text-transform:uppercase;padding:16px 10px;display:flex;align-items:center;justify-content:center;text-align:center;flex-shrink:0}
 .resnivel-grid{flex:1;padding:12px 16px;display:flex;flex-wrap:wrap;gap:0;align-content:start}
 /* Grupos lógicos DENTRO de la caja (Balance / Pérdida / Índices) --
@@ -2123,15 +2129,47 @@ tfoot td:first-child{text-align:left}
          IP_Reg corría en su propio calendario, siempre el último mes
          real -- ahora responde al mismo Mes que las tarjetas de nivel). -->
     <div class="card">
-      <div style="display:flex;justify-content:flex-end;margin-bottom:20px">
+      <div style="display:flex;justify-content:flex-end;gap:16px;margin-bottom:20px">
         <div class="resnivel-campo" style="min-width:170px">
           <div class="resnivel-campo-label">Mes</div>
           <select id="alim-resumen-mes" onchange="alimResumenRenderNiveles()" style="border:1.5px solid var(--border);border-radius:4px;padding:6px 8px;font-weight:700;font-size:13px;color:var(--text);background:var(--card-bg)"></select>
+        </div>
+        <!-- Tarifa G+T+R ($/kWh) -- pedido explícito ("colocar la tarifa
+             en celda para que se calcule el valor en plata reconocido y
+             no reconocido"): la ingresa el usuario, por mes (igual
+             criterio que % Reconocido -- localStorage por operador). -->
+        <div class="resnivel-campo" style="min-width:170px">
+          <div class="resnivel-campo-label">Tarifa G+T+R ($/kWh)</div>
+          <input type="number" min="0" step="0.01" placeholder="--" id="alim-resumen-tarifa" oninput="alimResumenActualizarValorizacion()">
         </div>
       </div>
       <div style="text-align:center;font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase;margin-bottom:14px">IP_Reg</div>
       <div id="alim-resumen-ipreg" style="display:flex;justify-content:center;gap:24px;flex-wrap:wrap;margin-bottom:24px"></div>
       <div id="alim-resumen-niveles"></div>
+      <!-- Total -- suma de Valor Reconocido/No Reconocido de los 3
+           niveles (pedido explícito, "en la parte inferior el total"). -->
+      <div class="resnivel-box" style="margin:6px auto 0">
+        <div class="resnivel-franja" style="background:var(--accent)22;color:var(--accent)">Total</div>
+        <div class="resnivel-grid">
+          <div class="resnivel-subgrupo" style="border-right:none">
+            <div class="resnivel-subgrupo-titulo">Valorización ($)</div>
+            <div class="resnivel-subgrupo-campos">
+              <div class="resnivel-campo">
+                <div class="resnivel-campo-label">Valor Reconocido</div>
+                <div class="resnivel-campo-caja" id="alim-resumen-tot-valorrec">--</div>
+              </div>
+              <div class="resnivel-campo">
+                <div class="resnivel-campo-label">Valor No Reconocido</div>
+                <div class="resnivel-campo-caja" id="alim-resumen-tot-valornorec">--</div>
+              </div>
+              <div class="resnivel-campo">
+                <div class="resnivel-campo-label">Valor Total Pérdida</div>
+                <div class="resnivel-campo-caja destacada" id="alim-resumen-tot-valorgeneral">--</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -11548,6 +11586,82 @@ function _alimResumenGuardarPct(nivelClave, valor){
   localStorage.setItem(_alimResumenClaveLS(nivelClave), valor);
 }
 
+// Tarifa G+T+R ($/kWh) -- lo ingresa el usuario, UNA por mes (no por
+// nivel, misma tarifa aplica a los 3) y por operador -- mismo criterio
+// de persistencia que % Reconocido.
+function _alimResumenTarifaClaveLS(clave){
+  const slug = (typeof OPERADOR !== 'undefined' && OPERADOR && OPERADOR.slug) ? OPERADOR.slug : 'default';
+  return `pt_tarifa_${slug}_${clave}`;
+}
+function _alimResumenLeerTarifa(clave){
+  const v = localStorage.getItem(_alimResumenTarifaClaveLS(clave));
+  return v==null || v==='' ? '' : v;
+}
+function _alimResumenGuardarTarifa(clave, valor){
+  localStorage.setItem(_alimResumenTarifaClaveLS(clave), valor);
+}
+const _alimResumenFmtMoney = v => v==null ? '--' : '$'+v.toLocaleString('es-CO',{maximumFractionDigits:0});
+
+// Valor Reconocido/No Reconocido ($) de un nivel, con los valores ACTUALES
+// de pantalla (input % Reconocido + input Tarifa, aunque el usuario
+// todavía no le haya dado Enter/blur) -- para poder recalcular en vivo
+// sin reconstruir toda la caja (perdería el foco de los inputs).
+// Valor No Reconocido = (Pérdida por Balance - Pérdida Reconocida) × Tarifa.
+function _alimResumenValorNivelCalc(nivelClave){
+  const sel = document.getElementById('alim-resumen-mes');
+  const clave = sel ? sel.value : null;
+  if(!clave) return null;
+  const serie = _alimResumenSerie(nivelClave);
+  const actual = serie.find(x => x.clave === clave);
+  if(!actual) return null;
+
+  const pctInput = document.getElementById(`alim-resumen-pct-${nivelClave}`);
+  const pctNum = pctInput && pctInput.value !== '' ? Number(pctInput.value) : null;
+  const perdidaRec = (pctNum!=null && !isNaN(pctNum)) ? actual.entrada * pctNum/100 : null;
+
+  const tarifaInput = document.getElementById('alim-resumen-tarifa');
+  const tarifaNum = tarifaInput && tarifaInput.value !== '' ? Number(tarifaInput.value) : null;
+  const tarifaValida = tarifaNum!=null && !isNaN(tarifaNum);
+
+  const valorRec = (perdidaRec!=null && tarifaValida) ? perdidaRec * tarifaNum : null;
+  const perdidaNoRec = perdidaRec!=null ? actual.perdida - perdidaRec : null;
+  const valorNoRec = (perdidaNoRec!=null && tarifaValida) ? perdidaNoRec * tarifaNum : null;
+  return {valorRec, valorNoRec};
+}
+
+function _alimResumenActualizarValorizacionNivel(nivelClave){
+  const r = _alimResumenValorNivelCalc(nivelClave);
+  const elRec = document.getElementById(`alim-resumen-valorrec-${nivelClave}`);
+  const elNoRec = document.getElementById(`alim-resumen-valornorec-${nivelClave}`);
+  if(elRec) elRec.textContent = _alimResumenFmtMoney(r ? r.valorRec : null);
+  if(elNoRec) elNoRec.textContent = _alimResumenFmtMoney(r ? r.valorNoRec : null);
+}
+
+function _alimResumenActualizarTotales(){
+  let totRec = 0, totNoRec = 0, huboRec = false, huboNoRec = false;
+  ALIM_RESUMEN_NIVELES.forEach(n => {
+    const r = _alimResumenValorNivelCalc(n.clave);
+    if(r && r.valorRec!=null){ totRec += r.valorRec; huboRec = true; }
+    if(r && r.valorNoRec!=null){ totNoRec += r.valorNoRec; huboNoRec = true; }
+  });
+  const elTotRec = document.getElementById('alim-resumen-tot-valorrec');
+  const elTotNoRec = document.getElementById('alim-resumen-tot-valornorec');
+  const elTotGeneral = document.getElementById('alim-resumen-tot-valorgeneral');
+  if(elTotRec) elTotRec.textContent = huboRec ? _alimResumenFmtMoney(totRec) : '--';
+  if(elTotNoRec) elTotNoRec.textContent = huboNoRec ? _alimResumenFmtMoney(totNoRec) : '--';
+  if(elTotGeneral) elTotGeneral.textContent = (huboRec||huboNoRec) ? _alimResumenFmtMoney((huboRec?totRec:0)+(huboNoRec?totNoRec:0)) : '--';
+}
+
+// Se dispara al escribir en la Tarifa -- recalcula Valorización de los 3
+// niveles + el Total (la tarifa es una sola, aplica a todos).
+function alimResumenActualizarValorizacion(){
+  const tarifaInput = document.getElementById('alim-resumen-tarifa');
+  const sel = document.getElementById('alim-resumen-mes');
+  if(tarifaInput && sel && sel.value) _alimResumenGuardarTarifa(sel.value, tarifaInput.value);
+  ALIM_RESUMEN_NIVELES.forEach(n => _alimResumenActualizarValorizacionNivel(n.clave));
+  _alimResumenActualizarTotales();
+}
+
 async function alimResumenCargar(){
   const vacio = document.getElementById('alim-resumen-vacio');
   const contenido = document.getElementById('alim-resumen-contenido');
@@ -11637,6 +11751,8 @@ function alimResumenRenderNiveles(){
   if(!cont || !sel || !sel.value) return;
   const clave = sel.value;
   alimResumenRenderIpReg(clave);
+  const tarifaInput = document.getElementById('alim-resumen-tarifa');
+  if(tarifaInput) tarifaInput.value = _alimResumenLeerTarifa(clave);
   const fmt = v => v==null ? '--' : v.toLocaleString('es-CO',{maximumFractionDigits:0});
 
   // "Campo Excel" -- etiqueta ARRIBA de una caja blanca con borde fino,
@@ -11680,6 +11796,13 @@ function alimResumenRenderNiveles(){
     const pctValido = pctNum!=null && !isNaN(pctNum);
     const perdidaRec = pctValido ? actual.entrada * pctNum/100 : null;
 
+    const tarifaGuardada = tarifaInput ? tarifaInput.value : '';
+    const tarifaNum = tarifaGuardada === '' ? null : Number(tarifaGuardada);
+    const tarifaValida = tarifaNum!=null && !isNaN(tarifaNum);
+    const valorRec = (perdidaRec!=null && tarifaValida) ? perdidaRec * tarifaNum : null;
+    const perdidaNoRec = perdidaRec!=null ? actual.perdida - perdidaRec : null;
+    const valorNoRec = (perdidaNoRec!=null && tarifaValida) ? perdidaNoRec * tarifaNum : null;
+
     // Entrada/Salida y el resto de campos, todo adentro de la caja de
     // color del nivel (pedido explícito -- antes iban sueltos arriba).
     // % Reconocido: un solo campo (el input editable), sin caja aparte
@@ -11696,6 +11819,10 @@ function alimResumenRenderNiveles(){
             campo('Pérdida Gestionable', fmt(_alimResumenGestionable(n.clave, clave, actual, tec))) +
             campo('Pérdida Reconocida', perdidaRec==null?'--':fmt(perdidaRec), {id:`alim-resumen-perdrec-${n.clave}`})
           )}
+          ${subgrupo('Valorización ($)',
+            campo('Valor Reconocido', _alimResumenFmtMoney(valorRec), {id:`alim-resumen-valorrec-${n.clave}`}) +
+            campo('Valor No Reconocido', _alimResumenFmtMoney(valorNoRec), {id:`alim-resumen-valornorec-${n.clave}`})
+          )}
           ${subgrupo('Índices',
             campo('Real (%)', actual.pct.toFixed(2)+'%', {destacada:true}) +
             campo('Técnico (%)', tec?tec.pct.toFixed(2)+'%':'--') +
@@ -11708,11 +11835,13 @@ function alimResumenRenderNiveles(){
         </div>
       </div>`;
   }).join('');
+  _alimResumenActualizarTotales();
 }
 
-// Recalcula SOLO "Pérdida Reconocida" de un nivel al escribir en su % --
-// no reconstruye toda la caja (perdería el foco del input a mitad de
-// escritura). Pérdida Reconocida = Entrada del mes elegido × % Reconocido.
+// Recalcula "Pérdida Reconocida" y la Valorización ($) de un nivel al
+// escribir en su % -- no reconstruye toda la caja (perdería el foco del
+// input a mitad de escritura). Pérdida Reconocida = Entrada del mes
+// elegido × % Reconocido.
 function alimResumenActualizarReconocido(nivelClave){
   const input = document.getElementById(`alim-resumen-pct-${nivelClave}`);
   const destinoKwh = document.getElementById(`alim-resumen-perdrec-${nivelClave}`);
@@ -11728,6 +11857,9 @@ function alimResumenActualizarReconocido(nivelClave){
 
   const fmt = v => v==null ? '--' : v.toLocaleString('es-CO',{maximumFractionDigits:0});
   if(destinoKwh) destinoKwh.textContent = fmt(perdidaRec);
+
+  _alimResumenActualizarValorizacionNivel(nivelClave);
+  _alimResumenActualizarTotales();
 }
 
 async function cargarAlimentadoresModulo(nombreVista){
