@@ -3043,12 +3043,22 @@ tfoot td:first-child{text-align:left}
 
   <div id="informes-contenido" class="hidden">
     <div class="card">
-      <div class="fbar" style="margin-bottom:10px">
+      <div class="fbar" style="margin-bottom:6px">
         <label>Mes IP_Reg</label>
-        <select id="informes-mes" style="min-width:180px"></select>
-        <label style="margin-left:16px">Mes N2-1</label>
-        <select id="informes-mes-n21" style="min-width:180px"></select>
-        <span style="font-size:10.5px;color:var(--text3);margin-left:auto;max-width:280px">IP_Reg y N2-1 corren en calendarios distintos (el mismo comportamiento que ves en la plantilla) -- por eso cada uno tiene su propio mes.</span>
+        <select id="informes-mes" style="min-width:150px"></select>
+        <label style="margin-left:10px">Mes N2-1</label>
+        <select id="informes-mes-n21" style="min-width:150px"></select>
+        <span style="font-size:10.5px;color:var(--text3);margin-left:auto;max-width:280px">Cada indicador corre en su propio calendario (el mismo comportamiento que ves en la plantilla) -- por eso cada uno tiene su propio mes.</span>
+      </div>
+      <div class="fbar" style="margin-bottom:10px">
+        <label>Mes Nivel 4</label>
+        <select id="informes-mes-nivel4" style="min-width:150px"></select>
+        <label style="margin-left:10px">Mes Nivel 3</label>
+        <select id="informes-mes-nivel3" style="min-width:150px"></select>
+        <label style="margin-left:10px">Mes Comercial</label>
+        <select id="informes-mes-comercial" style="min-width:150px"></select>
+        <label style="margin-left:10px">Mes Distribución del Flujo</label>
+        <select id="informes-mes-distribucion" style="min-width:150px"></select>
       </div>
 
       <div class="fbar" style="margin-bottom:6px;align-items:flex-start">
@@ -19550,9 +19560,58 @@ async function informesCargar(){
 
   ipPoblarSelectorAnalisisMes('informes-mes');
   informesPoblarSelectorMesN21();
+  try{ await informesAsegurarIpComercial(); }catch(e){ /* la sección avisa si sigue sin datos */ }
+  informesPoblarSelectorMesComercial();
+  try{
+    await Promise.all([informesPoblarSelectorMesNivel(4), informesPoblarSelectorMesNivel(3), informesPoblarSelectorMesDistribucion()]);
+  }catch(e){ /* cada sección del informe avisa si le falta su dato */ }
   informesPoblarSubestaciones();
   informesPoblarChecklistZonas();
   await informesCargarLogoGuardado();
+}
+
+// Selector de mes propio de Nivel 4/Nivel 3 -- mismo patrón que
+// informesPoblarSelectorMesN21 pero sobre la serie de _alimNivel34Filas
+// (nivel=4 o 3), que corre en su PROPIO calendario (fechas diarias del
+// CSV de Nivel34, no necesariamente las mismas que N2-1/IP_Reg).
+async function informesPoblarSelectorMesNivel(nivel){
+  const sel = document.getElementById(`informes-mes-nivel${nivel}`);
+  if(!sel) return;
+  const anterior = sel.value;
+  let filas = [];
+  try{ filas = await _alimNivel34Filas(nivel); }catch(e){ filas = []; }
+  const mensual = _alimNivel34MensualTotal(filas).filter(f => f.pct != null);
+  sel.innerHTML = [...mensual].reverse().map(f => `<option value="${f.clave}">${labelMes(f.clave)}</option>`).join('');
+  sel.value = (anterior && [...sel.options].some(o=>o.value===anterior)) ? anterior : (mensual.length ? mensual[mensual.length-1].clave : '');
+}
+
+// Selector de mes propio del Indicador de Pérdidas Comercial -- corre en
+// su PROPIO calendario (IP_COMERCIAL_FILAS), distinto de IP_Reg/N2-1.
+function informesPoblarSelectorMesComercial(){
+  const sel = document.getElementById('informes-mes-comercial');
+  if(!sel) return;
+  const anterior = sel.value;
+  const claves = (typeof IP_COMERCIAL_FILAS !== 'undefined' && IP_COMERCIAL_FILAS ? IP_COMERCIAL_FILAS : [])
+    .filter(f => f.perdida_pct_12 != null).map(f => ipComercialClave(f));
+  sel.innerHTML = [...claves].reverse().map(c => `<option value="${c}">${labelMes(c)}</option>`).join('');
+  sel.value = (anterior && [...sel.options].some(o=>o.value===anterior)) ? anterior : (claves.length ? claves[claves.length-1] : '');
+}
+
+// Selector de mes propio de "Distribución del Flujo" -- esa figura es la
+// tarjeta Resumen por Nivel de Tensión, que a su vez ofrece la UNIÓN de
+// meses de Nivel4/Nivel3/N2-1 (mismo criterio que alimResumenCargar).
+async function informesPoblarSelectorMesDistribucion(){
+  const sel = document.getElementById('informes-mes-distribucion');
+  if(!sel) return;
+  const anterior = sel.value;
+  let filas4 = [], filas3 = [];
+  try{ [filas4, filas3] = await Promise.all([_alimNivel34Filas(4), _alimNivel34Filas(3)]); }catch(e){ /* sigue con lo que haya */ }
+  const claves4 = _alimNivel34MensualTotal(filas4).map(f=>f.clave);
+  const claves3 = _alimNivel34MensualTotal(filas3).map(f=>f.clave);
+  const clavesN21 = alimN21AgregarMensual(new Set()).map(f=>f.clave);
+  const claves = [...new Set([...claves4, ...claves3, ...clavesN21])].sort();
+  sel.innerHTML = [...claves].reverse().map(c => `<option value="${c}">${labelMes(c)}</option>`).join('');
+  sel.value = (anterior && [...sel.options].some(o=>o.value===anterior)) ? anterior : (claves.length ? claves[claves.length-1] : '');
 }
 
 // N2-1 corre en su PROPIO calendario (fecha real de cada mes), distinto
@@ -21636,7 +21695,8 @@ function _informesAlcanceTexto(sel){
 // selección de contenido -- extraído de informesGenerar para poder
 // reusarlo TAL CUAL desde la Vista previa (informesVistaPrevia), sin
 // mantener dos copias de la estructura del documento.
-async function _informesConstruirDocumento(mesIpReg, mesN21, sel){
+async function _informesConstruirDocumento(meses, sel){
+  const {ipReg: mesIpReg, n21: mesN21, nivel4: mesNivel4, nivel3: mesNivel3, comercial: mesComercial, distribucion: mesDistribucion} = meses;
   // El mes de portada es el del indicador de pérdidas (IP_Reg) --
   // pedido explícito ("el texto junio o julio... ese se tomaría es con
   // la fecha del indicador de pérdidas"), con el mes N2-1 como
@@ -21656,14 +21716,18 @@ async function _informesConstruirDocumento(mesIpReg, mesN21, sel){
     if(sel.ipReg){
       children.push(...await informesSeccionIndicadorIPT(mesIpReg));
     }
-    if(sel.nivel4) children.push(...await informesSeccionIndicadorNivel4(mesN21));
-    if(sel.nivel3) children.push(...await informesSeccionIndicadorNivel3(mesN21));
+    // Cada indicador corre en su propio calendario -- pedido explícito
+    // ("seria mas interesante... que preguntara el mes de cada
+    // indicador... asi para tener presente cada generación"), un
+    // selector de mes propio por sección en vez de reusar mesN21/mesIpReg.
+    if(sel.nivel4) children.push(...await informesSeccionIndicadorNivel4(mesNivel4));
+    if(sel.nivel3) children.push(...await informesSeccionIndicadorNivel3(mesNivel3));
     if(sel.n21){
       children.push(...await informesSeccionIndicadorN21Total(mesN21));
       for(const zona of sel.zonas){ children.push(...await informesSeccionZonaN21(zona, mesN21)); }
     }
-    if(sel.distribucion) children.push(...await informesSeccionDistribucionFlujo(mesN21));
-    if(sel.comercial) children.push(...await informesSeccionIPComercial(mesIpReg));
+    if(sel.distribucion) children.push(...await informesSeccionDistribucionFlujo(mesDistribucion));
+    if(sel.comercial) children.push(...await informesSeccionIPComercial(mesComercial));
     if(sel.temperatura) children.push(...await informesSeccionTemperaturaEntrada());
     if(sel.conclusiones) children.push(...informesSeccionConclusiones(mesIpReg, mesN21));
   }
@@ -21716,15 +21780,30 @@ async function _informesConstruirDocumento(mesIpReg, mesN21, sel){
   return {doc, mesPortada};
 }
 
+// Cada indicador tiene su propio selector de mes -- pedido explícito
+// ("seria mas interesante... que preguntara el mes de cada indicador...
+// asi para tener presente cada generación"). Los 6 quedan reunidos en un
+// solo objeto `meses` que viaja hasta _informesConstruirDocumento.
+function _informesLeerMeses(){
+  const v = id => { const el = document.getElementById(id); return el ? el.value : ''; };
+  return {
+    ipReg: v('informes-mes'),
+    n21: v('informes-mes-n21'),
+    nivel4: v('informes-mes-nivel4'),
+    nivel3: v('informes-mes-nivel3'),
+    comercial: v('informes-mes-comercial'),
+    distribucion: v('informes-mes-distribucion'),
+  };
+}
+
 function _informesValidarSelMesYContenido(msg){
-  const mesIpReg = document.getElementById('informes-mes').value;
-  const mesN21 = document.getElementById('informes-mes-n21').value;
-  if(!mesIpReg && !mesN21){ msg.textContent = 'Elige al menos un mes.'; return null; }
+  const meses = _informesLeerMeses();
+  if(!Object.values(meses).some(Boolean)){ msg.textContent = 'Elige al menos un mes.'; return null; }
   const sel = _informesSeleccionContenido();
   if(!sel.subestacion && !sel.ipReg && !sel.nivel4 && !sel.nivel3 && !sel.n21 && !sel.distribucion && !sel.comercial && !sel.temperatura && !sel.conclusiones){
     msg.textContent = 'Elige al menos un contenido para el informe.'; return null;
   }
-  return {mesIpReg, mesN21, sel};
+  return {meses, sel};
 }
 
 async function informesGenerar(){
@@ -21732,10 +21811,10 @@ async function informesGenerar(){
   const msg = document.getElementById('informes-msg');
   const entrada = _informesValidarSelMesYContenido(msg);
   if(!entrada) return;
-  const {mesIpReg, mesN21, sel} = entrada;
+  const {meses, sel} = entrada;
   btn.disabled = true; msg.textContent = 'Generando informe…';
   try{
-    const {doc, mesPortada} = await _informesConstruirDocumento(mesIpReg, mesN21, sel);
+    const {doc, mesPortada} = await _informesConstruirDocumento(meses, sel);
     const blob = await docx.Packer.toBlob(doc);
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -21765,7 +21844,7 @@ async function informesVistaPrevia(){
   const msg = document.getElementById('informes-msg');
   const entrada = _informesValidarSelMesYContenido(msg);
   if(!entrada) return;
-  const {mesIpReg, mesN21, sel} = entrada;
+  const {meses, sel} = entrada;
   if(typeof docxPreview === 'undefined'){
     msg.textContent = 'No se pudo cargar el visor de vista previa (docx-preview). Revisa la conexión e intenta de nuevo.';
     return;
@@ -21774,7 +21853,7 @@ async function informesVistaPrevia(){
   const overlay = document.getElementById('modal-informes-preview');
   const cont = document.getElementById('informes-preview-cuerpo');
   try{
-    const {doc} = await _informesConstruirDocumento(mesIpReg, mesN21, sel);
+    const {doc} = await _informesConstruirDocumento(meses, sel);
     const blob = await docx.Packer.toBlob(doc);
     const buffer = await blob.arrayBuffer();
     cont.innerHTML = '';
@@ -22086,7 +22165,7 @@ async function _informesPdfAplicarEncabezados(doc, mesClave, desdePagina){
 // contar cuántas páginas necesita la tabla de contenido, y otra real
 // después de reservar esas páginas. Determinista: mismos datos de
 // entrada, mismo resultado siempre. ----
-async function _informesPdfCuerpo(doc, sel, mesIpReg, mesN21, toc){
+async function _informesPdfCuerpo(doc, sel, mesIpReg, mesN21, toc, mesComercial){
   const contador = [0,0,0,0];
   let y = INFORMES_PDF_MARGEN;
 
@@ -22153,10 +22232,10 @@ async function _informesPdfCuerpo(doc, sel, mesIpReg, mesN21, toc){
 
   if(sel.comercial){
     y = _informesPdfHeading(doc, contador, 0, 'Indicador de Pérdidas comerciales', y, toc);
-    const parrafosComercial = _informesTextosPlanos(_informesConTextoPlano(() => informesTextoIpComercial(mesIpReg)));
+    const parrafosComercial = _informesTextosPlanos(_informesConTextoPlano(() => informesTextoIpComercial(mesComercial)));
     if(parrafosComercial.length){
       for(const p of parrafosComercial) y = _informesPdfParrafo(doc, p, y);
-      const figComercial = await informesFiguraIpComercial(mesIpReg);
+      const figComercial = await informesFiguraIpComercial(mesComercial);
       y = await _informesPdfImagen(doc, figComercial, y, 'Índice de Pérdidas Comercial');
     }else{
       y = _informesPdfParrafo(doc, 'No hay datos suficientes de IP Comercial para el mes seleccionado.', y, {italica:true});
@@ -22278,13 +22357,10 @@ async function _informesPdfSeccionSubestacion(doc, contador, nivel, subestacion,
 async function informesGenerarPDF(){
   const btn = document.getElementById('informes-btn-generar-pdf');
   const msg = document.getElementById('informes-msg');
-  const mesIpReg = document.getElementById('informes-mes').value;
-  const mesN21 = document.getElementById('informes-mes-n21').value;
-  if(!mesIpReg && !mesN21){ msg.textContent = 'Elige al menos un mes.'; return; }
-  const sel = _informesSeleccionContenido();
-  if(!sel.subestacion && !sel.ipReg && !sel.n21 && !sel.comercial && !sel.temperatura && !sel.conclusiones){
-    msg.textContent = 'Elige al menos un contenido para el informe.'; return;
-  }
+  const entrada = _informesValidarSelMesYContenido(msg);
+  if(!entrada) return;
+  const {meses, sel} = entrada;
+  const {ipReg: mesIpReg, n21: mesN21, comercial: mesComercial} = meses;
   btn.disabled = true; msg.textContent = 'Generando PDF…';
   _informesPdfContadorFigura = 0; _informesPdfContadorTabla = 0;
   try{
@@ -22298,7 +22374,7 @@ async function informesGenerarPDF(){
     sonda.addPage();
     const tocSonda = [];
     _informesPdfContadorFigura = 0; _informesPdfContadorTabla = 0;
-    await _informesPdfCuerpo(sonda, sel, mesIpReg, mesN21, tocSonda);
+    await _informesPdfCuerpo(sonda, sel, mesIpReg, mesN21, tocSonda, mesComercial);
     const lineasPorPaginaToc = Math.floor((INFORMES_PDF_ALTO_PAGINA - 2*INFORMES_PDF_MARGEN - 30)/15.5);
     const paginasToc = Math.max(1, Math.ceil(tocSonda.length/lineasPorPaginaToc));
 
@@ -22314,7 +22390,7 @@ async function informesGenerarPDF(){
     doc.addPage();
     _informesPdfContadorFigura = 0; _informesPdfContadorTabla = 0;
     const tocReal = [];
-    await _informesPdfCuerpo(doc, sel, mesIpReg, mesN21, tocReal);
+    await _informesPdfCuerpo(doc, sel, mesIpReg, mesN21, tocReal, mesComercial);
 
     _informesPdfDibujarTOC(doc, tocReal, primeraPaginaToc);
     await _informesPdfAplicarEncabezados(doc, mesPortada, primeraPaginaToc);
