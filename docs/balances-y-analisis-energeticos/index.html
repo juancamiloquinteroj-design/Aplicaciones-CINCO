@@ -1525,7 +1525,16 @@ tfoot td:first-child{text-align:left}
       <div>
         <div class="be-tabla-creadas-titulo" style="text-align:center">Indicador Mensual</div>
         <div class="chart-wrap" style="height:320px"><canvas id="ch-ip-comercial-mensual"></canvas></div>
-        <div id="ip-com-comentario" class="ip-comentario-caja" style="margin-top:12px;font-size:11.5px;padding:10px"></div>
+        <!-- Selector de mes del análisis -- pedido explícito ("este
+             análisis del indicador comercial también se debe poder
+             cambiar a otro mes"), antes siempre mostraba el último mes
+             real, sin poder elegir otro. Mismo patrón que "Mes del
+             análisis" del Indicador Mensual principal (ip-analisis-mes). -->
+        <div class="fbar" style="margin:10px 0 0">
+          <label title="El análisis cambia cada mes -- elige un mes anterior para ver cómo se veía esa nota en su momento">Mes del análisis</label>
+          <select id="ip-com-analisis-mes" onchange="ipComercialGenerarAnalisis()" style="flex:1;min-width:0"></select>
+        </div>
+        <div id="ip-com-comentario" class="ip-comentario-caja" style="margin-top:8px;font-size:11.5px;padding:10px"></div>
       </div>
     </div>
   </div>
@@ -16000,9 +16009,23 @@ function alimN21RenderResumen(datos12){
 function ipComercialRenderTodo(){
   ipComercialRenderChart();
   ipComercialRenderResumen();
+  ipComercialPoblarSelectorAnalisisMes();
   ipComercialGenerarAnalisis();
   ipComercialRenderTabla();
   ipComercialRenderChartMensual();
+}
+
+// Popula "Mes del análisis" con los meses reales disponibles -- mismo
+// criterio que ipPoblarSelectorAnalisisMes (Indicador Mensual principal):
+// conserva la selección actual si sigue existiendo, si no cae al último
+// mes real.
+function ipComercialPoblarSelectorAnalisisMes(){
+  const sel = document.getElementById('ip-com-analisis-mes');
+  if(!sel) return;
+  const claves = ipComercialUltimasFilasReales().map(f => ipComercialClave(f));
+  if(!claves.length){ sel.innerHTML = ''; return; }
+  const actual = claves.includes(sel.value) ? sel.value : claves[claves.length-1];
+  sel.innerHTML = claves.map(c => `<option value="${c}"${c===actual?' selected':''}>${labelMesLargo(c)}</option>`).join('');
 }
 
 // PT Comercial (kWh) arranca OCULTO -- pedido explícito, el usuario lo
@@ -16244,8 +16267,15 @@ function ipComercialGenerarAnalisis(){
     cont.innerHTML = '<p>Todavía no hay suficientes meses reales para analizar la variación.</p>';
     return;
   }
-  const actual = reales[reales.length - 1];
-  const anterior = reales[reales.length - 2];
+  // Mes elegido en el selector (pedido explícito: "este análisis también
+  // se debe poder cambiar a otro mes") -- si no hay selector o su valor
+  // no tiene un mes anterior en la ventana (el primero real), cae al
+  // último mes real, mismo comportamiento de antes.
+  const sel = document.getElementById('ip-com-analisis-mes');
+  let idx = sel && sel.value ? reales.findIndex(f => ipComercialClave(f) === sel.value) : -1;
+  if(idx < 1) idx = reales.length - 1;
+  const actual = reales[idx];
+  const anterior = reales[idx - 1];
   const claveActual = ipComercialClave(actual);
   const claveAnterior = ipComercialClave(anterior);
   const [anioAct, mesAct] = claveActual.split('-').map(Number);
