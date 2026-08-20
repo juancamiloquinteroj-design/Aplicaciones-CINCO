@@ -11620,7 +11620,7 @@ function _alimResumenValorNivelCalc(nivelClave){
 
   const pctInput = document.getElementById(`alim-resumen-pct-${nivelClave}`);
   const pctNum = pctInput && pctInput.value !== '' ? Number(pctInput.value) : null;
-  const perdidaRec = (pctNum!=null && !isNaN(pctNum)) ? actual.entrada * pctNum/100 : null;
+  const perdidaRec = (pctNum!=null && !isNaN(pctNum)) ? Math.max(0, actual.entrada * pctNum/100) : null;
 
   const tarifaInput = document.getElementById('alim-resumen-tarifa');
   const tarifaNum = tarifaInput && tarifaInput.value !== '' ? Number(tarifaInput.value) : null;
@@ -11800,7 +11800,9 @@ function alimResumenRenderNiveles(){
     const pctGuardado = _alimResumenLeerPct(n.clave);
     const pctNum = pctGuardado === '' ? null : Number(pctGuardado);
     const pctValido = pctNum!=null && !isNaN(pctNum);
-    const perdidaRec = pctValido ? actual.entrada * pctNum/100 : null;
+    // Math.max(0,...) -- un % Reconocido negativo no existe (pedido
+    // explícito: "el reconocimiento negativo no existe"), se trata como 0.
+    const perdidaRec = pctValido ? Math.max(0, actual.entrada * pctNum/100) : null;
 
     const tarifaGuardada = tarifaInput ? tarifaInput.value : '';
     const tarifaNum = tarifaGuardada === '' ? null : Number(tarifaGuardada);
@@ -11823,7 +11825,7 @@ function alimResumenRenderNiveles(){
         <div class="resnivel-grid">
           ${subgrupo('Balance', campo('Entrada (kWh)', fmt(actual.entrada)) + campo('Salida (kWh)', fmt(actual.salida)))}
           ${subgrupo('Pérdida (kWh)',
-            campo('Pérdida por Balance', fmt(actual.perdida)) +
+            campo('Pérdida por Balance (kWh)', fmt(actual.perdida)) +
             campo('Pérdida Técnica', tec?fmt(tec.perdida):'--') +
             campo('Pérdida Gestionable', fmt(_alimResumenGestionable(n.clave, clave, actual, tec))) +
             campo('Pérdida Reconocida', perdidaRec==null?'--':fmt(perdidaRec), {id:`alim-resumen-perdrec-${n.clave}`})
@@ -11834,8 +11836,8 @@ function alimResumenRenderNiveles(){
             campo('Valor No Reconocido', _alimResumenFmtMoney(valorNoRec), {id:`alim-resumen-valornorec-${n.clave}`, destacada:true})
           )}
           ${subgrupo('Índices',
-            campo('Real (%)', actual.pct.toFixed(2)+'%', {destacada:true}) +
-            campo('Técnico (%)', tec?tec.pct.toFixed(2)+'%':'--') +
+            campo('Pérdida por Balance (%)', actual.pct.toFixed(2)+'%', {destacada:true}) +
+            campo('Pérdida Técnica (%)', tec?tec.pct.toFixed(2)+'%':'--') +
             `<div class="resnivel-campo">
               <div class="resnivel-campo-label">% Reconocido</div>
               <input type="number" min="0" max="100" step="0.01" placeholder="--" value="${pctGuardado}"
@@ -11863,7 +11865,7 @@ function alimResumenActualizarReconocido(nivelClave){
   const actual = serie.find(x => x.clave === sel.value);
   const pctNum = input.value === '' ? null : Number(input.value);
   const valido = actual && pctNum!=null && !isNaN(pctNum);
-  const perdidaRec = valido ? actual.entrada * pctNum/100 : null;
+  const perdidaRec = valido ? Math.max(0, actual.entrada * pctNum/100) : null;
 
   const fmt = v => v==null ? '--' : v.toLocaleString('es-CO',{maximumFractionDigits:0});
   if(destinoKwh) destinoKwh.textContent = fmt(perdidaRec);
