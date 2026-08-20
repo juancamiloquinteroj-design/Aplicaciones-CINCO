@@ -2375,6 +2375,7 @@ tfoot td:first-child{text-align:left}
           </div>
           <div class="fbar" style="justify-content:center;margin-bottom:8px">
             <button type="button" class="be-modo-btn activo" id="alim-sub-btn-vista-lineas" onclick="alimSubToggleVista('lineas')">📈 Gráfica</button>
+            <button type="button" class="be-modo-btn" id="alim-sub-btn-vista-variacion" onclick="alimSubToggleVista('variacion')" title="Línea de variación % mes a mes de cada subestación (sube/baja), con el dato en cada punto">📉 Variación (Líneas)</button>
             <button type="button" class="be-modo-btn" id="alim-sub-btn-vista-heatmap" onclick="alimSubToggleVista('heatmap')" title="Variación mes a mes de cada subestación, en vez de la magnitud -- pensado para ver de un vistazo dónde/cuándo hubo cambios">🔥 Heatmap Mensual (Variación)</button>
           </div>
           <div id="alim-sub-chart-lineas-wrap" class="chart-wrap" style="height:420px"><canvas id="ch-alim-sub-subestaciones"></canvas></div>
@@ -11284,18 +11285,32 @@ function alimSubToggleZona(zona){
 function alimSubCambiarMetrica(metrica){
   ALIM_SUB_METRICA = metrica;
   ['entrada','salida','perdida'].forEach(m => document.getElementById(`alim-sub-btn-metrica-${m}`).classList.toggle('activo', m===metrica));
-  if(ALIM_SUB_VISTA === 'heatmap') alimSubRenderHeatmap(); else alimSubRenderChartSubestaciones();
+  alimSubRenderVistaActual();
 }
 
-// Alterna entre la gráfica de líneas (gráfico 1) y el Heatmap Mensual --
-// pedido explícito.
+// Dispara el render de lo que corresponda según ALIM_SUB_VISTA -- 3
+// formas de ver el gráfico 1 (pedido explícito, todas comparten la
+// métrica Entrada/Salida/Pérdida elegida arriba):
+//   'lineas'    -- magnitud, una línea por subestación (original).
+//   'variacion' -- variación % mes a mes por subestación, EN LÍNEAS (con
+//                  el dato en cada punto) en vez de grilla de color.
+//   'heatmap'   -- la misma variación % pero en grilla de color.
+function alimSubRenderVistaActual(){
+  if(ALIM_SUB_VISTA === 'heatmap') alimSubRenderHeatmap();
+  else if(ALIM_SUB_VISTA === 'variacion') alimSubRenderChartVariacion();
+  else alimSubRenderChartSubestaciones();
+}
+
+// Alterna entre la gráfica de líneas (gráfico 1), su variante de
+// Variación (líneas) y el Heatmap Mensual -- pedido explícito.
 function alimSubToggleVista(vista){
   ALIM_SUB_VISTA = vista;
   document.getElementById('alim-sub-btn-vista-lineas').classList.toggle('activo', vista==='lineas');
+  document.getElementById('alim-sub-btn-vista-variacion').classList.toggle('activo', vista==='variacion');
   document.getElementById('alim-sub-btn-vista-heatmap').classList.toggle('activo', vista==='heatmap');
-  document.getElementById('alim-sub-chart-lineas-wrap').classList.toggle('hidden', vista!=='lineas');
+  document.getElementById('alim-sub-chart-lineas-wrap').classList.toggle('hidden', vista==='heatmap');
   document.getElementById('alim-sub-heatmap').classList.toggle('hidden', vista!=='heatmap');
-  if(vista==='heatmap') alimSubRenderHeatmap(); else alimSubRenderChartSubestaciones();
+  alimSubRenderVistaActual();
 }
 
 // Heatmap Mensual -- pedido explícito, "con el fin de ver la variación":
@@ -11426,7 +11441,7 @@ function alimSubRenderAlimentadoresYCards(){
 }
 
 function alimSubRenderTodo(){
-  if(ALIM_SUB_VISTA === 'heatmap') alimSubRenderHeatmap(); else alimSubRenderChartSubestaciones();
+  alimSubRenderVistaActual();
   alimSubRenderTablaTop();
   alimSubRenderChartAlimentadores();
   alimSubRenderZonaPanel();
@@ -11479,6 +11494,72 @@ function alimSubRenderChartSubestaciones(){
         x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:45, minRotation:45}},
         y:{grid:{color:gridC}, ticks:{color:tickC, font:{size:11}, callback:v=>v.toLocaleString('es-CO')},
           title:{display:true, text: nombreMetrica, color:tickC, font:{size:11}}},
+      },
+    },
+  });
+}
+
+// Gráfico 1 (variante "📉 Variación (Líneas)") -- MISMO cálculo de
+// variación % mes a mes que el Heatmap (ver alimSubRenderHeatmap), pero
+// en líneas -- una por Subestación, con el dato (+/-%) en cada punto --
+// pedido explícito: "una gráfica de líneas... de variaciones de un mes a
+// otro... muestre los datos de variación tanto en incremento un[a]
+// disminución". Reusa el MISMO canvas/instancia de chart que
+// alimSubRenderChartSubestaciones (chAlimSubSubestaciones) -- es la
+// misma "gráfica 1", solo cambia qué se dibuja adentro.
+function alimSubRenderChartVariacion(){
+  const cv = document.getElementById('ch-alim-sub-subestaciones');
+  if(!cv) return;
+  const porGrupo = alimSubAgregarPorGrupo('subestacion', null);
+  const subestaciones = Object.keys(porGrupo).sort();
+  if(chAlimSubSubestaciones){ chAlimSubSubestaciones.destroy(); chAlimSubSubestaciones = null; }
+  if(!subestaciones.length) return;
+  const dark = document.documentElement.getAttribute('data-theme')==='dark';
+  const tickC = dark ? '#aab8d1' : '#4b5e7a';
+  const tickXFuerte = dark ? '#ffffff' : '#000000';
+  const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
+
+  let etiquetas = null;
+  const datasets = subestaciones.map((sub, i) => {
+    const visibles = alimSubVisibles(porGrupo[sub]);
+    if(!etiquetas) etiquetas = visibles.map(f => labelMesLargo(f.clave));
+    const color = alimSubColor(i, subestaciones.length);
+    const datos = visibles.map((f, idx) => {
+      if(idx === 0) return null;  // primer mes visible -- no hay "anterior" para comparar
+      const vAnt = visibles[idx-1][ALIM_SUB_METRICA], vAct = f[ALIM_SUB_METRICA];
+      if(vAnt==null || vAct==null || !vAnt) return null;
+      return (vAct-vAnt)/Math.abs(vAnt)*100;
+    });
+    return {
+      type:'line', label: sub, data: datos,
+      borderColor: color, backgroundColor:'transparent',
+      borderWidth:1.5, pointRadius:2, spanGaps:true, tension:.2,
+      datalabels:{display:true, anchor:'end', align:'top', offset:2,
+        formatter:v=>v==null?'':`${v>=0?'+':''}${v.toFixed(0)}%`,
+        font:{size:8, weight:'700'}, color,
+        backgroundColor: dark?'rgba(30,30,40,.72)':'rgba(255,255,255,.72)', borderRadius:2, padding:{left:2,right:2,top:0,bottom:0}},
+    };
+  });
+  if(!etiquetas || !etiquetas.length) return;
+
+  const nombreMetrica = {entrada:'Entrada', salida:'Salida', perdida:'Pérdida'}[ALIM_SUB_METRICA];
+
+  chAlimSubSubestaciones = new Chart(cv, {
+    plugins:[tmPluginCrosshair],
+    data:{labels: etiquetas, datasets},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      layout:{padding:{top:26, right:20}},
+      interaction:{mode:'index', intersect:false},
+      plugins:{
+        legend:{display:true, position:'bottom', labels:{boxWidth:10, font:{size:9}, color:tickC}},
+        tooltip:{callbacks:{label:c => c.raw==null ? null : `${c.dataset.label}: ${c.raw>=0?'+':''}${c.raw.toFixed(1)}% vs. mes anterior`}},
+        zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:3}}},
+      },
+      scales:{
+        x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:45, minRotation:45}},
+        y:{grid:{color:gridC}, ticks:{color:tickC, font:{size:11}, callback:v=>v.toFixed(0)+'%'},
+          title:{display:true, text:`Variación de ${nombreMetrica} vs. mes anterior (%)`, color:tickC, font:{size:11}}},
       },
     },
   });
