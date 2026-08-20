@@ -337,6 +337,16 @@ canvas[id^="ch-tride-"]:active{cursor:grabbing}
 .hm-celda{font-size:10.5px;text-align:center;padding:6px 4px;border-radius:3px;white-space:nowrap;min-width:52px}
 .hm-tabla thead th{position:sticky;top:0;z-index:2;background:var(--card-bg)}
 
+/* "Resumen por Nivel de Tensión" -- una caja por nivel con franja de
+   color lateral (inspirado en la plantilla Excel que mostró el usuario:
+   NIVEL 4/NIVEL 3/NIVEL 21 con una barra de color al costado). */
+.resnivel-box{display:flex;border:2px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:18px}
+.resnivel-franja{writing-mode:vertical-rl;transform:rotate(180deg);font-weight:800;font-size:13px;letter-spacing:2px;text-transform:uppercase;padding:16px 10px;display:flex;align-items:center;justify-content:center;text-align:center;flex-shrink:0}
+.resnivel-grid{flex:1;padding:16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;align-content:start}
+.resnivel-tile.destacada{background:var(--bg3)}
+.resnivel-tile input[type=number]{width:100%;border:none;background:transparent;font-size:15px;font-weight:800;color:var(--text);padding:0;outline:none;-moz-appearance:textfield}
+.resnivel-tile input[type=number]::-webkit-outer-spin-button,.resnivel-tile input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+
 /* Botón "Exportar" genérico (Imagen/Excel) -- inyectado automáticamente
    por JS en TODA gráfica (.chart-wrap) y TODA tabla (.tbl-wrap) de la
    app, pedido explícito ("en cada tabla y cada gráfica"). Discreto (poca
@@ -2061,39 +2071,31 @@ tfoot td:first-child{text-align:left}
      dato crudo de "Resumen de Alimentadores.csv" (ver load_alimentadores.py).
      Se van armando de a uno, por ahora solo confirman que el dato cargó. ---------------- -->
 <!-- ---------------- ALIMENTADORES · RESUMEN POR NIVEL -- consolida
-     Entrada/Salida/Pérdida/Índice de Nivel 4, Nivel 3 y N2-1 para UN mes
-     elegido -- mismos datos ya cargados por esos 3 submódulos, nada
-     nuevo del backend. Pedido explícito, inspirado en una plantilla
-     externa (Excel) que el usuario mostró -- alcance acotado a lo que la
-     app YA tiene (sin Importaciones/Transferencia/Generación/Reconocido,
-     que no existen en la base real). ---------------- -->
+     Entrada/Salida/Pérdida REAL/Pérdida TÉCNICA (simulación) de Nivel 4,
+     Nivel 3 y N2-1 para UN mes elegido, en tarjetas por nivel (una franja
+     de color por nivel, estilo la plantilla externa -- Excel -- que el
+     usuario mostró). Pérdida Reconocida se CALCULA acá mismo -- Entrada ×
+     % que el usuario ingresa por nivel (pedido explícito: "el reconocido
+     se calcula a partir de la entrada y un porcentaje yo coloco el
+     porcentaje"), no viene de ningún dato cargado (el CSV real no trae
+     reconocimiento CREG). Reusa los mismos datos ya cargados por IP
+     Nivel 4/IP Nivel 3/Indicador N2-1 (balance real) y por Pérdidas
+     Técnicas (GET /api/resumen?nivel=) -- nada nuevo del backend. ---------------- -->
 <div id="vista-alim-resumen" class="vista-modulo hidden">
   <div class="sec-hdr">
     <div class="sec-title">Resumen por Nivel de Tensión</div>
-    <div class="sec-sub">Entrada, Salida, Pérdida e Índice de Nivel 4, Nivel 3 y N2-1, lado a lado, para el mes elegido.</div>
+    <div class="sec-sub">Entrada, Salida, Pérdida real, Pérdida técnica (simulación) y Pérdida reconocida (vos elegís el %) de Nivel 4, Nivel 3 y N2-1, para el mes elegido.</div>
   </div>
 
   <div id="alim-resumen-vacio" class="card"><div style="color:var(--text3)">Cargando…</div></div>
 
   <div id="alim-resumen-contenido" class="hidden">
     <div class="card">
-      <div class="fbar" style="justify-content:center;margin-bottom:14px">
+      <div class="fbar" style="justify-content:center;margin-bottom:16px">
         <label>Mes</label>
-        <select id="alim-resumen-mes" onchange="alimResumenRenderTabla()"></select>
+        <select id="alim-resumen-mes" onchange="alimResumenRenderNiveles()"></select>
       </div>
-      <div class="tbl-wrap tbl-compacta" style="margin:0 auto">
-        <table>
-          <thead><tr>
-            <th style="text-align:left">Nivel</th>
-            <th>Entrada (kWh)</th>
-            <th>Salida (kWh)</th>
-            <th>Pérdida (kWh)</th>
-            <th>Índice (%)</th>
-            <th>Δ Índice</th>
-          </tr></thead>
-          <tbody id="alim-resumen-tabla"></tbody>
-        </table>
-      </div>
+      <div id="alim-resumen-niveles"></div>
     </div>
   </div>
 </div>
@@ -11278,23 +11280,56 @@ function alimNivel3DescargarCsv(){
 }
 
 // Resumen por Nivel de Tensión -- consolida Nivel 4, Nivel 3 y N2-1 (los
-// otros 3 submódulos de este grupo) en una sola tabla, para UN mes
-// elegido -- pedido explícito, inspirado en una plantilla externa
-// (Excel) que el usuario mostró. Reusa los MISMOS datos ya cargados por
-// esos 3 submódulos (_alimNivel34Filas para 4/3, ALIM_FILAS -- Resumen de
-// Alimentadores.csv -- para N2-1 vía alimN21AgregarMensual) -- nada
-// nuevo del backend, y por eso el alcance queda acotado a Entrada/Salida/
-// Pérdida/Índice (la plantilla trae más campos -- Importaciones,
-// Transferencia, Generación, Reconocido -- que no existen en la base real).
+// otros 3 submódulos de este grupo) en tarjetas por nivel, para UN mes
+// elegido -- pedido explícito, inspirado en una plantilla externa (Excel)
+// que el usuario mostró. Además de la pérdida REAL (balance medido, ya
+// cargado por esos 3 submódulos) trae la pérdida TÉCNICA de simulación
+// (GET /api/resumen?nivel=, el mismo cálculo que usa Pérdidas Técnicas --
+// N2-1 corresponde a "Nivel 2" en esa taxonomía) y calcula la Pérdida
+// Reconocida = Entrada × % que el usuario ingresa por nivel (pedido
+// explícito -- el CSV real no trae reconocimiento CREG, así que se
+// define acá mismo, no viene de ningún dato cargado). Nada nuevo del
+// backend -- reusa endpoints que la app ya llama en otros módulos.
+const ALIM_RESUMEN_NIVELES = [
+  {clave:'nivel4', nombre:'Nivel 4', color:'#f4a261', nivelTecnica:4},
+  {clave:'nivel3', nombre:'Nivel 3', color:'#4361ee', nivelTecnica:3},
+  {clave:'n21', nombre:'N2-1', color:'#06d6a0', nivelTecnica:2},
+];
+let ALIM_RESUMEN_TECNICA = {};  // {nivel4: {clave:{perdida,pct}}, nivel3:..., n21:...}
+
+function _alimResumenSerie(nivelClave){
+  if(nivelClave === 'nivel4') return _alimNivel34MensualTotal(ALIM_NIVEL4_FILAS || []);
+  if(nivelClave === 'nivel3') return _alimNivel34MensualTotal(ALIM_NIVEL3_FILAS || []);
+  return alimN21AgregarMensual(new Set());
+}
+
+// % Reconocido -- lo ingresa el usuario, se guarda por nivel Y por
+// operador (localStorage, para que no se pierda entre visitas pero
+// tampoco se mezcle si el mismo navegador usa varios operadores).
+function _alimResumenClaveLS(nivelClave){
+  const slug = (typeof OPERADOR !== 'undefined' && OPERADOR && OPERADOR.slug) ? OPERADOR.slug : 'default';
+  return `pt_reconocido_${slug}_${nivelClave}`;
+}
+function _alimResumenLeerPct(nivelClave){
+  const v = localStorage.getItem(_alimResumenClaveLS(nivelClave));
+  return v==null || v==='' ? '' : v;
+}
+function _alimResumenGuardarPct(nivelClave, valor){
+  localStorage.setItem(_alimResumenClaveLS(nivelClave), valor);
+}
+
 async function alimResumenCargar(){
   const vacio = document.getElementById('alim-resumen-vacio');
   const contenido = document.getElementById('alim-resumen-contenido');
-  let filas4, filas3, filasN21;
+  let filas4, filas3, filasN21, tec4, tec3, tec2;
   try{
-    [filas4, filas3, filasN21] = await Promise.all([
+    [filas4, filas3, filasN21, tec4, tec3, tec2] = await Promise.all([
       _alimNivel34Filas(4),
       _alimNivel34Filas(3),
       _alimAsegurarDatosCargados(),
+      DEMO ? Promise.resolve({meses:[], perdidas_kwh:[], perdidas_pct:[]}) : apiGet('/api/resumen?nivel=4', AUTH_TIMEOUT_MS),
+      DEMO ? Promise.resolve({meses:[], perdidas_kwh:[], perdidas_pct:[]}) : apiGet('/api/resumen?nivel=3', AUTH_TIMEOUT_MS),
+      DEMO ? Promise.resolve({meses:[], perdidas_kwh:[], perdidas_pct:[]}) : apiGet('/api/resumen?nivel=2', AUTH_TIMEOUT_MS),
     ]);
   }catch(e){
     vacio.classList.remove('hidden'); contenido.classList.add('hidden');
@@ -11307,11 +11342,12 @@ async function alimResumenCargar(){
     return;
   }
   vacio.classList.add('hidden'); contenido.classList.remove('hidden');
+  ALIM_RESUMEN_TECNICA = {nivel4: _alimNivelTecnicaPorMes(tec4), nivel3: _alimNivelTecnicaPorMes(tec3), n21: _alimNivelTecnicaPorMes(tec2)};
 
   // Unión de los meses disponibles en CUALQUIERA de los 3 -- no siempre
   // cubren exactamente el mismo histórico (fuentes de datos distintas),
   // así que el selector ofrece todo lo que haya en al menos uno; el mes
-  // que le falte a alguno se muestra como "Sin datos" en su fila.
+  // que le falte a alguno se muestra como "Sin datos" en su tarjeta.
   const claves4 = _alimNivel34MensualTotal(filas4).map(f=>f.clave);
   const claves3 = _alimNivel34MensualTotal(filas3).map(f=>f.clave);
   const clavesN21 = alimN21AgregarMensual(new Set()).map(f=>f.clave);
@@ -11323,45 +11359,95 @@ async function alimResumenCargar(){
     sel.innerHTML = claves.map(c => `<option value="${c}"${c===actual?' selected':''}>${labelMesLargo(c)}</option>`).join('');
   }
 
-  alimResumenRenderTabla();
+  alimResumenRenderNiveles();
 }
 
-function alimResumenRenderTabla(){
-  const cont = document.getElementById('alim-resumen-tabla');
+// Arma las 3 tarjetas (una por nivel) COMPLETAS -- se llama al cambiar de
+// mes. El % Reconocido de cada tarjeta arranca con lo último guardado en
+// localStorage; escribirlo dispara alimResumenActualizarReconocido (no
+// un re-render completo, para no perder el foco del input mientras se
+// escribe).
+function alimResumenRenderNiveles(){
+  const cont = document.getElementById('alim-resumen-niveles');
   const sel = document.getElementById('alim-resumen-mes');
   if(!cont || !sel || !sel.value) return;
   const clave = sel.value;
-
-  const filas = [
-    {nivel:'Nivel 4', color:'#f4a261', serie: _alimNivel34MensualTotal(ALIM_NIVEL4_FILAS || [])},
-    {nivel:'Nivel 3', color:'#4361ee', serie: _alimNivel34MensualTotal(ALIM_NIVEL3_FILAS || [])},
-    {nivel:'N2-1', color:'#06d6a0', serie: alimN21AgregarMensual(new Set())},
-  ];
-
   const fmt = v => v==null ? '--' : v.toLocaleString('es-CO',{maximumFractionDigits:0});
-  const punto = color => `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${color};margin-right:6px"></span>`;
 
-  cont.innerHTML = filas.map(f => {
-    const idx = f.serie.findIndex(x => x.clave === clave);
-    if(idx < 0 || f.serie[idx].pct == null){
-      return `<tr>
-        <td style="text-align:left;font-weight:700">${punto(f.color)}${f.nivel}</td>
-        <td colspan="5" style="color:var(--text3)">Sin datos para este mes.</td>
-      </tr>`;
+  // `opts`: {destacada, color (del valor), id (del tile completo)}.
+  const tarjeta = (etiqueta, valor, sub, opts) => {
+    opts = opts || {};
+    return `<div class="be-resumen-tile${opts.destacada?' destacada':''} resnivel-tile"${opts.id?` id="${opts.id}"`:''}>
+      <div class="etiqueta">${etiqueta}</div>
+      <div class="valor"${opts.color?` style="color:${opts.color}"`:''}>${valor}</div>
+      ${sub?`<div class="sub">${sub}</div>`:''}
+    </div>`;
+  };
+
+  cont.innerHTML = ALIM_RESUMEN_NIVELES.map(n => {
+    const serie = _alimResumenSerie(n.clave);
+    const idx = serie.findIndex(x => x.clave === clave);
+    const mesLargo = labelMesLargo(clave);
+
+    if(idx < 0 || serie[idx].pct == null){
+      return `<div class="resnivel-box">
+        <div class="resnivel-franja" style="background:${n.color}22;color:${n.color}">${n.nombre}</div>
+        <div class="resnivel-grid"><div style="color:var(--text3);font-size:12px;grid-column:1/-1">Sin datos para ${mesLargo}.</div></div>
+      </div>`;
     }
-    const actual = f.serie[idx];
-    const anterior = idx > 0 ? f.serie[idx-1] : null;
+
+    const actual = serie[idx];
+    const anterior = idx > 0 ? serie[idx-1] : null;
     const deltaPct = (anterior && anterior.pct != null) ? actual.pct - anterior.pct : null;
     const colorDelta = deltaPct==null ? 'var(--text3)' : (deltaPct>=0 ? '#ef476f' : '#06d6a0');
-    return `<tr>
-      <td style="text-align:left;font-weight:700">${punto(f.color)}${f.nivel}</td>
-      <td>${fmt(actual.entrada)}</td>
-      <td>${fmt(actual.salida)}</td>
-      <td>${fmt(actual.perdida)}</td>
-      <td style="font-weight:700">${actual.pct.toFixed(2)}%</td>
-      <td style="color:${colorDelta}">${deltaPct==null?'--':`${deltaPct>=0?'▲':'▼'} ${Math.abs(deltaPct).toFixed(2)} pp`}</td>
-    </tr>`;
+
+    const tec = ALIM_RESUMEN_TECNICA[n.clave] ? ALIM_RESUMEN_TECNICA[n.clave][clave] : null;
+
+    const pctGuardado = _alimResumenLeerPct(n.clave);
+    const pctNum = pctGuardado === '' ? null : Number(pctGuardado);
+    const perdidaRec = (pctNum!=null && !isNaN(pctNum)) ? actual.entrada * pctNum/100 : null;
+
+    return `<div class="resnivel-box">
+      <div class="resnivel-franja" style="background:${n.color}22;color:${n.color}">${n.nombre}</div>
+      <div class="resnivel-grid">
+        ${tarjeta('Entrada (kWh)', fmt(actual.entrada), mesLargo)}
+        ${tarjeta('Salida (kWh)', fmt(actual.salida), mesLargo)}
+        ${tarjeta('Pérdida Real (kWh)', fmt(actual.perdida), mesLargo)}
+        ${tarjeta('Índice Real (%)', actual.pct.toFixed(2)+'%', mesLargo, {destacada:true})}
+        ${tarjeta('Variación Índice Real', deltaPct==null?'--':`${deltaPct>=0?'▲':'▼'} ${Math.abs(deltaPct).toFixed(2)} pp`, 'vs. mes anterior', {color:colorDelta})}
+        ${tarjeta('Pérdida Técnica (kWh)', tec?fmt(tec.perdida):'--', 'Simulación -- Pérdidas Técnicas')}
+        ${tarjeta('Índice Técnico (%)', tec?tec.pct.toFixed(2)+'%':'--', 'Simulación -- Pérdidas Técnicas')}
+        <div class="be-resumen-tile resnivel-tile">
+          <div class="etiqueta">% Reconocido (vos lo ingresás)</div>
+          <input type="number" min="0" max="100" step="0.01" placeholder="--" value="${pctGuardado}"
+            id="alim-resumen-pct-${n.clave}" oninput="alimResumenActualizarReconocido('${n.clave}')">
+        </div>
+        ${tarjeta('Pérdida Reconocida (kWh)', perdidaRec==null?'--':fmt(perdidaRec), 'Entrada × % Reconocido', {id:`alim-resumen-perdrec-${n.clave}`})}
+      </div>
+    </div>`;
   }).join('');
+}
+
+// Recalcula SOLO la tarjeta "Pérdida Reconocida" de un nivel al escribir
+// en su % -- no reconstruye el resto de la caja (perdería el foco del
+// input a mitad de escritura). Pérdida Reconocida = Entrada del mes
+// elegido × % Reconocido (pedido explícito).
+function alimResumenActualizarReconocido(nivelClave){
+  const input = document.getElementById(`alim-resumen-pct-${nivelClave}`);
+  const destino = document.getElementById(`alim-resumen-perdrec-${nivelClave}`);
+  const sel = document.getElementById('alim-resumen-mes');
+  if(!input || !destino || !sel) return;
+  _alimResumenGuardarPct(nivelClave, input.value);
+
+  const n = ALIM_RESUMEN_NIVELES.find(x => x.clave === nivelClave);
+  const serie = _alimResumenSerie(nivelClave);
+  const actual = serie.find(x => x.clave === sel.value);
+  const pctNum = input.value === '' ? null : Number(input.value);
+  const perdidaRec = (actual && pctNum!=null && !isNaN(pctNum)) ? actual.entrada * pctNum/100 : null;
+
+  const fmt = v => v==null ? '--' : v.toLocaleString('es-CO',{maximumFractionDigits:0});
+  const valorEl = destino.querySelector('.valor');
+  if(valorEl) valorEl.textContent = fmt(perdidaRec);
 }
 
 async function cargarAlimentadoresModulo(nombreVista){
