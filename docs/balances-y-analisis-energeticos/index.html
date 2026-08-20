@@ -340,9 +340,8 @@ canvas[id^="ch-tride-"]:active{cursor:grabbing}
 /* "Resumen por Nivel de Tensión" -- pedido explícito: "lo más parecido"
    a la plantilla Excel que mostró el usuario -- etiqueta ARRIBA de cada
    caja (no adentro, como el resto de tarjetas de la app), caja blanca
-   con borde fino, Entrada/Salida SUELTAS arriba de una caja con franja
-   de color lateral (NIVEL 4/NIVEL 3/N2-1) que agrupa el resto de campos. */
-.resnivel-entradasalida{display:flex;gap:24px;margin:0 0 10px 4px;flex-wrap:wrap}
+   con borde fino, dentro de una caja con franja de color lateral
+   (NIVEL 4/NIVEL 3/N2-1) que agrupa Entrada/Salida y el resto de campos. */
 .resnivel-campo{display:flex;flex-direction:column;gap:4px;min-width:130px}
 .resnivel-campo-label{font-size:10.5px;font-weight:600;color:var(--text2)}
 .resnivel-campo-caja{border:1.5px solid var(--border);border-radius:4px;padding:7px 10px;text-align:right;font-weight:700;font-size:13px;background:var(--card-bg);color:var(--text)}
@@ -2107,6 +2106,14 @@ tfoot td:first-child{text-align:left}
   <div id="alim-resumen-vacio" class="card"><div style="color:var(--text3)">Cargando…</div></div>
 
   <div id="alim-resumen-contenido" class="hidden">
+    <!-- IP_Reg (Mensual y Anual/12M) arriba de todo -- pedido explícito
+         ("debe ser un resumen de todo... quiero que en la parte superior
+         este el IPreg anual y mensual"), corre en su propio calendario
+         (no depende del selector de Mes de abajo). -->
+    <div class="card">
+      <div style="text-align:center;font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase;margin-bottom:14px">IP_Reg</div>
+      <div id="alim-resumen-ipreg" style="display:flex;justify-content:center;gap:24px;flex-wrap:wrap"></div>
+    </div>
     <div class="card">
       <!-- Mini-caja arriba a la derecha, estilo el bloque Inicio/Fin/
            Periodo de la plantilla -- pedido explícito ("lo más parecido
@@ -2274,19 +2281,33 @@ tfoot td:first-child{text-align:left}
 
     <div class="card">
       <div style="display:inline-flex;flex-direction:column;align-items:center;max-width:100%">
-        <div style="margin-bottom:8px;text-align:center">
+        <div class="fbar" style="margin-bottom:8px;justify-content:center">
           <div style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Comparativo Mensual por Zona</div>
-          <div id="alim-nivel3-tabla-zonas-caption" style="font-size:11px;color:var(--text3);margin-top:2px"></div>
+          <button type="button" class="be-modo-btn" id="alim-nivel3-tabla-btn-es" style="margin-left:12px" onclick="alimNivel3ToggleTablaES()" title="Muestra/oculta las columnas de Entrada y Salida">Entrada / Salida</button>
         </div>
-        <div class="tbl-wrap tbl-compacta">
+        <div id="alim-nivel3-tabla-zonas-caption" style="font-size:11px;color:var(--text3);margin-bottom:8px"></div>
+        <!-- Mismo formato que "Variación Mensual por Zona" de Indicador N2-1
+             (pedido explícito) -- sin grupo P. Gestionable: "Consolidado
+             Zonas N3.csv" no trae esa columna (a diferencia de "Resumen de
+             Alimentadores.csv"), no hay de dónde sacarla para Nivel 3. -->
+        <div class="tbl-wrap tbl-compacta" id="alim-nivel3-tabla-zonas-wrap">
           <table>
-            <thead><tr>
-              <th style="text-align:left">Zona</th>
-              <th>Entrada</th><th>Δ Entrada</th>
-              <th>Salida</th><th>Δ Salida</th>
-              <th>Pérdida</th><th>Δ Pérdida</th>
-              <th>Pérdida %</th><th>Δ pp</th>
-            </tr></thead>
+            <thead>
+              <tr>
+                <th rowspan="2" style="text-align:left">Zona</th>
+                <th colspan="2" class="n21tab-col-es" style="text-align:center">Entrada</th>
+                <th colspan="2" class="n21tab-col-es" style="text-align:center">Salida</th>
+                <th colspan="4" style="text-align:center">P. Total</th>
+                <th colspan="4" style="text-align:center">P. Técnica</th>
+                <th rowspan="2">Δ Índice</th>
+              </tr>
+              <tr>
+                <th class="n21tab-col-es">kWh</th><th class="n21tab-col-es">Δ</th>
+                <th class="n21tab-col-es">kWh</th><th class="n21tab-col-es">Δ</th>
+                <th>kWh</th><th>Δ kWh</th><th>Δ %</th><th>Impacto</th>
+                <th>kWh</th><th>Δ kWh</th><th>Δ %</th><th>Impacto</th>
+              </tr>
+            </thead>
             <tbody id="alim-nivel3-tabla-zonas"></tbody>
             <tfoot><tr id="alim-nivel3-tabla-zonas-total"></tr></tfoot>
           </table>
@@ -2375,19 +2396,19 @@ tfoot td:first-child{text-align:left}
             <thead>
               <tr>
                 <th rowspan="2" style="text-align:left">Zona</th>
-                <th colspan="2" class="n21tab-col-es">Entrada</th>
-                <th colspan="2" class="n21tab-col-es">Salida</th>
-                <th colspan="3">P. Total</th>
-                <th colspan="3">P. Técnica</th>
-                <th colspan="3">P. Gestionable</th>
+                <th colspan="2" class="n21tab-col-es" style="text-align:center">Entrada</th>
+                <th colspan="2" class="n21tab-col-es" style="text-align:center">Salida</th>
+                <th colspan="4" style="text-align:center">P. Total</th>
+                <th colspan="4" style="text-align:center">P. Técnica</th>
+                <th colspan="4" style="text-align:center">P. Gestionable</th>
                 <th rowspan="2">Δ Índice</th>
               </tr>
               <tr>
                 <th class="n21tab-col-es">kWh</th><th class="n21tab-col-es">Δ</th>
                 <th class="n21tab-col-es">kWh</th><th class="n21tab-col-es">Δ</th>
-                <th>Δ kWh</th><th>Δ %</th><th>Impacto</th>
-                <th>Δ kWh</th><th>Δ %</th><th>Impacto</th>
-                <th>Δ kWh</th><th>Δ %</th><th>Impacto</th>
+                <th>kWh</th><th>Δ kWh</th><th>Δ %</th><th>Impacto</th>
+                <th>kWh</th><th>Δ kWh</th><th>Δ %</th><th>Impacto</th>
+                <th>kWh</th><th>Δ kWh</th><th>Δ %</th><th>Impacto</th>
               </tr>
             </thead>
             <tbody id="alim-n21-tabla-zonas"></tbody>
@@ -10414,6 +10435,8 @@ let ALIM_NIVEL4_TECNICA = null;
 let ALIM_NIVEL3_TECNICA = null;
 let ALIM_NIVEL3_ZONAS = [];
 let ALIM_NIVEL3_ZONAS_SEL = new Set();
+let ALIM_NIVEL3_TECNICA_POR_ZONA = {};  // {zona: {clave: {perdida, pct}}} -- mismo patrón que ALIM_N21_TECNICA_POR_ZONA
+let ALIM_NIVEL3_TABLA_MOSTRAR_ES = false;
 let chAlimNivel4Mensual = null, chAlimNivel4Anual = null, chAlimNivel4Tecnica = null, chAlimNivel4ImportExport = null;
 let chAlimNivel3Mensual = null, chAlimNivel3Anual = null, chAlimNivel3Tecnica = null;
 // Botón "Δ Variación" -- agrega/oculta las tarjetas Δ Entrada/Δ Salida/Δ
@@ -10795,6 +10818,16 @@ function _alimNivelConstruirChartTecnica(cv, mensual, tecnicaPorMes, etiquetaNiv
 // ALIM_N21_ORDEN_TABLA/_alimN21OrdenarZonasTabla, ya genéricas), fila de
 // Total al final. Respeta el filtro Rango, ignora el filtro de chips de
 // Zona -- siempre las 5 completas, igual criterio que N2-1.
+function alimNivel3ToggleTablaES(){
+  ALIM_NIVEL3_TABLA_MOSTRAR_ES = !ALIM_NIVEL3_TABLA_MOSTRAR_ES;
+  document.getElementById('alim-nivel3-tabla-btn-es').classList.toggle('activo', ALIM_NIVEL3_TABLA_MOSTRAR_ES);
+  document.getElementById('alim-nivel3-tabla-zonas-wrap').classList.toggle('n21tab-mostrar-es', ALIM_NIVEL3_TABLA_MOSTRAR_ES);
+}
+
+// Mismo formato "P.Total/P.Técnica" (kWh del mes + Δ kWh/Δ%/Impacto) que
+// "Variación Mensual por Zona" de Indicador N2-1 (pedido explícito) --
+// _alimN21CeldaGrupo/_alimN21DeltaGrupo/_alimN21TotalGrupo se reusan tal
+// cual. Sin P. Gestionable: Nivel 3 no trae esa columna en su CSV.
 function alimNivel3RenderTablaZonas(porZona){
   const cont = document.getElementById('alim-nivel3-tabla-zonas');
   const contTotal = document.getElementById('alim-nivel3-tabla-zonas-total');
@@ -10810,12 +10843,18 @@ function alimNivel3RenderTablaZonas(porZona){
     const actual = visibles[visibles.length-1];
     const anterior = visibles.length >= 2 ? visibles[visibles.length-2] : null;
     if(!mesActual){ mesActual = actual.clave; mesAnterior = anterior ? anterior.clave : null; }
+
+    const tecZona = ALIM_NIVEL3_TECNICA_POR_ZONA[z] || {};
+    const tecActual = tecZona[actual.clave] ? tecZona[actual.clave].perdida : null;
+    const tecAnterior = (anterior && tecZona[anterior.clave]) ? tecZona[anterior.clave].perdida : null;
+
     return {
       zona: z,
       entrada: actual.entrada, deltaEntrada: anterior ? actual.entrada-anterior.entrada : null,
       salida: actual.salida, deltaSalida: anterior ? actual.salida-anterior.salida : null,
-      perdida: actual.perdida, deltaPerdida: anterior ? actual.perdida-anterior.perdida : null,
-      pct: actual.pct, deltaPct: anterior ? actual.pct-anterior.pct : null,
+      total: _alimN21DeltaGrupo(actual.perdida, anterior ? anterior.perdida : null),
+      tecnica: _alimN21DeltaGrupo(tecActual, tecAnterior),
+      deltaPct: anterior ? actual.pct - anterior.pct : null,
     };
   }).filter(Boolean);
 
@@ -10824,57 +10863,53 @@ function alimNivel3RenderTablaZonas(porZona){
     : '';
 
   if(!filas.length){
-    cont.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--text3)">Sin datos.</td></tr>';
+    cont.innerHTML = '<tr><td colspan="14" style="text-align:center;color:var(--text3)">Sin datos.</td></tr>';
     if(contTotal) contTotal.innerHTML = '';
     return;
   }
 
   cont.innerHTML = filas.map(f => {
     const color = colorParaZona(f.zona);
-    const anteriorPerdida = f.deltaPerdida!=null ? f.perdida-f.deltaPerdida : null;
-    const anteriorPct = f.deltaPct!=null ? f.pct-f.deltaPct : null;
-    const colorPerdida = ipColorVariacion(f.perdida, anteriorPerdida, 'var(--text3)');
-    const colorPct = ipColorVariacion(f.pct, anteriorPct, 'var(--text3)');
+    const colorIndice = f.deltaPct==null ? 'var(--text3)' : (f.deltaPct>=0 ? '#ef476f' : '#06d6a0');
     return `<tr>
       <td style="text-align:left"><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${color};margin-right:6px"></span>Zona ${f.zona}</td>
-      <td>${fmt(f.entrada)}</td>
-      <td style="color:var(--text3)">${fmtDelta(f.deltaEntrada)}</td>
-      <td>${fmt(f.salida)}</td>
-      <td style="color:var(--text3)">${fmtDelta(f.deltaSalida)}</td>
-      <td>${fmt(f.perdida)}</td>
-      <td style="color:${colorPerdida}">${fmtDelta(f.deltaPerdida)}</td>
-      <td style="font-weight:700">${f.pct.toFixed(2)}%</td>
-      <td style="color:${colorPct}">${f.deltaPct==null?'--':`${f.deltaPct>=0?'▲':'▼'} ${Math.abs(f.deltaPct).toFixed(2)} pp`}</td>
+      <td class="n21tab-col-es">${fmt(f.entrada)}</td>
+      <td class="n21tab-col-es" style="color:var(--text3)">${fmtDelta(f.deltaEntrada)}</td>
+      <td class="n21tab-col-es">${fmt(f.salida)}</td>
+      <td class="n21tab-col-es" style="color:var(--text3)">${fmtDelta(f.deltaSalida)}</td>
+      ${_alimN21CeldaGrupo(f.total.actual, f.total.deltaKwh, f.total.deltaPct, fmt)}
+      ${_alimN21CeldaGrupo(f.tecnica.actual, f.tecnica.deltaKwh, f.tecnica.deltaPct, fmt)}
+      <td style="color:${colorIndice};font-weight:700">${f.deltaPct==null?'--':`${f.deltaPct>=0?'▲':'▼'} ${Math.abs(f.deltaPct).toFixed(2)} pp`}</td>
     </tr>`;
   }).join('');
 
   if(contTotal){
     const sum = campo => filas.reduce((s,f)=>s+f[campo], 0);
-    const todasConDelta = filas.every(f => f.deltaEntrada!=null && f.deltaSalida!=null && f.deltaPerdida!=null);
-    const totEntrada = sum('entrada'), totSalida = sum('salida'), totPerdida = sum('perdida');
+    const todasConDelta = filas.every(f => f.deltaEntrada!=null && f.deltaSalida!=null);
+    const totEntrada = sum('entrada'), totSalida = sum('salida');
     const totDeltaEntrada = todasConDelta ? sum('deltaEntrada') : null;
     const totDeltaSalida = todasConDelta ? sum('deltaSalida') : null;
-    const totDeltaPerdida = todasConDelta ? sum('deltaPerdida') : null;
-    const totPct = totEntrada ? totPerdida/totEntrada*100 : null;
-    let totDeltaPct = null;
-    if(todasConDelta && totEntrada){
-      const totEntradaAnterior = totEntrada - totDeltaEntrada;
-      const totPerdidaAnterior = totPerdida - totDeltaPerdida;
-      const totPctAnterior = totEntradaAnterior ? totPerdidaAnterior/totEntradaAnterior*100 : null;
-      if(totPctAnterior != null) totDeltaPct = totPct - totPctAnterior;
-    }
-    const colorTotPerdida = totDeltaPerdida==null ? 'var(--text3)' : (totDeltaPerdida>=0 ? '#ef476f' : '#06d6a0');
-    const colorTotPct = totDeltaPct==null ? 'var(--text3)' : (totDeltaPct>=0 ? '#ef476f' : '#06d6a0');
+
+    const totTotal = _alimN21TotalGrupo(filas, 'total');
+    const totTecnica = _alimN21TotalGrupo(filas, 'tecnica');
+
+    const totPerdidaActual = filas.reduce((s,f)=>s+(f.total.actual||0), 0);
+    const totPerdidaAnterior = filas.reduce((s,f)=>s+(f.total.anterior||0), 0);
+    const totPct = totEntrada ? totPerdidaActual/totEntrada*100 : null;
+    const totEntradaAnterior = totEntrada!=null && totDeltaEntrada!=null ? totEntrada-totDeltaEntrada : null;
+    const totPctAnterior = totEntradaAnterior ? totPerdidaAnterior/totEntradaAnterior*100 : null;
+    const totDeltaPct = (totPct!=null && totPctAnterior!=null) ? totPct-totPctAnterior : null;
+    const colorTotIndice = totDeltaPct==null ? 'var(--text3)' : (totDeltaPct>=0 ? '#ef476f' : '#06d6a0');
+
     contTotal.innerHTML = `
       <td style="text-align:left">Total</td>
-      <td>${fmt(totEntrada)}</td>
-      <td>${fmtDelta(totDeltaEntrada)}</td>
-      <td>${fmt(totSalida)}</td>
-      <td>${fmtDelta(totDeltaSalida)}</td>
-      <td>${fmt(totPerdida)}</td>
-      <td style="color:${colorTotPerdida}">${fmtDelta(totDeltaPerdida)}</td>
-      <td>${totPct==null?'--':totPct.toFixed(2)+'%'}</td>
-      <td style="color:${colorTotPct}">${totDeltaPct==null?'--':`${totDeltaPct>=0?'▲':'▼'} ${Math.abs(totDeltaPct).toFixed(2)} pp`}</td>
+      <td class="n21tab-col-es">${fmt(totEntrada)}</td>
+      <td class="n21tab-col-es">${fmtDelta(totDeltaEntrada)}</td>
+      <td class="n21tab-col-es">${fmt(totSalida)}</td>
+      <td class="n21tab-col-es">${fmtDelta(totDeltaSalida)}</td>
+      ${_alimN21CeldaGrupo(totTotal.actual, totTotal.deltaKwh, totTotal.deltaPct, fmt)}
+      ${_alimN21CeldaGrupo(totTecnica.actual, totTecnica.deltaKwh, totTecnica.deltaPct, fmt)}
+      <td style="color:${colorTotIndice};font-weight:700">${totDeltaPct==null?'--':`${totDeltaPct>=0?'▲':'▼'} ${Math.abs(totDeltaPct).toFixed(2)} pp`}</td>
     `;
   }
 }
@@ -11223,6 +11258,20 @@ async function alimNivel3Cargar(){
   ALIM_NIVEL3_ZONAS = [...new Set(filas.map(f => f.estructura).filter(Boolean))].sort();
   alimNivel3RenderZonasChips();
 
+  // Pérdida Técnica por zona (Nivel 3), una consulta por zona -- mismo
+  // patrón que Indicador N2-1 (alimN21Cargar), para "Comparativo Mensual
+  // por Zona" con formato P.Total/P.Técnica.
+  if(!DEMO){
+    await Promise.all(ALIM_NIVEL3_ZONAS.map(async z => {
+      try{
+        const resp = await apiGet(`/api/resumen?nivel=3&zona=${encodeURIComponent(z)}`, AUTH_TIMEOUT_MS);
+        ALIM_NIVEL3_TECNICA_POR_ZONA[z] = _alimNivelTecnicaPorMes(resp);
+      }catch(e){
+        ALIM_NIVEL3_TECNICA_POR_ZONA[z] = {};
+      }
+    }));
+  }
+
   const claves = [...new Set(filas.map(f => f.fecha.slice(0,7)))].sort();
   _alimNivelPoblarRangoDefecto('alim-nivel3', claves);
 
@@ -11370,7 +11419,8 @@ async function alimResumenCargar(){
       _alimAsegurarDatosCargados(),
       DEMO ? Promise.resolve({meses:[], perdidas_kwh:[], perdidas_pct:[]}) : apiGet('/api/resumen?nivel=4', AUTH_TIMEOUT_MS),
       DEMO ? Promise.resolve({meses:[], perdidas_kwh:[], perdidas_pct:[]}) : apiGet('/api/resumen?nivel=3', AUTH_TIMEOUT_MS),
-      DEMO ? Promise.resolve({meses:[], perdidas_kwh:[], perdidas_pct:[]}) : apiGet('/api/resumen?nivel=2', AUTH_TIMEOUT_MS),
+      DEMO ? Promise.resolve({meses:[], perdidas_kwh:[], perdidas_pct:[]}) : apiGet('/api/resumen?nivel=1&nivel=2', AUTH_TIMEOUT_MS),
+      ipAsegurarDatosCargados(),  // IP_Reg mensual/anual, tarjetas de arriba de la vista
     ]);
   }catch(e){
     vacio.classList.remove('hidden'); contenido.classList.add('hidden');
@@ -11400,7 +11450,32 @@ async function alimResumenCargar(){
     sel.innerHTML = claves.map(c => `<option value="${c}"${c===actual?' selected':''}>${labelMesLargo(c)}</option>`).join('');
   }
 
+  alimResumenRenderIpReg();
   alimResumenRenderNiveles();
+}
+
+// IP_Reg (Mensual y Anual/12M) arriba de todo -- pedido explícito ("en la
+// parte superior este el IPreg anual y mensual"), mismos campos que ya
+// muestran "IP_Reg" y "Nivel de Tensión 1" (ipUltimasFilasReales, sobre
+// IP_REG_FILAS -- ver ipAsegurarDatosCargados). Corre en su propio
+// calendario (no depende del selector de Mes de esta vista, igual que en
+// las otras vistas que ya lo usan).
+function alimResumenRenderIpReg(){
+  const cont = document.getElementById('alim-resumen-ipreg');
+  if(!cont) return;
+  const fmtPct = v => v==null ? '--' : (v*100).toFixed(2)+'%';
+  const ultimas = typeof ipUltimasFilasReales === 'function' ? ipUltimasFilasReales() : [];
+  const actual = ultimas.length ? ultimas[ultimas.length-1] : null;
+  const mesActual = actual ? labelMes(ipClaveNormal(actual)) : null;
+  cont.innerHTML = `
+    <div class="resnivel-campo">
+      <div class="resnivel-campo-label">IP_Reg Mensual${mesActual?` (${mesActual})`:''}</div>
+      <div class="resnivel-campo-caja destacada">${actual?fmtPct(actual.pct_perdida_mensual):'--'}</div>
+    </div>
+    <div class="resnivel-campo">
+      <div class="resnivel-campo-label">IP_Reg Anual (12M)${mesActual?` (${mesActual})`:''}</div>
+      <div class="resnivel-campo-caja destacada">${actual?fmtPct(actual.ipt_pct):'--'}</div>
+    </div>`;
 }
 
 // Arma las 3 tarjetas (una por nivel) COMPLETAS -- se llama al cambiar de
@@ -11431,13 +11506,13 @@ function alimResumenRenderNiveles(){
 
     if(idx < 0 || serie[idx].pct == null){
       return `
-        <div class="resnivel-entradasalida">
-          ${campo(`Entrada ${n.nombre} (kWh)`, '--')}
-          ${campo(`Salida ${n.nombre} (kWh)`, '--')}
-        </div>
         <div class="resnivel-box">
           <div class="resnivel-franja" style="background:${n.color}22;color:${n.color}">${n.nombre}</div>
-          <div class="resnivel-grid"><div style="color:var(--text3);font-size:12px;grid-column:1/-1">Sin datos para ${labelMesLargo(clave)}.</div></div>
+          <div class="resnivel-grid">
+            ${campo(`Entrada (kWh)`, '--')}
+            ${campo(`Salida (kWh)`, '--')}
+            <div style="color:var(--text3);font-size:12px;grid-column:1/-1">Sin datos para ${labelMesLargo(clave)}.</div>
+          </div>
         </div>`;
     }
 
@@ -11449,40 +11524,37 @@ function alimResumenRenderNiveles(){
     const pctValido = pctNum!=null && !isNaN(pctNum);
     const perdidaRec = pctValido ? actual.entrada * pctNum/100 : null;
 
-    // Entrada/Salida SUELTAS arriba de la caja de color (como en la
-    // plantilla), el resto de campos adentro de la caja del nivel.
+    // Entrada/Salida y el resto de campos, todo adentro de la caja de
+    // color del nivel (pedido explícito -- antes iban sueltos arriba).
+    // % Reconocido: un solo campo (el input editable), sin caja aparte
+    // duplicando el mismo valor (pedido explícito).
     return `
-      <div class="resnivel-entradasalida">
-        ${campo(`Entrada ${n.nombre} (kWh)`, fmt(actual.entrada))}
-        ${campo(`Salida ${n.nombre} (kWh)`, fmt(actual.salida))}
-      </div>
       <div class="resnivel-box">
         <div class="resnivel-franja" style="background:${n.color}22;color:${n.color}">${n.nombre}</div>
         <div class="resnivel-grid">
+          ${campo('Entrada (kWh)', fmt(actual.entrada))}
+          ${campo('Salida (kWh)', fmt(actual.salida))}
           ${campo('Pérdida Real (kWh)', fmt(actual.perdida))}
           ${campo('Pérdida Técnica (kWh)', tec?fmt(tec.perdida):'--')}
           ${campo('Pérdida Reconocida (kWh)', perdidaRec==null?'--':fmt(perdidaRec), {id:`alim-resumen-perdrec-${n.clave}`})}
           ${campo('Índice Real (%)', actual.pct.toFixed(2)+'%', {destacada:true})}
           ${campo('Índice Técnico (%)', tec?tec.pct.toFixed(2)+'%':'--')}
           <div class="resnivel-campo">
-            <div class="resnivel-campo-label">% Reconocido (lo ingresás vos)</div>
+            <div class="resnivel-campo-label">% Reconocido</div>
             <input type="number" min="0" max="100" step="0.01" placeholder="--" value="${pctGuardado}"
               id="alim-resumen-pct-${n.clave}" oninput="alimResumenActualizarReconocido('${n.clave}')">
           </div>
-          ${campo('Índice Reconocido (%)', pctValido ? pctNum.toFixed(2)+'%' : '--', {id:`alim-resumen-indicerec-${n.clave}`})}
         </div>
       </div>`;
   }).join('');
 }
 
-// Recalcula SOLO "Pérdida Reconocida" e "Índice Reconocido" de un nivel
-// al escribir en su % -- no reconstruye toda la caja (perdería el foco
-// del input a mitad de escritura). Pérdida Reconocida = Entrada del mes
-// elegido × % Reconocido; Índice Reconocido = el mismo % (pedido explícito).
+// Recalcula SOLO "Pérdida Reconocida" de un nivel al escribir en su % --
+// no reconstruye toda la caja (perdería el foco del input a mitad de
+// escritura). Pérdida Reconocida = Entrada del mes elegido × % Reconocido.
 function alimResumenActualizarReconocido(nivelClave){
   const input = document.getElementById(`alim-resumen-pct-${nivelClave}`);
   const destinoKwh = document.getElementById(`alim-resumen-perdrec-${nivelClave}`);
-  const destinoIndice = document.getElementById(`alim-resumen-indicerec-${nivelClave}`);
   const sel = document.getElementById('alim-resumen-mes');
   if(!input || !sel) return;
   _alimResumenGuardarPct(nivelClave, input.value);
@@ -11495,7 +11567,6 @@ function alimResumenActualizarReconocido(nivelClave){
 
   const fmt = v => v==null ? '--' : v.toLocaleString('es-CO',{maximumFractionDigits:0});
   if(destinoKwh) destinoKwh.textContent = fmt(perdidaRec);
-  if(destinoIndice) destinoIndice.textContent = valido ? pctNum.toFixed(2)+'%' : '--';
 }
 
 async function cargarAlimentadoresModulo(nombreVista){
@@ -14097,7 +14168,7 @@ async function alimN21Cargar(){
   if(!DEMO){
     await Promise.all(ALIM_N21_ZONAS.map(async z => {
       try{
-        const resp = await apiGet(`/api/resumen?nivel=2&zona=${encodeURIComponent(z)}`, AUTH_TIMEOUT_MS);
+        const resp = await apiGet(`/api/resumen?nivel=1&nivel=2&zona=${encodeURIComponent(z)}`, AUTH_TIMEOUT_MS);
         ALIM_N21_TECNICA_POR_ZONA[z] = _alimNivelTecnicaPorMes(resp);
       }catch(e){
         ALIM_N21_TECNICA_POR_ZONA[z] = {};
@@ -14457,22 +14528,27 @@ function _alimN21DeltaGrupo(actual, anterior){
 // Suma un grupo (Total/Técnica/Gestionable) a través de zonas -- solo con
 // las que tengan actual Y anterior, para la fila de Total.
 function _alimN21TotalGrupo(filas, campo){
+  const conActual = filas.filter(f => f[campo].actual!=null);
+  const totActual = conActual.length ? conActual.reduce((s,f)=>s+f[campo].actual, 0) : null;
   const conDato = filas.filter(f => f[campo].actual!=null && f[campo].anterior!=null);
-  if(!conDato.length) return {deltaKwh:null, deltaPct:null};
-  const totActual = conDato.reduce((s,f)=>s+f[campo].actual, 0);
+  if(!conDato.length) return {actual: totActual, deltaKwh:null, deltaPct:null};
+  const totActualConDato = conDato.reduce((s,f)=>s+f[campo].actual, 0);
   const totAnterior = conDato.reduce((s,f)=>s+f[campo].anterior, 0);
-  const deltaKwh = totActual-totAnterior;
-  return {deltaKwh, deltaPct: totAnterior ? deltaKwh/Math.abs(totAnterior)*100 : null};
+  const deltaKwh = totActualConDato-totAnterior;
+  return {actual: totActual, deltaKwh, deltaPct: totAnterior ? deltaKwh/Math.abs(totAnterior)*100 : null};
 }
 
-// 3 <td> de un grupo -- Δ kWh, Δ % (de cambio) y el pill de "Impacto"
-// (rojo = subió/empeoró, verde = bajó/mejoró -- mismo criterio de color
-// que el resto de la app).
-function _alimN21CeldaGrupo(deltaKwh, deltaPct, fmt){
-  if(deltaKwh==null) return `<td>--</td><td>--</td><td>--</td>`;
+// 4 <td> de un grupo -- el dato del mes (kWh, en negro/neutro -- solo la
+// Δ lleva color), Δ kWh, Δ % (de cambio) y el pill de "Impacto" (rojo =
+// subió/empeoró, verde = bajó/mejoró -- mismo criterio de color que el
+// resto de la app).
+function _alimN21CeldaGrupo(actual, deltaKwh, deltaPct, fmt){
+  const celdaActual = `<td style="font-weight:600">${fmt(actual)}</td>`;
+  if(deltaKwh==null) return `${celdaActual}<td>--</td><td>--</td><td>--</td>`;
   const sube = deltaKwh >= 0;
   const color = sube ? '#ef476f' : '#06d6a0';
-  return `<td style="color:${color}">${deltaKwh>=0?'+':''}${fmt(deltaKwh)}</td>
+  return `${celdaActual}
+    <td style="color:${color}">${deltaKwh>=0?'+':''}${fmt(deltaKwh)}</td>
     <td style="color:${color}">${deltaPct==null?'--':`${deltaPct>=0?'+':''}${deltaPct.toFixed(2)}%`}</td>
     <td><span class="n21tab-impacto ${sube?'sube':'baja'}">${sube?'▲':'▼'}</span></td>`;
 }
@@ -14533,7 +14609,7 @@ function alimN21RenderTablaZonas(){
     : '';
 
   if(!filas.length){
-    cont.innerHTML = '<tr><td colspan="15" style="text-align:center;color:var(--text3)">Sin datos.</td></tr>';
+    cont.innerHTML = '<tr><td colspan="18" style="text-align:center;color:var(--text3)">Sin datos.</td></tr>';
     if(contTotal) contTotal.innerHTML = '';
     return;
   }
@@ -14547,9 +14623,9 @@ function alimN21RenderTablaZonas(){
       <td class="n21tab-col-es" style="color:var(--text3)">${fmtDelta(f.deltaEntrada)}</td>
       <td class="n21tab-col-es">${fmt(f.salida)}</td>
       <td class="n21tab-col-es" style="color:var(--text3)">${fmtDelta(f.deltaSalida)}</td>
-      ${_alimN21CeldaGrupo(f.total.deltaKwh, f.total.deltaPct, fmt)}
-      ${_alimN21CeldaGrupo(f.tecnica.deltaKwh, f.tecnica.deltaPct, fmt)}
-      ${_alimN21CeldaGrupo(f.gestionable.deltaKwh, f.gestionable.deltaPct, fmt)}
+      ${_alimN21CeldaGrupo(f.total.actual, f.total.deltaKwh, f.total.deltaPct, fmt)}
+      ${_alimN21CeldaGrupo(f.tecnica.actual, f.tecnica.deltaKwh, f.tecnica.deltaPct, fmt)}
+      ${_alimN21CeldaGrupo(f.gestionable.actual, f.gestionable.deltaKwh, f.gestionable.deltaPct, fmt)}
       <td style="color:${colorIndice};font-weight:700">${f.deltaPct==null?'--':`${f.deltaPct>=0?'▲':'▼'} ${Math.abs(f.deltaPct).toFixed(2)} pp`}</td>
     </tr>`;
   }).join('');
@@ -14579,9 +14655,9 @@ function alimN21RenderTablaZonas(){
       <td class="n21tab-col-es">${fmtDelta(totDeltaEntrada)}</td>
       <td class="n21tab-col-es">${fmt(totSalida)}</td>
       <td class="n21tab-col-es">${fmtDelta(totDeltaSalida)}</td>
-      ${_alimN21CeldaGrupo(totTotal.deltaKwh, totTotal.deltaPct, fmt)}
-      ${_alimN21CeldaGrupo(totTecnica.deltaKwh, totTecnica.deltaPct, fmt)}
-      ${_alimN21CeldaGrupo(totGestionable.deltaKwh, totGestionable.deltaPct, fmt)}
+      ${_alimN21CeldaGrupo(totTotal.actual, totTotal.deltaKwh, totTotal.deltaPct, fmt)}
+      ${_alimN21CeldaGrupo(totTecnica.actual, totTecnica.deltaKwh, totTecnica.deltaPct, fmt)}
+      ${_alimN21CeldaGrupo(totGestionable.actual, totGestionable.deltaKwh, totGestionable.deltaPct, fmt)}
       <td style="color:${colorTotIndice};font-weight:700">${totDeltaPct==null?'--':`${totDeltaPct>=0?'▲':'▼'} ${Math.abs(totDeltaPct).toFixed(2)} pp`}</td>
     `;
   }
