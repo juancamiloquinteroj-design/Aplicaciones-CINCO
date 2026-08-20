@@ -2203,6 +2203,13 @@ tfoot td:first-child{text-align:left}
           </div>
         </div>
       </div>
+
+      <!-- Mapa de zonas (solo N2-1, es el único nivel con zonas) --
+           pedido explícito ("un mapa así"): croquis coloreado por zona
+           (mismo croquis de Indicador N2-1) con una torta Venta/Pérdida
+           Técnica/Pérdida No Técnica por zona, del mes elegido arriba. -->
+      <div style="text-align:center;font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase;margin:24px 0 14px">Pérdida por Zona (N2-1)</div>
+      <div id="alim-resumen-mapa-leaflet" style="height:520px;border-radius:10px;overflow:hidden;background:var(--bg3)"></div>
     </div>
   </div>
 </div>
@@ -11864,6 +11871,7 @@ async function alimResumenCargar(){
   }
 
   alimResumenRenderNiveles();
+  alimResumenCargarMapa();
 }
 
 // IP_Reg (Mensual y Anual/12M, % y kWh) arriba de todo -- pedido explícito
@@ -11899,6 +11907,146 @@ function alimResumenRenderIpReg(clave){
     </div>`;
 }
 
+// Mapa de zonas (croquis, mismo de Indicador N2-1) con una torta Venta/
+// Pérdida Técnica/Pérdida No Técnica por zona -- pedido explícito ("un
+// mapa así"). Solo N2-1 tiene zonas (Nivel 3/4 no) -- ver
+// mapaZonasRenderLeaflet/mapaZonasCentroPorZona/mapaZonasDibujarFlecha,
+// toda esa infraestructura es la misma que ya usa Indicador N2-1, no se
+// duplica acá. La Pérdida Técnica por zona (ALIM_N21_TECNICA_POR_ZONA) se
+// comparte con ese módulo -- si el usuario ya lo visitó esta sesión, no
+// se vuelve a pedir.
+let ALIM_RESUMEN_MAPA_REF = null;
+let ALIM_RESUMEN_MAPA_MARCADORES = [];
+let ALIM_RESUMEN_MAPA_PIES = {};  // {zona: Chart} -- se destruyen y recrean en cada render
+let ALIM_RESUMEN_MAPA_GEN = 0;
+
+async function alimResumenCargarMapa(){
+  const cont = document.getElementById('alim-resumen-mapa-leaflet');
+  if(!cont) return;
+  const miGen = ++ALIM_RESUMEN_MAPA_GEN;
+  if(!MAPA_ZONAS_INSTANCIAS['alim-resumen-mapa-leaflet']){
+    cont.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text3);font-size:12px">Cargando…</div>';
+  }
+  try{
+    const topo = await mapaZonasCargarTopo();
+    const resp = DEMO ? {departamento:null, municipios:{}, posiciones:{}} : await apiGet('/api/mapa-zonas');
+    if(miGen !== ALIM_RESUMEN_MAPA_GEN) return;
+    if(!resp.departamento){
+      cont.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text3);font-size:12px;text-align:center;padding:20px">Todavía no se parametrizó el departamento ni las zonas -- hacelo en Parametrización → Mapa de zonas por municipio.</div>';
+      ALIM_RESUMEN_MAPA_REF = null;
+      return;
+    }
+    const features = mapaZonasFeaturesDeDepto(topo, resp.departamento);
+    if(miGen !== ALIM_RESUMEN_MAPA_GEN) return;
+    const render = mapaZonasRenderLeaflet('alim-resumen-mapa-leaflet', features, id => resp.municipios[id], null, 0.7, null);
+    if(!render || miGen !== ALIM_RESUMEN_MAPA_GEN) return;
+    ALIM_RESUMEN_MAPA_REF = {resp, features, mapa: render.mapa};
+
+    const zonas = Object.keys(mapaZonasCentroPorZona(features, resp.municipios));
+    if(!DEMO && !Object.keys(ALIM_N21_TECNICA_POR_ZONA).length && zonas.length){
+      await Promise.all(zonas.map(async z => {
+        try{
+          const resp2 = await apiGet(`/api/resumen?nivel=1&nivel=2&zona=${encodeURIComponent(z)}`, AUTH_TIMEOUT_MS);
+          ALIM_N21_TECNICA_POR_ZONA[z] = _alimNivelTecnicaPorMes(resp2);
+        }catch(e){
+          ALIM_N21_TECNICA_POR_ZONA[z] = {};
+        }
+      }));
+      if(miGen !== ALIM_RESUMEN_MAPA_GEN) return;
+    }
+    alimResumenRenderMarcadoresZona();
+  }catch(e){
+    if(miGen !== ALIM_RESUMEN_MAPA_GEN) return;
+    ALIM_RESUMEN_MAPA_REF = null;
+    cont.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#ef476f;font-size:12px">${e.message || 'No se pudo cargar el croquis.'}</div>`;
+  }
+}
+
+// Venta (=Salida) / Pérdida Técnica / Pérdida No Técnica (=Pérdida por
+// Balance menos Pérdida Técnica) de una zona, para el mes elegido en
+// #alim-resumen-mes -- mismo criterio que Nivel 3/N2-1 (Gestionable =
+// P.Total - P.Técnica, pedido explícito en su momento).
+function _alimResumenDatosZonaMapa(zona, clave){
+  const actual = alimN21AgregarMensual(new Set([zona])).find(f => f.clave === clave);
+  if(!actual || actual.entrada == null) return null;
+  const tecZona = ALIM_N21_TECNICA_POR_ZONA[zona] || {};
+  const tec = tecZona[clave];
+  const perdidaTecnica = tec ? tec.perdida : 0;
+  const perdidaNoTecnica = actual.perdida - perdidaTecnica;
+  const venta = actual.salida;
+  const pct = v => actual.entrada ? v/actual.entrada*100 : null;
+  return {venta, perdidaTecnica, perdidaNoTecnica, ventaPct: pct(venta), tecnicaPct: pct(perdidaTecnica), noTecnicaPct: pct(perdidaNoTecnica)};
+}
+
+function alimResumenRenderMarcadoresZona(){
+  if(!ALIM_RESUMEN_MAPA_REF || !ALIM_RESUMEN_MAPA_REF.mapa) return;
+  const sel = document.getElementById('alim-resumen-mes');
+  if(!sel || !sel.value) return;
+  const clave = sel.value;
+  const {resp, features, mapa} = ALIM_RESUMEN_MAPA_REF;
+
+  ALIM_RESUMEN_MAPA_MARCADORES.forEach(m => mapa.removeLayer(m));
+  ALIM_RESUMEN_MAPA_MARCADORES = [];
+  Object.values(ALIM_RESUMEN_MAPA_PIES).forEach(ch => ch && ch.destroy());
+  ALIM_RESUMEN_MAPA_PIES = {};
+
+  const centros = mapaZonasCentroPorZona(features, resp.municipios);
+  const datosPorZona = {};
+  Object.keys(centros).forEach(zona => {
+    const d = _alimResumenDatosZonaMapa(zona, clave);
+    if(d) datosPorZona[zona] = d;
+  });
+  const zonasConDatos = Object.keys(datosPorZona);
+  if(!zonasConDatos.length) return;
+
+  const deptoBounds = L.geoJSON(features).getBounds();
+  const posicionesGuardadas = resp.posiciones || {};
+  const auto = mapaZonasPosicionesAutomaticas(centros, deptoBounds);
+  const fmt = v => v==null ? '--' : Math.round(v).toLocaleString('es-CO');
+  const fmtPct = v => v==null ? '--' : v.toFixed(2)+'%';
+  const COLOR_VENTA = '#2a9d5c', COLOR_TECNICA = '#f4a261', COLOR_NOTECNICA = '#ef476f';
+
+  zonasConDatos.forEach(zona => {
+    const d = datosPorZona[zona];
+    const color = colorParaZona(zona);
+    const tip = centros[zona];
+    const guardada = posicionesGuardadas[zona];
+    const box = guardada ? L.latLng(guardada.lat, guardada.lng) : auto[zona];
+
+    const flecha = mapaZonasDibujarFlecha(mapa, box, tip);
+    ALIM_RESUMEN_MAPA_MARCADORES.push(...flecha.capas);
+
+    const idPie = `alim-resumen-pie-${zona}`;
+    const html = `<div class="zcard" style="border-top:4px solid ${color};width:190px">
+      <div class="zc-h">Zona ${zona}</div>
+      <canvas id="${idPie}" width="72" height="72" style="display:block;margin:4px auto"></canvas>
+      <div class="zc-rows">
+        <div><span style="color:${COLOR_VENTA}">● Venta</span><b>${fmt(d.venta)} · ${fmtPct(d.ventaPct)}</b></div>
+        <div><span style="color:${COLOR_TECNICA}">● P. Técnica</span><b>${fmt(d.perdidaTecnica)} · ${fmtPct(d.tecnicaPct)}</b></div>
+        <div><span style="color:${COLOR_NOTECNICA}">● P. No Técnica</span><b>${fmt(d.perdidaNoTecnica)} · ${fmtPct(d.noTecnicaPct)}</b></div>
+      </div>
+    </div>`;
+    const marker = L.marker(box, {
+      icon: L.divIcon({className:'', iconSize:[190,0], iconAnchor:[95,52], html}),
+      interactive:false, zIndexOffset:4000,
+    });
+    marker.addTo(mapa);
+    ALIM_RESUMEN_MAPA_MARCADORES.push(marker);
+
+    const cv = document.getElementById(idPie);
+    if(cv){
+      ALIM_RESUMEN_MAPA_PIES[zona] = new Chart(cv, {
+        type:'pie',
+        data:{labels:['Venta','P. Técnica','P. No Técnica'], datasets:[{
+          data:[Math.max(0,d.venta), Math.max(0,d.perdidaTecnica), Math.max(0,d.perdidaNoTecnica)],
+          backgroundColor:[COLOR_VENTA, COLOR_TECNICA, COLOR_NOTECNICA], borderWidth:1, borderColor:'#fff',
+        }]},
+        options:{responsive:false, animation:false, plugins:{legend:{display:false}, tooltip:{enabled:false}, datalabels:{display:false}}},
+      });
+    }
+  });
+}
+
 // Arma las 3 tarjetas (una por nivel) COMPLETAS -- se llama al cambiar de
 // mes. El % Reconocido de cada tarjeta arranca con lo último guardado en
 // localStorage; escribirlo dispara alimResumenActualizarReconocido (no
@@ -11910,6 +12058,7 @@ function alimResumenRenderNiveles(){
   if(!cont || !sel || !sel.value) return;
   const clave = sel.value;
   alimResumenRenderIpReg(clave);
+  alimResumenRenderMarcadoresZona();
   const tarifaInput = document.getElementById('alim-resumen-tarifa');
   if(tarifaInput) tarifaInput.value = _alimResumenLeerTarifa(clave);
   const fmt = v => v==null ? '--' : v.toLocaleString('es-CO',{maximumFractionDigits:0});
