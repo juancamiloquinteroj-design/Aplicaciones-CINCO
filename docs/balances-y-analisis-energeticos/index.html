@@ -2673,6 +2673,11 @@ tfoot td:first-child{text-align:left}
         <button type="button" class="be-modo-btn" id="alim3-top-btn-anual" onclick="alim3ToggleTopModo('anual')" title="Suma los 12 meses hasta el AñoMes elegido">Anual (12M)</button>
         <label style="margin-left:16px">AñoMes</label>
         <select id="alim3-mes-top" onchange="alim3CambiarMesTop(this.value)"></select>
+        <!-- pedido explícito: "en esa tabla es donde también necesito lo
+             del crecimiento de pérdida del 5%" -- filtra y ordena a los
+             que superaron ese crecimiento; el botón ⬇ de exportar de la
+             tabla ya sale solo. -->
+        <button type="button" class="be-modo-btn" id="alim3-top-btn-crecimiento" style="margin-left:10px" onclick="alim3ToggleTopCrecimiento()" title="Muestra solo los alimentadores con Var. Pérdida (%) mayor a 5% vs. el período anterior, para exportar">Crecimiento &gt; 5%</button>
       </div>
       <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">
         <!-- Tabla COMPACTA (tbl-compacta -- ancho auto, cada columna mide
@@ -2690,9 +2695,12 @@ tfoot td:first-child{text-align:left}
               <thead><tr>
                 <th style="text-align:left;cursor:pointer" onclick="alim3OrdenarTop('nombre')" title="Click para ordenar">Nombre Spard <span id="alim3-th-nombre" class="alim3-th-flecha"></span></th>
                 <th style="cursor:pointer" onclick="alim3OrdenarTop('zona')" title="Click para ordenar">Zona <span id="alim3-th-zona" class="alim3-th-flecha"></span></th>
+                <th style="cursor:pointer" onclick="alim3OrdenarTop('leyenda')" title="Click para ordenar -- categoría del circuito (ok/Asociación/Orden Público/Subnormalidad)">Categoría <span id="alim3-th-leyenda" class="alim3-th-flecha"></span></th>
                 <th style="cursor:pointer" onclick="alim3OrdenarTop('gestLongitud')" title="Click para ordenar">Gest x Longitud <span id="alim3-th-gestLongitud" class="alim3-th-flecha"></span></th>
                 <th style="cursor:pointer" onclick="alim3OrdenarTop('gestionable')" title="Click para ordenar">Gestionable (kWh) <span id="alim3-th-gestionable" class="alim3-th-flecha"></span></th>
                 <th style="cursor:pointer" onclick="alim3OrdenarTop('gestPct')" title="Click para ordenar">Gestionable % Top <span id="alim3-th-gestPct" class="alim3-th-flecha"></span></th>
+                <th style="cursor:pointer" onclick="alim3OrdenarTop('perdida')" title="Click para ordenar">Pérdida (kWh) <span id="alim3-th-perdida" class="alim3-th-flecha"></span></th>
+                <th style="cursor:pointer" onclick="alim3OrdenarTop('deltaPerdidaCrec')" title="Click para ordenar -- crecimiento real del kWh vs. el período anterior">Var. Pérdida % <span id="alim3-th-deltaPerdidaCrec" class="alim3-th-flecha"></span></th>
                 <th style="cursor:pointer" onclick="alim3OrdenarTop('longitud')" title="Click para ordenar">Longitud (Km) <span id="alim3-th-longitud" class="alim3-th-flecha"></span></th>
               </tr></thead>
               <tbody id="alim3-tabla-top"></tbody>
@@ -13298,9 +13306,17 @@ function alim3AgregarAnualPorAlimentador(claveFinal){
     a.gestionable += f.gestionable_kwh || 0;
     a.perdida += f.perdida_kwh || 0;
     a.meses++;
-    a.nombre = f.nombre_spard || f.nemonico; a.zona = f.zona; a.longitud = f.longitud_total; a.leyenda = f.leyenda;
+    a.nemonico = f.nemonico; a.nombre = f.nombre_spard || f.nemonico; a.zona = f.zona; a.longitud = f.longitud_total; a.leyenda = f.leyenda;
   }
   return [...porNemonico.values()].filter(a => a.meses === 12);
+}
+
+// AñoMes inmediatamente anterior a `clave` ("AAAA-MM") -- para comparar
+// el Top Alimentadores contra el período previo (Var. Pérdida %).
+function _alim3ClaveAnterior(clave){
+  const [a, m] = clave.split('-').map(Number);
+  const idx = a*12 + (m-1) - 1;
+  return `${Math.floor(idx/12)}-${String(idx%12+1).padStart(2,'0')}`;
 }
 
 // "Top Alimentadores" -- una fila por circuito, del AñoMes elegido
@@ -13310,22 +13326,62 @@ function alim3AgregarAnualPorAlimentador(claveFinal){
 // "Gest x Longitud" mostrado ahí). Gestionable % Top = Gestionable /
 // Pérdida Total -- ordenado de mayor a menor Gest x Longitud (más
 // accionable por km de circuito, "TOP de pérdida").
+// Botón "Crecimiento > 5%" -- pedido explícito ("en esa tabla es donde
+// también necesito lo del crecimiento de pérdida del 5%"), mismo criterio
+// que Subestaciones/Variación de Pérdida por Alimentador: filtra a los
+// que crecieron más de 5% en Pérdida (kWh) vs. el período anterior
+// (mes anterior en Mensual, ventana de 12M anterior en Anual) y los
+// ordena de mayor a menor -- el botón ⬇ de exportar de la tabla hace el
+// resto.
+let ALIM3_TOP_SOLO_CRECIMIENTO = false;
+function alim3ToggleTopCrecimiento(){
+  ALIM3_TOP_SOLO_CRECIMIENTO = !ALIM3_TOP_SOLO_CRECIMIENTO;
+  document.getElementById('alim3-top-btn-crecimiento').classList.toggle('activo', ALIM3_TOP_SOLO_CRECIMIENTO);
+  if(ALIM3_TOP_SOLO_CRECIMIENTO){ ALIM3_TOP_ORDEN_COL = 'deltaPerdidaCrec'; ALIM3_TOP_ORDEN_DIR = 'desc'; }
+  alim3RenderTablaTop();
+}
+
+// "Top Alimentadores" -- una fila por circuito, del AñoMes elegido
+// (Mensual) o de los 12 meses terminando ahí (Anual). Gest x Longitud =
+// Gestionable(kWh) / Longitud(Km) -- fórmula verificada contra la
+// referencia PowerBI (883,95 kWh / 1,18 km ≈ 749,49, coincide con el
+// "Gest x Longitud" mostrado ahí). Gestionable % Top = Gestionable /
+// Pérdida Total -- ordenado de mayor a menor Gest x Longitud (más
+// accionable por km de circuito, "TOP de pérdida"). Categoría = Leyenda
+// del circuito (ok/Asociación/Orden Público/Subnormalidad -- misma que
+// colorea el scatter de al lado, ALIM3_COLOR_LEYENDA). Var. Pérdida % =
+// crecimiento REAL del kWh de Pérdida vs. el período anterior.
 function alim3RenderTablaTop(){
   const cont = document.getElementById('alim3-tabla-top');
   if(!cont || !ALIM3_MES_TOP) return;
   const esAnual = ALIM3_TOP_MODO === 'anual';
-  const filas = (esAnual
-    ? alim3AgregarAnualPorAlimentador(ALIM3_MES_TOP).filter(a => a.longitud > 0)
-      .map(a => ({nombre:a.nombre, zona:a.zona, gestLongitud:a.gestionable/a.longitud, gestionable:a.gestionable,
-        gestPct: a.perdida ? a.gestionable/a.perdida*100 : null, longitud:a.longitud}))
-    : alim3FilasDelMes(ALIM3_MES_TOP).filter(f => f.longitud_total > 0 && f.gestionable_kwh != null)
-      .map(f => ({nombre:f.nombre_spard || f.nemonico, zona:f.zona, gestLongitud:f.gestionable_kwh/f.longitud_total, gestionable:f.gestionable_kwh,
-        gestPct: f.perdida_kwh ? f.gestionable_kwh/f.perdida_kwh*100 : null, longitud:f.longitud_total}))
-  );
+  const claveAnterior = _alim3ClaveAnterior(ALIM3_MES_TOP);
+
+  let filas;
+  if(esAnual){
+    const anteriorPorNem = new Map(alim3AgregarAnualPorAlimentador(claveAnterior).map(a => [a.nemonico, a.perdida]));
+    filas = alim3AgregarAnualPorAlimentador(ALIM3_MES_TOP).filter(a => a.longitud > 0).map(a => {
+      const perdidaAnterior = anteriorPorNem.get(a.nemonico);
+      const deltaPerdidaCrec = (perdidaAnterior!=null && perdidaAnterior) ? (a.perdida-perdidaAnterior)/Math.abs(perdidaAnterior)*100 : null;
+      return {nombre:a.nombre, zona:a.zona, leyenda:a.leyenda||'ok', gestLongitud:a.gestionable/a.longitud, gestionable:a.gestionable,
+        gestPct: a.perdida ? a.gestionable/a.perdida*100 : null, perdida:a.perdida, deltaPerdidaCrec, longitud:a.longitud};
+    });
+  } else {
+    const anteriorPorNem = new Map(alim3FilasDelMes(claveAnterior).map(f => [f.nemonico, f.perdida_kwh||0]));
+    filas = alim3FilasDelMes(ALIM3_MES_TOP).filter(f => f.longitud_total > 0 && f.gestionable_kwh != null).map(f => {
+      const perdidaAnterior = anteriorPorNem.get(f.nemonico);
+      const deltaPerdidaCrec = (perdidaAnterior!=null && perdidaAnterior) ? ((f.perdida_kwh||0)-perdidaAnterior)/Math.abs(perdidaAnterior)*100 : null;
+      return {nombre:f.nombre_spard || f.nemonico, zona:f.zona, leyenda:f.leyenda||'ok', gestLongitud:f.gestionable_kwh/f.longitud_total, gestionable:f.gestionable_kwh,
+        gestPct: f.perdida_kwh ? f.gestionable_kwh/f.perdida_kwh*100 : null, perdida:f.perdida_kwh, deltaPerdidaCrec, longitud:f.longitud_total};
+    });
+  }
+
+  if(ALIM3_TOP_SOLO_CRECIMIENTO) filas = filas.filter(f => f.deltaPerdidaCrec != null && f.deltaPerdidaCrec > 5);
+
   // Orden por la columna elegida en la cabecera (click, estilo PowerBI) --
-  // pedido explícito. Texto (nombre/zona) por localeCompare, números por
-  // resta -- los "Sin dato" (null) siempre quedan al final sin importar
-  // la dirección.
+  // pedido explícito. Texto (nombre/zona/leyenda) por localeCompare,
+  // números por resta -- los "Sin dato" (null) siempre quedan al final
+  // sin importar la dirección.
   filas.sort((a,b) => {
     const va = a[ALIM3_TOP_ORDEN_COL], vb = b[ALIM3_TOP_ORDEN_COL];
     if(va==null && vb==null) return 0;
@@ -13334,23 +13390,31 @@ function alim3RenderTablaTop(){
     const cmp = typeof va==='string' ? va.localeCompare(vb) : va-vb;
     return ALIM3_TOP_ORDEN_DIR==='asc' ? cmp : -cmp;
   });
-  if(!filas.length){ cont.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text3)">Sin datos ${esAnual?'para los 12 meses hasta este AñoMes':'para este mes'}.</td></tr>`; }
+  if(!filas.length){
+    const motivo = ALIM3_TOP_SOLO_CRECIMIENTO ? 'Ningún alimentador creció más de 5% vs. el período anterior.' : `Sin datos ${esAnual?'para los 12 meses hasta este AñoMes':'para este mes'}.`;
+    cont.innerHTML = `<tr><td colspan="9" style="text-align:center;color:var(--text3)">${motivo}</td></tr>`;
+  }
   else{
     const fmt = v => v==null ? '--' : v.toLocaleString('es-CO',{maximumFractionDigits:2});
     const fmtPct = v => v==null ? '--' : `${v.toFixed(2)}%`;
     cont.innerHTML = filas.map(f => {
       const color = colorParaZona(f.zona);
+      const colorLey = alim3ColorLeyenda(f.leyenda);
+      const colorCrec = f.deltaPerdidaCrec==null ? 'var(--text3)' : (f.deltaPerdidaCrec>=0 ? '#ef476f' : '#06d6a0');
       return `<tr>
         <td style="text-align:left;font-weight:700">${f.nombre}</td>
         <td><span class="zb" style="background:${color}22;color:${color}">${f.zona}</span></td>
+        <td><span class="zb" style="background:${colorLey}22;color:${colorLey}">${f.leyenda}</span></td>
         <td>${fmt(f.gestLongitud)}</td>
         <td>${fmt(f.gestionable)}</td>
         <td>${fmtPct(f.gestPct)}</td>
+        <td>${fmt(f.perdida)}</td>
+        <td style="color:${colorCrec};font-weight:700">${f.deltaPerdidaCrec==null?'--':`${f.deltaPerdidaCrec>=0?'+':''}${f.deltaPerdidaCrec.toFixed(2)}%`}</td>
         <td>${fmt(f.longitud)}</td>
       </tr>`;
     }).join('');
   }
-  ['nombre','zona','gestLongitud','gestionable','gestPct','longitud'].forEach(col => {
+  ['nombre','zona','leyenda','gestLongitud','gestionable','gestPct','perdida','deltaPerdidaCrec','longitud'].forEach(col => {
     const el = document.getElementById(`alim3-th-${col}`);
     if(el) el.textContent = col===ALIM3_TOP_ORDEN_COL ? (ALIM3_TOP_ORDEN_DIR==='asc' ? '▲' : '▼') : '';
   });
