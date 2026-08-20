@@ -342,16 +342,27 @@ canvas[id^="ch-tride-"]:active{cursor:grabbing}
    caja (no adentro, como el resto de tarjetas de la app), caja blanca
    con borde fino, dentro de una caja con franja de color lateral
    (NIVEL 4/NIVEL 3/N2-1) que agrupa Entrada/Salida y el resto de campos. */
-.resnivel-campo{display:flex;flex-direction:column;gap:4px;min-width:130px}
-.resnivel-campo-label{font-size:10.5px;font-weight:600;color:var(--text2)}
-.resnivel-campo-caja{border:1.5px solid var(--border);border-radius:4px;padding:7px 10px;text-align:right;font-weight:700;font-size:13px;background:var(--card-bg);color:var(--text)}
+.resnivel-campo{display:flex;flex-direction:column;gap:3px;min-width:96px}
+.resnivel-campo-label{font-size:10px;font-weight:600;color:var(--text2);white-space:nowrap}
+.resnivel-campo-caja{border:1.5px solid var(--border);border-radius:4px;padding:5px 8px;text-align:right;font-weight:700;font-size:12.5px;background:var(--card-bg);color:var(--text)}
 .resnivel-campo-caja.destacada{background:var(--bg3);border-color:var(--accent);color:var(--accent)}
-.resnivel-campo input[type=number]{border:1.5px solid var(--border);border-radius:4px;padding:7px 10px;text-align:right;font-weight:700;font-size:13px;background:var(--card-bg);color:var(--text);width:100%;outline:none;-moz-appearance:textfield;box-sizing:border-box}
+.resnivel-campo input[type=number]{border:1.5px solid var(--border);border-radius:4px;padding:5px 8px;text-align:right;font-weight:700;font-size:12.5px;background:var(--card-bg);color:var(--text);width:100%;outline:none;-moz-appearance:textfield;box-sizing:border-box}
 .resnivel-campo input[type=number]:focus{border-color:var(--accent)}
 .resnivel-campo input[type=number]::-webkit-outer-spin-button,.resnivel-campo input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
-.resnivel-box{display:flex;border:2px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:22px}
+.resnivel-box{display:flex;border:2px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:16px}
 .resnivel-franja{writing-mode:vertical-rl;transform:rotate(180deg);font-weight:800;font-size:13px;letter-spacing:2px;text-transform:uppercase;padding:16px 10px;display:flex;align-items:center;justify-content:center;text-align:center;flex-shrink:0}
-.resnivel-grid{flex:1;padding:16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:14px 16px;align-content:start}
+.resnivel-grid{flex:1;padding:12px 16px;display:flex;flex-wrap:wrap;gap:0;align-content:start}
+/* Grupos lógicos DENTRO de la caja (Balance / Pérdida / Índices) --
+   pedido explícito ("está muy difícil de leer"): antes los 9 campos
+   iban todos en una sola grilla auto-fit que se estiraba a lo ancho de
+   la pantalla, con huecos enormes entre columnas y nada que agrupe
+   visualmente qué campo es de qué. Ahora cada grupo tiene su propio
+   título chico y un separador vertical entre grupos. */
+.resnivel-subgrupo{display:flex;flex-direction:column;gap:6px;padding:0 18px;border-right:1px solid var(--border)}
+.resnivel-subgrupo:first-child{padding-left:0}
+.resnivel-subgrupo:last-child{border-right:none}
+.resnivel-subgrupo-titulo{font-size:9px;font-weight:800;letter-spacing:.5px;color:var(--text3);text-transform:uppercase}
+.resnivel-subgrupo-campos{display:flex;flex-wrap:wrap;gap:10px 14px}
 
 /* "Variación Mensual por Zona" (Indicador N2-1) -- columnas Entrada/
    Salida ocultas por defecto (botón "Entrada / Salida") y el pill de
@@ -2100,7 +2111,7 @@ tfoot td:first-child{text-align:left}
 <div id="vista-alim-resumen" class="vista-modulo hidden">
   <div class="sec-hdr">
     <div class="sec-title">Resumen por Nivel de Tensión</div>
-    <div class="sec-sub">Entrada, Salida, Pérdida real, Pérdida técnica (simulación) y Pérdida reconocida (vos elegís el %) de Nivel 4, Nivel 3 y N2-1, para el mes elegido.</div>
+    <div class="sec-sub">Entrada, Salida, Pérdida por balance, Pérdida técnica (simulación) y Pérdida reconocida (vos elegís el %) de Nivel 4, Nivel 3 y N2-1, para el mes elegido.</div>
   </div>
 
   <div id="alim-resumen-vacio" class="card"><div style="color:var(--text3)">Cargando…</div></div>
@@ -11637,6 +11648,14 @@ function alimResumenRenderNiveles(){
       <div class="resnivel-campo-caja${opts.destacada?' destacada':''}"${opts.id?` id="${opts.id}"`:''}>${valor}</div>
     </div>`;
   };
+  // Agrupa los campos en subgrupos con título propio y separador --
+  // pedido explícito ("está muy difícil de leer"): antes los 9 campos
+  // iban sueltos en una sola fila muy ancha.
+  const subgrupo = (titulo, camposHtml) => `
+    <div class="resnivel-subgrupo">
+      <div class="resnivel-subgrupo-titulo">${titulo}</div>
+      <div class="resnivel-subgrupo-campos">${camposHtml}</div>
+    </div>`;
 
   cont.innerHTML = ALIM_RESUMEN_NIVELES.map(n => {
     const serie = _alimResumenSerie(n.clave);
@@ -11647,9 +11666,8 @@ function alimResumenRenderNiveles(){
         <div class="resnivel-box">
           <div class="resnivel-franja" style="background:${n.color}22;color:${n.color}">${n.nombre}</div>
           <div class="resnivel-grid">
-            ${campo(`Entrada (kWh)`, '--')}
-            ${campo(`Salida (kWh)`, '--')}
-            <div style="color:var(--text3);font-size:12px;grid-column:1/-1">Sin datos para ${labelMesLargo(clave)}.</div>
+            ${subgrupo('Balance', campo(`Entrada (kWh)`, '--') + campo(`Salida (kWh)`, '--'))}
+            <div style="color:var(--text3);font-size:12px;align-self:center">Sin datos para ${labelMesLargo(clave)}.</div>
           </div>
         </div>`;
     }
@@ -11665,24 +11683,28 @@ function alimResumenRenderNiveles(){
     // Entrada/Salida y el resto de campos, todo adentro de la caja de
     // color del nivel (pedido explícito -- antes iban sueltos arriba).
     // % Reconocido: un solo campo (el input editable), sin caja aparte
-    // duplicando el mismo valor (pedido explícito).
+    // duplicando el mismo valor (pedido explícito). Agrupados en 3
+    // subgrupos (Balance/Pérdida/Índices) para que se lea más fácil.
     return `
       <div class="resnivel-box">
         <div class="resnivel-franja" style="background:${n.color}22;color:${n.color}">${n.nombre}</div>
         <div class="resnivel-grid">
-          ${campo('Entrada (kWh)', fmt(actual.entrada))}
-          ${campo('Salida (kWh)', fmt(actual.salida))}
-          ${campo('Pérdida Real (kWh)', fmt(actual.perdida))}
-          ${campo('Pérdida Técnica (kWh)', tec?fmt(tec.perdida):'--')}
-          ${campo('Pérdida Gestionable (kWh)', fmt(_alimResumenGestionable(n.clave, clave, actual, tec)))}
-          ${campo('Pérdida Reconocida (kWh)', perdidaRec==null?'--':fmt(perdidaRec), {id:`alim-resumen-perdrec-${n.clave}`})}
-          ${campo('Índice Real (%)', actual.pct.toFixed(2)+'%', {destacada:true})}
-          ${campo('Índice Técnico (%)', tec?tec.pct.toFixed(2)+'%':'--')}
-          <div class="resnivel-campo">
-            <div class="resnivel-campo-label">% Reconocido</div>
-            <input type="number" min="0" max="100" step="0.01" placeholder="--" value="${pctGuardado}"
-              id="alim-resumen-pct-${n.clave}" oninput="alimResumenActualizarReconocido('${n.clave}')">
-          </div>
+          ${subgrupo('Balance', campo('Entrada (kWh)', fmt(actual.entrada)) + campo('Salida (kWh)', fmt(actual.salida)))}
+          ${subgrupo('Pérdida (kWh)',
+            campo('Pérdida por Balance', fmt(actual.perdida)) +
+            campo('Pérdida Técnica', tec?fmt(tec.perdida):'--') +
+            campo('Pérdida Gestionable', fmt(_alimResumenGestionable(n.clave, clave, actual, tec))) +
+            campo('Pérdida Reconocida', perdidaRec==null?'--':fmt(perdidaRec), {id:`alim-resumen-perdrec-${n.clave}`})
+          )}
+          ${subgrupo('Índices',
+            campo('Real (%)', actual.pct.toFixed(2)+'%', {destacada:true}) +
+            campo('Técnico (%)', tec?tec.pct.toFixed(2)+'%':'--') +
+            `<div class="resnivel-campo">
+              <div class="resnivel-campo-label">% Reconocido</div>
+              <input type="number" min="0" max="100" step="0.01" placeholder="--" value="${pctGuardado}"
+                id="alim-resumen-pct-${n.clave}" oninput="alimResumenActualizarReconocido('${n.clave}')">
+            </div>`
+          )}
         </div>
       </div>`;
   }).join('');
