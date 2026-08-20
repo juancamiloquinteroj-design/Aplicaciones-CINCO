@@ -26,6 +26,19 @@
      (el navegador se niega a ejecutarlo por MIME type), confirmado en vivo con
      curl -I; unpkg lo sirve bien como "text/javascript". -->
 <script src="https://unpkg.com/docx@9.7.1/dist/index.umd.cjs"></script>
+<script>window.__DOCX_JS = window.docx;</script>
+<!-- docx-preview (dolanmiu) -- renderiza un .docx COMPLETO como HTML, para la
+     "Vista previa" del informe dentro de la app (pedido explícito: "necesito
+     una forma que se pueda ver desde la aplicación, verlo visualmente"). OJO:
+     su build UMD hace `global.docx = {}` -- pisa el global `docx` del paquete
+     de arriba (confirmado leyendo el .js servido) -- por eso se guarda ese
+     global ANTES (__DOCX_JS) y se restaura DESPUÉS (ver el tag de script
+     siguiente), dejando el suyo aparte en `docxPreview`. Depende de JSZip (falla en
+     silencio si no está, ver require('jszip') en su UMD).
+-->
+<script src="https://unpkg.com/jszip@3.10.1/dist/jszip.min.js"></script>
+<script src="https://unpkg.com/docx-preview@0.3.6/dist/docx-preview.js"></script>
+<script>window.docxPreview = window.docx; window.docx = window.__DOCX_JS;</script>
 <!-- jsPDF + autoTable -- exportar el informe también a PDF real (texto
      vectorial, no una imagen escaneada), sin pasar por Word. Vía jsdelivr
      -- cdnjs tenía la ruta de la versión 2.5.2 rota (404), confirmado con
@@ -527,6 +540,20 @@ tfoot td:first-child{text-align:left}
 .tm-alarma-item .id{font-size:10.5px;color:var(--text3);font-family:ui-monospace,"Cascadia Code","SF Mono",Consolas,monospace}
 .tm-alarma-item .dias{font-size:11px;font-weight:800;color:#ef476f;background:rgba(239,71,111,.12);padding:3px 9px;border-radius:20px;white-space:nowrap}
 .tm-alarma-vacio{padding:24px;text-align:center;color:var(--text3);font-size:12.5px}
+
+/* VISTA PREVIA DEL INFORME (docx-preview) -- fondo gris tipo visor de
+   documentos (Word/Google Docs), SIEMPRE claro sin importar el tema de la
+   app, para que las "hojas" blancas que dibuja docx-preview se distingan
+   bien tanto en modo claro como oscuro. */
+.informes-preview-overlay{position:fixed;inset:0;background:rgba(10,14,22,.65);display:flex;align-items:center;justify-content:center;z-index:300}
+.informes-preview-overlay.hidden{display:none}
+.informes-preview-modal{width:min(880px,94vw);height:92vh;background:#e9e9ec;border-radius:12px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.45)}
+.informes-preview-barra{display:flex;align-items:center;justify-content:space-between;padding:12px 18px;background:var(--bg2);border-bottom:1px solid var(--border);flex-shrink:0}
+.informes-preview-barra .titulo{font-size:14px;font-weight:800;color:var(--text)}
+.informes-preview-cuerpo{flex:1;overflow-y:auto;overflow-x:auto;padding:24px}
+.informes-preview-cuerpo .informes-preview-docx{background:transparent}
+.informes-preview-cuerpo .docx-wrapper{background:transparent;padding:0;display:flex;flex-direction:column;align-items:center;gap:18px}
+.informes-preview-cuerpo .docx-wrapper>section.docx{box-shadow:0 2px 10px rgba(0,0,0,.25);margin-bottom:0!important}
 
 /* BALANCES POR ESTRUCTURA */
 .be-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
@@ -3076,6 +3103,7 @@ tfoot td:first-child{text-align:left}
       </div>
 
       <div class="fbar" style="margin-top:10px">
+        <button type="button" class="btn-theme" style="width:auto;padding:0 18px" id="informes-btn-preview" onclick="informesVistaPrevia()">👁 Vista previa</button>
         <button type="button" class="btn-theme" style="width:auto;padding:0 18px" id="informes-btn-generar" onclick="informesGenerar()">⬇ Descargar informe (.docx)</button>
         <button type="button" class="btn-theme" style="width:auto;padding:0 18px" id="informes-btn-generar-pdf" onclick="informesGenerarPDF()">⬇ Descargar informe (.pdf)</button>
         <span id="informes-msg" style="font-size:11.5px;color:var(--text3)"></span>
@@ -3754,6 +3782,16 @@ tfoot td:first-child{text-align:left}
       <button class="btn-theme" style="width:auto;padding:8px 16px;background:transparent;color:var(--text2);border:1px solid var(--border)" onclick="beCancelarExportarCsv()">Cancelar</button>
       <button class="btn-theme" style="width:auto;padding:8px 16px" onclick="beConfirmarExportarCsv()">⬇ Exportar</button>
     </div>
+  </div>
+</div>
+
+<div id="modal-informes-preview" class="informes-preview-overlay hidden" onclick="if(event.target===this) informesCerrarVistaPrevia()">
+  <div class="informes-preview-modal" onclick="event.stopPropagation()">
+    <div class="informes-preview-barra">
+      <span class="titulo">👁 Vista previa del informe</span>
+      <button type="button" class="btn-theme" style="width:auto;padding:6px 14px" onclick="informesCerrarVistaPrevia()">✕ Cerrar</button>
+    </div>
+    <div class="informes-preview-cuerpo" id="informes-preview-cuerpo"></div>
   </div>
 </div>
 
@@ -21631,94 +21669,110 @@ function _informesAlcanceTexto(sel){
   return partes.join(', ');
 }
 
+// Arma el docx.Document completo (portada + cuerpo) a partir de la
+// selección de contenido -- extraído de informesGenerar para poder
+// reusarlo TAL CUAL desde la Vista previa (informesVistaPrevia), sin
+// mantener dos copias de la estructura del documento.
+async function _informesConstruirDocumento(mesIpReg, mesN21, sel){
+  // El mes de portada es el del indicador de pérdidas (IP_Reg) --
+  // pedido explícito ("el texto junio o julio... ese se tomaría es con
+  // la fecha del indicador de pérdidas"), con el mes N2-1 como
+  // respaldo si el informe no trae IP_Reg.
+  const mesPortada = mesIpReg || mesN21;
+  const childrenPortada = informesSeccionPortada(mesPortada);
+  // Encabezado de página (logo CINCO + título) -- pedido explícito, se
+  // repite en todas las páginas del cuerpo, no en la portada.
+  const encabezadoPagina = await _informesEncabezadoPagina(mesPortada);
+  const children = [];
+  children.push(..._informesSeccionTOC());
+
+  if(sel.subestacion){
+    children.push(...await informesSeccionSubestacion(sel.subestacion, mesN21, false));
+  }else{
+    if(sel.introduccion) children.push(...informesSeccionIntroduccion(mesPortada, _informesAlcanceTexto(sel)));
+    if(sel.ipReg){
+      children.push(...await informesSeccionIndicadorIPT(mesIpReg));
+    }
+    if(sel.nivel4) children.push(...await informesSeccionIndicadorNivel4(mesN21));
+    if(sel.nivel3) children.push(...await informesSeccionIndicadorNivel3(mesN21));
+    if(sel.n21){
+      children.push(...await informesSeccionIndicadorN21Total(mesN21));
+      for(const zona of sel.zonas){ children.push(...await informesSeccionZonaN21(zona, mesN21)); }
+    }
+    if(sel.distribucion) children.push(...await informesSeccionDistribucionFlujo(mesN21));
+    if(sel.comercial) children.push(...await informesSeccionIPComercial(mesIpReg));
+    if(sel.temperatura) children.push(...await informesSeccionTemperaturaEntrada());
+    if(sel.conclusiones) children.push(...informesSeccionConclusiones(mesIpReg, mesN21));
+  }
+
+  const doc = new docx.Document({
+    features: {updateFields: true},   // Word actualiza TOC/numeración de figuras al abrir, sin que el usuario tenga que apretar F9
+    // Encabezados en NEGRO (el estilo Heading de Word por defecto que usa
+    // la librería es azul -- pedido explícito: "los títulos están de
+    // azul") + numeración multinivel real (1., 1.1., 2., 2.1....) ligada
+    // a Heading 1/Heading 2.
+    styles:{
+      default:{
+        // Fuente base del documento -- pedido explícito ("quiero mismo
+        // tipo de letra, mismo tamaño" que la plantilla de referencia):
+        // sin esto, docx.js no fija ninguna fuente y Word usaba lo que
+        // trajera Normal.dotm en cada equipo, dando resultados
+        // inconsistentes entre quien genera el .docx y quien lo abre.
+        document:{run:{font:'Arial Nova Cond', size:24}},
+        heading1:{run:{color:'000000', bold:true, size:26}, paragraph:{spacing:{before:280, after:140}}},
+        heading2:{run:{color:'000000', bold:true, size:23}, paragraph:{spacing:{before:220, after:110}}},
+        heading3:{run:{color:'000000', bold:true, size:21}, paragraph:{spacing:{before:200, after:100}}},
+        heading4:{run:{color:'000000', bold:true, italics:true, size:20}, paragraph:{spacing:{before:180, after:90}}},
+      },
+    },
+    numbering:{
+      config:[{
+        reference: INFORMES_NUMERACION_REF,
+        levels:[
+          {level:0, format:docx.LevelFormat.DECIMAL, text:'%1.', alignment:docx.AlignmentType.START, style:{paragraph:{indent:{left:260, hanging:260}}}},
+          {level:1, format:docx.LevelFormat.DECIMAL, text:'%1.%2.', alignment:docx.AlignmentType.START, style:{paragraph:{indent:{left:520, hanging:320}}}},
+          {level:2, format:docx.LevelFormat.DECIMAL, text:'%1.%2.%3.', alignment:docx.AlignmentType.START, style:{paragraph:{indent:{left:780, hanging:380}}}},
+          {level:3, format:docx.LevelFormat.DECIMAL, text:'%1.%2.%3.%4.', alignment:docx.AlignmentType.START, style:{paragraph:{indent:{left:1040, hanging:440}}}},
+        ],
+      }],
+    },
+    sections:[
+      {
+        // Portada en su propia sección con justificación vertical --
+        // llena la hoja sola (ver informesSeccionPortada).
+        properties:{page:{size:{width:12240, height:15840}, margin:{top:1440,bottom:1440,left:1440,right:1440}}, verticalAlign: docx.VerticalAlign.BOTH},
+        children: childrenPortada,
+      },
+      {
+        properties:{page:{size:{width:12240, height:15840}, margin:{top:1440,bottom:1440,left:1440,right:1440}}},
+        headers:{default: encabezadoPagina},
+        children,
+      },
+    ],
+  });
+  return {doc, mesPortada};
+}
+
+function _informesValidarSelMesYContenido(msg){
+  const mesIpReg = document.getElementById('informes-mes').value;
+  const mesN21 = document.getElementById('informes-mes-n21').value;
+  if(!mesIpReg && !mesN21){ msg.textContent = 'Elige al menos un mes.'; return null; }
+  const sel = _informesSeleccionContenido();
+  if(!sel.subestacion && !sel.ipReg && !sel.nivel4 && !sel.nivel3 && !sel.n21 && !sel.distribucion && !sel.comercial && !sel.temperatura && !sel.conclusiones){
+    msg.textContent = 'Elige al menos un contenido para el informe.'; return null;
+  }
+  return {mesIpReg, mesN21, sel};
+}
+
 async function informesGenerar(){
   const btn = document.getElementById('informes-btn-generar');
   const msg = document.getElementById('informes-msg');
-  const mesIpReg = document.getElementById('informes-mes').value;
-  const mesN21 = document.getElementById('informes-mes-n21').value;
-  if(!mesIpReg && !mesN21){ msg.textContent = 'Elige al menos un mes.'; return; }
-  const sel = _informesSeleccionContenido();
-  if(!sel.subestacion && !sel.ipReg && !sel.nivel4 && !sel.nivel3 && !sel.n21 && !sel.distribucion && !sel.comercial && !sel.temperatura && !sel.conclusiones){
-    msg.textContent = 'Elige al menos un contenido para el informe.'; return;
-  }
+  const entrada = _informesValidarSelMesYContenido(msg);
+  if(!entrada) return;
+  const {mesIpReg, mesN21, sel} = entrada;
   btn.disabled = true; msg.textContent = 'Generando informe…';
   try{
-    // El mes de portada es el del indicador de pérdidas (IP_Reg) --
-    // pedido explícito ("el texto junio o julio... ese se tomaría es con
-    // la fecha del indicador de pérdidas"), con el mes N2-1 como
-    // respaldo si el informe no trae IP_Reg.
-    const mesPortada = mesIpReg || mesN21;
-    const childrenPortada = informesSeccionPortada(mesPortada);
-    // Encabezado de página (logo CINCO + título) -- pedido explícito, se
-    // repite en todas las páginas del cuerpo, no en la portada.
-    const encabezadoPagina = await _informesEncabezadoPagina(mesPortada);
-    const children = [];
-    children.push(..._informesSeccionTOC());
-
-    if(sel.subestacion){
-      children.push(...await informesSeccionSubestacion(sel.subestacion, mesN21, false));
-    }else{
-      if(sel.introduccion) children.push(...informesSeccionIntroduccion(mesPortada, _informesAlcanceTexto(sel)));
-      if(sel.ipReg){
-        children.push(...await informesSeccionIndicadorIPT(mesIpReg));
-      }
-      if(sel.nivel4) children.push(...await informesSeccionIndicadorNivel4(mesN21));
-      if(sel.nivel3) children.push(...await informesSeccionIndicadorNivel3(mesN21));
-      if(sel.n21){
-        children.push(...await informesSeccionIndicadorN21Total(mesN21));
-        for(const zona of sel.zonas){ children.push(...await informesSeccionZonaN21(zona, mesN21)); }
-      }
-      if(sel.distribucion) children.push(...await informesSeccionDistribucionFlujo(mesN21));
-      if(sel.comercial) children.push(...await informesSeccionIPComercial(mesIpReg));
-      if(sel.temperatura) children.push(...await informesSeccionTemperaturaEntrada());
-      if(sel.conclusiones) children.push(...informesSeccionConclusiones(mesIpReg, mesN21));
-    }
-
-    const doc = new docx.Document({
-      features: {updateFields: true},   // Word actualiza TOC/numeración de figuras al abrir, sin que el usuario tenga que apretar F9
-      // Encabezados en NEGRO (el estilo Heading de Word por defecto que usa
-      // la librería es azul -- pedido explícito: "los títulos están de
-      // azul") + numeración multinivel real (1., 1.1., 2., 2.1....) ligada
-      // a Heading 1/Heading 2.
-      styles:{
-        default:{
-          // Fuente base del documento -- pedido explícito ("quiero mismo
-          // tipo de letra, mismo tamaño" que la plantilla de referencia):
-          // sin esto, docx.js no fija ninguna fuente y Word usaba lo que
-          // trajera Normal.dotm en cada equipo, dando resultados
-          // inconsistentes entre quien genera el .docx y quien lo abre.
-          document:{run:{font:'Arial Nova Cond', size:24}},
-          heading1:{run:{color:'000000', bold:true, size:26}, paragraph:{spacing:{before:280, after:140}}},
-          heading2:{run:{color:'000000', bold:true, size:23}, paragraph:{spacing:{before:220, after:110}}},
-          heading3:{run:{color:'000000', bold:true, size:21}, paragraph:{spacing:{before:200, after:100}}},
-          heading4:{run:{color:'000000', bold:true, italics:true, size:20}, paragraph:{spacing:{before:180, after:90}}},
-        },
-      },
-      numbering:{
-        config:[{
-          reference: INFORMES_NUMERACION_REF,
-          levels:[
-            {level:0, format:docx.LevelFormat.DECIMAL, text:'%1.', alignment:docx.AlignmentType.START, style:{paragraph:{indent:{left:260, hanging:260}}}},
-            {level:1, format:docx.LevelFormat.DECIMAL, text:'%1.%2.', alignment:docx.AlignmentType.START, style:{paragraph:{indent:{left:520, hanging:320}}}},
-            {level:2, format:docx.LevelFormat.DECIMAL, text:'%1.%2.%3.', alignment:docx.AlignmentType.START, style:{paragraph:{indent:{left:780, hanging:380}}}},
-            {level:3, format:docx.LevelFormat.DECIMAL, text:'%1.%2.%3.%4.', alignment:docx.AlignmentType.START, style:{paragraph:{indent:{left:1040, hanging:440}}}},
-          ],
-        }],
-      },
-      sections:[
-        {
-          // Portada en su propia sección con justificación vertical --
-          // llena la hoja sola (ver informesSeccionPortada).
-          properties:{page:{size:{width:12240, height:15840}, margin:{top:1440,bottom:1440,left:1440,right:1440}}, verticalAlign: docx.VerticalAlign.BOTH},
-          children: childrenPortada,
-        },
-        {
-          properties:{page:{size:{width:12240, height:15840}, margin:{top:1440,bottom:1440,left:1440,right:1440}}},
-          headers:{default: encabezadoPagina},
-          children,
-        },
-      ],
-    });
+    const {doc, mesPortada} = await _informesConstruirDocumento(mesIpReg, mesN21, sel);
     const blob = await docx.Packer.toBlob(doc);
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -21733,6 +21787,57 @@ async function informesGenerar(){
   }finally{
     btn.disabled = false;
   }
+}
+
+// ==========================================================================
+// VISTA PREVIA -- pedido explícito ("necesito una forma que se pueda ver
+// desde la aplicación, así como verlo visualmente"): arma el MISMO
+// docx.Document que el botón de descarga (_informesConstruirDocumento,
+// una sola fuente de verdad) y lo renderiza como HTML dentro de un modal
+// con docx-preview (global aparte `docxPreview`, ver los <script> del
+// <head> -- su build pisa el global `docx` si no se rescata antes).
+// ==========================================================================
+async function informesVistaPrevia(){
+  const btn = document.getElementById('informes-btn-preview');
+  const msg = document.getElementById('informes-msg');
+  const entrada = _informesValidarSelMesYContenido(msg);
+  if(!entrada) return;
+  const {mesIpReg, mesN21, sel} = entrada;
+  if(typeof docxPreview === 'undefined'){
+    msg.textContent = 'No se pudo cargar el visor de vista previa (docx-preview). Revisa la conexión e intenta de nuevo.';
+    return;
+  }
+  btn.disabled = true; msg.textContent = 'Generando vista previa…';
+  const overlay = document.getElementById('modal-informes-preview');
+  const cont = document.getElementById('informes-preview-cuerpo');
+  try{
+    const {doc} = await _informesConstruirDocumento(mesIpReg, mesN21, sel);
+    const blob = await docx.Packer.toBlob(doc);
+    const buffer = await blob.arrayBuffer();
+    cont.innerHTML = '';
+    overlay.classList.remove('hidden');
+    await docxPreview.renderAsync(buffer, cont, null, {
+      className: 'informes-preview-docx',
+      inWrapper: true,
+      ignoreWidth: false,
+      ignoreHeight: false,
+      breakPages: true,
+      renderHeaders: true,
+      renderFooters: true,
+      experimental: true,
+    });
+    msg.textContent = '';
+  }catch(e){
+    console.error(e);
+    overlay.classList.add('hidden');
+    msg.textContent = 'No se pudo generar la vista previa: ' + (e.message || e);
+  }finally{
+    btn.disabled = false;
+  }
+}
+function informesCerrarVistaPrevia(){
+  document.getElementById('modal-informes-preview').classList.add('hidden');
+  document.getElementById('informes-preview-cuerpo').innerHTML = '';
 }
 
 // ==========================================================================
