@@ -888,6 +888,7 @@ tfoot td:first-child{text-align:left}
     <span class="sidebar-caret" id="sidebar-alim-caret">▾</span>
   </button>
   <div class="sidebar-submenu hidden" id="sidebar-submenu-alim">
+    <button class="sidebar-sublink" data-vista="alim-resumen" onclick="mostrarVista('alim-resumen')">📊 Resumen por Nivel</button>
     <button class="sidebar-sublink" data-vista="alim-nivel4" onclick="mostrarVista('alim-nivel4')">IP Nivel 4</button>
     <button class="sidebar-sublink" data-vista="alim-nivel3" onclick="mostrarVista('alim-nivel3')">IP Nivel 3</button>
     <button class="sidebar-sublink" data-vista="alim-n21" onclick="mostrarVista('alim-n21')">Indicador N2-1</button>
@@ -2059,6 +2060,45 @@ tfoot td:first-child{text-align:left}
 <!-- ---------------- ALIMENTADORES -- 3 submódulos, todos sobre el mismo
      dato crudo de "Resumen de Alimentadores.csv" (ver load_alimentadores.py).
      Se van armando de a uno, por ahora solo confirman que el dato cargó. ---------------- -->
+<!-- ---------------- ALIMENTADORES · RESUMEN POR NIVEL -- consolida
+     Entrada/Salida/Pérdida/Índice de Nivel 4, Nivel 3 y N2-1 para UN mes
+     elegido -- mismos datos ya cargados por esos 3 submódulos, nada
+     nuevo del backend. Pedido explícito, inspirado en una plantilla
+     externa (Excel) que el usuario mostró -- alcance acotado a lo que la
+     app YA tiene (sin Importaciones/Transferencia/Generación/Reconocido,
+     que no existen en la base real). ---------------- -->
+<div id="vista-alim-resumen" class="vista-modulo hidden">
+  <div class="sec-hdr">
+    <div class="sec-title">Resumen por Nivel de Tensión</div>
+    <div class="sec-sub">Entrada, Salida, Pérdida e Índice de Nivel 4, Nivel 3 y N2-1, lado a lado, para el mes elegido.</div>
+  </div>
+
+  <div id="alim-resumen-vacio" class="card"><div style="color:var(--text3)">Cargando…</div></div>
+
+  <div id="alim-resumen-contenido" class="hidden">
+    <div class="card">
+      <div class="fbar" style="justify-content:center;margin-bottom:14px">
+        <label>Mes</label>
+        <select id="alim-resumen-mes" onchange="alimResumenRenderTabla()"></select>
+      </div>
+      <div class="tbl-wrap tbl-compacta" style="margin:0 auto">
+        <table>
+          <thead><tr>
+            <th style="text-align:left">Nivel</th>
+            <th>Entrada (kWh)</th>
+            <th>Salida (kWh)</th>
+            <th>Pérdida (kWh)</th>
+            <th>Índice (%)</th>
+            <th>Δ Índice</th>
+          </tr></thead>
+          <tbody id="alim-resumen-tabla"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+<!-- fin vista-alim-resumen -->
+
 <!-- ---------------- ALIMENTADORES · IP NIVEL 4 -- balance diario real
      (Entrada/Salida medidas), depende de "Consolidado Nivel 4.csv" (ver
      load_nivel34.py / GET /api/nivel34?nivel=4). Nivel 4 es un único
@@ -4175,7 +4215,7 @@ function toggleSubmenuAlim(){
   }
 }
 
-let vistaCargada = {perdidas:false, parametrizacion:false, telemedidos:false, balancesEstructura:false, ipReg:false, ipComercial:false, ipNivel1:false, reportesSspd:false, tridevanados:false, alimNivel4:false, alimNivel3:false, alimN21:false, alimSubestaciones:false, alimAlimentadores:false, tempEntrada:false, informes:false};
+let vistaCargada = {perdidas:false, parametrizacion:false, telemedidos:false, balancesEstructura:false, ipReg:false, ipComercial:false, ipNivel1:false, reportesSspd:false, tridevanados:false, alimResumen:false, alimNivel4:false, alimNivel3:false, alimN21:false, alimSubestaciones:false, alimAlimentadores:false, tempEntrada:false, informes:false};
 
 async function mostrarVista(nombre){
   document.querySelectorAll('.vista-modulo').forEach(v=>v.classList.add('hidden'));
@@ -4239,6 +4279,10 @@ async function mostrarVista(nombre){
   if(nombre==='tridevanados' && !vistaCargada.tridevanados){
     vistaCargada.tridevanados = true;
     await cargarTridevanados();
+  }
+  if(nombre==='alim-resumen' && !vistaCargada.alimResumen){
+    vistaCargada.alimResumen = true;
+    await cargarAlimentadoresModulo('alim-resumen');
   }
   if(nombre==='alim-nivel4' && !vistaCargada.alimNivel4){
     vistaCargada.alimNivel4 = true;
@@ -11220,7 +11264,95 @@ function alimNivel3DescargarCsv(){
   URL.revokeObjectURL(url);
 }
 
+// Resumen por Nivel de Tensión -- consolida Nivel 4, Nivel 3 y N2-1 (los
+// otros 3 submódulos de este grupo) en una sola tabla, para UN mes
+// elegido -- pedido explícito, inspirado en una plantilla externa
+// (Excel) que el usuario mostró. Reusa los MISMOS datos ya cargados por
+// esos 3 submódulos (_alimNivel34Filas para 4/3, ALIM_FILAS -- Resumen de
+// Alimentadores.csv -- para N2-1 vía alimN21AgregarMensual) -- nada
+// nuevo del backend, y por eso el alcance queda acotado a Entrada/Salida/
+// Pérdida/Índice (la plantilla trae más campos -- Importaciones,
+// Transferencia, Generación, Reconocido -- que no existen en la base real).
+async function alimResumenCargar(){
+  const vacio = document.getElementById('alim-resumen-vacio');
+  const contenido = document.getElementById('alim-resumen-contenido');
+  let filas4, filas3, filasN21;
+  try{
+    [filas4, filas3, filasN21] = await Promise.all([
+      _alimNivel34Filas(4),
+      _alimNivel34Filas(3),
+      _alimAsegurarDatosCargados(),
+    ]);
+  }catch(e){
+    vacio.classList.remove('hidden'); contenido.classList.add('hidden');
+    vacio.querySelector('div').textContent = e.message || 'No se pudo cargar el resumen por nivel.';
+    return;
+  }
+  if(!filas4.length && !filas3.length && !filasN21.length){
+    vacio.classList.remove('hidden'); contenido.classList.add('hidden');
+    vacio.querySelector('div').textContent = 'Sin datos cargados todavía.';
+    return;
+  }
+  vacio.classList.add('hidden'); contenido.classList.remove('hidden');
+
+  // Unión de los meses disponibles en CUALQUIERA de los 3 -- no siempre
+  // cubren exactamente el mismo histórico (fuentes de datos distintas),
+  // así que el selector ofrece todo lo que haya en al menos uno; el mes
+  // que le falte a alguno se muestra como "Sin datos" en su fila.
+  const claves4 = _alimNivel34MensualTotal(filas4).map(f=>f.clave);
+  const claves3 = _alimNivel34MensualTotal(filas3).map(f=>f.clave);
+  const clavesN21 = alimN21AgregarMensual(new Set()).map(f=>f.clave);
+  const claves = [...new Set([...claves4, ...claves3, ...clavesN21])].sort();
+
+  const sel = document.getElementById('alim-resumen-mes');
+  if(sel && claves.length){
+    const actual = claves.includes(sel.value) ? sel.value : claves[claves.length-1];
+    sel.innerHTML = claves.map(c => `<option value="${c}"${c===actual?' selected':''}>${labelMesLargo(c)}</option>`).join('');
+  }
+
+  alimResumenRenderTabla();
+}
+
+function alimResumenRenderTabla(){
+  const cont = document.getElementById('alim-resumen-tabla');
+  const sel = document.getElementById('alim-resumen-mes');
+  if(!cont || !sel || !sel.value) return;
+  const clave = sel.value;
+
+  const filas = [
+    {nivel:'Nivel 4', color:'#f4a261', serie: _alimNivel34MensualTotal(ALIM_NIVEL4_FILAS || [])},
+    {nivel:'Nivel 3', color:'#4361ee', serie: _alimNivel34MensualTotal(ALIM_NIVEL3_FILAS || [])},
+    {nivel:'N2-1', color:'#06d6a0', serie: alimN21AgregarMensual(new Set())},
+  ];
+
+  const fmt = v => v==null ? '--' : v.toLocaleString('es-CO',{maximumFractionDigits:0});
+  const punto = color => `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${color};margin-right:6px"></span>`;
+
+  cont.innerHTML = filas.map(f => {
+    const idx = f.serie.findIndex(x => x.clave === clave);
+    if(idx < 0 || f.serie[idx].pct == null){
+      return `<tr>
+        <td style="text-align:left;font-weight:700">${punto(f.color)}${f.nivel}</td>
+        <td colspan="5" style="color:var(--text3)">Sin datos para este mes.</td>
+      </tr>`;
+    }
+    const actual = f.serie[idx];
+    const anterior = idx > 0 ? f.serie[idx-1] : null;
+    const deltaPct = (anterior && anterior.pct != null) ? actual.pct - anterior.pct : null;
+    const colorDelta = deltaPct==null ? 'var(--text3)' : (deltaPct>=0 ? '#ef476f' : '#06d6a0');
+    return `<tr>
+      <td style="text-align:left;font-weight:700">${punto(f.color)}${f.nivel}</td>
+      <td>${fmt(actual.entrada)}</td>
+      <td>${fmt(actual.salida)}</td>
+      <td>${fmt(actual.perdida)}</td>
+      <td style="font-weight:700">${actual.pct.toFixed(2)}%</td>
+      <td style="color:${colorDelta}">${deltaPct==null?'--':`${deltaPct>=0?'▲':'▼'} ${Math.abs(deltaPct).toFixed(2)} pp`}</td>
+    </tr>`;
+  }).join('');
+}
+
 async function cargarAlimentadoresModulo(nombreVista){
+  if(nombreVista === 'alim-resumen'){ await alimResumenCargar(); return; }
   if(nombreVista === 'alim-nivel4'){ await alimNivel4Cargar(); return; }
   if(nombreVista === 'alim-nivel3'){ await alimNivel3Cargar(); return; }
   if(nombreVista === 'alim-n21'){ await alimN21Cargar(); return; }
