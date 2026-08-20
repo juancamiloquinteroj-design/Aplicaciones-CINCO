@@ -2286,6 +2286,7 @@ tfoot td:first-child{text-align:left}
                tiene Pérdida Técnica calculada, ej. el mes recién cerrado). -->
           <label style="margin-left:12px">Mes</label>
           <select id="alim-nivel3-tabla-analisis-mes" onchange="alimNivel3RenderTodo()"></select>
+          <button type="button" class="be-modo-btn" id="alim-nivel3-tabla-btn-proyectar" style="margin-left:12px" onclick="alimNivel3ToggleProyeccion()" title="Si el mes elegido no tiene Pérdida Técnica calculada, la estima con el % técnico promedio de los últimos meses con dato, aplicado a la Entrada real de ese mes">Proyectar P.Técnica</button>
         </div>
         <div id="alim-nivel3-tabla-zonas-caption" style="font-size:11px;color:var(--text3);margin-bottom:8px"></div>
         <!-- Mismo formato que "Variación Mensual por Zona" de Indicador N2-1
@@ -10439,6 +10440,14 @@ let ALIM_NIVEL3_ZONAS = [];
 let ALIM_NIVEL3_ZONAS_SEL = new Set();
 let ALIM_NIVEL3_TECNICA_POR_ZONA = {};  // {zona: {clave: {perdida, pct}}} -- mismo patrón que ALIM_N21_TECNICA_POR_ZONA
 let ALIM_NIVEL3_TABLA_MOSTRAR_ES = false;
+// Botón "Proyectar P.Técnica" -- pedido explícito ("tomar el promedio de
+// los últimos meses para la pérdida técnica de nivel 3 con un botón"):
+// cuando el mes elegido no tiene Pérdida Técnica calculada todavía, arma
+// una estimación aplicando el % técnico PROMEDIO de los últimos meses
+// reales (con dato) a la Entrada real de ese mes -- ver
+// _alimNivel3TecnicaProyectada. Apagado por defecto (no mezclar dato
+// proyectado con real sin que el usuario lo pida).
+let ALIM_NIVEL3_TABLA_PROYECTAR = false;
 let chAlimNivel4Mensual = null, chAlimNivel4Anual = null, chAlimNivel4Tecnica = null, chAlimNivel4ImportExport = null;
 let chAlimNivel3Mensual = null, chAlimNivel3Anual = null, chAlimNivel3Tecnica = null;
 // Botón "Δ Variación" -- agrega/oculta las tarjetas Δ Entrada/Δ Salida/Δ
@@ -10826,6 +10835,27 @@ function alimNivel3ToggleTablaES(){
   document.getElementById('alim-nivel3-tabla-zonas-wrap').classList.toggle('n21tab-mostrar-es', ALIM_NIVEL3_TABLA_MOSTRAR_ES);
 }
 
+function alimNivel3ToggleProyeccion(){
+  ALIM_NIVEL3_TABLA_PROYECTAR = !ALIM_NIVEL3_TABLA_PROYECTAR;
+  document.getElementById('alim-nivel3-tabla-btn-proyectar').classList.toggle('activo', ALIM_NIVEL3_TABLA_PROYECTAR);
+  alimNivel3RenderTodo();
+}
+
+// % técnico PROMEDIO de los últimos `n` meses CON dato (anteriores a
+// claveObjetivo, cronológicamente) de una zona, aplicado a la Entrada
+// real de claveObjetivo -- pedido explícito. null si esa zona no tiene
+// ningún mes con Pérdida Técnica calculada todavía.
+function _alimNivel3TecnicaProyectada(zona, claveObjetivo, entradaObjetivo, n=3){
+  const tecZona = ALIM_NIVEL3_TECNICA_POR_ZONA[zona] || {};
+  const claves = Object.keys(tecZona)
+    .filter(c => c < claveObjetivo && tecZona[c] && tecZona[c].pct != null)
+    .sort();
+  if(!claves.length) return null;
+  const ultimas = claves.slice(-n);
+  const pctProm = ultimas.reduce((s,c) => s + tecZona[c].pct, 0) / ultimas.length;
+  return {perdida: entradaObjetivo * pctProm/100, pct: pctProm, meses: ultimas.length};
+}
+
 // Mismo formato "P.Total/P.Técnica" (kWh del mes + Δ kWh/Δ%/Impacto) que
 // "Variación Mensual por Zona" de Indicador N2-1 (pedido explícito) --
 // _alimN21CeldaGrupo/_alimN21DeltaGrupo/_alimN21TotalGrupo se reusan tal
@@ -10853,8 +10883,13 @@ function alimNivel3RenderTablaZonas(porZona, claveElegida){
     if(!mesActual){ mesActual = actual.clave; mesAnterior = anterior ? anterior.clave : null; }
 
     const tecZona = ALIM_NIVEL3_TECNICA_POR_ZONA[z] || {};
-    const tecActual = tecZona[actual.clave] ? tecZona[actual.clave].perdida : null;
+    let tecActual = tecZona[actual.clave] ? tecZona[actual.clave].perdida : null;
     const tecAnterior = (anterior && tecZona[anterior.clave]) ? tecZona[anterior.clave].perdida : null;
+    let tecActualProyectada = false;
+    if(tecActual == null && ALIM_NIVEL3_TABLA_PROYECTAR){
+      const proy = _alimNivel3TecnicaProyectada(z, actual.clave, actual.entrada);
+      if(proy){ tecActual = proy.perdida; tecActualProyectada = true; }
+    }
 
     return {
       zona: z,
@@ -10862,13 +10897,18 @@ function alimNivel3RenderTablaZonas(porZona, claveElegida){
       salida: actual.salida, deltaSalida: anterior ? actual.salida-anterior.salida : null,
       total: _alimN21DeltaGrupo(actual.perdida, anterior ? anterior.perdida : null),
       tecnica: _alimN21DeltaGrupo(tecActual, tecAnterior),
+      tecnicaProyectada: tecActualProyectada,
       deltaPct: anterior ? actual.pct - anterior.pct : null,
     };
   }).filter(Boolean);
 
-  if(caption) caption.textContent = mesActual
-    ? (mesAnterior ? `${labelMesLargo(mesAnterior)} → ${labelMesLargo(mesActual)}` : labelMesLargo(mesActual))
-    : '';
+  if(caption){
+    const base = mesActual
+      ? (mesAnterior ? `${labelMesLargo(mesAnterior)} → ${labelMesLargo(mesActual)}` : labelMesLargo(mesActual))
+      : '';
+    const nota = filas.some(f => f.tecnicaProyectada) ? ' -- ≈ P.Técnica proyectada (promedio de meses anteriores)' : '';
+    caption.textContent = base + nota;
+  }
 
   if(!filas.length){
     cont.innerHTML = '<tr><td colspan="14" style="text-align:center;color:var(--text3)">Sin datos.</td></tr>';
@@ -10886,7 +10926,7 @@ function alimNivel3RenderTablaZonas(porZona, claveElegida){
       <td class="n21tab-col-es">${fmt(f.salida)}</td>
       <td class="n21tab-col-es" style="color:var(--text3)">${fmtDelta(f.deltaSalida)}</td>
       ${_alimN21CeldaGrupo(f.total.actual, f.total.deltaKwh, f.total.deltaPct, fmt)}
-      ${_alimN21CeldaGrupo(f.tecnica.actual, f.tecnica.deltaKwh, f.tecnica.deltaPct, fmt)}
+      ${_alimN21CeldaGrupo(f.tecnica.actual, f.tecnica.deltaKwh, f.tecnica.deltaPct, fmt, f.tecnicaProyectada)}
       <td style="color:${colorIndice};font-weight:700">${f.deltaPct==null?'--':`${f.deltaPct>=0?'▲':'▼'} ${Math.abs(f.deltaPct).toFixed(2)} pp`}</td>
     </tr>`;
   }).join('');
@@ -10900,6 +10940,7 @@ function alimNivel3RenderTablaZonas(porZona, claveElegida){
 
     const totTotal = _alimN21TotalGrupo(filas, 'total');
     const totTecnica = _alimN21TotalGrupo(filas, 'tecnica');
+    const totTecnicaProyectada = filas.some(f => f.tecnicaProyectada);
 
     const totPerdidaActual = filas.reduce((s,f)=>s+(f.total.actual||0), 0);
     const totPerdidaAnterior = filas.reduce((s,f)=>s+(f.total.anterior||0), 0);
@@ -10916,7 +10957,7 @@ function alimNivel3RenderTablaZonas(porZona, claveElegida){
       <td class="n21tab-col-es">${fmt(totSalida)}</td>
       <td class="n21tab-col-es">${fmtDelta(totDeltaSalida)}</td>
       ${_alimN21CeldaGrupo(totTotal.actual, totTotal.deltaKwh, totTotal.deltaPct, fmt)}
-      ${_alimN21CeldaGrupo(totTecnica.actual, totTecnica.deltaKwh, totTecnica.deltaPct, fmt)}
+      ${_alimN21CeldaGrupo(totTecnica.actual, totTecnica.deltaKwh, totTecnica.deltaPct, fmt, totTecnicaProyectada)}
       <td style="color:${colorTotIndice};font-weight:700">${totDeltaPct==null?'--':`${totDeltaPct>=0?'▲':'▼'} ${Math.abs(totDeltaPct).toFixed(2)} pp`}</td>
     `;
   }
@@ -11402,6 +11443,19 @@ function _alimResumenSerie(nivelClave){
   return alimN21AgregarMensual(new Set());
 }
 
+// Pérdida Gestionable del mes -- SOLO N2-1 la trae (columna "Gestionable"
+// de "Resumen de Alimentadores.csv", ver load_alimentadores.py). Nivel 4
+// ("Consolidado Nivel 4.csv") y Nivel 3 ("Consolidado Zonas N3.csv") no
+// traen esa columna en su CSV -- pedido explícito: si no hay, 0 (no "--").
+function _alimResumenGestionable(nivelClave, clave){
+  if(nivelClave !== 'n21') return 0;
+  let total = 0;
+  for(const f of (ALIM_FILAS || [])){
+    if(alimN21Clave(f.anio, f.mes) === clave) total += f.gestionable_kwh || 0;
+  }
+  return total;
+}
+
 // % Reconocido -- lo ingresa el usuario, se guarda por nivel Y por
 // operador (localStorage, para que no se pierda entre visitas pero
 // tampoco se mezcle si el mismo navegador usa varios operadores).
@@ -11554,6 +11608,7 @@ function alimResumenRenderNiveles(){
           ${campo('Salida (kWh)', fmt(actual.salida))}
           ${campo('Pérdida Real (kWh)', fmt(actual.perdida))}
           ${campo('Pérdida Técnica (kWh)', tec?fmt(tec.perdida):'--')}
+          ${campo('Pérdida Gestionable (kWh)', fmt(_alimResumenGestionable(n.clave, clave)))}
           ${campo('Pérdida Reconocida (kWh)', perdidaRec==null?'--':fmt(perdidaRec), {id:`alim-resumen-perdrec-${n.clave}`})}
           ${campo('Índice Real (%)', actual.pct.toFixed(2)+'%', {destacada:true})}
           ${campo('Índice Técnico (%)', tec?tec.pct.toFixed(2)+'%':'--')}
@@ -14559,9 +14614,13 @@ function _alimN21TotalGrupo(filas, campo){
 // 4 <td> de un grupo -- el dato del mes (kWh, en negro/neutro -- solo la
 // Δ lleva color), Δ kWh, Δ % (de cambio) y el pill de "Impacto" (rojo =
 // subió/empeoró, verde = bajó/mejoró -- mismo criterio de color que el
-// resto de la app).
-function _alimN21CeldaGrupo(actual, deltaKwh, deltaPct, fmt){
-  const celdaActual = `<td style="font-weight:600">${fmt(actual)}</td>`;
+// resto de la app). `proyectado` (opcional): marca la celda del dato con
+// "≈" + tooltip -- Nivel 3 lo usa para el botón "Proyectar P.Técnica"
+// (dato estimado, no viene de la simulación real).
+function _alimN21CeldaGrupo(actual, deltaKwh, deltaPct, fmt, proyectado){
+  const celdaActual = proyectado
+    ? `<td style="font-weight:600;font-style:italic;color:var(--accent)" title="Proyectado: % técnico promedio de los últimos meses con dato, aplicado a la Entrada real de este mes">≈ ${fmt(actual)}</td>`
+    : `<td style="font-weight:600">${fmt(actual)}</td>`;
   if(deltaKwh==null) return `${celdaActual}<td>--</td><td>--</td><td>--</td>`;
   const sube = deltaKwh >= 0;
   const color = sube ? '#ef476f' : '#06d6a0';
