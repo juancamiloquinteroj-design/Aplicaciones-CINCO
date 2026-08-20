@@ -4145,8 +4145,17 @@ async function _expImagenBloque(elId, nombreBase, ev){
 
   try{
     const escala = 2;
-    const canvas = await html2canvas(temporal, {backgroundColor: bg, scale: escala, useCORS: true, logging: false});
+    const canvasH2C = await html2canvas(temporal, {backgroundColor: bg, scale: escala, useCORS: true, logging: false});
+    // El canvas que devuelve html2canvas no admite dibujarle encima
+    // directamente -- fillText/fillRect no tiran error pero tampoco
+    // aparecen en el toBlob final (comprobado; probablemente su backing
+    // store queda "fijado" apenas se resuelve la promesa). Por eso se
+    // compone sobre un canvas PROPIO (drawImage) antes de dibujar la
+    // franja encima -- ahí sí funciona.
+    const canvas = document.createElement('canvas');
+    canvas.width = canvasH2C.width; canvas.height = canvasH2C.height;
     const ctx = canvas.getContext('2d');
+    ctx.drawImage(canvasH2C, 0, 0);
     posFranjas.forEach((p,i) => {
       const {texto, color} = datosFranja[i];
       if(!texto) return;
