@@ -337,15 +337,22 @@ canvas[id^="ch-tride-"]:active{cursor:grabbing}
 .hm-celda{font-size:10.5px;text-align:center;padding:6px 4px;border-radius:3px;white-space:nowrap;min-width:52px}
 .hm-tabla thead th{position:sticky;top:0;z-index:2;background:var(--card-bg)}
 
-/* "Resumen por Nivel de Tensión" -- una caja por nivel con franja de
-   color lateral (inspirado en la plantilla Excel que mostró el usuario:
-   NIVEL 4/NIVEL 3/NIVEL 21 con una barra de color al costado). */
-.resnivel-box{display:flex;border:2px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:18px}
+/* "Resumen por Nivel de Tensión" -- pedido explícito: "lo más parecido"
+   a la plantilla Excel que mostró el usuario -- etiqueta ARRIBA de cada
+   caja (no adentro, como el resto de tarjetas de la app), caja blanca
+   con borde fino, Entrada/Salida SUELTAS arriba de una caja con franja
+   de color lateral (NIVEL 4/NIVEL 3/N2-1) que agrupa el resto de campos. */
+.resnivel-entradasalida{display:flex;gap:24px;margin:0 0 10px 4px;flex-wrap:wrap}
+.resnivel-campo{display:flex;flex-direction:column;gap:4px;min-width:130px}
+.resnivel-campo-label{font-size:10.5px;font-weight:600;color:var(--text2)}
+.resnivel-campo-caja{border:1.5px solid var(--border);border-radius:4px;padding:7px 10px;text-align:right;font-weight:700;font-size:13px;background:var(--card-bg);color:var(--text)}
+.resnivel-campo-caja.destacada{background:var(--bg3);border-color:var(--accent);color:var(--accent)}
+.resnivel-campo input[type=number]{border:1.5px solid var(--border);border-radius:4px;padding:7px 10px;text-align:right;font-weight:700;font-size:13px;background:var(--card-bg);color:var(--text);width:100%;outline:none;-moz-appearance:textfield;box-sizing:border-box}
+.resnivel-campo input[type=number]:focus{border-color:var(--accent)}
+.resnivel-campo input[type=number]::-webkit-outer-spin-button,.resnivel-campo input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.resnivel-box{display:flex;border:2px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:22px}
 .resnivel-franja{writing-mode:vertical-rl;transform:rotate(180deg);font-weight:800;font-size:13px;letter-spacing:2px;text-transform:uppercase;padding:16px 10px;display:flex;align-items:center;justify-content:center;text-align:center;flex-shrink:0}
-.resnivel-grid{flex:1;padding:16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;align-content:start}
-.resnivel-tile.destacada{background:var(--bg3)}
-.resnivel-tile input[type=number]{width:100%;border:none;background:transparent;font-size:15px;font-weight:800;color:var(--text);padding:0;outline:none;-moz-appearance:textfield}
-.resnivel-tile input[type=number]::-webkit-outer-spin-button,.resnivel-tile input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.resnivel-grid{flex:1;padding:16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:14px 16px;align-content:start}
 
 /* Botón "Exportar" genérico (Imagen/Excel) -- inyectado automáticamente
    por JS en TODA gráfica (.chart-wrap) y TODA tabla (.tbl-wrap) de la
@@ -2091,9 +2098,14 @@ tfoot td:first-child{text-align:left}
 
   <div id="alim-resumen-contenido" class="hidden">
     <div class="card">
-      <div class="fbar" style="justify-content:center;margin-bottom:16px">
-        <label>Mes</label>
-        <select id="alim-resumen-mes" onchange="alimResumenRenderNiveles()"></select>
+      <!-- Mini-caja arriba a la derecha, estilo el bloque Inicio/Fin/
+           Periodo de la plantilla -- pedido explícito ("lo más parecido
+           como está ahí"). -->
+      <div style="display:flex;justify-content:flex-end;margin-bottom:20px">
+        <div class="resnivel-campo" style="min-width:170px">
+          <div class="resnivel-campo-label">Mes</div>
+          <select id="alim-resumen-mes" onchange="alimResumenRenderNiveles()" style="border:1.5px solid var(--border);border-radius:4px;padding:6px 8px;font-weight:700;font-size:13px;color:var(--text);background:var(--card-bg)"></select>
+        </div>
       </div>
       <div id="alim-resumen-niveles"></div>
     </div>
@@ -11374,80 +11386,87 @@ function alimResumenRenderNiveles(){
   const clave = sel.value;
   const fmt = v => v==null ? '--' : v.toLocaleString('es-CO',{maximumFractionDigits:0});
 
-  // `opts`: {destacada, color (del valor), id (del tile completo)}.
-  const tarjeta = (etiqueta, valor, sub, opts) => {
+  // "Campo Excel" -- etiqueta ARRIBA de una caja blanca con borde fino,
+  // pedido explícito ("lo más parecido como está ahí"). `opts`: {destacada, id}.
+  const campo = (etiqueta, valor, opts) => {
     opts = opts || {};
-    return `<div class="be-resumen-tile${opts.destacada?' destacada':''} resnivel-tile"${opts.id?` id="${opts.id}"`:''}>
-      <div class="etiqueta">${etiqueta}</div>
-      <div class="valor"${opts.color?` style="color:${opts.color}"`:''}>${valor}</div>
-      ${sub?`<div class="sub">${sub}</div>`:''}
+    return `<div class="resnivel-campo">
+      <div class="resnivel-campo-label">${etiqueta}</div>
+      <div class="resnivel-campo-caja${opts.destacada?' destacada':''}"${opts.id?` id="${opts.id}"`:''}>${valor}</div>
     </div>`;
   };
 
   cont.innerHTML = ALIM_RESUMEN_NIVELES.map(n => {
     const serie = _alimResumenSerie(n.clave);
     const idx = serie.findIndex(x => x.clave === clave);
-    const mesLargo = labelMesLargo(clave);
 
     if(idx < 0 || serie[idx].pct == null){
-      return `<div class="resnivel-box">
-        <div class="resnivel-franja" style="background:${n.color}22;color:${n.color}">${n.nombre}</div>
-        <div class="resnivel-grid"><div style="color:var(--text3);font-size:12px;grid-column:1/-1">Sin datos para ${mesLargo}.</div></div>
-      </div>`;
+      return `
+        <div class="resnivel-entradasalida">
+          ${campo(`Entrada ${n.nombre} (kWh)`, '--')}
+          ${campo(`Salida ${n.nombre} (kWh)`, '--')}
+        </div>
+        <div class="resnivel-box">
+          <div class="resnivel-franja" style="background:${n.color}22;color:${n.color}">${n.nombre}</div>
+          <div class="resnivel-grid"><div style="color:var(--text3);font-size:12px;grid-column:1/-1">Sin datos para ${labelMesLargo(clave)}.</div></div>
+        </div>`;
     }
 
     const actual = serie[idx];
-    const anterior = idx > 0 ? serie[idx-1] : null;
-    const deltaPct = (anterior && anterior.pct != null) ? actual.pct - anterior.pct : null;
-    const colorDelta = deltaPct==null ? 'var(--text3)' : (deltaPct>=0 ? '#ef476f' : '#06d6a0');
-
     const tec = ALIM_RESUMEN_TECNICA[n.clave] ? ALIM_RESUMEN_TECNICA[n.clave][clave] : null;
 
     const pctGuardado = _alimResumenLeerPct(n.clave);
     const pctNum = pctGuardado === '' ? null : Number(pctGuardado);
-    const perdidaRec = (pctNum!=null && !isNaN(pctNum)) ? actual.entrada * pctNum/100 : null;
+    const pctValido = pctNum!=null && !isNaN(pctNum);
+    const perdidaRec = pctValido ? actual.entrada * pctNum/100 : null;
 
-    return `<div class="resnivel-box">
-      <div class="resnivel-franja" style="background:${n.color}22;color:${n.color}">${n.nombre}</div>
-      <div class="resnivel-grid">
-        ${tarjeta('Entrada (kWh)', fmt(actual.entrada), mesLargo)}
-        ${tarjeta('Salida (kWh)', fmt(actual.salida), mesLargo)}
-        ${tarjeta('Pérdida Real (kWh)', fmt(actual.perdida), mesLargo)}
-        ${tarjeta('Índice Real (%)', actual.pct.toFixed(2)+'%', mesLargo, {destacada:true})}
-        ${tarjeta('Variación Índice Real', deltaPct==null?'--':`${deltaPct>=0?'▲':'▼'} ${Math.abs(deltaPct).toFixed(2)} pp`, 'vs. mes anterior', {color:colorDelta})}
-        ${tarjeta('Pérdida Técnica (kWh)', tec?fmt(tec.perdida):'--', 'Simulación -- Pérdidas Técnicas')}
-        ${tarjeta('Índice Técnico (%)', tec?tec.pct.toFixed(2)+'%':'--', 'Simulación -- Pérdidas Técnicas')}
-        <div class="be-resumen-tile resnivel-tile">
-          <div class="etiqueta">% Reconocido (vos lo ingresás)</div>
-          <input type="number" min="0" max="100" step="0.01" placeholder="--" value="${pctGuardado}"
-            id="alim-resumen-pct-${n.clave}" oninput="alimResumenActualizarReconocido('${n.clave}')">
-        </div>
-        ${tarjeta('Pérdida Reconocida (kWh)', perdidaRec==null?'--':fmt(perdidaRec), 'Entrada × % Reconocido', {id:`alim-resumen-perdrec-${n.clave}`})}
+    // Entrada/Salida SUELTAS arriba de la caja de color (como en la
+    // plantilla), el resto de campos adentro de la caja del nivel.
+    return `
+      <div class="resnivel-entradasalida">
+        ${campo(`Entrada ${n.nombre} (kWh)`, fmt(actual.entrada))}
+        ${campo(`Salida ${n.nombre} (kWh)`, fmt(actual.salida))}
       </div>
-    </div>`;
+      <div class="resnivel-box">
+        <div class="resnivel-franja" style="background:${n.color}22;color:${n.color}">${n.nombre}</div>
+        <div class="resnivel-grid">
+          ${campo('Pérdida Real (kWh)', fmt(actual.perdida))}
+          ${campo('Pérdida Técnica (kWh)', tec?fmt(tec.perdida):'--')}
+          ${campo('Pérdida Reconocida (kWh)', perdidaRec==null?'--':fmt(perdidaRec), {id:`alim-resumen-perdrec-${n.clave}`})}
+          ${campo('Índice Real (%)', actual.pct.toFixed(2)+'%', {destacada:true})}
+          ${campo('Índice Técnico (%)', tec?tec.pct.toFixed(2)+'%':'--')}
+          <div class="resnivel-campo">
+            <div class="resnivel-campo-label">% Reconocido (lo ingresás vos)</div>
+            <input type="number" min="0" max="100" step="0.01" placeholder="--" value="${pctGuardado}"
+              id="alim-resumen-pct-${n.clave}" oninput="alimResumenActualizarReconocido('${n.clave}')">
+          </div>
+          ${campo('Índice Reconocido (%)', pctValido ? pctNum.toFixed(2)+'%' : '--', {id:`alim-resumen-indicerec-${n.clave}`})}
+        </div>
+      </div>`;
   }).join('');
 }
 
-// Recalcula SOLO la tarjeta "Pérdida Reconocida" de un nivel al escribir
-// en su % -- no reconstruye el resto de la caja (perdería el foco del
-// input a mitad de escritura). Pérdida Reconocida = Entrada del mes
-// elegido × % Reconocido (pedido explícito).
+// Recalcula SOLO "Pérdida Reconocida" e "Índice Reconocido" de un nivel
+// al escribir en su % -- no reconstruye toda la caja (perdería el foco
+// del input a mitad de escritura). Pérdida Reconocida = Entrada del mes
+// elegido × % Reconocido; Índice Reconocido = el mismo % (pedido explícito).
 function alimResumenActualizarReconocido(nivelClave){
   const input = document.getElementById(`alim-resumen-pct-${nivelClave}`);
-  const destino = document.getElementById(`alim-resumen-perdrec-${nivelClave}`);
+  const destinoKwh = document.getElementById(`alim-resumen-perdrec-${nivelClave}`);
+  const destinoIndice = document.getElementById(`alim-resumen-indicerec-${nivelClave}`);
   const sel = document.getElementById('alim-resumen-mes');
-  if(!input || !destino || !sel) return;
+  if(!input || !sel) return;
   _alimResumenGuardarPct(nivelClave, input.value);
 
-  const n = ALIM_RESUMEN_NIVELES.find(x => x.clave === nivelClave);
   const serie = _alimResumenSerie(nivelClave);
   const actual = serie.find(x => x.clave === sel.value);
   const pctNum = input.value === '' ? null : Number(input.value);
-  const perdidaRec = (actual && pctNum!=null && !isNaN(pctNum)) ? actual.entrada * pctNum/100 : null;
+  const valido = actual && pctNum!=null && !isNaN(pctNum);
+  const perdidaRec = valido ? actual.entrada * pctNum/100 : null;
 
   const fmt = v => v==null ? '--' : v.toLocaleString('es-CO',{maximumFractionDigits:0});
-  const valorEl = destino.querySelector('.valor');
-  if(valorEl) valorEl.textContent = fmt(perdidaRec);
+  if(destinoKwh) destinoKwh.textContent = fmt(perdidaRec);
+  if(destinoIndice) destinoIndice.textContent = valido ? pctNum.toFixed(2)+'%' : '--';
 }
 
 async function cargarAlimentadoresModulo(nombreVista){
