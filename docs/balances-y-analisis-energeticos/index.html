@@ -3877,17 +3877,30 @@ async function _expImagenChart(wrapId, nombreBase, ev){
   const colorFondo = dark ? '#161b27' : '#ffffff';
   const tituloTexto = _expTextoTitulo(wrap);
 
+  // En pantalla la gráfica es angosta y MUY ancha (ratio ~4:1, el
+  // chart-wrap ocupa todo el ancho de la tarjeta con poco alto) -- pedido
+  // explícito: "que salga más cuadriculada no tan rectangular". Se
+  // redimensiona la gráfica REAL a un tamaño más 4:3 antes de capturar y
+  // se devuelve a su tamaño normal apenas después -- todo en el mismo
+  // tramo síncrono (sin ningún await entre medio), así el navegador no
+  // llega a pintar el tamaño intermedio en pantalla (nada de parpadeo).
+  chart.resize(760, 560);
+  const dataUrl = chart.toBase64Image('image/png', 1);
+  chart.resize();  // sin argumentos -- vuelve a leer el tamaño real del .chart-wrap en pantalla
+
   const img = new Image();
-  await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = chart.toBase64Image('image/png', 1); });
+  await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = dataUrl; });
 
   // Antes escalaba 0.022×ancho sin techo -- en gráficas anchas (~1600px+
   // ya al doble de resolución) el título salía enorme, desproporcionado
   // frente al resto del texto de la gráfica (pedido explícito: "el
   // título cuando se exporta sale muy grande"). Ahora 1.4%×ancho con
   // techo de 30px -- similar proporción al título real en pantalla
-  // (15px CSS × 2 de escala ≈ 30px).
+  // (15px CSS × 2 de escala ≈ 30px). El margen de separación entre el
+  // título y la gráfica también se acotó (antes +40, quedaba un hueco
+  // grande) -- pedido explícito: "el título sale muy lejos de la gráfica".
   const fontTitulo = Math.max(18, Math.min(30, Math.round(img.width*0.014)));
-  const margenLat = 24, margenSup = tituloTexto ? fontTitulo + 40 : 16;
+  const margenLat = 24, margenSup = tituloTexto ? fontTitulo + 20 : 16;
   const cv = document.createElement('canvas');
   cv.width = img.width + margenLat*2;
   cv.height = img.height + margenSup + 16;
