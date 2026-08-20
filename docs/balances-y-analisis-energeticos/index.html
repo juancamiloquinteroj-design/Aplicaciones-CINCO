@@ -319,6 +319,14 @@ canvas[id^="ch-tride-"]:active{cursor:grabbing}
 .split-wrap>div{flex:1;min-width:280px}
 @media(max-width:800px){.split-wrap>div{flex:1 1 100%}}
 
+/* Heatmap Mensual (Subestaciones) -- separado en vez de collapse, para
+   que se vea el "cuadriculado" típico de un heatmap en vez de una tabla
+   común. */
+.hm-tabla{border-collapse:separate;border-spacing:2px;width:auto}
+.hm-fila-nombre{text-align:left;font-size:10.5px;font-weight:700;white-space:nowrap;padding:4px 8px;position:sticky;left:0;background:var(--card-bg)}
+.hm-celda{font-size:9px;text-align:center;padding:4px 5px;border-radius:3px;min-width:44px;white-space:nowrap}
+.hm-tabla thead th{position:sticky;top:0;z-index:2;background:var(--card-bg)}
+
 /* Botón "Exportar" genérico (Imagen/Excel) -- inyectado automáticamente
    por JS en TODA gráfica (.chart-wrap) y TODA tabla (.tbl-wrap) de la
    app, pedido explícito ("en cada tabla y cada gráfica"). Discreto (poca
@@ -2360,7 +2368,12 @@ tfoot td:first-child{text-align:left}
             <button type="button" class="be-modo-btn" id="alim-sub-btn-metrica-salida" onclick="alimSubCambiarMetrica('salida')">Salida</button>
             <button type="button" class="be-modo-btn activo" id="alim-sub-btn-metrica-perdida" onclick="alimSubCambiarMetrica('perdida')">Pérdida</button>
           </div>
-          <div class="chart-wrap" style="height:400px"><canvas id="ch-alim-sub-subestaciones"></canvas></div>
+          <div class="fbar" style="justify-content:center;margin-bottom:8px">
+            <button type="button" class="be-modo-btn activo" id="alim-sub-btn-vista-lineas" onclick="alimSubToggleVista('lineas')">📈 Gráfica</button>
+            <button type="button" class="be-modo-btn" id="alim-sub-btn-vista-heatmap" onclick="alimSubToggleVista('heatmap')" title="Variación mes a mes de cada subestación, en vez de la magnitud -- pensado para ver de un vistazo dónde/cuándo hubo cambios">🔥 Heatmap Mensual (Variación)</button>
+          </div>
+          <div id="alim-sub-chart-lineas-wrap" class="chart-wrap" style="height:400px"><canvas id="ch-alim-sub-subestaciones"></canvas></div>
+          <div id="alim-sub-heatmap" class="hidden"></div>
         </div>
         <div style="flex:1;min-width:480px">
           <div style="text-align:center;margin-bottom:8px">
@@ -11072,6 +11085,7 @@ async function cargarAlimentadoresModulo(nombreVista){
 let ALIM_SUB_ZONAS = [];
 let ALIM_SUB_ZONAS_SEL = new Set();
 let ALIM_SUB_METRICA = 'perdida';  // 'entrada' | 'salida' | 'perdida'
+let ALIM_SUB_VISTA = 'lineas';     // 'lineas' | 'heatmap' -- gráfico 1 (pedido explícito: "cambiar esa gráfica por un Heatmap Mensual")
 let ALIM_SUB_ZONA_PANEL_MODO = 'mensual';  // 'mensual' | 'anual' -- panel "Pérdida por Zona"
 let ALIM_SUB_AL_MOSTRAR_ES = false;  // gráfico "Pérdida % por Alimentador" -- agrega Entrada/Salida (kWh)
 let ALIM_SUB_AL_VAR = false;         // gráfico "Pérdida % por Alimentador" -- Δ Variación en las etiquetas
@@ -11198,7 +11212,96 @@ function alimSubToggleZona(zona){
 function alimSubCambiarMetrica(metrica){
   ALIM_SUB_METRICA = metrica;
   ['entrada','salida','perdida'].forEach(m => document.getElementById(`alim-sub-btn-metrica-${m}`).classList.toggle('activo', m===metrica));
-  alimSubRenderChartSubestaciones();
+  if(ALIM_SUB_VISTA === 'heatmap') alimSubRenderHeatmap(); else alimSubRenderChartSubestaciones();
+}
+
+// Alterna entre la gráfica de líneas (gráfico 1) y el Heatmap Mensual --
+// pedido explícito.
+function alimSubToggleVista(vista){
+  ALIM_SUB_VISTA = vista;
+  document.getElementById('alim-sub-btn-vista-lineas').classList.toggle('activo', vista==='lineas');
+  document.getElementById('alim-sub-btn-vista-heatmap').classList.toggle('activo', vista==='heatmap');
+  document.getElementById('alim-sub-chart-lineas-wrap').classList.toggle('hidden', vista!=='lineas');
+  document.getElementById('alim-sub-heatmap').classList.toggle('hidden', vista!=='heatmap');
+  if(vista==='heatmap') alimSubRenderHeatmap(); else alimSubRenderChartSubestaciones();
+}
+
+// Heatmap Mensual -- pedido explícito, "con el fin de ver la variación":
+// a diferencia de la gráfica de líneas (que muestra la MAGNITUD y con
+// 20-30 subestaciones se vuelve ilegible, puro espagueti de colores), acá
+// cada celda es la VARIACIÓN % mes a mes de esa subestación (rojo =
+// subió, verde = bajó, más intenso = cambio más grande) -- mismo criterio
+// rojo/verde de variación que el resto de la app (ipColorVariacion). Filas
+// ordenadas por la variación más grande que tuvo esa subestación en
+// cualquier mes del rango (las más "volátiles" arriba, para saltar a la
+// vista lo que más se movió).
+function alimSubRenderHeatmap(){
+  const cont = document.getElementById('alim-sub-heatmap');
+  if(!cont) return;
+  const porGrupo = alimSubAgregarPorGrupo('subestacion', null);
+  const subestaciones = Object.keys(porGrupo);
+  if(!subestaciones.length){ cont.innerHTML = ''; return; }
+
+  const porSub = {};
+  const clavesSet = new Set();
+  subestaciones.forEach(sub => {
+    const visibles = alimSubVisibles(porGrupo[sub]);
+    porSub[sub] = new Map(visibles.map(f => [f.clave, f]));
+    visibles.forEach(f => clavesSet.add(f.clave));
+  });
+  const claves = [...clavesSet].sort();
+  if(claves.length < 2){
+    cont.innerHTML = '<div style="color:var(--text3);font-size:12px;text-align:center;padding:20px 0">Se necesitan al menos 2 meses en el Rango para calcular variación.</div>';
+    return;
+  }
+
+  // % de cambio del mes contra el anterior DENTRO del rango visible (el
+  // primer mes del rango queda sin variación -- no hay "anterior" ahí).
+  const deltaPorSub = {};
+  subestaciones.forEach(sub => {
+    deltaPorSub[sub] = {};
+    for(let i=1; i<claves.length; i++){
+      const actual = porSub[sub].get(claves[i]);
+      const anterior = porSub[sub].get(claves[i-1]);
+      if(!actual || !anterior) continue;
+      const vAct = actual[ALIM_SUB_METRICA], vAnt = anterior[ALIM_SUB_METRICA];
+      if(vAct==null || vAnt==null || !vAnt) continue;
+      deltaPorSub[sub][claves[i]] = (vAct-vAnt)/Math.abs(vAnt)*100;
+    }
+  });
+
+  const volatilidad = sub => Math.max(0, ...Object.values(deltaPorSub[sub]).map(v => Math.abs(v)));
+  const subOrdenadas = [...subestaciones].sort((a,b) => volatilidad(b) - volatilidad(a));
+  const maxAbsDelta = Math.max(1, ...subOrdenadas.map(volatilidad));
+
+  const nombreMetrica = {entrada:'Entrada', salida:'Salida', perdida:'Pérdida'}[ALIM_SUB_METRICA];
+
+  const encabezado = claves.map(c => `<th class="hm-celda">${labelMes(c)}</th>`).join('');
+  const filasHtml = subOrdenadas.map(sub => {
+    const filaZona = ALIM_FILAS.find(f => f.subestacion === sub && f.zona);
+    const zona = filaZona ? filaZona.zona : '--';
+    const colorZona = colorParaZona(zona);
+    const celdas = claves.map((c, i) => {
+      if(i===0) return `<td class="hm-celda" style="background:var(--bg3)" title="${sub} -- ${labelMesLargo(c)}: primer mes del rango, sin mes anterior para comparar"></td>`;
+      const delta = deltaPorSub[sub][c];
+      if(delta==null) return `<td class="hm-celda" style="background:var(--bg3)" title="${sub} -- ${labelMesLargo(c)}: sin dato"></td>`;
+      const intensidad = Math.min(1, Math.abs(delta)/maxAbsDelta);
+      const rgb = delta>=0 ? '239,71,111' : '6,214,160';  // sube=rojo, baja=verde -- mismo criterio que el resto de la app
+      const textoOscuro = intensidad < 0.55;
+      const texto = `${delta>=0?'+':''}${delta.toFixed(0)}%`;
+      return `<td class="hm-celda" style="background:rgba(${rgb},${(0.10+intensidad*0.80).toFixed(3)});color:${textoOscuro?'var(--text)':'#fff'}" title="${sub} -- ${labelMesLargo(c)}: ${texto} vs. ${labelMes(claves[i-1])}">${texto}</td>`;
+    }).join('');
+    return `<tr><td class="hm-fila-nombre"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${colorZona};margin-right:5px"></span>${sub}</td>${celdas}</tr>`;
+  }).join('');
+
+  cont.innerHTML = `
+    <div style="text-align:center;font-size:11px;color:var(--text3);margin-bottom:8px">Variación mensual de ${nombreMetrica} vs. el mes anterior -- <span style="color:#ef476f;font-weight:700">rojo = subió</span>, <span style="color:#06d6a0;font-weight:700">verde = bajó</span> (más intenso = cambio más grande)</div>
+    <div class="tbl-wrap" style="max-height:400px;overflow:auto">
+      <table class="hm-tabla">
+        <thead><tr><th class="hm-fila-nombre" style="text-align:left">Subestación</th>${encabezado}</tr></thead>
+        <tbody>${filasHtml}</tbody>
+      </table>
+    </div>`;
 }
 
 async function alimSubCargar(){
@@ -11251,7 +11354,7 @@ function alimSubRenderAlimentadoresYCards(){
 }
 
 function alimSubRenderTodo(){
-  alimSubRenderChartSubestaciones();
+  if(ALIM_SUB_VISTA === 'heatmap') alimSubRenderHeatmap(); else alimSubRenderChartSubestaciones();
   alimSubRenderTablaTop();
   alimSubRenderChartAlimentadores();
   alimSubRenderZonaPanel();
