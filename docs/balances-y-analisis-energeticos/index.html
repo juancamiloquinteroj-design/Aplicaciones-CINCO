@@ -2384,11 +2384,11 @@ tfoot td:first-child{text-align:left}
           <div style="text-align:center;margin-bottom:8px">
             <div style="font-size:13px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Top Subestaciones por Pérdida</div>
             <div style="font-size:10.5px;color:var(--text3);margin-top:2px">Click en una fila para verla abajo en "Pérdida % por Alimentador"</div>
-            <button type="button" class="be-modo-btn" id="alim-sub-top-btn-var" style="margin-top:6px" onclick="alimSubToggleTopVar()" title="Agrega la variación de la Pérdida Mensual (%) vs. el mes anterior">Δ Variación</button>
+            <button type="button" class="be-modo-btn" id="alim-sub-top-btn-var" style="margin-top:6px" onclick="alimSubToggleTopVar()" title="Agrega la variación de Entrada, Salida y Pérdida Mensual vs. el mes anterior">Δ Variación</button>
           </div>
           <div class="tbl-wrap tbl-compacta" id="alim-sub-tbl-top-wrap" style="max-height:420px;overflow-y:auto">
             <table>
-              <thead><tr><th style="text-align:left">Subestación</th><th>Zona</th><th>Entrada</th><th>Salida</th><th>Pérd. Mensual</th><th class="alimsub-col-var">Δ Pérdida</th><th>Pérd. Anual</th></tr></thead>
+              <thead><tr><th style="text-align:left">Subestación</th><th>Zona</th><th>Entrada</th><th class="alimsub-col-var">Δ Entrada</th><th>Salida</th><th class="alimsub-col-var">Δ Salida</th><th>Pérd. Mensual</th><th class="alimsub-col-var">Δ Pérdida</th><th>Pérd. Anual</th></tr></thead>
               <tbody id="alim-sub-tabla-top"></tbody>
             </table>
           </div>
@@ -11523,6 +11523,8 @@ function alimSubRenderTablaTop(){
       sub, zona: filaZona ? filaZona.zona : '--',
       entrada: actual.entrada, salida: actual.salida,
       pctMensual: actual.pct, pctAnual: actual12 ? actual12.pct12 : null,
+      deltaEntrada: anterior ? actual.entrada - anterior.entrada : null,
+      deltaSalida: anterior ? actual.salida - anterior.salida : null,
       deltaPct: anterior ? actual.pct - anterior.pct : null,
     };
   }).filter(Boolean);
@@ -11530,16 +11532,21 @@ function alimSubRenderTablaTop(){
 
   const fmtPct = v => v==null ? '--' : `${v.toFixed(2)}%`;
   const fmtKwh = v => v==null ? '--' : v.toLocaleString('es-CO',{maximumFractionDigits:0});
+  const fmtDeltaKwh = v => v==null ? '--' : `${v>=0?'+':''}${v.toLocaleString('es-CO',{maximumFractionDigits:0})}`;
 
   cont.innerHTML = filas.map(f => {
     const color = colorParaZona(f.zona);
     const activa = seleccionadas.has(f.sub);
+    const colorDeltaEntrada = f.deltaEntrada==null ? 'var(--text3)' : (f.deltaEntrada>=0 ? '#ef476f' : '#06d6a0');
+    const colorDeltaSalida = f.deltaSalida==null ? 'var(--text3)' : (f.deltaSalida>=0 ? '#ef476f' : '#06d6a0');
     const colorDelta = f.deltaPct==null ? 'var(--text3)' : (f.deltaPct>=0 ? '#ef476f' : '#06d6a0');
     return `<tr onclick="alimSubSeleccionarSubestacionTabla('${f.sub}')" style="cursor:pointer${activa?';background:var(--bg3)':''}">
       <td style="text-align:left;font-weight:700">${f.sub}</td>
       <td><span class="zb" style="background:${color}22;color:${color}">${f.zona}</span></td>
       <td>${fmtKwh(f.entrada)}</td>
+      <td class="alimsub-col-var" style="color:${colorDeltaEntrada}">${fmtDeltaKwh(f.deltaEntrada)}</td>
       <td>${fmtKwh(f.salida)}</td>
+      <td class="alimsub-col-var" style="color:${colorDeltaSalida}">${fmtDeltaKwh(f.deltaSalida)}</td>
       <td>${fmtPct(f.pctMensual)}</td>
       <td class="alimsub-col-var" style="color:${colorDelta}">${f.deltaPct==null?'--':`${f.deltaPct>=0?'▲':'▼'} ${Math.abs(f.deltaPct).toFixed(2)} pp`}</td>
       <td>${fmtPct(f.pctAnual)}</td>
