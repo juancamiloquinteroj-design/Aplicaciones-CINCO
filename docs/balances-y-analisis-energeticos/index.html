@@ -32,6 +32,11 @@
      curl -I. -->
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
+<!-- html2canvas -- rasteriza CUALQUIER elemento del DOM (gráfica o tabla)
+     a PNG tal cual se ve en pantalla, para el botón "Exportar" genérico
+     (pedido explícito: "en cada tabla y cada gráfica... descargar en
+     excel o imagen"). Global `html2canvas`. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <style>
 :root{
   --accent:#00b4d8;--accent2:#0096c7;--amber:#f4a261;--green:#06d6a0;--red:#ef476f;--purple:#7b2fff;
@@ -314,6 +319,18 @@ canvas[id^="ch-tride-"]:active{cursor:grabbing}
 .split-wrap>div{flex:1;min-width:280px}
 @media(max-width:800px){.split-wrap>div{flex:1 1 100%}}
 
+/* Botón "Exportar" genérico (Imagen/Excel) -- inyectado automáticamente
+   por JS en TODA gráfica (.chart-wrap) y TODA tabla (.tbl-wrap) de la
+   app, pedido explícito ("en cada tabla y cada gráfica"). Discreto (poca
+   opacidad) hasta hover, para no competir visualmente con el contenido. */
+.exp-wrap{position:absolute;top:4px;right:4px;z-index:6}
+.exp-btn{width:24px;height:24px;border-radius:6px;border:1px solid var(--border);background:var(--card-bg);color:var(--text2);cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;opacity:.45;transition:opacity .15s}
+.exp-wrap:hover .exp-btn,.exp-btn:focus{opacity:1}
+.exp-menu{display:none;position:absolute;top:100%;right:0;margin-top:4px;background:var(--card-bg);border:1px solid var(--border);border-radius:8px;box-shadow:var(--shadow-sm);min-width:150px;padding:4px;flex-direction:column;gap:2px}
+.exp-menu.abierto{display:flex}
+.exp-menu button{width:100%;text-align:left;padding:7px 10px;border:none;background:transparent;color:var(--text2);font-size:12px;border-radius:5px;cursor:pointer}
+.exp-menu button:hover{background:var(--bg3);color:var(--text)}
+
 .tbl-wrap{overflow-x:auto;border-radius:9px;border:1px solid var(--border)}
 .alim3-tabla-sticky thead th{position:sticky;top:0;z-index:2}
 .tbl-wrap.tbl-compacta{display:inline-block;max-width:100%}
@@ -327,6 +344,10 @@ canvas[id^="ch-tride-"]:active{cursor:grabbing}
    columnas del mes actual ("además de otro color"). */
 .alim3-col-anterior{display:none}
 .alim3-mostrar-anterior .alim3-col-anterior{display:table-cell;background:rgba(244,162,97,.14)}
+/* "Top Subestaciones por Pérdida" -- columna Δ Pérdida, mismo patrón
+   (botón Δ Variación, oculta por defecto). */
+.alimsub-col-var{display:none}
+.alimsub-mostrar-var .alimsub-col-var{display:table-cell;background:rgba(244,162,97,.14)}
 table{width:100%;border-collapse:collapse;font-size:12px}
 thead th{padding:8px 12px;font-weight:700;text-align:right;background:var(--bg3);color:var(--text2);font-size:10px;text-transform:uppercase;border-bottom:1px solid var(--border);white-space:nowrap}
 thead th:first-child,tbody td:first-child{text-align:left}
@@ -2337,10 +2358,11 @@ tfoot td:first-child{text-align:left}
           <div style="text-align:center;margin-bottom:8px">
             <div style="font-size:13px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Top Subestaciones por Pérdida</div>
             <div style="font-size:10.5px;color:var(--text3);margin-top:2px">Click en una fila para verla abajo en "Pérdida % por Alimentador"</div>
+            <button type="button" class="be-modo-btn" id="alim-sub-top-btn-var" style="margin-top:6px" onclick="alimSubToggleTopVar()" title="Agrega la variación de la Pérdida Mensual (%) vs. el mes anterior">Δ Variación</button>
           </div>
-          <div class="tbl-wrap" style="max-height:420px;overflow-y:auto">
+          <div class="tbl-wrap" id="alim-sub-tbl-top-wrap" style="max-height:420px;overflow-y:auto">
             <table>
-              <thead><tr><th style="text-align:left">Subestación</th><th>Zona</th><th>Entrada</th><th>Salida</th><th>Pérd. Mensual</th><th>Pérd. Anual</th></tr></thead>
+              <thead><tr><th style="text-align:left">Subestación</th><th>Zona</th><th>Entrada</th><th>Salida</th><th>Pérd. Mensual</th><th class="alimsub-col-var">Δ Pérdida</th><th>Pérd. Anual</th></tr></thead>
               <tbody id="alim-sub-tabla-top"></tbody>
             </table>
           </div>
@@ -3596,6 +3618,196 @@ function _actualizarTemaCharts(){
   });
 }
 (function(){ const t=localStorage.getItem('pt_theme'); if(t) document.documentElement.setAttribute('data-theme',t); })();
+
+/* ==========================================================================
+   EXPORTAR (Imagen / Excel) -- botón genérico inyectado automáticamente en
+   TODA gráfica (.chart-wrap) y TODA tabla (.tbl-wrap) de toda la app
+   (pedido explícito: "en cada tabla y cada gráfica... exportar/descargar,
+   en excel o imagen"). En vez de tocar a mano cada uno de los ~80+ lugares
+   con una gráfica o tabla, un MutationObserver sobre #app-screen detecta
+   cualquier .chart-wrap/.tbl-wrap que aparezca (los hay ocultos desde el
+   arranque, en vistas no visitadas todavía) y le agrega el botón una sola
+   vez (WeakSet EXP_YA_PROCESADOS evita duplicarlo en re-renders que
+   reusan el mismo nodo, que es el caso normal: los charts se destruyen y
+   recrean sobre el MISMO <canvas>, las tablas reemplazan solo su
+   <tbody>). "Imagen" usa html2canvas (rasteriza tal cual se ve en
+   pantalla, ocultando el propio botón durante la captura para no
+   incluirlo). "Excel" -- para gráficas exporta line/bar de Chart.js leyendo
+   directo chart.data (labels + datasets), para tablas clona el <table> y
+   HORNEA el estilo COMPUTADO de cada celda (color, fondo, negrita, align)
+   como atributo style inline antes de armar el .xls -- así conserva el
+   formato/colores actuales sin depender de que Excel entienda las
+   variables CSS (var(--text) etc, que no significan nada fuera del
+   navegador). ========================================================== */
+const EXP_YA_PROCESADOS = new WeakSet();
+
+function _expNombreArchivo(base){
+  const slug = (typeof OPERADOR !== 'undefined' && OPERADOR && OPERADOR.slug) ? OPERADOR.slug : 'export';
+  const hoy = new Date().toISOString().slice(0,10);
+  return `${base}_${slug}_${hoy}`;
+}
+
+function _expDescargarBlob(blob, nombreArchivo){
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = nombreArchivo;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function _expEsc(s){
+  return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function _expDescargarXls(filas, nombreArchivo){
+  // `filas`: array de arrays (fila 0 = encabezado) -- usado por la
+  // "Excel (datos)" de gráficas, donde no hay una tabla HTML de la cual
+  // heredar formato, solo números.
+  const html = '<table border="1">' + filas.map(fila =>
+    '<tr>' + fila.map(c => `<td>${_expEsc(c)}</td>`).join('') + '</tr>'
+  ).join('') + '</table>';
+  const blob = new Blob(['﻿<html><head><meta charset="UTF-8"></head><body>'+html+'</body></html>'], {type:'application/vnd.ms-excel'});
+  _expDescargarBlob(blob, `${nombreArchivo}.xls`);
+}
+
+// Menú desplegable del botón "⬇" -- uno solo abierto a la vez, se cierra
+// solo si se hace click afuera.
+function _expToggleMenu(menuId, ev){
+  if(ev) ev.stopPropagation();
+  document.querySelectorAll('.exp-menu.abierto').forEach(m => { if(m.id !== menuId) m.classList.remove('abierto'); });
+  const menu = document.getElementById(menuId);
+  if(menu) menu.classList.toggle('abierto');
+}
+function _expCerrarMenus(){
+  document.querySelectorAll('.exp-menu.abierto').forEach(m => m.classList.remove('abierto'));
+}
+document.addEventListener('click', e => { if(!e.target.closest('.exp-wrap')) _expCerrarMenus(); });
+
+// Imagen -- sirve igual para gráfica o tabla, el elemento que se pasa es
+// el .chart-wrap o .tbl-wrap completo (título de ejes/leyenda/tabla tal
+// cual se ve). Oculta el propio botón "Exportar" durante la captura.
+async function _expImagen(wrapId, nombreBase, ev){
+  if(ev) ev.stopPropagation();
+  _expCerrarMenus();
+  const el = document.getElementById(wrapId);
+  if(!el || typeof html2canvas === 'undefined') return;
+  const botones = el.querySelectorAll('.exp-wrap');
+  botones.forEach(b => b.style.visibility = 'hidden');
+  try{
+    const bg = getComputedStyle(document.documentElement).getPropertyValue('--card-bg').trim() || '#ffffff';
+    const canvas = await html2canvas(el, {backgroundColor: bg, scale: 2, useCORS: true, logging: false});
+    canvas.toBlob(blob => { if(blob) _expDescargarBlob(blob, `${_expNombreArchivo(nombreBase)}.png`); });
+  }catch(e){
+    console.error('Exportar imagen falló:', e);
+  }finally{
+    botones.forEach(b => b.style.visibility = '');
+  }
+}
+
+// Excel de una GRÁFICA -- lee directo chart.data (Chart.js), no depende
+// de que cada módulo ya tenga su propio "Descargar CSV" -- funciona igual
+// para cualquiera de las ~40 gráficas de la app.
+function _expChartExcel(wrapId, nombreBase, ev){
+  if(ev) ev.stopPropagation();
+  _expCerrarMenus();
+  const wrap = document.getElementById(wrapId);
+  const canvas = wrap ? wrap.querySelector('canvas') : null;
+  const chart = canvas && typeof Chart !== 'undefined' ? Chart.getChart(canvas) : null;
+  if(!chart || !chart.data){ return; }
+  const labels = chart.data.labels || [];
+  // Sin filtrar por d.label -- las donas (Distribución de Pérdida por
+  // Zona, etc.) tienen UN solo dataset SIN label (el label ahí lo lleva
+  // cada categoría, no la serie), filtrar por label las dejaba vacías.
+  const datasets = chart.data.datasets || [];
+  if(!labels.length || !datasets.length) return;
+  const filas = [['', ...datasets.map((d,i) => d.label || (datasets.length>1 ? `Serie ${i+1}` : 'Valor'))]];
+  labels.forEach((lab, i) => {
+    filas.push([String(lab), ...datasets.map(d => {
+      const v = d.data ? d.data[i] : null;
+      return (v==null || v===undefined) ? '' : (typeof v === 'number' ? String(v).replace('.', ',') : String(v));
+    })]);
+  });
+  _expDescargarXls(filas, nombreBase);
+}
+
+// Excel de una TABLA -- clona el <table> y le hornea el estilo COMPUTADO
+// (resuelto, no la variable CSS) de cada celda como atributo inline, para
+// que el .xls conserve el mismo color/negrita/alineación que se ve en
+// pantalla ahora mismo (pedido explícito: "en excel... darle formato que
+// tiene actualmente").
+function _expTablaExcel(wrapId, nombreBase, ev){
+  if(ev) ev.stopPropagation();
+  _expCerrarMenus();
+  const wrap = document.getElementById(wrapId);
+  const tabla = wrap ? wrap.querySelector('table') : null;
+  if(!tabla) return;
+  const clon = tabla.cloneNode(true);
+  const origCeldas = tabla.querySelectorAll('th,td');
+  const clonCeldas = clon.querySelectorAll('th,td');
+  const alinear = a => (a==='start' ? 'left' : a==='end' ? 'right' : a);
+  origCeldas.forEach((celda, i) => {
+    const cs = getComputedStyle(celda);
+    const c = clonCeldas[i];
+    if(!c) return;
+    c.setAttribute('style',
+      `color:${cs.color};background-color:${cs.backgroundColor};font-weight:${cs.fontWeight};`+
+      `text-align:${alinear(cs.textAlign)};border:1px solid #cccccc;padding:4px 8px;white-space:nowrap`);
+  });
+  const html = `<table border="1">${clon.innerHTML}</table>`;
+  const blob = new Blob(['﻿<html><head><meta charset="UTF-8"></head><body>'+html+'</body></html>'], {type:'application/vnd.ms-excel'});
+  _expDescargarBlob(blob, `${_expNombreArchivo(nombreBase)}.xls`);
+}
+
+function _expBotonHtml(wrapId, tipo, nombreBase){
+  const idMenu = `exp-menu-${wrapId}`;
+  const opciones = tipo === 'chart'
+    ? `<button type="button" onclick="_expImagen('${wrapId}','${nombreBase}',event)">🖼️ Imagen (PNG)</button>
+       <button type="button" onclick="_expChartExcel('${wrapId}','${nombreBase}',event)">📊 Excel (datos)</button>`
+    : `<button type="button" onclick="_expTablaExcel('${wrapId}','${nombreBase}',event)">📊 Excel</button>
+       <button type="button" onclick="_expImagen('${wrapId}','${nombreBase}',event)">🖼️ Imagen (PNG)</button>`;
+  return `<div class="exp-wrap"><button type="button" class="exp-btn" title="Exportar" onclick="_expToggleMenu('${idMenu}',event)">⬇</button><div class="exp-menu" id="${idMenu}">${opciones}</div></div>`;
+}
+
+let _expContadorAnonimo = 0;
+function _expEscanear(){
+  document.querySelectorAll('.chart-wrap').forEach(wrap => {
+    if(EXP_YA_PROCESADOS.has(wrap)) return;
+    const canvas = wrap.querySelector('canvas');
+    if(!canvas) return;
+    EXP_YA_PROCESADOS.add(wrap);
+    if(!wrap.id) wrap.id = `exp-wrap-anon-${++_expContadorAnonimo}`;
+    if(!wrap.style.position) wrap.style.position = 'relative';
+    const base = (canvas.id || wrap.id).replace(/^ch-/, '');
+    wrap.insertAdjacentHTML('beforeend', _expBotonHtml(wrap.id, 'chart', base));
+  });
+  document.querySelectorAll('.tbl-wrap').forEach(wrap => {
+    if(EXP_YA_PROCESADOS.has(wrap)) return;
+    const tabla = wrap.querySelector('table');
+    if(!tabla) return;
+    EXP_YA_PROCESADOS.add(wrap);
+    if(!wrap.id) wrap.id = `exp-wrap-anon-${++_expContadorAnonimo}`;
+    if(!wrap.style.position) wrap.style.position = 'relative';
+    const conId = wrap.querySelector('[id]');
+    const base = (conId ? conId.id : wrap.id).replace(/^(alim3-tabla-|alim-)/, '');
+    wrap.insertAdjacentHTML('beforeend', _expBotonHtml(wrap.id, 'tabla', base));
+  });
+}
+
+// #app-screen existe en el DOM desde el arranque (recién se muestra tras
+// login) -- se puede observar de una, sin esperar nada más. Debounce
+// corto: la app re-renderiza tablas/gráficas seguido (cada filtro, cada
+// cambio de vista) y no vale la pena re-escanear en CADA mutación.
+(function(){
+  const contenedor = document.getElementById('app-screen');
+  if(!contenedor) return;
+  let expTimer = null;
+  const observer = new MutationObserver(() => {
+    clearTimeout(expTimer);
+    expTimer = setTimeout(_expEscanear, 200);
+  });
+  observer.observe(contenedor, {childList: true, subtree: true});
+  _expEscanear();
+})();
 
 const ICONO_OJO = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>';
 const ICONO_OJO_TACHADO = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.94 10.94 0 0 1 12 19c-7 0-11-7-11-7a18.5 18.5 0 0 1 5.06-5.94M9.9 4.24A10.94 10.94 0 0 1 12 4c7 0 11 7 11 7a18.5 18.5 0 0 1-2.16 3.19M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
@@ -11102,11 +11314,13 @@ function alimSubRenderTablaTop(){
     const actual = serie[serie.length-1];
     const anual = alimN21Con12Meses(porGrupo[sub]);
     const actual12 = anual.find(f => f.clave === actual.clave && f.pct12 != null) || null;
+    const anterior = serie.length >= 2 ? serie[serie.length-2] : null;
     const filaZona = ALIM_FILAS.find(f => f.subestacion === sub && f.zona);
     return {
       sub, zona: filaZona ? filaZona.zona : '--',
       entrada: actual.entrada, salida: actual.salida,
       pctMensual: actual.pct, pctAnual: actual12 ? actual12.pct12 : null,
+      deltaPct: anterior ? actual.pct - anterior.pct : null,
     };
   }).filter(Boolean);
   filas.sort((a,b) => (b.pctMensual ?? -Infinity) - (a.pctMensual ?? -Infinity));
@@ -11117,12 +11331,14 @@ function alimSubRenderTablaTop(){
   cont.innerHTML = filas.map(f => {
     const color = colorParaZona(f.zona);
     const activa = seleccionadas.has(f.sub);
+    const colorDelta = f.deltaPct==null ? 'var(--text3)' : (f.deltaPct>=0 ? '#ef476f' : '#06d6a0');
     return `<tr onclick="alimSubSeleccionarSubestacionTabla('${f.sub}')" style="cursor:pointer${activa?';background:var(--bg3)':''}">
       <td style="text-align:left;font-weight:700">${f.sub}</td>
       <td><span class="zb" style="background:${color}22;color:${color}">${f.zona}</span></td>
       <td>${fmtKwh(f.entrada)}</td>
       <td>${fmtKwh(f.salida)}</td>
       <td>${fmtPct(f.pctMensual)}</td>
+      <td class="alimsub-col-var" style="color:${colorDelta}">${f.deltaPct==null?'--':`${f.deltaPct>=0?'▲':'▼'} ${Math.abs(f.deltaPct).toFixed(2)} pp`}</td>
       <td>${fmtPct(f.pctAnual)}</td>
     </tr>`;
   }).join('');
@@ -11131,6 +11347,14 @@ function alimSubRenderTablaTop(){
 function alimSubSeleccionarSubestacionTabla(sub){
   mselSetSeleccion('msel-alim-sub-subestacion', [sub]);
   alimSubRenderTablaTop();
+}
+
+function alimSubToggleTopVar(){
+  const wrap = document.getElementById('alim-sub-tbl-top-wrap');
+  const mostrar = wrap ? !wrap.classList.contains('alimsub-mostrar-var') : false;
+  if(wrap) wrap.classList.toggle('alimsub-mostrar-var', mostrar);
+  const btn = document.getElementById('alim-sub-top-btn-var');
+  if(btn) btn.classList.toggle('activo', mostrar);
 }
 
 // Gráfico 2 -- Pérdida % por Alimentador (Nemónico), acotado a las
