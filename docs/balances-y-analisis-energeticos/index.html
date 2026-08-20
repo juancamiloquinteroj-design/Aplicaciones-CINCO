@@ -14670,7 +14670,6 @@ function alimN21RenderTablaZonas(){
   if(!cont) return;
   const fmt = v => v==null ? '--' : v.toLocaleString('es-CO',{maximumFractionDigits:0});
   const fmtDelta = v => v==null ? '--' : `${v>=0?'+':''}${v.toLocaleString('es-CO',{maximumFractionDigits:0})}`;
-  const gestionablePorZona = _alimN21GestionablePorZonaMes();
 
   let mesActual = null, mesAnterior = null;
   const filas = _alimN21OrdenarZonasTabla(ALIM_N21_ZONAS).map(z => {
@@ -14684,9 +14683,16 @@ function alimN21RenderTablaZonas(){
     const tecActual = tecZona[actual.clave] ? tecZona[actual.clave].perdida : null;
     const tecAnterior = (anterior && tecZona[anterior.clave]) ? tecZona[anterior.clave].perdida : null;
 
-    const gesZona = gestionablePorZona[z] || {};
-    const gesActual = gesZona[actual.clave] != null ? gesZona[actual.clave] : null;
-    const gesAnterior = (anterior && gesZona[anterior.clave] != null) ? gesZona[anterior.clave] : null;
+    // Gestionable = P.Total - P.Técnica (pedido explícito, misma fórmula
+    // que Nivel 3) -- ANTES sumaba la columna "Gestionable" del CSV de
+    // Alimentadores directo, pero esa columna es OTRA cosa (gestionable
+    // POR CIRCUITO, criterio distinto) y no necesariamente suma con
+    // P.Técnica hasta dar P.Total, lo que rompía la identidad de esta
+    // tabla (P.Total = P.Técnica + P.Gestionable). La columna real del
+    // CSV se sigue usando tal cual en Top Alimentadores/Subestaciones
+    // (_alimN21GestionablePorZonaMes), donde SÍ tiene sentido por sí sola.
+    const gesActual = tecActual!=null ? actual.perdida - tecActual : null;
+    const gesAnterior = (anterior && tecAnterior!=null) ? anterior.perdida - tecAnterior : null;
 
     return {
       zona: z,
