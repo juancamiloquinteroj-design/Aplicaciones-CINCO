@@ -16002,6 +16002,25 @@ function ipComercialRenderTodo(){
 // IP_Reg, se respeta lo que el usuario ya haya prendido/apagado a mano.
 let IP_COMERCIAL_PT_OCULTO = true;
 
+// Suma móvil de 12 meses (el mes de cada punto incluido, los 11 de atrás)
+// de un campo -- mismo criterio que alimN21Con12Meses/perdida_kwh_12 (ese
+// SÍ lo manda calculado el backend, éste no). Se calcula sobre el
+// HISTÓRICO COMPLETO (IP_COMERCIAL_FILAS, no `visibles`) para que el
+// filtro Rango no le corte los 11 meses de atrás que necesita cada punto
+// -- después se filtra por clave a lo que esté visible, igual que hace el
+// backend con perdida_kwh_12 antes de mandarlo.
+function _ipComercialRolling12(visiblesClaves, campo){
+  const todas = [...IP_COMERCIAL_FILAS].sort((a,b) => ipComercialClave(a) < ipComercialClave(b) ? -1 : 1);
+  const porClave = new Map();
+  todas.forEach((f,i) => {
+    if(i < 11){ porClave.set(ipComercialClave(f), null); return; }
+    let s = 0;
+    for(let k=i-11; k<=i; k++) s += (todas[k][campo] || 0);
+    porClave.set(ipComercialClave(f), s);
+  });
+  return visiblesClaves.map(clave => porClave.has(clave) ? porClave.get(clave) : null);
+}
+
 // Gráfico principal -- SOLO el índice anual (ventana móvil de 12 meses),
 // pedido explícito ("solo quiero ver el indicador anual"); con etiquetas
 // de datos igual que el gráfico principal de IP_Reg.
@@ -16088,17 +16107,27 @@ function ipComercialRenderChart(){
         title:{display:true, text:'Pérdida Anual (kWh)', color:tickC, font:{size:11}}},
     };
   }else{
+    // Anual (12M), no mensual -- pedido explícito ("cuando grafico entrada
+    // y salida me grafica la mensual... necesito que grafique la anual").
+    // El backend no manda compra_kwh_12/venta_kwh_12 (solo perdida_kwh_12),
+    // así que se suma acá con el mismo criterio de ventana móvil que el
+    // resto de la app (12 meses terminando en el mes de cada punto,
+    // incluido -- ver alimN21Con12Meses): null hasta que haya 12 meses de
+    // historia detrás.
+    const clavesVisibles = visibles.map(f => ipComercialClave(f));
+    const compra12 = _ipComercialRolling12(clavesVisibles, 'compra_kwh');
+    const venta12 = _ipComercialRolling12(clavesVisibles, 'venta_kwh');
     datasets = [
-      {type:'line', label:'Compra (kWh)', yAxisID:'y', data: visibles.map(f=>f.compra_kwh),
+      {type:'line', label:'Compra Anual (12m, kWh)', yAxisID:'y', data: compra12,
         borderColor:'#06d6a0', backgroundColor:'transparent', borderWidth:2, pointRadius:1.5, spanGaps:true, tension:.15, datalabels:{display:false}},
-      {type:'line', label:'Venta (kWh)', yAxisID:'y', data: visibles.map(f=>f.venta_kwh),
+      {type:'line', label:'Venta Anual (12m, kWh)', yAxisID:'y', data: venta12,
         borderColor:'#7b2fff', backgroundColor:'transparent', borderWidth:2, pointRadius:1.5, spanGaps:true, tension:.15, datalabels:{display:false}},
     ];
     scales = {
       x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:45, minRotation:45}},
       y:{grid:{color:gridC},
         ticks:{color:tickC, font:{size:11}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
-        title:{display:true, text:'Energía (kWh)', color:tickC, font:{size:11}}},
+        title:{display:true, text:'Energía Anual (12M, kWh)', color:tickC, font:{size:11}}},
     };
   }
 
