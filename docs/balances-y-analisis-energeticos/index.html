@@ -2345,16 +2345,20 @@ tfoot td:first-child{text-align:left}
       </div>
 
       <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">
-        <div style="flex:1;min-width:360px">
+        <!-- Gráfica más chica (ancho fijo) y tabla más grande a un lado
+             (flex:1 -- crece con el espacio disponible), invertido de como
+             estaba antes -- pedido explícito ("recorta la gráfica... y
+             coloca la tabla más grande... para poder recortar y pegar"). -->
+        <div style="flex:0 0 420px;max-width:420px">
           <div class="fbar" style="justify-content:center;margin-bottom:8px">
             <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Entrada / Salida / Pérdida por Subestación</div>
             <button type="button" class="be-modo-btn" id="alim-sub-btn-metrica-entrada" onclick="alimSubCambiarMetrica('entrada')">Entrada</button>
             <button type="button" class="be-modo-btn" id="alim-sub-btn-metrica-salida" onclick="alimSubCambiarMetrica('salida')">Salida</button>
             <button type="button" class="be-modo-btn activo" id="alim-sub-btn-metrica-perdida" onclick="alimSubCambiarMetrica('perdida')">Pérdida</button>
           </div>
-          <div class="chart-wrap" style="height:420px"><canvas id="ch-alim-sub-subestaciones"></canvas></div>
+          <div class="chart-wrap" style="height:340px"><canvas id="ch-alim-sub-subestaciones"></canvas></div>
         </div>
-        <div style="flex:0 0 480px;max-width:480px">
+        <div style="flex:1;min-width:520px">
           <div style="text-align:center;margin-bottom:8px">
             <div style="font-size:13px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Top Subestaciones por Pérdida</div>
             <div style="font-size:10.5px;color:var(--text3);margin-top:2px">Click en una fila para verla abajo en "Pérdida % por Alimentador"</div>
@@ -3683,24 +3687,58 @@ function _expCerrarMenus(){
 }
 document.addEventListener('click', e => { if(!e.target.closest('.exp-wrap')) _expCerrarMenus(); });
 
-// Imagen -- sirve igual para gráfica o tabla, el elemento que se pasa es
-// el .chart-wrap o .tbl-wrap completo (título de ejes/leyenda/tabla tal
-// cual se ve). Oculta el propio botón "Exportar" durante la captura.
+// El bloque de título casi siempre es el hermano anterior del chart-wrap/
+// tbl-wrap en el DOM (patrón repetido en toda la app: un <div
+// style="text-align:center">TÍTULO</div> o un .fbar con el título, justo
+// antes de la gráfica/tabla) -- se descarta si ese hermano es OTRA
+// gráfica/tabla (para no agarrar el título de otra cosa por error).
+function _expBuscarTitulo(el){
+  const prev = el.previousElementSibling;
+  if(!prev) return null;
+  if(prev.classList && (prev.classList.contains('chart-wrap') || prev.classList.contains('tbl-wrap'))) return null;
+  if(prev.querySelector && (prev.querySelector('canvas') || prev.querySelector('table'))) return null;
+  return prev;
+}
+
+// Imagen -- sirve igual para gráfica o tabla. Pedido explícito: "quiero
+// que las gráficas salgan con su respectivo título" -- el título vive
+// AFUERA del .chart-wrap/.tbl-wrap (hermano anterior), así que se arma un
+// clon fuera de pantalla con título+elemento juntos y se captura ESE
+// (nunca el elemento real -- así la página no se mueve ni parpadea
+// mientras html2canvas trabaja). cloneNode no copia el bitmap ya pintado
+// de los <canvas> (quedarían en blanco), por eso se redibuja cada canvas
+// clonado a partir del original con drawImage antes de capturar.
 async function _expImagen(wrapId, nombreBase, ev){
   if(ev) ev.stopPropagation();
   _expCerrarMenus();
   const el = document.getElementById(wrapId);
   if(!el || typeof html2canvas === 'undefined') return;
-  const botones = el.querySelectorAll('.exp-wrap');
-  botones.forEach(b => b.style.visibility = 'hidden');
+  const bg = getComputedStyle(document.documentElement).getPropertyValue('--card-bg').trim() || '#ffffff';
+
+  const temporal = document.createElement('div');
+  temporal.style.cssText = `position:fixed;left:-99999px;top:0;background:${bg};padding:16px;width:${el.offsetWidth}px`;
+  const titulo = _expBuscarTitulo(el);
+  if(titulo) temporal.appendChild(titulo.cloneNode(true));
+  const clonEl = el.cloneNode(true);
+  clonEl.querySelectorAll('.exp-wrap').forEach(b => b.remove());
+  const canvasOrig = el.querySelectorAll('canvas');
+  const canvasClon = clonEl.querySelectorAll('canvas');
+  canvasOrig.forEach((co, i) => {
+    const cc = canvasClon[i];
+    if(!cc) return;
+    cc.width = co.width; cc.height = co.height;
+    cc.getContext('2d').drawImage(co, 0, 0);
+  });
+  temporal.appendChild(clonEl);
+  document.body.appendChild(temporal);
+
   try{
-    const bg = getComputedStyle(document.documentElement).getPropertyValue('--card-bg').trim() || '#ffffff';
-    const canvas = await html2canvas(el, {backgroundColor: bg, scale: 2, useCORS: true, logging: false});
+    const canvas = await html2canvas(temporal, {backgroundColor: bg, scale: 2, useCORS: true, logging: false});
     canvas.toBlob(blob => { if(blob) _expDescargarBlob(blob, `${_expNombreArchivo(nombreBase)}.png`); });
   }catch(e){
     console.error('Exportar imagen falló:', e);
   }finally{
-    botones.forEach(b => b.style.visibility = '');
+    temporal.remove();
   }
 }
 
