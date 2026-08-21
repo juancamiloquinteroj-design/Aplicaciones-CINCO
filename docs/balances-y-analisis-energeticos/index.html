@@ -11475,6 +11475,13 @@ function _narrativaTablaHtml(datos, tituloTabla){
   // vez de una regla CSS nueva, para no depender del orden de cascada
   // contra la regla ya existente.
   //
+  // Borde vertical entre columnas (border-right en todas menos la
+  // última) -- pedido explícito ("hagas los bordes de seperacion de
+  // columnas"); .be-tabla-creadas de por sí solo trae borde HORIZONTAL
+  // (border-bottom), sin separación vertical entre celdas.
+  const BORDE = 'border-right:1px solid var(--border)';
+  const bordeSalvoUltima = i => i < 4 ? BORDE+';' : '';
+  //
   // Entrada/Salida son filas NEUTRAS (crecer no es "bueno" ni "malo" en sí
   // mismo) -- el color de dirección (rojo/verde) solo va en la fila de
   // Crecimiento de Pérdidas, que es donde sí importa la dirección.
@@ -11482,10 +11489,10 @@ function _narrativaTablaHtml(datos, tituloTabla){
     const delta = actual - anterior;
     const deltaPct = anterior ? delta/anterior*100 : null;
     return `<tr>
-      <td style="text-align:left;font-weight:700;color:var(--text)">${nombre}</td>
-      <td style="color:var(--text)">${fKwh(anterior)} kWh</td>
-      <td style="color:var(--text)">${fKwh(actual)} kWh</td>
-      <td style="color:var(--text)">${signo(delta)}${fKwh(delta)} kWh</td>
+      <td style="text-align:left;font-weight:700;color:var(--text);${bordeSalvoUltima(0)}">${nombre}</td>
+      <td style="color:var(--text);${bordeSalvoUltima(1)}">${fKwh(anterior)} kWh</td>
+      <td style="color:var(--text);${bordeSalvoUltima(2)}">${fKwh(actual)} kWh</td>
+      <td style="color:var(--text);${bordeSalvoUltima(3)}">${signo(delta)}${fKwh(delta)} kWh</td>
       <td style="color:var(--text)">${deltaPct==null?'--':signo(deltaPct)+fPct(deltaPct)+'%'}</td>
     </tr>`;
   };
@@ -11494,30 +11501,34 @@ function _narrativaTablaHtml(datos, tituloTabla){
   // facturado, si no que hablra crecimiento de perdidas") -- ambas filas
   // hablan de "Crecimiento de Pérdidas": una en puntos porcentuales (la
   // diferencia entre cuánto creció la Entrada vs. cuánto creció la Salida),
-  // otra en kWh equivalentes (esa misma diferencia, en energía).
+  // otra en kWh (esa misma diferencia, en energía -- pedido explícito "en
+  // unidades kWh", antes salía en GWh). El valor ocupa las 4 columnas
+  // restantes COMBINADAS y centradas -- pedido explícito ("el crecimiento
+  // de datos como si fuera celdas combinadas centrado") -- en vez de 3
+  // celdas vacías + el valor pegado a la derecha.
   // Título de cada tabla y encabezado (fila 1) en negro/negrilla, no el
   // gris tenue de siempre -- pedido explícito ("el titulo o fila 1 de la
   // tabla... utiliza negrilla con negro para que haya un contraste").
-  const thEstilo = 'color:var(--text);font-weight:800';
+  const thEstilo = `color:var(--text);font-weight:800`;
   return `
     <div style="font-size:11px;font-weight:800;color:var(--text);text-transform:uppercase;margin:10px 0 4px">${tituloTabla}</div>
     <div class="be-tabla-scroll">
       <table class="be-tabla-creadas" style="width:auto">
         <thead><tr>
-          <th style="${thEstilo}">Concepto</th><th style="${thEstilo}">${mesAnteriorTxt}</th><th style="${thEstilo}">${mesActualTxt}</th><th style="${thEstilo}">Δ</th><th style="${thEstilo}">Δ%</th>
+          <th style="${thEstilo};${BORDE}">Concepto</th><th style="${thEstilo};${BORDE}">${mesAnteriorTxt}</th><th style="${thEstilo};${BORDE}">${mesActualTxt}</th><th style="${thEstilo};${BORDE}">Δ</th><th style="${thEstilo}">Δ%</th>
         </tr></thead>
         <tbody>
           ${filaConcepto('Entrada', datos.anterior.entrada, datos.actual.entrada)}
           ${filaConcepto('Salida (venta)', datos.anterior.salida, datos.actual.salida)}
           <tr>
-            <td style="text-align:left;font-weight:700;color:var(--text)">Crecimiento de Pérdidas (pp)</td>
-            <td colspan="3"></td>
-            <td><span class="n21tab-impacto ${crece?'sube':(baja?'baja':'')}" style="width:auto;padding:2px 8px">${signo(datos.brecha)}${fPct(datos.brecha)} pp</span></td>
+            <td style="text-align:left;font-weight:700;color:var(--text);${BORDE}">Crecimiento de Pérdidas (pp)</td>
+            <td colspan="4" style="text-align:center">
+              <span class="n21tab-impacto ${crece?'sube':(baja?'baja':'')}" style="width:auto;padding:2px 8px">${signo(datos.brecha)}${fPct(datos.brecha)} pp</span>
+            </td>
           </tr>
           <tr>
-            <td style="text-align:left;font-weight:700;color:var(--text)">Crecimiento de Pérdidas (kWh)</td>
-            <td colspan="3"></td>
-            <td style="font-weight:700;color:${crece?'#C00000':(baja?'#00B050':'var(--text)')}">${signo(datos.kwhNoFacturado)}${fGwh(datos.kwhNoFacturado)} GWh</td>
+            <td style="text-align:left;font-weight:700;color:var(--text);${BORDE}">Crecimiento de Pérdidas (kWh)</td>
+            <td colspan="4" style="text-align:center;font-weight:700;color:${crece?'#C00000':(baja?'#00B050':'var(--text)')}">${signo(datos.kwhNoFacturado)}${fKwh(datos.kwhNoFacturado)} kWh</td>
           </tr>
         </tbody>
       </table>
@@ -16409,14 +16420,15 @@ function alimN21RenderNarrativaZonas(){
     }
     const crece = datos.brecha > UMBRAL;
     const baja = datos.brecha < -UMBRAL;
+    const B = 'border-right:1px solid var(--border)';
     return `<tr>
-      <td style="text-align:left;font-weight:700;color:var(--text)">${z}</td>
-      <td style="color:var(--text)">${fKwh(datos.actual.entrada)} kWh</td>
-      <td style="color:var(--text)">${signo(datos.pctEntrada)}${fPct(datos.pctEntrada)}%</td>
-      <td style="color:var(--text)">${fKwh(datos.actual.salida)} kWh</td>
-      <td style="color:var(--text)">${signo(datos.pctSalida)}${fPct(datos.pctSalida)}%</td>
-      <td><span class="n21tab-impacto ${crece?'sube':(baja?'baja':'')}" style="width:auto;padding:2px 8px">${signo(datos.brecha)}${fPct(datos.brecha)} pp</span></td>
-      <td style="font-weight:700;color:${crece?'#C00000':(baja?'#00B050':'var(--text)')}">${signo(datos.kwhNoFacturado)}${fGwh(datos.kwhNoFacturado)} GWh</td>
+      <td style="text-align:left;font-weight:700;color:var(--text);${B}">${z}</td>
+      <td style="color:var(--text);${B}">${fKwh(datos.actual.entrada)} kWh</td>
+      <td style="color:var(--text);${B}">${signo(datos.pctEntrada)}${fPct(datos.pctEntrada)}%</td>
+      <td style="color:var(--text);${B}">${fKwh(datos.actual.salida)} kWh</td>
+      <td style="color:var(--text);${B}">${signo(datos.pctSalida)}${fPct(datos.pctSalida)}%</td>
+      <td style="${B}"><span class="n21tab-impacto ${crece?'sube':(baja?'baja':'')}" style="width:auto;padding:2px 8px">${signo(datos.brecha)}${fPct(datos.brecha)} pp</span></td>
+      <td style="font-weight:700;color:${crece?'#C00000':(baja?'#00B050':'var(--text)')}">${signo(datos.kwhNoFacturado)}${fKwh(datos.kwhNoFacturado)} kWh</td>
     </tr>`;
   }).join('');
 
@@ -16424,11 +16436,11 @@ function alimN21RenderNarrativaZonas(){
   // tabla de arriba ("el titulo o fila 1 de la tabla... negrilla con
   // negro"). Nombres de columna alineados a "Crecimiento de Pérdidas"
   // (mismo pedido: "no llames brecha... si no que hable de crecimiento de perdidas").
-  const thEstilo = 'color:var(--text);font-weight:800';
+  const thEstilo = 'color:var(--text);font-weight:800;border-right:1px solid var(--border)';
   cont.innerHTML = `<div class="be-tabla-creadas-titulo" style="color:var(--text)">Por Qué Crece el Indicador -- por Zona</div>
   <div class="be-tabla-scroll"><table class="be-tabla-creadas" style="width:auto">
     <thead><tr>
-      <th style="${thEstilo}">Zona</th><th style="${thEstilo}">Entrada (mes actual)</th><th style="${thEstilo}">Δ% Entrada</th><th style="${thEstilo}">Salida (mes actual)</th><th style="${thEstilo}">Δ% Salida</th><th style="${thEstilo}">Crecimiento de Pérdidas (pp)</th><th style="${thEstilo}">Crecimiento de Pérdidas (kWh)</th>
+      <th style="${thEstilo}">Zona</th><th style="${thEstilo}">Entrada (mes actual)</th><th style="${thEstilo}">Δ% Entrada</th><th style="${thEstilo}">Salida (mes actual)</th><th style="${thEstilo}">Δ% Salida</th><th style="${thEstilo}">Crecimiento de Pérdidas (pp)</th><th style="color:var(--text);font-weight:800">Crecimiento de Pérdidas (kWh)</th>
     </tr></thead>
     <tbody>${filas}</tbody>
   </table></div>`;
