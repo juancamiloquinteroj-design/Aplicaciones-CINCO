@@ -39,6 +39,13 @@
 <script src="https://unpkg.com/jszip@3.10.1/dist/jszip.min.js"></script>
 <script src="https://unpkg.com/docx-preview@0.3.6/dist/docx-preview.js"></script>
 <script>window.docxPreview = window.docx; window.docx = window.__DOCX_JS;</script>
+<!-- ExcelJS -- genera .xlsx REAL (no el truco de HTML-con-extensión-.xls
+     que ya usaba el botón "Excel (datos)") para poder embeber la imagen
+     de la gráfica adentro del archivo -- pedido explícito ("el boton que
+     exporta cada grafica a xlsx tambien quiero que se descargue la
+     grafica"). Global `ExcelJS`, sin choque de nombre con nada más de
+     acá. -->
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 <!-- jsPDF + autoTable -- exportar el informe también a PDF real (texto
      vectorial, no una imagen escaneada), sin pasar por Word. Vía jsdelivr
      -- cdnjs tenía la ruta de la versión 2.5.2 rota (404), confirmado con
@@ -4520,7 +4527,13 @@ async function _expImagenChart(wrapId, nombreBase, ev){
 // Excel de una GRÁFICA -- lee directo chart.data (Chart.js), no depende
 // de que cada módulo ya tenga su propio "Descargar CSV" -- funciona igual
 // para cualquiera de las ~40 gráficas de la app.
-function _expChartExcel(wrapId, nombreBase, ev){
+// .xlsx REAL (ExcelJS, no el truco de HTML-con-extensión-.xls que usa
+// _expDescargarXls) -- pedido explícito ("el boton que exporta cada
+// grafica a xlsx tambien quiero que se descargue la grafica"): antes solo
+// bajaba los datos crudos, ahora la imagen de la gráfica queda embebida
+// ARRIBA de la tabla de datos, en el mismo archivo. Aplica sola a
+// cualquier gráfica de la app (mismo botón compartido, ver _expEscanear).
+async function _expChartExcel(wrapId, nombreBase, ev){
   if(ev) ev.stopPropagation();
   _expCerrarMenus();
   const wrap = document.getElementById(wrapId);
@@ -4533,14 +4546,49 @@ function _expChartExcel(wrapId, nombreBase, ev){
   // cada categoría, no la serie), filtrar por label las dejaba vacías.
   const datasets = chart.data.datasets || [];
   if(!labels.length || !datasets.length) return;
-  const filas = [['', ...datasets.map((d,i) => d.label || (datasets.length>1 ? `Serie ${i+1}` : 'Valor'))]];
+  if(typeof ExcelJS === 'undefined') return;
+
+  const tituloTexto = _expTextoTitulo(wrap);
+  // Misma lectura NÍTIDA que _expImagenChart -- toBase64Image lee el
+  // canvas de Chart.js en su resolución real (ya al doble por
+  // devicePixelRatio), no un screenshot re-escalado.
+  const base64 = chart.toBase64Image('image/png', 1).split(',')[1];
+
+  const workbook = new ExcelJS.Workbook();
+  const hoja = workbook.addWorksheet('Gráfica');
+
+  let fila = 1;
+  if(tituloTexto){
+    hoja.getCell(`A${fila}`).value = tituloTexto;
+    hoja.getCell(`A${fila}`).font = {bold:true, size:13};
+    fila += 2;
+  }
+
+  const anchoImg = 700;
+  const altoImg = Math.round(anchoImg * (chart.height||400) / (chart.width||760));
+  const imgId = workbook.addImage({base64, extension:'png'});
+  hoja.addImage(imgId, {tl:{col:0, row:fila-1}, ext:{width:anchoImg, height:altoImg}});
+  fila += Math.ceil(altoImg/20) + 2;  // deja suficientes filas libres para no solapar la tabla con la imagen
+
+  const filaEnc = hoja.getRow(fila);
+  filaEnc.values = ['', ...datasets.map((d,i) => d.label || (datasets.length>1 ? `Serie ${i+1}` : 'Valor'))];
+  filaEnc.font = {bold:true};
+  fila++;
+
   labels.forEach((lab, i) => {
-    filas.push([String(lab), ...datasets.map(d => {
+    hoja.getRow(fila).values = [String(lab), ...datasets.map(d => {
       const v = d.data ? d.data[i] : null;
-      return (v==null || v===undefined) ? '' : (typeof v === 'number' ? String(v).replace('.', ',') : String(v));
-    })]);
+      return (v==null || v===undefined) ? null : (typeof v === 'number' ? v : String(v));
+    })];
+    fila++;
   });
-  _expDescargarXls(filas, nombreBase);
+
+  hoja.getColumn(1).width = 22;
+  for(let c=2; c<=datasets.length+1; c++) hoja.getColumn(c).width = 16;
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  const blob = new Blob([buffer], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  _expDescargarBlob(blob, `${_expNombreArchivo(nombreBase)}.xlsx`);
 }
 
 // Excel de una TABLA -- clona el <table> y le hornea el estilo COMPUTADO
@@ -4575,7 +4623,7 @@ function _expBotonHtml(wrapId, tipo, nombreBase){
   const idMenu = `exp-menu-${wrapId}`;
   const opciones = tipo === 'chart'
     ? `<button type="button" onclick="_expImagenChart('${wrapId}','${nombreBase}',event)">🖼️ Imagen (PNG)</button>
-       <button type="button" onclick="_expChartExcel('${wrapId}','${nombreBase}',event)">📊 Excel (datos)</button>`
+       <button type="button" onclick="_expChartExcel('${wrapId}','${nombreBase}',event)">📊 Excel (datos + gráfica)</button>`
     : `<button type="button" onclick="_expTablaExcel('${wrapId}','${nombreBase}',event)">📊 Excel</button>
        <button type="button" onclick="_expImagenTabla('${wrapId}','${nombreBase}',event)">🖼️ Imagen (PNG)</button>`;
   return `<div class="exp-wrap"><button type="button" class="exp-btn" title="Exportar" onclick="_expToggleMenu('${idMenu}',event)">⬇</button><div class="exp-menu" id="${idMenu}">${opciones}</div></div>`;
