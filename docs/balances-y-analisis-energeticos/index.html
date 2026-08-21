@@ -3142,8 +3142,10 @@ tfoot td:first-child{text-align:left}
         <div id="pf-zonas" style="display:flex;gap:6px;flex-wrap:wrap"></div>
         <label style="margin-left:16px">Ciclo</label>
         <select id="pf-ciclo" onchange="pfRenderTodo()" style="min-width:100px"></select>
-        <label style="margin-left:16px">Año</label>
-        <select id="pf-anio" onchange="pfRenderTodo()" style="min-width:100px"></select>
+        <label style="margin-left:16px">Rango</label>
+        <input type="month" id="pf-desde" onchange="pfRenderTodo()">
+        <span style="font-size:11px;color:var(--text3)">→</span>
+        <input type="month" id="pf-hasta" onchange="pfRenderTodo()">
         <button type="button" class="btn-theme" style="width:auto;padding:0 14px;margin-left:auto" onclick="pfDescargarCsv()">⬇ Descargar CSV</button>
       </div>
       <div id="pf-resumen" class="be-resumen-cards"></div>
@@ -3151,26 +3153,36 @@ tfoot td:first-child{text-align:left}
 
     <div class="card">
       <div style="text-align:center;margin-bottom:8px">
+        <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Días Facturados por Mes -- Ciclo seleccionado</div>
+        <div style="font-size:10.5px;color:var(--text3);margin-top:2px">Cantidad de días marcados (LE+FS) en cada mes del rango elegido -- para identificar rápido cuántos días se facturan por ciclo.</div>
+      </div>
+      <div class="chart-wrap" style="height:340px"><canvas id="ch-pf-mensual"></canvas></div>
+    </div>
+
+    <div class="card">
+      <div style="text-align:center;margin-bottom:8px">
         <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Calendario de Lectura/Facturación -- Ciclo seleccionado</div>
-        <div style="font-size:10.5px;color:var(--text3);margin-top:2px">Un mes por fila, de Enero a Diciembre del año elegido. LE = Lectura · FS = Facturación en Sitio (se lee y factura el mismo día).</div>
+        <div style="font-size:10.5px;color:var(--text3);margin-top:2px">Un mes por fila, dentro del rango elegido. LE = Lectura · FS = Facturación en Sitio (se lee y factura el mismo día).</div>
       </div>
       <div class="tbl-wrap">
         <table>
-          <thead><tr><th style="text-align:left">Mes</th><th>Usuarios</th><th>Día(s) marcado(s)</th><th>Tipo</th></tr></thead>
+          <thead><tr><th style="text-align:left">Mes</th><th>Usuarios</th><th>Fecha(s)</th><th>Tipo</th></tr></thead>
           <tbody id="pf-tabla-mensual"></tbody>
         </table>
       </div>
     </div>
 
     <div class="card">
-      <div style="text-align:center;margin-bottom:8px">
-        <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Resumen Anual por Ciclo -- Zona y Año seleccionados</div>
-        <div style="font-size:10.5px;color:var(--text3);margin-top:2px">Días facturados = cantidad de días marcados (LE+FS) en los 12 meses del año.</div>
+      <div class="fbar" style="justify-content:center;margin-bottom:8px">
+        <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Días Facturados por Ciclo -- Zona seleccionada</div>
+        <label style="margin-left:16px">Año</label>
+        <select id="pf-anio-matriz" onchange="pfRenderTablaMatriz()" style="min-width:100px"></select>
       </div>
+      <div style="font-size:10.5px;color:var(--text3);margin:-4px 0 8px;text-align:center">Cantidad de días marcados (LE+FS) por mes, uno por ciclo -- Total = suma anual de ese ciclo.</div>
       <div class="tbl-wrap">
         <table>
-          <thead><tr><th style="text-align:left">Ciclo</th><th>Usuarios (último mes)</th><th>Meses con dato</th><th>Días facturados en el año</th><th>Primera fecha</th><th>Última fecha</th></tr></thead>
-          <tbody id="pf-tabla-anual"></tbody>
+          <thead><tr id="pf-tabla-matriz-head"></tr></thead>
+          <tbody id="pf-tabla-matriz"></tbody>
         </table>
       </div>
     </div>
@@ -22563,6 +22575,7 @@ async function informesGenerarPDF(){
 let PF_FILAS = null;
 let PF_ZONAS = [];
 let PF_ZONA_SEL = null;
+let chPfMensual = null;
 
 async function cargarProgramaFacturacion(){
   const vacio = document.getElementById('pf-vacio');
@@ -22587,7 +22600,8 @@ async function cargarProgramaFacturacion(){
   if(!PF_ZONA_SEL || !PF_ZONAS.includes(PF_ZONA_SEL)) PF_ZONA_SEL = PF_ZONAS[0];
   pfRenderZonasChips();
   pfPoblarCiclo();
-  pfPoblarAnio();
+  pfPoblarRango();
+  pfPoblarAnioMatriz();
   pfRenderTodo();
 }
 
@@ -22605,7 +22619,7 @@ function pfSeleccionarZona(z){
   PF_ZONA_SEL = z;
   pfRenderZonasChips();
   pfPoblarCiclo();
-  pfPoblarAnio();
+  pfPoblarAnioMatriz();
   pfRenderTodo();
 }
 
@@ -22621,8 +22635,26 @@ function pfPoblarCiclo(){
   sel.value = (anterior && ciclos.some(c=>String(c)===anterior)) ? anterior : (ciclos.length ? String(ciclos[0]) : '');
 }
 
-function pfPoblarAnio(){
-  const sel = document.getElementById('pf-anio');
+// Rango Desde/Hasta (inputs type="month") -- pedido explícito ("hacer
+// graficas por mes para entender mejor para poder filtrar"), reemplaza
+// el selector de un solo Año -- por defecto, los últimos 12 meses con
+// dato de la zona.
+function pfPoblarRango(){
+  const inDesde = document.getElementById('pf-desde');
+  const inHasta = document.getElementById('pf-hasta');
+  if(inDesde.value && inHasta.value) return;
+  const claves = [...new Set(pfFilasZona().map(f => f.anio*100+f.mes))].sort((a,b)=>a-b);
+  if(!claves.length) return;
+  const claveHasta = claves[claves.length-1];
+  const idx = claves.indexOf(claveHasta);
+  const claveDesde = claves[Math.max(0, idx-11)];
+  const aTexto = c => `${Math.floor(c/100)}-${String(c%100).padStart(2,'0')}`;
+  if(!inHasta.value) inHasta.value = aTexto(claveHasta);
+  if(!inDesde.value) inDesde.value = aTexto(claveDesde);
+}
+
+function pfPoblarAnioMatriz(){
+  const sel = document.getElementById('pf-anio-matriz');
   const anterior = sel.value;
   const anios = [...new Set(pfFilasZona().map(f=>f.anio))].sort((a,b)=>b-a);
   sel.innerHTML = anios.map(a => `<option value="${a}">${a}</option>`).join('');
@@ -22630,6 +22662,7 @@ function pfPoblarAnio(){
 }
 
 const PF_MESES_NOMBRE = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+const PF_MESES_ABREV = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
 
 // Unos pocos días vienen marcados fuera del rango real del mes (ej.
 // "día 30" en Febrero, "día 31" en Septiembre) -- error de captura del
@@ -22637,31 +22670,54 @@ const PF_MESES_NOMBRE = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio
 // recortan al último día real del mes al mostrar la fecha, con un "*"
 // para dejar visible que se ajustó.
 function pfUltimoDiaMes(anio, mes){ return new Date(anio, mes, 0).getDate(); }
+// dd/mmmm/aaaa -- pedido explícito ("tabla para ver de fecha fecha en
+// formato dd/mmmm/aaaa"), ej. "21/agosto/2026".
 function pfFechaTexto(anio, mes, dia){
   const ultimo = pfUltimoDiaMes(anio, mes);
   const diaReal = Math.min(dia, ultimo);
-  return `${String(diaReal).padStart(2,'0')}/${String(mes).padStart(2,'0')}/${anio}${dia>ultimo?' *':''}`;
+  const nombreMes = PF_MESES_NOMBRE[mes-1].toLowerCase();
+  return `${String(diaReal).padStart(2,'0')}/${nombreMes}/${anio}${dia>ultimo?' *':''}`;
 }
 
 function pfCicloSel(){ return Number(document.getElementById('pf-ciclo').value); }
-function pfAnioSel(){ return Number(document.getElementById('pf-anio').value); }
+function pfClaveMes(f){ return f.anio*12 + f.mes; }
+function pfRangoDesdeClave(){
+  const v = document.getElementById('pf-desde').value;
+  if(!v) return -Infinity;
+  const [a,m] = v.split('-').map(Number);
+  return a*12+m;
+}
+function pfRangoHastaClave(){
+  const v = document.getElementById('pf-hasta').value;
+  if(!v) return Infinity;
+  const [a,m] = v.split('-').map(Number);
+  return a*12+m;
+}
+
+// Filas del ciclo elegido, dentro del rango Desde/Hasta -- base común de
+// la tarjeta resumen, la gráfica y la tabla calendario.
+function pfFilasEnRango(){
+  const ciclo = pfCicloSel();
+  const desde = pfRangoDesdeClave(), hasta = pfRangoHastaClave();
+  return pfFilasZona()
+    .filter(f => f.ciclo === ciclo && pfClaveMes(f) >= desde && pfClaveMes(f) <= hasta)
+    .sort((a,b) => pfClaveMes(a) - pfClaveMes(b));
+}
 
 function pfRenderTodo(){
   if(!PF_FILAS) return;
   pfRenderResumen();
+  pfRenderChartMensual();
   pfRenderTablaMensual();
-  pfRenderTablaAnual();
+  pfRenderTablaMatriz();
 }
 
 function pfRenderResumen(){
   const cont = document.getElementById('pf-resumen');
-  const ciclo = pfCicloSel();
-  const filasCiclo = pfFilasZona().filter(f => f.ciclo === ciclo).sort((a,b) => (a.anio*12+a.mes)-(b.anio*12+b.mes));
-  const ultimo = filasCiclo[filasCiclo.length-1] || null;
-  const anio = pfAnioSel();
-  const filasAnio = filasCiclo.filter(f => f.anio === anio);
-  const diasAnio = filasAnio.reduce((s,f) => s + f.dias.length, 0);
-  const mesesConDato = filasAnio.filter(f => f.dias.length > 0).length;
+  const filasRango = pfFilasEnRango();
+  const ultimo = filasRango[filasRango.length-1] || null;
+  const diasRango = filasRango.reduce((s,f) => s + f.dias.length, 0);
+  const mesesConDato = filasRango.filter(f => f.dias.length > 0).length;
   const totalCiclos = new Set(pfFilasZona().map(f=>f.ciclo)).size;
 
   const tarjeta = (etiqueta, valor, sub) => `<div class="be-resumen-tile">
@@ -22670,26 +22726,47 @@ function pfRenderResumen(){
     ${sub?`<div class="sub">${sub}</div>`:''}
   </div>`;
   cont.innerHTML = [
-    tarjeta('Usuarios (último mes)', ultimo && ultimo.usuarios!=null ? ultimo.usuarios.toLocaleString('es-CO') : '--', ultimo ? labelMesLargo(`${ultimo.anio}-${String(ultimo.mes).padStart(2,'0')}`) : ''),
-    tarjeta('Meses con dato en el año', mesesConDato, `de 12 · ${anio}`),
-    tarjeta('Días facturados en el año', diasAnio, anio),
+    tarjeta('Usuarios (último mes del rango)', ultimo && ultimo.usuarios!=null ? ultimo.usuarios.toLocaleString('es-CO') : '--', ultimo ? labelMesLargo(`${ultimo.anio}-${String(ultimo.mes).padStart(2,'0')}`) : ''),
+    tarjeta('Meses con dato en el rango', mesesConDato, `de ${filasRango.length || 0}`),
+    tarjeta('Días facturados en el rango', diasRango, `Ciclo ${pfCicloSel()}`),
     tarjeta('Ciclos en esta zona', totalCiclos, `Zona ${PF_ZONA_SEL}`),
   ].join('');
 }
 
+// Barras -- días marcados (LE+FS) por mes, dentro del rango -- pedido
+// explícito ("hacer graficas por mes para entender mejor").
+function pfRenderChartMensual(){
+  const cv = document.getElementById('ch-pf-mensual');
+  if(!cv) return;
+  const filas = pfFilasEnRango();
+  if(chPfMensual) chPfMensual.destroy();
+  if(!filas.length) return;
+  const dark = document.documentElement.getAttribute('data-theme')==='dark';
+  const tickC = dark ? '#aab8d1' : '#4b5e7a';
+  const etiquetas = filas.map(f => labelMes(`${f.anio}-${String(f.mes).padStart(2,'0')}`));
+  const datos = filas.map(f => f.dias.length);
+  chPfMensual = new Chart(cv, {
+    data:{labels: etiquetas, datasets:[{type:'bar', label:'Días facturados', data: datos, backgroundColor:'#00b4d8', borderRadius:4, maxBarThickness:36}]},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{display:false}, tooltip:{callbacks:{label:c=>`${c.raw} día(s)`}}},
+      scales:{
+        x:{grid:{display:false}, ticks:{color:tickC, font:{size:10}, maxRotation:45, minRotation:45}},
+        y:{beginAtZero:true, ticks:{color:tickC, precision:0, stepSize:1}},
+      },
+    },
+  });
+}
+
 function pfRenderTablaMensual(){
   const cuerpo = document.getElementById('pf-tabla-mensual');
-  const ciclo = pfCicloSel(), anio = pfAnioSel();
-  const filas = pfFilasZona().filter(f => f.ciclo===ciclo && f.anio===anio);
-  const porMes = new Map(filas.map(f => [f.mes, f]));
-  cuerpo.innerHTML = PF_MESES_NOMBRE.map((nombre, i) => {
-    const mes = i+1;
-    const f = porMes.get(mes);
-    if(!f) return `<tr><td style="text-align:left">${nombre}</td><td colspan="3" style="color:var(--text3)">Sin dato</td></tr>`;
-    const fechas = f.dias.map(d => pfFechaTexto(anio, mes, d.dia)).join(', ') || '--';
+  const filas = pfFilasEnRango();
+  if(!filas.length){ cuerpo.innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--text3)">Sin datos en este rango.</td></tr>`; return; }
+  cuerpo.innerHTML = filas.map(f => {
+    const fechas = f.dias.map(d => pfFechaTexto(f.anio, f.mes, d.dia)).join(', ') || '--';
     const tipos = [...new Set(f.dias.map(d=>d.tipo))].join(', ') || '--';
     return `<tr>
-      <td style="text-align:left">${nombre}</td>
+      <td style="text-align:left">${labelMesLargo(`${f.anio}-${String(f.mes).padStart(2,'0')}`)}</td>
       <td>${f.usuarios!=null ? f.usuarios.toLocaleString('es-CO') : '--'}</td>
       <td>${fechas}</td>
       <td>${tipos}</td>
@@ -22697,9 +22774,15 @@ function pfRenderTablaMensual(){
   }).join('');
 }
 
-function pfRenderTablaAnual(){
-  const cuerpo = document.getElementById('pf-tabla-anual');
-  const anio = pfAnioSel();
+// Matriz Ciclo × Mes (Ene..Dic) con la cantidad de días marcados de cada
+// mes + Total anual -- pedido explícito ("identificar cuantos dias se
+// facturan por ciclo y contar los dias tambien de manera anual").
+function pfRenderTablaMatriz(){
+  const thead = document.getElementById('pf-tabla-matriz-head');
+  const cuerpo = document.getElementById('pf-tabla-matriz');
+  const anio = Number(document.getElementById('pf-anio-matriz').value);
+  thead.innerHTML = `<th style="text-align:left">Ciclo</th><th>Usuarios</th>${PF_MESES_ABREV.map(m=>`<th>${m}</th>`).join('')}<th>Total Año</th>`;
+
   const filas = pfFilasZona().filter(f => f.anio===anio);
   const porCiclo = new Map();
   filas.forEach(f => {
@@ -22707,24 +22790,24 @@ function pfRenderTablaAnual(){
     porCiclo.get(f.ciclo).push(f);
   });
   const ciclos = [...porCiclo.keys()].sort((a,b)=>a-b);
-  if(!ciclos.length){ cuerpo.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text3)">Sin datos para este año.</td></tr>`; return; }
+  if(!ciclos.length){ cuerpo.innerHTML = `<tr><td colspan="15" style="text-align:center;color:var(--text3)">Sin datos para este año.</td></tr>`; return; }
   cuerpo.innerHTML = ciclos.map(c => {
-    const fs = porCiclo.get(c).sort((a,b)=>a.mes-b.mes);
-    const ultimo = fs[fs.length-1];
-    const mesesConDato = fs.filter(f=>f.dias.length>0).length;
-    const diasTotal = fs.reduce((s,f)=>s+f.dias.length,0);
-    const fechas = [];
-    fs.forEach(f => f.dias.forEach(d => fechas.push({clave: f.mes*100+d.dia, texto: pfFechaTexto(anio, f.mes, d.dia)})));
-    fechas.sort((a,b)=>a.clave-b.clave);
-    const primera = fechas.length ? fechas[0].texto : '--';
-    const ultima = fechas.length ? fechas[fechas.length-1].texto : '--';
+    const fs = porCiclo.get(c);
+    const porMes = new Map(fs.map(f => [f.mes, f]));
+    const ultimo = [...fs].sort((a,b)=>a.mes-b.mes).pop();
+    const celdasMes = [];
+    let total = 0;
+    for(let m=1; m<=12; m++){
+      const f = porMes.get(m);
+      const n = f ? f.dias.length : null;
+      if(n) total += n;
+      celdasMes.push(`<td${n?' style="font-weight:700"':''}>${n!=null ? (n||'--') : '--'}</td>`);
+    }
     return `<tr onclick="pfSeleccionarCiclo(${c})" style="cursor:pointer">
       <td style="text-align:left;font-weight:700">Ciclo ${c}</td>
-      <td>${ultimo.usuarios!=null ? ultimo.usuarios.toLocaleString('es-CO') : '--'}</td>
-      <td>${mesesConDato} / 12</td>
-      <td>${diasTotal}</td>
-      <td>${primera}</td>
-      <td>${ultima}</td>
+      <td>${ultimo && ultimo.usuarios!=null ? ultimo.usuarios.toLocaleString('es-CO') : '--'}</td>
+      ${celdasMes.join('')}
+      <td style="font-weight:800">${total}</td>
     </tr>`;
   }).join('');
 }
@@ -22735,14 +22818,15 @@ function pfSeleccionarCiclo(ciclo){
 }
 
 function pfDescargarCsv(){
-  const encabezado = ['Zona','Ciclo','Año','Mes','Usuarios','Fecha','Tipo'];
+  const encabezado = ['Zona','Ciclo','Mes','Usuarios','Fecha','Tipo'];
   const filas = [];
   pfFilasZona().forEach(f => {
+    const mesTexto = labelMesLargo(`${f.anio}-${String(f.mes).padStart(2,'0')}`);
     if(!f.dias.length){
-      filas.push([`Zona ${f.zona}`, f.ciclo, f.anio, PF_MESES_NOMBRE[f.mes-1], f.usuarios ?? '', '', '']);
+      filas.push([`Zona ${f.zona}`, f.ciclo, mesTexto, f.usuarios ?? '', '', '']);
     }else{
       f.dias.forEach(d => {
-        filas.push([`Zona ${f.zona}`, f.ciclo, f.anio, PF_MESES_NOMBRE[f.mes-1], f.usuarios ?? '', pfFechaTexto(f.anio, f.mes, d.dia), d.tipo]);
+        filas.push([`Zona ${f.zona}`, f.ciclo, mesTexto, f.usuarios ?? '', pfFechaTexto(f.anio, f.mes, d.dia), d.tipo]);
       });
     }
   });
