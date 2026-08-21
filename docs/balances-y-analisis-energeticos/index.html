@@ -11627,9 +11627,18 @@ function _alimNivelPoblarSelectorAnalisis(prefijo, mensualCompleto){
   return claveSel;
 }
 
-// Mismo criterio de rango por defecto que alimN21Cargar (último año
-// completo, para que cualquier ventana móvil futura arranque llena) --
-// reusa alimN21Clave, ya definida más abajo en el módulo de N2-1.
+// Ventana deslizante de 7 meses, ANCLADA a partir de enero-2026 -- pedido
+// explícito ("todas grafias a exceipcion del IPT_Reg quiero que siempre
+// inicien a mostrar datos de enero-2026 mostrando 6-7 meses y cuando
+// lelgue el 8m es quitar el mes anterior"). Mientras el último mes
+// disponible esté dentro de esos 7 meses (hasta Jul-2026), la ventana
+// CRECE desde Ene-2026 sin recortarse; desde el 8vo mes en adelante
+// (Ago-2026+) se desliza -- siempre termina en el último mes real, arranca
+// 6 meses atrás (7 meses totales), sin bajar nunca de Ene-2026. Solo pisa
+// el valor INICIAL de los inputs (si ya tienen algo, sea porque el
+// usuario ya los tocó o porque quedaron guardados de antes, se respeta --
+// mismo criterio que el resto de esta función ya tenía).
+const ALIM_RANGO_ANCLA = '2026-01';
 function _alimNivelPoblarRangoDefecto(prefijo, claves){
   const inDesde = document.getElementById(`${prefijo}-desde`);
   const inHasta = document.getElementById(`${prefijo}-hasta`);
@@ -11638,10 +11647,12 @@ function _alimNivelPoblarRangoDefecto(prefijo, claves){
   if(!inHasta.value) inHasta.value = ultima + '-01';
   if(!inDesde.value){
     const [aH, mH] = ultima.split('-').map(Number);
-    const idx = aH*12 + (mH-1) - 11;
+    const idx = aH*12 + (mH-1) - 6;
     const aD = Math.floor(idx/12), mD = (idx%12)+1;
-    const claveD = alimN21Clave(aD, mD);
-    inDesde.value = (claves.includes(claveD) ? claveD : claves[0]) + '-01';
+    const claveVentana = alimN21Clave(aD, mD);
+    const claveD = claveVentana > ALIM_RANGO_ANCLA ? claveVentana : ALIM_RANGO_ANCLA;
+    const claveDisponible = claves.find(c => c >= claveD) || claves[claves.length-1];
+    inDesde.value = claveDisponible + '-01';
   }
 }
 
@@ -13388,19 +13399,9 @@ async function alimSubCargar(){
   ALIM_SUB_ZONAS = [...new Set(ALIM_FILAS.map(f => f.zona).filter(Boolean))].sort();
   alimSubRenderZonasChips();
 
-  const inDesde = document.getElementById('alim-sub-desde');
-  const inHasta = document.getElementById('alim-sub-hasta');
-  if(!inDesde.value || !inHasta.value){
-    const claves = [...new Set(ALIM_FILAS.map(f => alimSubClave(f.anio, f.mes)))].sort();
-    if(claves.length){
-      const ultima = claves[claves.length-1];
-      if(!inHasta.value) inHasta.value = ultima + '-01';
-      if(!inDesde.value){
-        const idx = claves.length - 12;
-        inDesde.value = (claves[Math.max(0, idx)]) + '-01';
-      }
-    }
-  }
+  // Ventana deslizante de 7 meses anclada a Ene-2026 -- ver
+  // _alimNivelPoblarRangoDefecto (mismo criterio en toda la app, salvo IP_Reg).
+  _alimNivelPoblarRangoDefecto('alim-sub', [...new Set(ALIM_FILAS.map(f => alimSubClave(f.anio, f.mes)))].sort());
 
   mselInit('msel-alim-sub-subestacion', 'Subestación', 'Ninguna', alimSubSubestacionesDisponibles().map(s => ({value:s, label:s})), alimSubRenderAlimentadoresYCards, []);
 
@@ -14098,17 +14099,10 @@ async function alim3Cargar(){
   ALIM3_ZONAS = [...new Set(ALIM_FILAS.map(f => f.zona).filter(Boolean))].sort();
   alim3RenderZonasChips();
 
-  const inDesde = document.getElementById('alim3-desde');
-  const inHasta = document.getElementById('alim3-hasta');
+  // Ventana deslizante de 7 meses anclada a Ene-2026 -- ver
+  // _alimNivelPoblarRangoDefecto (mismo criterio en toda la app, salvo IP_Reg).
   const claves = [...new Set(ALIM_FILAS.map(f => alimN21Clave(f.anio, f.mes)))].sort();
-  if(claves.length && (!inDesde.value || !inHasta.value)){
-    const ultima = claves[claves.length-1];
-    if(!inHasta.value) inHasta.value = ultima + '-01';
-    if(!inDesde.value){
-      const idx = claves.length - 12;
-      inDesde.value = (claves[Math.max(0, idx)]) + '-01';
-    }
-  }
+  _alimNivelPoblarRangoDefecto('alim3', claves);
 
   alim3PoblarSelectorMesTop(claves);
   alim3RecalcularListaCache();
@@ -15958,24 +15952,15 @@ async function alimN21Cargar(){
     }));
   }
 
-  const inDesde = document.getElementById('alim-n21-desde');
-  const inHasta = document.getElementById('alim-n21-hasta');
-  if(!inDesde.value || !inHasta.value){
-    const claves = [...new Set(ALIM_FILAS.map(f => alimN21Clave(f.anio, f.mes)))].sort();
-    if(claves.length){
-      const ultima = claves[claves.length-1];
-      if(!inHasta.value) inHasta.value = ultima + '-01';
-      if(!inDesde.value){
-        // Arranca mostrando el último año completo -- así el indicador
-        // anual (12 meses móvil) ya tiene ventana llena desde el primer punto visible.
-        const [aH, mH] = ultima.split('-').map(Number);
-        const idx = aH*12 + (mH-1) - 11;
-        const aD = Math.floor(idx/12), mD = (idx%12)+1;
-        const claveD = alimN21Clave(aD, mD);
-        inDesde.value = (claves.includes(claveD) ? claveD : claves[0]) + '-01';
-      }
-    }
-  }
+  // Ventana deslizante de 7 meses anclada a Ene-2026 -- ver
+  // _alimNivelPoblarRangoDefecto (mismo criterio en toda la app, salvo
+  // IP_Reg). El histórico completo (ALIM_FILAS) sigue cargado igual;
+  // solo cambia el rango VISIBLE por defecto -- el 12M móvil de "Anual"
+  // se calcula sobre alimN21Con12Meses(alimN21AgregarMensual(...)) ANTES
+  // de filtrar por Rango, así que sigue teniendo ventana llena aunque el
+  // rango visible sea más corto que 12 meses.
+  const claves = [...new Set(ALIM_FILAS.map(f => alimN21Clave(f.anio, f.mes)))].sort();
+  _alimNivelPoblarRangoDefecto('alim-n21', claves);
 
   alimN21RenderTodo();
   alimN21CargarMapa();
