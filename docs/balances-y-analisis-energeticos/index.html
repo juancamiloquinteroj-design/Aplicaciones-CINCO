@@ -11538,9 +11538,13 @@ function _narrativaTablaHtml(datos, tituloTabla){
 
 // Interanual (año contra año, no mezcla estacionalidad) + Mensual (mes
 // contra mes) -- pedido explícito ("esta misma tabla tambien hay que
-// hacerla mensual").
-function _narrativaEntradaSalidaHtml(mensual, titulo){
-  const claveActual = _narrativaUltimaClaveCompleta(mensual);
+// hacerla mensual"). `claveActual`: opcional -- si se pasa (ej. el mes
+// elegido en el selector "Mes del análisis" de esa misma vista), se usa
+// ESE mes en vez del último disponible -- pedido explícito ("yo puedo
+// cambiar esos valores de las tablas con el filtro de arriba Mes del
+// análisis").
+function _narrativaEntradaSalidaHtml(mensual, titulo, claveActual){
+  claveActual = claveActual || _narrativaUltimaClaveCompleta(mensual);
   const datosInteranual = claveActual ? _narrativaEntradaSalidaDatos(mensual, claveActual, 'interanual') : null;
   const datosMensual = claveActual ? _narrativaEntradaSalidaDatos(mensual, claveActual, 'mensual') : null;
   return `
@@ -12559,7 +12563,7 @@ function alimNivel4RenderTodo(){
 
   document.getElementById('alim-nivel4-tarjetas').innerHTML = _alimNivelTarjetasHtml(mensual, ALIM_NIVEL4_VAR);
   document.getElementById('alim-nivel4-analisis').innerHTML = _alimNivelComparativoTarjetasHtml(mensualCompleto, tecnicaPorMes, claveAnalisis);
-  document.getElementById('alim-nivel4-narrativa').innerHTML = _narrativaEntradaSalidaHtml(mensualCompleto, 'Por qué crece el indicador -- Nivel 4');
+  document.getElementById('alim-nivel4-narrativa').innerHTML = _narrativaEntradaSalidaHtml(mensualCompleto, 'Por qué crece el indicador -- Nivel 4', claveAnalisis);
 
   if(chAlimNivel4Mensual) chAlimNivel4Mensual.destroy();
   chAlimNivel4Mensual = _alimNivelConstruirChartMensual(document.getElementById('ch-alim-nivel4-mensual'), mensual, 'Nivel 4', null, '', ALIM_NIVEL4_SIN_RELLENO);
@@ -12701,7 +12705,7 @@ function alimNivel3RenderTodo(){
 
   document.getElementById('alim-nivel3-tarjetas').innerHTML = _alimNivelTarjetasHtml(mensual, ALIM_NIVEL3_VAR);
   document.getElementById('alim-nivel3-analisis').innerHTML = _alimNivelComparativoTarjetasHtml(mensualCompleto, tecnicaPorMes, claveAnalisis);
-  document.getElementById('alim-nivel3-narrativa').innerHTML = _narrativaEntradaSalidaHtml(mensualCompleto, 'Por qué crece el indicador -- Nivel 3');
+  document.getElementById('alim-nivel3-narrativa').innerHTML = _narrativaEntradaSalidaHtml(mensualCompleto, 'Por qué crece el indicador -- Nivel 3', claveAnalisis);
 
   if(chAlimNivel3Mensual) chAlimNivel3Mensual.destroy();
   chAlimNivel3Mensual = _alimNivelConstruirChartMensual(
@@ -17713,6 +17717,12 @@ function ipGenerarAnalisisPrincipal(){
   const anterior = reales[idxSel - 1];
   const claveActual = ipClaveNormal(actual);
   const claveAnterior = ipClaveNormal(anterior);
+
+  // La tabla "Por qué crece" usa el mismo mes elegido acá -- pedido
+  // explícito ("yo puedo cambiar esos valores de las tablas con el
+  // filtro de arriba Mes del análisis").
+  const contNarrativa = document.getElementById('ip-narrativa-estructural');
+  if(contNarrativa) contNarrativa.innerHTML = _narrativaEntradaSalidaHtml(_narrativaIpRegMensual(), 'Por qué crece el indicador -- IP_Reg', claveActual);
   const [anioAct, mesAct] = claveActual.split('-').map(Number);
   const mesActualTitulo = labelMes(claveActual);
   const mesActualLargo = labelMesLargo(claveActual);
@@ -19062,9 +19072,9 @@ function ipRenderChart(){
       },
     },
   });
-
-  const contNarrativa = document.getElementById('ip-narrativa-estructural');
-  if(contNarrativa) contNarrativa.innerHTML = _narrativaEntradaSalidaHtml(_narrativaIpRegMensual(), 'Por qué crece el indicador -- IP_Reg');
+  // La tabla "Por qué crece" se actualiza en ipGenerarAnalisisPrincipal()
+  // (usa el mes elegido en "Mes del análisis", no siempre el último) --
+  // esa función corre siempre inmediatamente después de esta.
 }
 
 function ipRenderChartNivel1(){
@@ -21380,7 +21390,14 @@ async function informesFiguraIptMensual(mesClave){
   const reales = IP_REG_FILAS.filter(f => f.pct_perdida_mensual != null).sort((a,b)=> ipClaveNormal(a) < ipClaveNormal(b) ? -1 : 1);
   const idx = reales.findIndex(f => ipClaveNormal(f) === mesClave);
   const fin = idx>=0 ? idx+1 : reales.length;
-  const visibles = reales.slice(Math.max(0, fin-15), fin);
+  // 10 meses (antes 15) -- pedido explícito ("la segunda ya no se ve",
+  // comparada con la Figura Anual de al lado que sí se lee bien): esta
+  // gráfica tiene MÁS elementos por mes que la Anual (barra + línea +
+  // etiqueta en cada punto, contra solo línea con etiqueta selectiva en
+  // la Anual) -- dentro del mismo ancho fijo de página (17,59cm, no se
+  // puede ensanchar más sin salirse del margen), menos meses es la única
+  // forma de que cada etiqueta tenga aire para no encimarse.
+  const visibles = reales.slice(Math.max(0, fin-10), fin);
   if(!visibles.length) return null;
   // Con barra de kWh/mes de vuelta -- pedido explícito ("el indicador de
   // pérdidas mensual sí quiero que salga con los kWh/mes, es decir, con
