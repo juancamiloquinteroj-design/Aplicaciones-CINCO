@@ -4173,8 +4173,12 @@ const tmPluginFondoExcel = {
     const dark = document.documentElement.getAttribute('data-theme')==='dark';
     const grad = ctx.createLinearGradient(0, top, 0, bottom);
     if(dark){
-      grad.addColorStop(0, 'rgba(255,255,255,.05)');
-      grad.addColorStop(1, 'rgba(255,255,255,0)');
+      // Mismo degradado que Excel en tema oscuro (gris oscuro, NO un velo
+      // blanco translúcido casi invisible) -- pedido explícito ("cuando
+      // cambio a fondo oscuro no se ve la garfia asi fondo oscuro coo en
+      // excel"). Mismos tonos --bg2/--bg3 que ya usa el resto de la app.
+      grad.addColorStop(0, '#1c2333');
+      grad.addColorStop(1, '#11151f');
     } else {
       grad.addColorStop(0, '#ffffff');
       grad.addColorStop(1, '#f2f2f2');
@@ -4203,9 +4207,13 @@ const tmPluginLineasGuiaExcel = {
       .filter(m => !m.hidden && m.type === 'line');
     if(!metas.length) return;
     const nPuntos = metas[0].data ? metas[0].data.length : 0;
+    const dark = document.documentElement.getAttribute('data-theme')==='dark';
     ctx.save();
     ctx.setLineDash([3,3]);
-    ctx.strokeStyle = 'rgba(120,120,120,.35)';
+    // Blanco translúcido en oscuro / negro translúcido en claro -- mismo
+    // criterio que ya usa el resto de la app para cuadrícula (gridC), un
+    // gris plano se pierde contra fondos oscuros.
+    ctx.strokeStyle = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.18)';
     ctx.lineWidth = 1;
     for(let i=0;i<nPuntos;i++){
       const ys = metas.map(m => m.data[i] && m.data[i].y).filter(v => v!=null && Number.isFinite(v));
@@ -4576,18 +4584,17 @@ async function _expImagenChart(wrapId, nombreBase, ev){
   const colorFondo = dark ? '#161b27' : '#ffffff';
   const tituloTexto = _expTextoTitulo(wrap);
 
-  // En pantalla la gráfica es angosta y MUY ancha (ratio ~4:1, el
-  // chart-wrap ocupa todo el ancho de la tarjeta con poco alto) -- pedido
-  // explícito: "que salga más cuadriculada no tan rectangular". Se
-  // redimensiona la gráfica REAL a un tamaño más 4:3 antes de capturar y
+  // Se redimensiona la gráfica REAL a un tamaño fijo antes de capturar y
   // se devuelve a su tamaño normal apenas después -- todo en el mismo
   // tramo síncrono (sin ningún await entre medio), así el navegador no
   // llega a pintar el tamaño intermedio en pantalla (nada de parpadeo).
-  // 760x560 es el default -- data-export-w/h en el .chart-wrap lo pisa
-  // para series largas en el tiempo que necesitan MÁS ancho, no menos
-  // (pedido explícito: "necesito que sea más rectangular").
-  const expW = Number(wrap.dataset.exportW) || 760;
-  const expH = Number(wrap.dataset.exportH) || 560;
+  // 900x540 = proporción 5:3, la MISMA que usa Excel por defecto al
+  // insertar una gráfica nueva -- pedido explícito ("cuando las descarga
+  // en png las saca cuadradas quiero que sea estilo excel como
+  // rectangular"). data-export-w/h en el .chart-wrap lo pisa para series
+  // largas en el tiempo que necesitan MÁS ancho todavía.
+  const expW = Number(wrap.dataset.exportW) || 900;
+  const expH = Number(wrap.dataset.exportH) || 540;
   chart.resize(expW, expH);
   const dataUrl = chart.toBase64Image('image/png', 1);
   chart.resize();  // sin argumentos -- vuelve a leer el tamaño real del .chart-wrap en pantalla
@@ -9267,15 +9274,14 @@ async function renderChartBalanceEstructura(datos, modo){
     yKwhTitulo = 'Pérdida / Pérdida técnica (kWh)';
     const tecnicaKwh = await _beTecnicaDiariaProrateada(fechas);
     datasets = [
-      {type:'line', label:'Pérdida kWh', data:perdidaKwh, borderColor:'#0070C0', backgroundColor:'transparent',
-        borderWidth:2.5, tension:0, spanGaps:true, yAxisID:'yKwh', order:1, ..._puntosAjuste('#0070C0')},
+      {type:'line', label:'Pérdida kWh', data:perdidaKwh, borderColor:'#4472C4', backgroundColor:'transparent',
+        borderWidth:2.5, tension:0, spanGaps:true, yAxisID:'yKwh', order:1, ..._puntosAjuste('#4472C4')},
       {type:'line', label:'Pérdida técnica (prorrateada)', data:tecnicaKwh, borderColor:'#00B0F0', backgroundColor:'transparent',
         borderWidth:2, pointRadius:0, tension:0, spanGaps:true, yAxisID:'yKwh', order:1, borderDash:[2,2]},
       {type:'line', label:'Pérdida %', data:perdidaPct, borderColor:'#ED7D31', backgroundColor:'transparent',
         borderWidth:2, tension:0, spanGaps:true, yAxisID:'yPct', order:1, borderDash:[6,3], ..._puntosAjuste('#ED7D31'),
         datalabels:{display: mesUnico, anchor:'end', align:'top', offset:6,
-          formatter:v=>v==null ? '' : v.toFixed(2)+'%', font:{size:11, weight:'800'}, color:'#ED7D31',
-          backgroundColor:'rgba(255,255,255,.9)', borderRadius:4, padding:{left:5,right:5,top:2,bottom:2}}},
+          formatter:v=>v==null ? '' : v.toFixed(2)+'%', font:{size:11, weight:'800'}, color:'#ED7D31',}},
     ];
     // Límites "típicos" (ver "Datos típicos de esta estructura", arriba de
     // Balance diario) -- opcionales, solo si ya se calcularon Y el checklist
@@ -9523,14 +9529,12 @@ function renderChartComparacionEstructura(datos){
       // amontonen las etiquetas.
       datalabels:{display:!mostrarEntradaSalida, anchor:'end', align:'top', offset:6,
         formatter:v=>v==null ? '' : v.toLocaleString('es-CO',{maximumFractionDigits:0}),
-        font:{size:10, weight:'700'}, color:'#C00000',
-        backgroundColor:'rgba(255,255,255,.85)', borderRadius:3, padding:{left:4,right:4,top:1,bottom:1}}},
+        font:{size:10, weight:'700'}, color:'#C00000',}},
     {type:'line', label:'Pérdida %', data:datos.perdida_balance_pct, hidden:mostrarEntradaSalida,
       borderColor:'#ED7D31', backgroundColor:'transparent', borderWidth:2, pointRadius:2,
       tension:0, spanGaps:true, borderDash:[6,3], yAxisID:'yPct',
       datalabels:{display:!mostrarEntradaSalida, anchor:'end', align:'bottom', offset:6,
-        formatter:v=>v==null ? '' : v.toFixed(2)+'%', font:{size:11, weight:'800'}, color:'#ED7D31',
-        backgroundColor:'rgba(255,255,255,.9)', borderRadius:4, padding:{left:5,right:5,top:2,bottom:2}}},
+        formatter:v=>v==null ? '' : v.toFixed(2)+'%', font:{size:11, weight:'800'}, color:'#ED7D31',}},
     {type:'line', label:'Entrada mensual', data:datos.entrada_kwh, _rol:'entrada', hidden:!mostrarEntradaSalida,
       borderColor:'#00B050', backgroundColor:'transparent', borderWidth:2, pointRadius:2,
       tension:0, spanGaps:true, yAxisID:'yVolumen'},
@@ -9697,14 +9701,12 @@ function renderChartMovilAnual(datos){
       // etiquetar sin que se amontonen las etiquetas.
       datalabels:{display:true, anchor:'end', align:'top', offset:6,
         formatter:v=>v==null ? '' : v.toLocaleString('es-CO',{maximumFractionDigits:0}),
-        font:{size:10, weight:'700'}, color:'#C00000',
-        backgroundColor:'rgba(255,255,255,.85)', borderRadius:3, padding:{left:4,right:4,top:1,bottom:1}}},
+        font:{size:10, weight:'700'}, color:'#C00000',}},
     {type:'line', label:'Pérdida % móvil anual', data:datos.perdida_balance_movil_pct, hidden:mostrarEntradaSalida,
       borderColor:'#ED7D31', backgroundColor:'transparent', borderWidth:2, pointRadius:2,
       tension:0, spanGaps:true, borderDash:[6,3], yAxisID:'yPct',
       datalabels:{display:true, anchor:'end', align:'bottom', offset:6,
-        formatter:v=>v==null ? '' : v.toFixed(2)+'%', font:{size:11, weight:'800'}, color:'#ED7D31',
-        backgroundColor:'rgba(255,255,255,.9)', borderRadius:4, padding:{left:5,right:5,top:2,bottom:2}}},
+        formatter:v=>v==null ? '' : v.toFixed(2)+'%', font:{size:11, weight:'800'}, color:'#ED7D31',}},
     {type:'line', label:'Entrada móvil anual', data:datos.entrada_movil_kwh, _rol:'entrada', hidden:!mostrarEntradaSalida,
       borderColor:'#00B050', backgroundColor:'transparent', borderWidth:2, pointRadius:2,
       tension:0, spanGaps:true, yAxisID:'yVolumen'},
@@ -11617,7 +11619,7 @@ function _alimNivelConstruirChartMensual(cv, mensual, etiquetaNivel, seriesExtra
   const tickC = dark ? '#aab8d1' : '#4b5e7a';
   const tickXFuerte = dark ? '#ffffff' : '#000000';
   const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
-  const etiquetas = visibles.map(f => labelMesLargo(f.clave));
+  const etiquetas = visibles.map(f => labelMes(f.clave));
 
   const datasets = [
     {type:'line', label:`Entrada kWh/${etiquetaPeriodo}`, yAxisID:'y', order:5, fill:'origin',
@@ -11627,11 +11629,10 @@ function _alimNivelConstruirChartMensual(cv, mensual, etiquetaNivel, seriesExtra
       data: visibles.map(f=>f[campoSalida]), borderColor:'#C00000', backgroundColor:'rgba(192,0,0,.20)',
       borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0, datalabels:{display:false}},
     {type:'line', label:`Pérdida % ${etiquetaNivel} (${etiquetaPeriodo})`, yAxisID:'yPct', order:1,
-      data: visibles.map(f=>f[campoPct]), borderColor:'#7030A0', backgroundColor:'transparent',
+      data: visibles.map(f=>f[campoPct]), borderColor:'#ED7D31', backgroundColor:'transparent',
       borderWidth:2.5, pointRadius:2, spanGaps:true, tension:0,
       datalabels:{display:true, anchor:'end', align:'top', offset:6, formatter:v=>v==null?'':v.toFixed(2)+'%',
-        font:{size:10, weight:'700'}, color:'#7030A0',
-        backgroundColor: dark?'rgba(30,30,40,.85)':'rgba(255,255,255,.85)', borderRadius:3, padding:{left:4,right:4,top:1,bottom:1}}},
+        font:{size:10, weight:'700'}, color:'#ED7D31',}},
     ...(seriesExtra||[]),
   ];
 
@@ -11650,10 +11651,10 @@ function _alimNivelConstruirChartMensual(cv, mensual, etiquetaNivel, seriesExtra
         zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:3}}},
       },
       scales:{
-        x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:45, minRotation:45}},
+        x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas}},
         yPct:{type:'linear', position:'right', grid:{drawOnChartArea:false},
-          ticks:{color:'#7030A0', font:{size:11}, callback:v=>v.toFixed(1)+'%'},
-          title:{display:true, text:`Pérdida ${etiquetaNivel} (%)`, color:'#7030A0', font:{size:11}}},
+          ticks:{color:'#ED7D31', font:{size:11}, callback:v=>v.toFixed(1)+'%'},
+          title:{display:true, text:`Pérdida ${etiquetaNivel} (%)`, color:'#ED7D31', font:{size:11}}},
         y:{position:'left', grid:{color:gridC},
           ticks:{color:tickC, font:{size:10}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
           title:{display:true, text:'Energía (kWh)', color:tickC, font:{size:10}}},
@@ -11715,7 +11716,7 @@ function _alimNivelConstruirChartTecnica(cv, mensual, tecnicaPorMes, etiquetaNiv
   const tickC = dark ? '#aab8d1' : '#4b5e7a';
   const tickXFuerte = dark ? '#ffffff' : '#000000';
   const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
-  const etiquetas = visibles.map(f => labelMesLargo(f.clave));
+  const etiquetas = visibles.map(f => labelMes(f.clave));
   const valoresTotal = visibles.map(f => f.perdida);
   const valoresTecnica = visibles.map(f => tecnicaPorMes[f.clave].perdida);
 
@@ -11761,7 +11762,7 @@ function _alimNivelConstruirChartTecnica(cv, mensual, tecnicaPorMes, etiquetaNiv
         zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:3}}},
       },
       scales:{
-        x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:45, minRotation:45}},
+        x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas}},
         y:{position:'left', grid:{color:gridC},
           ticks:{color:tickC, font:{size:10}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
           title:{display:true, text:'Pérdida (kWh)', color:tickC, font:{size:10}}},
@@ -12006,7 +12007,7 @@ function alimNivel3RenderChartZonasComparativo(){
   let etiquetas = null;
   for(const z of porZona.zonas){
     const visibles = _alimNivelVisibles(porZona.porZona[z], 'alim-nivel3-zonas-chart');
-    if(!etiquetas) etiquetas = visibles.map(f => labelMesLargo(f.clave));
+    if(!etiquetas) etiquetas = visibles.map(f => labelMes(f.clave));
     porZonaVisible[z] = visibles.map(f => f.pct);
   }
   if(chAlimNivel3ZonasComparativo) chAlimNivel3ZonasComparativo.destroy();
@@ -12056,8 +12057,7 @@ function alimNivel3RenderChartZonasComparativo(){
               return 4 + ranking*18;
             },
             formatter:v=>v==null?'':v.toFixed(1)+'%',
-            font:{size:11, weight:'700'}, color,
-            backgroundColor: dark?'rgba(30,30,40,.78)':'rgba(255,255,255,.78)', borderRadius:3, padding:{left:3,right:3,top:1,bottom:1}},
+            font:{size:11, weight:'700'}, color,},
         };
       }),
     },
@@ -12074,7 +12074,7 @@ function alimNivel3RenderChartZonasComparativo(){
         zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:3}}},
       },
       scales:{
-        x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:45, minRotation:45}},
+        x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas}},
         y:{grid:{color:gridC}, ticks:{color:tickC, font:{size:11}, callback:v=>v.toFixed(0)+'%'},
           title:{display:true, text:'Pérdida (%)', color:tickC, font:{size:11}}},
       },
@@ -12119,7 +12119,7 @@ function _alimNivel4ConstruirChartImportExport(cv, mensual){
   const tickC = dark ? '#aab8d1' : '#4b5e7a';
   const tickXFuerte = dark ? '#ffffff' : '#000000';
   const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
-  const etiquetas = visibles.map(f => labelMesLargo(f.clave));
+  const etiquetas = visibles.map(f => labelMes(f.clave));
 
   return new Chart(cv, {
     data:{
@@ -12146,7 +12146,7 @@ function _alimNivel4ConstruirChartImportExport(cv, mensual){
         zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:3}}},
       },
       scales:{
-        x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:45, minRotation:45}},
+        x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas}},
         y:{position:'left', grid:{color:gridC},
           ticks:{color:tickC, font:{size:10}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
           title:{display:true, text:'Energía (kWh)', color:tickC, font:{size:10}}},
@@ -13229,7 +13229,7 @@ function alimSubRenderChartSubestaciones(){
   let etiquetas = null;
   const datasets = subestaciones.map((sub, i) => {
     const visibles = alimSubVisibles(porGrupo[sub]);
-    if(!etiquetas) etiquetas = visibles.map(f => labelMesLargo(f.clave));
+    if(!etiquetas) etiquetas = visibles.map(f => labelMes(f.clave));
     return {
       type:'line', label: sub, data: visibles.map(f => f[ALIM_SUB_METRICA]),
       borderColor: alimSubColor(i, subestaciones.length), backgroundColor:'transparent',
@@ -13253,7 +13253,7 @@ function alimSubRenderChartSubestaciones(){
         zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:3}}},
       },
       scales:{
-        x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:45, minRotation:45}},
+        x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas}},
         y:{grid:{color:gridC}, ticks:{color:tickC, font:{size:11}, callback:v=>v.toLocaleString('es-CO')},
           title:{display:true, text: nombreMetrica, color:tickC, font:{size:11}}},
       },
@@ -13284,7 +13284,7 @@ function alimSubRenderChartVariacion(){
   let etiquetas = null;
   const datasets = subestaciones.map((sub, i) => {
     const visibles = alimSubVisibles(porGrupo[sub]);
-    if(!etiquetas) etiquetas = visibles.map(f => labelMesLargo(f.clave));
+    if(!etiquetas) etiquetas = visibles.map(f => labelMes(f.clave));
     const color = alimSubColor(i, subestaciones.length);
     const datos = visibles.map((f, idx) => {
       if(idx === 0) return null;  // primer mes visible -- no hay "anterior" para comparar
@@ -13298,8 +13298,7 @@ function alimSubRenderChartVariacion(){
       borderWidth:1.5, pointRadius:2, spanGaps:true, tension:0,
       datalabels:{display:true, anchor:'end', align:'top', offset:2,
         formatter:v=>v==null?'':`${v>=0?'+':''}${v.toFixed(0)}%`,
-        font:{size:8, weight:'700'}, color,
-        backgroundColor: dark?'rgba(30,30,40,.72)':'rgba(255,255,255,.72)', borderRadius:2, padding:{left:2,right:2,top:0,bottom:0}},
+        font:{size:8, weight:'700'}, color,},
     };
   });
   if(!etiquetas || !etiquetas.length) return;
@@ -13318,7 +13317,7 @@ function alimSubRenderChartVariacion(){
         zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:3}}},
       },
       scales:{
-        x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:45, minRotation:45}},
+        x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas}},
         y:{grid:{color:gridC}, ticks:{color:tickC, font:{size:11}, callback:v=>v.toFixed(0)+'%'},
           title:{display:true, text:`Variación de ${nombreMetrica} vs. mes anterior (%)`, color:tickC, font:{size:11}}},
       },
@@ -13445,7 +13444,7 @@ function alimSubRenderTablaTop(){
     const colorCrec = f.deltaPerdidaCrec==null ? 'var(--text3)' : (f.deltaPerdidaCrec>=0 ? '#C00000' : '#00B050');
     return `<tr onclick="alimSubSeleccionarSubestacionTabla('${f.sub}')" style="cursor:pointer${activa?';background:var(--bg3)':''}">
       <td style="text-align:left;font-weight:700">${f.sub}</td>
-      <td><span class="zb" style="background:${color}22;color:${color}">${f.zona}</span></td>
+      <td><span class="zb" style="background:${color}22;color:var(--text)">${f.zona}</span></td>
       <td>${fmtKwh(f.entrada)}</td>
       <td class="alimsub-col-var" style="color:${colorDeltaEntrada}">${fmtDeltaKwh(f.deltaEntrada)}</td>
       <td>${fmtKwh(f.salida)}</td>
@@ -13535,7 +13534,7 @@ function alimSubRenderChartAlimentadores(){
     const filas = esAnual
       ? alimSubVisibles(alimN21Con12Meses(serieCompleta)).filter(f => f.pct12 != null)
       : alimSubVisibles(serieCompleta);
-    if(!etiquetas) etiquetas = filas.map(f => labelMesLargo(f.clave));
+    if(!etiquetas) etiquetas = filas.map(f => labelMes(f.clave));
     const color = alimSubColor(i, nemonicos.length);
     const pctDatos = filas.map(f => esAnual ? f.pct12 : f.pct);
     const perdidaDatos = filas.map(f => esAnual ? f.perdida12 : f.perdida);
@@ -13585,7 +13584,6 @@ function alimSubRenderChartAlimentadores(){
       display:true,
       anchor:'end', align:'top', offset:4, formatter:v=>v==null?'':v.toFixed(2)+'%',
       font:{size:10, weight:'700'}, color,
-      backgroundColor: dark?'rgba(30,30,40,.85)':'rgba(255,255,255,.85)', borderRadius:3, padding:{left:4,right:4,top:1,bottom:1},
     };
 
     datasets.push({
@@ -13614,7 +13612,7 @@ function alimSubRenderChartAlimentadores(){
   if(!etiquetas || !etiquetas.length) return;
 
   const scales = {
-    x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:45, minRotation:45}},
+    x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas}},
     yPct:{type:'linear', position:'left', grid:{color:gridC}, ticks:{color:tickC, font:{size:11}, callback:v=>v.toFixed(0)+'%'},
       title:{display:true, text: esAnual ? 'Pérdida Anual 12M (%)' : 'Pérdida (%)', color:tickC, font:{size:11}}},
   };
@@ -14019,8 +14017,7 @@ function alim3RenderChartCircuitos(){
       // de sobra (pocas series a la vez, no una comparación densa).
       datalabels:{display:true, anchor:'end', align:'top', offset:3,
         formatter:v=>v==null?'':fmtY(v),
-        font:{size:11, weight:'700'}, color,
-        backgroundColor: dark?'rgba(30,30,40,.78)':'rgba(255,255,255,.78)', borderRadius:3, padding:{left:3,right:3,top:1,bottom:1}},
+        font:{size:11, weight:'700'}, color,},
     };
   });
 
@@ -14039,7 +14036,7 @@ function alim3RenderChartCircuitos(){
         tooltip:{callbacks:{label:c => c.raw==null ? null : `${c.dataset.label}: ${fmtY(c.raw)}${esPct?'':' kWh/km'}`}},
       },
       scales:{
-        x:{grid:{display:false}, offset:true, ticks:{color:tickC, font:{size:10}, maxRotation:45, minRotation:45}},
+        x:{grid:{display:false}, offset:true, ticks:{color:tickC, font:{size:10}, maxRotation:0, minRotation:0, callback:_tickDosLineas}},
         y:{ticks:{color:tickC, font:{size:10}, callback:fmtY},
           title:{display:true, text: esPct ? 'Pérdida Gestionable (%)' : 'Pérdida Gestionable (kWh/km)', color:tickC, font:{size:10}}},
       },
@@ -14240,7 +14237,7 @@ function alim3RenderTablaVariacion(){
     const colorCrec = f.deltaPerdidaCrec==null ? 'var(--text3)' : (f.deltaPerdidaCrec>=0 ? '#C00000' : '#00B050');
     return `<tr>
       <td style="text-align:left;font-weight:700">${f.nombre}</td>
-      <td><span class="zb" style="background:${color}22;color:${color}">${f.zona||'--'}</span></td>
+      <td><span class="zb" style="background:${color}22;color:var(--text)">${f.zona||'--'}</span></td>
       <td class="alim3-col-anterior" style="color:var(--text3)">${fmt(f.entradaAnterior)}</td>
       <td>${fmt(f.entrada)}</td>
       <td style="color:var(--text3)">${fmtDelta(f.deltaEntrada)}</td>
@@ -14411,7 +14408,7 @@ function alim3RenderChartEsp(filasConClave){
   const tickC = dark ? '#aab8d1' : '#4b5e7a';
   const tickXFuerte = dark ? '#ffffff' : '#000000';
   const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
-  const etiquetas = filas.map(f => labelMesLargo(f.clave));
+  const etiquetas = filas.map(f => labelMes(f.clave));
   const entradaDatos = filas.map(f => esAnual ? f.entrada12 : f.entrada);
   const salidaDatos = filas.map(f => esAnual ? f.salida12 : f.salida);
   const perdidaDatos = filas.map(f => esAnual ? f.perdida12 : f.perdida);
@@ -14448,7 +14445,6 @@ function alim3RenderChartEsp(filasConClave){
   } : {
     display:true, anchor:'end', align:'top', offset:4, formatter:v=>v==null?'':v.toFixed(2)+'%',
     font:{size:13,weight:'800'}, color:'#FFC000',
-    backgroundColor: dark?'rgba(30,30,40,.85)':'rgba(255,255,255,.85)', borderRadius:4, padding:{left:4,right:4,top:2,bottom:2},
   };
 
   if(chAlim3Esp) chAlim3Esp.destroy();
@@ -14494,7 +14490,7 @@ function alim3RenderChartEsp(filasConClave){
         zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:3}}},
       },
       scales:{
-        x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:9, weight:'600'}, maxRotation:45, minRotation:45}},
+        x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:9, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas}},
         y:{position:'left', grid:{color:gridC}, ticks:{color:tickC, font:{size:10}, callback:v=>v.toLocaleString('es-CO')},
           title:{display:true, text: esAnual?'Energía Anual 12M (kWh)':'Energía (kWh)', color:tickC, font:{size:10}}},
         yPct:{type:'linear', position:'right', grid:{drawOnChartArea:false}, ticks:{color:'#FFC000', font:{size:10}, callback:v=>v.toFixed(0)+'%'},
@@ -14512,7 +14508,7 @@ function alim3RenderChartTecnica(filasConClave){
   const tickC = dark ? '#aab8d1' : '#4b5e7a';
   const tickXFuerte = dark ? '#ffffff' : '#000000';
   const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
-  const etiquetas = visibles.map(f => labelMesLargo(f.clave));
+  const etiquetas = visibles.map(f => labelMes(f.clave));
 
   if(chAlim3Tecnica) chAlim3Tecnica.destroy();
   if(!etiquetas.length) return;
@@ -14536,7 +14532,7 @@ function alim3RenderChartTecnica(filasConClave){
         zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:3}}},
       },
       scales:{
-        x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:9, weight:'600'}, maxRotation:45, minRotation:45}},
+        x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:9, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas}},
         y:{grid:{color:gridC}, ticks:{color:tickC, font:{size:10}, callback:v=>v.toLocaleString('es-CO')}, title:{display:true, text:'kWh', color:tickC, font:{size:10}}},
       },
     },
@@ -14551,7 +14547,7 @@ function alim3RenderChartAgpe(filasConClave){
   const tickC = dark ? '#aab8d1' : '#4b5e7a';
   const tickXFuerte = dark ? '#ffffff' : '#000000';
   const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
-  const etiquetas = visibles.map(f => labelMesLargo(f.clave));
+  const etiquetas = visibles.map(f => labelMes(f.clave));
 
   if(chAlim3Agpe) chAlim3Agpe.destroy();
   if(!etiquetas.length) return;
@@ -14573,7 +14569,7 @@ function alim3RenderChartAgpe(filasConClave){
         zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:3}}},
       },
       scales:{
-        x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:9, weight:'600'}, maxRotation:45, minRotation:45}},
+        x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:9, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas}},
         y:{grid:{color:gridC}, ticks:{color:tickC, font:{size:10}, callback:v=>v.toLocaleString('es-CO')}, title:{display:true, text:'kWh', color:tickC, font:{size:10}}},
       },
     },
@@ -14727,8 +14723,8 @@ function alim3RenderTablaTop(){
       const colorCrec = f.deltaPerdidaCrec==null ? 'var(--text3)' : (f.deltaPerdidaCrec>=0 ? '#C00000' : '#00B050');
       return `<tr>
         <td style="text-align:left;font-weight:700">${f.nombre}</td>
-        <td><span class="zb" style="background:${color}22;color:${color}">${f.zona}</span></td>
-        <td><span class="zb" style="background:${colorLey}22;color:${colorLey}">${f.leyenda}</span></td>
+        <td><span class="zb" style="background:${color}22;color:var(--text)">${f.zona}</span></td>
+        <td><span class="zb" style="background:${colorLey}22;color:var(--text)">${f.leyenda}</span></td>
         <td>${fmt0(f.gestLongitud)}</td>
         <td>${fmt0(f.gestionable)}</td>
         <td>${fmtPct(f.gestPct)}</td>
@@ -15013,7 +15009,7 @@ function tempEntradaRender(){
   let etiquetas, tempDatos, entradaDatos, entradaTitulo, agrupado;
   if(esMensual){
     agrupado = _tempEntradaAgruparMensual(visibles, metrica.campo);
-    etiquetas = agrupado.map(g => labelMesLargo(g.clave));
+    etiquetas = agrupado.map(g => labelMes(g.clave));
     tempDatos = agrupado.map(g => g.temp);
     entradaDatos = agrupado.map(g => g.entrada);
     entradaTitulo = 'Entrada (kWh, mensual)';
@@ -15070,7 +15066,7 @@ function tempEntradaRender(){
         zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:7}}},
       },
       scales:{
-        x:{grid:{display:false}, ticks:{color:tickXFuerte, font:{size:9, weight:'600'}, maxRotation:45, minRotation:45, autoSkip:true, maxTicksLimit:24}},
+        x:{grid:{display:false}, ticks:{color:tickXFuerte, font:{size:9, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:true, maxTicksLimit:24}},
         y:{position:'left', grid:{color:gridC}, ticks:{color:tickC, font:{size:10}, callback:v=>v.toLocaleString('es-CO')},
           title:{display:true, text:entradaTitulo, color:tickC, font:{size:10}}},
         yTemp:{type:'linear', position:'right', grid:{drawOnChartArea:false}, ticks:{color:colorVar, font:{size:10}, callback:v=>v.toFixed(0)+TEMP_ENTRADA_UNIDAD},
@@ -15130,7 +15126,7 @@ function tempHorariaRender(filas){
         tooltip:{callbacks:{label:c => c.raw==null?null:`Temperatura: ${c.raw.toFixed(1)}°C`}},
       },
       scales:{
-        x:{grid:{display:false}, ticks:{color:tickXFuerte, font:{size:9, weight:'600'}, maxRotation:45, minRotation:45, autoSkip:true, maxTicksLimit:24}},
+        x:{grid:{display:false}, ticks:{color:tickXFuerte, font:{size:9, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:true, maxTicksLimit:24}},
         y:{grid:{color:gridC}, ticks:{color:tickC, font:{size:10}, callback:v=>v.toFixed(0)+'°C'},
           title:{display:true, text:'Temperatura (°C)', color:tickC, font:{size:10}}},
       },
@@ -15986,8 +15982,8 @@ function alimN21RenderBarrasZonas(){
     data:{
       labels: zonas,
       datasets:[
-        {label:'Entrada', data: entradaVals, backgroundColor:'rgba(0,176,80,.75)', borderColor:'#00B050', borderWidth:1},
-        {label:'Salida', data: salidaVals, backgroundColor:'rgba(192,0,0,.75)', borderColor:'#C00000', borderWidth:1},
+        {label:'Entrada', data: entradaVals, backgroundColor:'#00B050', borderWidth:0},
+        {label:'Salida', data: salidaVals, backgroundColor:'#C00000', borderWidth:0},
       ],
     },
     options:{
@@ -16149,7 +16145,7 @@ function _alimN21ConstruirChartPorZona(cv, zona, modo){
   const campoTec = modo==='anual' ? 'tecPct12' : 'tecPct';
   const visibles = modo==='anual' ? serie.filter(f => f[campoTotal] != null) : serie;
   if(!visibles.length) return null;
-  const etiquetas = visibles.map(f => labelMesLargo(f.clave));
+  const etiquetas = visibles.map(f => labelMes(f.clave));
   const colorTotal = colorParaZona(zona);
   const colorTecnica = _colorOscurecer(colorTotal);
   const valoresTotal = visibles.map(f => f[campoTotal]);
@@ -16162,7 +16158,6 @@ function _alimN21ConstruirChartPorZona(cv, zona, modo){
   const fondoEtiqueta = dark ? 'rgba(20,24,34,.88)' : 'rgba(255,255,255,.88)';
   const estiloEtiqueta = color => ({
     display:true, formatter:fp, font:{size:9.5, weight:'700'}, color,
-    backgroundColor:fondoEtiqueta, borderRadius:3, padding:{left:3,right:3,top:1,bottom:1},
   });
 
   // Eje único (default, pedido explícito -- "ambas tienen que ser un
@@ -16199,7 +16194,7 @@ function _alimN21ConstruirChartPorZona(cv, zona, modo){
         zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:3}}},
       },
       scales:{
-        x:{grid:{display:false}, ticks:{color:tickC, font:{size:8}, maxRotation:45, minRotation:45}},
+        x:{grid:{display:false}, ticks:{color:tickC, font:{size:8}, maxRotation:0, minRotation:0, callback:_tickDosLineas}},
         ...escalas,
       },
     },
@@ -16570,7 +16565,7 @@ function alimN21RenderChartMensual(datos12){
   const tickC = dark ? '#aab8d1' : '#4b5e7a';
   const tickXFuerte = dark ? '#ffffff' : '#000000';
   const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
-  const etiquetas = visibles.map(f => labelMesLargo(f.clave));
+  const etiquetas = visibles.map(f => labelMes(f.clave));
   const entradaDatos = visibles.map(f=>f.entrada);
   const salidaDatos = visibles.map(f=>f.salida);
   const perdidaDatos = visibles.map(f=>f.perdida);
@@ -16590,12 +16585,11 @@ function alimN21RenderChartMensual(datos12){
       const icono = delta>=0 ? '▲' : '▼';
       return [base, `${icono} ${Math.abs(delta).toFixed(2)}pp`];
     },
-    color:(ctx)=> ['#7030A0', ipColorVariacion(pctDatos[ctx.dataIndex], pctDatos[ctx.dataIndex-1], dark?'#aab8d1':'#6b7280')],
+    color:(ctx)=> ['#ED7D31', ipColorVariacion(pctDatos[ctx.dataIndex], pctDatos[ctx.dataIndex-1], dark?'#aab8d1':'#6b7280')],
     ...ipEstiloTarjetaVariacion(dark),
   } : {
     display:true, anchor:'end', align:'top', offset:6, formatter:v=>v==null?'':v.toFixed(2)+'%',
-    font:{size:10, weight:'700'}, color:'#7030A0',
-    backgroundColor: dark?'rgba(30,30,40,.85)':'rgba(255,255,255,.85)', borderRadius:3, padding:{left:4,right:4,top:1,bottom:1},
+    font:{size:10, weight:'700'}, color:'#ED7D31',
   };
 
   if(chAlimN21Mensual) chAlimN21Mensual.destroy();
@@ -16613,7 +16607,7 @@ function alimN21RenderChartMensual(datos12){
           data: perdidaDatos, borderColor:'#4472C4', backgroundColor:'rgba(68,114,196,.35)',
           borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0, datalabels:{display:false}},
         {type:'line', label:'Pérdida %/Mes', yAxisID:'yPct', order:1,
-          data: pctDatos, borderColor:'#7030A0', backgroundColor:'transparent',
+          data: pctDatos, borderColor:'#ED7D31', backgroundColor:'transparent',
           borderWidth:2.5, pointRadius:2, spanGaps:true, tension:0, datalabels:datalabelsPct},
       ],
     },
@@ -16630,10 +16624,10 @@ function alimN21RenderChartMensual(datos12){
         zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:3}}},
       },
       scales:{
-        x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:45, minRotation:45}},
+        x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas}},
         yPct:{type:'linear', position:'right', grid:{drawOnChartArea:false},
-          ticks:{color:'#7030A0', font:{size:11}, callback:v=>v.toFixed(1)+'%'},
-          title:{display:true, text:'Pérdida Zonal (%)', color:'#7030A0', font:{size:11}}},
+          ticks:{color:'#ED7D31', font:{size:11}, callback:v=>v.toFixed(1)+'%'},
+          title:{display:true, text:'Pérdida Zonal (%)', color:'#ED7D31', font:{size:11}}},
         y:{position:'left', grid:{color:gridC},
           ticks:{color:tickC, font:{size:10}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
           title:{display:true, text:'Energía (kWh)', color:tickC, font:{size:10}}},
@@ -16653,7 +16647,7 @@ function alimN21RenderChartAnual(datos12){
   const tickC = dark ? '#aab8d1' : '#4b5e7a';
   const tickXFuerte = dark ? '#ffffff' : '#000000';
   const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
-  const etiquetas = visibles.map(f => labelMesLargo(f.clave));
+  const etiquetas = visibles.map(f => labelMes(f.clave));
   const entrada12Datos = visibles.map(f=>f.entrada12);
   const salida12Datos = visibles.map(f=>f.salida12);
   const perdida12Datos = visibles.map(f=>f.perdida12);
@@ -16673,12 +16667,11 @@ function alimN21RenderChartAnual(datos12){
       const icono = delta>=0 ? '▲' : '▼';
       return [base, `${icono} ${Math.abs(delta).toFixed(2)}pp`];
     },
-    color:(ctx)=> ['#7030A0', ipColorVariacion(pct12Datos[ctx.dataIndex], pct12Datos[ctx.dataIndex-1], dark?'#aab8d1':'#6b7280')],
+    color:(ctx)=> ['#ED7D31', ipColorVariacion(pct12Datos[ctx.dataIndex], pct12Datos[ctx.dataIndex-1], dark?'#aab8d1':'#6b7280')],
     ...ipEstiloTarjetaVariacion(dark),
   } : {
     display:true, anchor:'end', align:'top', offset:6, formatter:v=>v==null?'':v.toFixed(2)+'%',
-    font:{size:10, weight:'700'}, color:'#7030A0',
-    backgroundColor: dark?'rgba(30,30,40,.85)':'rgba(255,255,255,.85)', borderRadius:3, padding:{left:4,right:4,top:1,bottom:1},
+    font:{size:10, weight:'700'}, color:'#ED7D31',
   };
 
   if(chAlimN21Anual) chAlimN21Anual.destroy();
@@ -16696,7 +16689,7 @@ function alimN21RenderChartAnual(datos12){
           data: perdida12Datos, borderColor:'#4472C4', backgroundColor:'rgba(68,114,196,.35)',
           borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0, datalabels:{display:false}},
         {type:'line', label:'Pérdida %/12M', yAxisID:'yPct', order:1,
-          data: pct12Datos, borderColor:'#7030A0', backgroundColor:'transparent',
+          data: pct12Datos, borderColor:'#ED7D31', backgroundColor:'transparent',
           borderWidth:2.5, pointRadius:2, spanGaps:true, tension:0, datalabels:datalabelsPct},
       ],
     },
@@ -16713,10 +16706,10 @@ function alimN21RenderChartAnual(datos12){
         zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:3}}},
       },
       scales:{
-        x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:45, minRotation:45}},
+        x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas}},
         yPct:{type:'linear', position:'right', grid:{drawOnChartArea:false},
-          ticks:{color:'#7030A0', font:{size:11}, callback:v=>v.toFixed(1)+'%'},
-          title:{display:true, text:'Pérdida N21 Anual (%)', color:'#7030A0', font:{size:11}}},
+          ticks:{color:'#ED7D31', font:{size:11}, callback:v=>v.toFixed(1)+'%'},
+          title:{display:true, text:'Pérdida N21 Anual (%)', color:'#ED7D31', font:{size:11}}},
         y:{position:'left', grid:{color:gridC},
           ticks:{color:tickC, font:{size:10}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
           title:{display:true, text:'Energía Anual (kWh)', color:tickC, font:{size:10}}},
@@ -16739,7 +16732,7 @@ function alimN21RenderChartZonas(){
   let etiquetas = null;
   for(const z of ALIM_N21_ZONAS){
     const visibles = alimN21Visibles(alimN21AgregarMensual(new Set([z])));
-    if(!etiquetas) etiquetas = visibles.map(f => labelMesLargo(f.clave));
+    if(!etiquetas) etiquetas = visibles.map(f => labelMes(f.clave));
     porZona[z] = visibles.map(f => f.pct);
   }
   if(!etiquetas || !etiquetas.length) return;
@@ -16766,7 +16759,7 @@ function alimN21RenderChartZonas(){
         zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:3}}},
       },
       scales:{
-        x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:45, minRotation:45}},
+        x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas}},
         y:{grid:{color:gridC}, ticks:{color:tickC, font:{size:11}, callback:v=>v.toFixed(0)+'%'},
           title:{display:true, text:'Pérdida (%)', color:tickC, font:{size:11}}},
       },
@@ -16885,7 +16878,7 @@ function ipComercialRenderChart(){
   const tickC = dark ? '#aab8d1' : '#4b5e7a';
   const tickXFuerte = dark ? '#ffffff' : '#000000';
   const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
-  const etiquetas = visibles.map(f => labelMesLargo(ipComercialClave(f)));
+  const etiquetas = visibles.map(f => labelMes(ipComercialClave(f)));
   const nBase = visibles.length;  // índice del último punto REAL, antes de agregar proyección
   let datasets, scales;
 
@@ -16899,13 +16892,11 @@ function ipComercialRenderChart(){
       {type:'line', label:'IPT Comercial -- Pérdida % Anual (12m)', yAxisID:'yPct', data: pctDatos, order:1,
         borderColor:'#ED7D31', backgroundColor:'rgba(237,125,49,.12)', borderWidth:2.5, pointRadius:2, spanGaps:true, tension:0,
         datalabels:{display:true, anchor:'end', align:'top', offset:6, formatter:v=>v==null?'':v.toFixed(2)+'%',
-          font:{size:10, weight:'700'}, color:'#ED7D31',
-          backgroundColor: dark?'rgba(30,30,40,.85)':'rgba(255,255,255,.85)', borderRadius:3, padding:{left:4,right:4,top:1,bottom:1}}},
+          font:{size:10, weight:'700'}, color:'#ED7D31',}},
       {type:'line', label:'PT Comercial -- Pérdida kWh Anual (12m)', yAxisID:'y', data: kwhDatos, hidden: IP_COMERCIAL_PT_OCULTO, order:2,
         borderColor:'#4472C4', backgroundColor:'transparent', borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0,
         datalabels:{display:true, anchor:'end', align:'bottom', offset:6, formatter:v=>v==null?'':v.toLocaleString('es-CO',{maximumFractionDigits:0}),
-          font:{size:10, weight:'700'}, color:'#4472C4',
-          backgroundColor: dark?'rgba(30,30,40,.85)':'rgba(255,255,255,.85)', borderRadius:3, padding:{left:4,right:4,top:1,bottom:1}}},
+          font:{size:10, weight:'700'}, color:'#4472C4',}},
     ];
 
     // Proyección -- solo del % anual (igual que IP_Reg, que tampoco
@@ -16918,7 +16909,7 @@ function ipComercialRenderChart(){
       for(let h=1; h<=meses; h++){
         let idx = ultima.anio*12 + (ultima.mes-1) + h;
         const anio = Math.floor(idx/12), mes = (idx%12)+1;
-        etiquetas.push(labelMesLargo(`${anio}-${String(mes).padStart(2,'0')}`));
+        etiquetas.push(labelMes(`${anio}-${String(mes).padStart(2,'0')}`));
         kwhDatos.push(null);
       }
       const centro = new Array(nBase).fill(null);
@@ -16943,12 +16934,11 @@ function ipComercialRenderChart(){
         {type:'line', label:'Proyección', yAxisID:'yPct', order:2,
           data: centro, borderColor:'#00B050', borderWidth:2, borderDash:[5,3], pointRadius:0, spanGaps:true,
           datalabels:{display:true, anchor:'end', align:'top', offset:6, formatter:v=>v==null?'':v.toFixed(2)+'%',
-            font:{size:10, weight:'700'}, color:'#00B050',
-            backgroundColor: dark?'rgba(30,30,40,.85)':'rgba(255,255,255,.85)', borderRadius:3, padding:{left:4,right:4,top:1,bottom:1}}},
+            font:{size:10, weight:'700'}, color:'#00B050',}},
       );
     }
     scales = {
-      x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:45, minRotation:45}},
+      x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas}},
       // min:16 -- pedido explícito ("ajustar el eje Y que inicie desde
       // 16% para que no se vea tan variable"): sin piso, Chart.js autoescala
       // pegado al rango real de los datos (ej. 20.6%-22.2%) y una variación
@@ -16978,7 +16968,7 @@ function ipComercialRenderChart(){
         borderColor:'#7030A0', backgroundColor:'transparent', borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0, datalabels:{display:false}},
     ];
     scales = {
-      x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:45, minRotation:45}},
+      x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas}},
       y:{grid:{color:gridC},
         ticks:{color:tickC, font:{size:11}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
         title:{display:true, text:'Energía Anual (12M, kWh)', color:tickC, font:{size:11}}},
@@ -17170,7 +17160,7 @@ function ipComercialRenderChartMensual(){
   const tickC = dark ? '#aab8d1' : '#4b5e7a';
   const tickXFuerte = dark ? '#ffffff' : '#000000';
   const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
-  const etiquetas = visibles.map(f => labelMesLargo(ipComercialClave(f)));
+  const etiquetas = visibles.map(f => labelMes(ipComercialClave(f)));
 
   if(chIpComercialMensual) chIpComercialMensual.destroy();
   chIpComercialMensual = new Chart(cv, {
@@ -17178,14 +17168,13 @@ function ipComercialRenderChartMensual(){
       labels: etiquetas,
       datasets:[
         {type:'bar', label:'Energía Comprada (kWh)', yAxisID:'y', order:2,
-          data: visibles.map(f=>f.compra_kwh), backgroundColor:'rgba(0,176,80,.35)', borderColor:'#00B050', borderWidth:1,
+          data: visibles.map(f=>f.compra_kwh), backgroundColor:'#00B050', borderWidth:0,
           datalabels:{display:false}},
         {type:'line', label:'% Pérdida Mensual', yAxisID:'yPct', order:1,
           data: visibles.map(f=>f.perdida_pct), borderColor:'#ED7D31',
           backgroundColor:'rgba(237,125,49,.12)', borderWidth:2.5, pointRadius:2.5, spanGaps:true, tension:0,
           datalabels:{display:true, anchor:'end', align:'top', offset:6,
-            formatter:v=>v==null?'':v.toFixed(2)+'%', font:{size:10, weight:'700'}, color:'#ED7D31',
-            backgroundColor: dark?'rgba(30,30,40,.85)':'rgba(255,255,255,.85)', borderRadius:3, padding:{left:4,right:4,top:1,bottom:1}}},
+            formatter:v=>v==null?'':v.toFixed(2)+'%', font:{size:10, weight:'700'}, color:'#ED7D31',}},
       ],
     },
     options:{
@@ -17205,7 +17194,7 @@ function ipComercialRenderChartMensual(){
         },
       },
       scales:{
-        x:{grid:{display:false}, ticks:{color:tickXFuerte, font:{size:9, weight:'600'}, maxRotation:45, minRotation:45}},
+        x:{grid:{display:false}, ticks:{color:tickXFuerte, font:{size:9, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas}},
         yPct:{type:'linear', position:'left', grid:{color:gridC},
           ticks:{color:'#ED7D31', font:{size:10}, callback:v=>v.toFixed(1)+'%'},
           title:{display:true, text:'% Pérdida Mensual', color:'#ED7D31', font:{size:10}}},
@@ -18116,7 +18105,7 @@ function tridRenderGraficas(filasXm){
   if(!porTransformador.size){ cont.innerHTML = ''; return; }
 
   const fechas = [...new Set(filasXm.map(f => f.fecha_operacion))].sort();
-  const etiquetas = fechas.map(f => labelMesLargo(f.slice(0,7)));
+  const etiquetas = fechas.map(f => labelMes(f.slice(0,7)));
   const dark = document.documentElement.getAttribute('data-theme')==='dark';
   const tickC = dark ? '#aab8d1' : '#4b5e7a';
   const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
@@ -18150,7 +18139,7 @@ function tridRenderGraficas(filasXm){
           },
         },
         scales:{
-          x:{grid:{display:false}, ticks:{color:tickC, font:{size:9}, maxRotation:45, minRotation:45}},
+          x:{grid:{display:false}, ticks:{color:tickC, font:{size:9}, maxRotation:0, minRotation:0, callback:_tickDosLineas}},
           y:{grid:{color:gridC}, ticks:{color:tickC, font:{size:9}, callback:v=>v.toLocaleString('es-CO')}},
         },
       },
@@ -18386,15 +18375,15 @@ function ipColorVariacion(actual, anterior, colorBase){
 // Estilo de "tarjetita gris" para la etiqueta con variación -- renglón 1
 // el valor, renglón 2 el ícono + delta en rojo/verde (chartjs-datalabels
 // dibuja un array de líneas como UNA sola tarjeta con varios renglones).
+// Etiquetas de dato SIN "tarjetita" (fondo/borde/padding) -- estilo Excel
+// -- pedido explícito ("las graficas actualmente los valores los encierra
+// como en una tarjeta quiero que quites ese encerramiento ya que eso no
+// existe en excel"). Excel dibuja las etiquetas de dato como texto plano
+// sobre el gráfico, sin recuadro.
 function ipEstiloTarjetaVariacion(dark, colorBase){
   return {
-    backgroundColor: dark ? '#2a2f3a' : '#eef0f3',
-    borderColor: dark ? '#3d4453' : '#d7dbe0',
-    borderWidth: 1,
-    borderRadius: 6,
-    padding: {left:7, right:7, top:4, bottom:4},
     textAlign: 'center',
-    font: [{size:11, weight:'800'}, {size:9.5, weight:'800'}],
+    font: [{size:11, weight:'700'}, {size:9.5, weight:'700'}],
   };
 }
 
@@ -18561,7 +18550,6 @@ function ipRenderChart(){
         display:true, anchor:'end', align:'top', offset:6,
         formatter:v=>v==null?'':v.toFixed(2)+'%',
         font:{size:12, weight:'700'}, color:'#ED7D31',
-        backgroundColor: dark?'rgba(30,30,40,.85)':'rgba(255,255,255,.85)', borderRadius:3, padding:{left:4,right:4,top:1,bottom:1},
       },
     },
   ];
@@ -18716,8 +18704,7 @@ function ipRenderChartNivel1(){
           data: visibles.map(f=>f.iptj1t_pct==null?null:f.iptj1t_pct*100), borderColor:'#31859B',
           backgroundColor:'rgba(42,157,143,.12)', borderWidth:2.5, pointRadius:2, spanGaps:true, tension:0,
           datalabels:{display:true, anchor:'end', align:'top', offset:6,
-            formatter:v=>v==null?'':v.toFixed(2)+'%', font:{size:12, weight:'700'}, color:'#31859B',
-            backgroundColor: dark?'rgba(30,30,40,.85)':'rgba(255,255,255,.85)', borderRadius:3, padding:{left:4,right:4,top:1,bottom:1}}},
+            formatter:v=>v==null?'':v.toFixed(2)+'%', font:{size:12, weight:'700'}, color:'#31859B',}},
       ],
     },
     options:{
@@ -18851,13 +18838,12 @@ function ipRenderChartMensual(){
       labels: etiquetas,
       datasets:[
         {type:'bar', label:'Pérdida Mensual (kWh)', yAxisID:'y', order:2,
-          data: visibles.map(f=>f.perdida_mensual_kwh), backgroundColor:'rgba(68,114,196,.35)', borderColor:'#4472C4', borderWidth:1},
+          data: visibles.map(f=>f.perdida_mensual_kwh), backgroundColor:'#4472C4', borderWidth:0},
         {type:'line', label:'% Pérdida Mensual', yAxisID:'yPct', order:1,
           data: visibles.map(f=>f.pct_perdida_mensual==null?null:f.pct_perdida_mensual*100), borderColor:'#ED7D31',
           backgroundColor:'rgba(237,125,49,.12)', borderWidth:2.5, pointRadius:2.5, spanGaps:true, tension:0,
           datalabels:{display:true, anchor:'end', align:'top', offset:6,
-            formatter:v=>v==null?'':v.toFixed(2)+'%', font:{size:11, weight:'700'}, color:'#ED7D31',
-            backgroundColor: dark?'rgba(30,30,40,.85)':'rgba(255,255,255,.85)', borderRadius:3, padding:{left:4,right:4,top:1,bottom:1}}},
+            formatter:v=>v==null?'':v.toFixed(2)+'%', font:{size:11, weight:'700'}, color:'#ED7D31',}},
       ],
     },
     options:{
@@ -18919,8 +18905,7 @@ function ipRenderChartAnualInicio(){
           data: visibles.map(f=>f.ipt_pct==null?null:f.ipt_pct*100), borderColor:'#ED7D31',
           backgroundColor:'rgba(237,125,49,.12)', borderWidth:2.5, pointRadius:2, spanGaps:true, tension:0,
           datalabels:{display:true, anchor:'end', align:'top', offset:6,
-            formatter:v=>v==null?'':v.toFixed(2)+'%', font:{size:11, weight:'700'}, color:'#ED7D31',
-            backgroundColor: dark?'rgba(30,30,40,.85)':'rgba(255,255,255,.85)', borderRadius:3, padding:{left:4,right:4,top:1,bottom:1}}},
+            formatter:v=>v==null?'':v.toFixed(2)+'%', font:{size:11, weight:'700'}, color:'#ED7D31',}},
       ],
     },
     options:{
@@ -18968,6 +18953,19 @@ function labelMesLargo(m, conAnio=true){
   const t = d.toLocaleDateString('es-CO', {month:'long'});
   const mes = t.charAt(0).toUpperCase()+t.slice(1);
   return conAnio ? `${mes}-${y}` : mes;
+}
+
+// Tick del eje X en 2 renglones (mes/año), SIN rotar -- estilo Excel --
+// pedido explícito ("en todas las garficas... quiero que sea Ago-2025 y
+// no lo hagas en diagonal" + captura de un eje de Excel con los meses
+// apilados horizontales en 2 líneas). Solo reformatea lo que se DIBUJA
+// (Chart.js acepta un array = una línea por elemento) -- el label
+// original de chart.data.labels NO se toca, así que exportar a Excel
+// (que sí necesita el texto plano de la categoría) sigue funcionando
+// igual. Si el label no tiene espacio (ej. una fecha "2025-08-15" en
+// vista diaria) simplemente no se parte -- sale igual que antes.
+function _tickDosLineas(val){
+  return this.getLabelForValue(val).split(' ');
 }
 
 /* ---- Multiselect genérico (Zona / Alimentador / Nivel) ----
@@ -19690,8 +19688,7 @@ function renderPrincipalUnNivel(){
           borderWidth:3, pointRadius:6, pointBackgroundColor:colorPct, pointBorderColor:'#fff', pointBorderWidth:2,
           tension:0, fill:false, yAxisID:'yPct', order:1, spanGaps:false,
           datalabels:{display:labels.length<=24, anchor:'end', align:'top', offset:10,
-            formatter:v=>(v||0).toFixed(2)+'%', font:{size:13,weight:'800'}, color:colorPct,
-            backgroundColor:'rgba(255,255,255,.92)', borderRadius:4, padding:{left:5,right:5,top:2,bottom:2}}},
+            formatter:v=>(v||0).toFixed(2)+'%', font:{size:13,weight:'800'}, color:colorPct,}},
         {type:'line', label:'Senda Regulatoria', data:labels.map(()=>cregVal),
           borderColor:'rgba(120,120,120,.7)', backgroundColor:'transparent', borderWidth:2, borderDash:[7,5],
           pointRadius:0, pointHoverRadius:3, tension:0, fill:false, yAxisID:'yPct', order:4},
@@ -19713,7 +19710,7 @@ function renderPrincipalUnNivel(){
         }}},
       },
       scales:{
-        x:{grid:{display:false}, ticks:{color:tickXFuerte, font:{size:12}, autoSkip:false, maxRotation:0, minRotation:0}},
+        x:{grid:{display:false}, ticks:{color:tickXFuerte, font:{size:12}, autoSkip:false, maxRotation:0, minRotation:0, callback:_tickDosLineas}},
         yEnt:{type:'linear', position:'left', beginAtZero:true, grid:{color:gridC},
           ticks:{color:'#0096c7', font:{size:13}, callback:v=>fmtGwh(v)},
           title:{display:true, text:'Entradas (GWh)', color:'#0096c7', font:{size:12}}},
@@ -19787,8 +19784,7 @@ function renderPrincipalMultiNivel(){
       datalabels:{
         display:ctx2=> labels.length<=24 && ctx2.dataIndex===data.length-1 && data[ctx2.dataIndex]!=null,
         anchor:'end', align:'right', offset:4,
-        formatter:v=>`N${s.clave}: ${(v||0).toFixed(2)}%`, font:{size:11,weight:'800'}, color: colorParaNivel(s.clave, niveles),
-        backgroundColor:'rgba(255,255,255,.92)', borderRadius:4, padding:{left:5,right:5,top:2,bottom:2}},
+        formatter:v=>`N${s.clave}: ${(v||0).toFixed(2)}%`, font:{size:11,weight:'800'}, color: colorParaNivel(s.clave, niveles),},
     };
   });
 
@@ -19809,7 +19805,7 @@ function renderPrincipalMultiNivel(){
         }}},
       },
       scales:{
-        x:{grid:{display:false}, ticks:{color:tickXFuerte, font:{size:12}, autoSkip:false, maxRotation:0, minRotation:0}},
+        x:{grid:{display:false}, ticks:{color:tickXFuerte, font:{size:12}, autoSkip:false, maxRotation:0, minRotation:0, callback:_tickDosLineas}},
         yEnt:{type:'linear', position:'left', beginAtZero:true, display:mostrarEntrada, grid:{color:gridC},
           ticks:{color:'#0096c7', font:{size:13}, callback:v=>fmtGwh(v)},
           title:{display:true, text:'Entradas (GWh)', color:'#0096c7', font:{size:12}}},
@@ -20016,7 +20012,7 @@ function renderValuacionZonas(){
       if(zonaYaPintada.size>0) claseSep = ' class="zona-sep"';
       zonaYaPintada.add(f.zona);
       celdaZona = `<td rowspan="${conteoZona[f.zona]}" style="vertical-align:middle;border-right:1px solid var(--border)">
-        <span class="zb" style="background:${colorParaZona(f.zona)}22;color:${colorParaZona(f.zona)}">${f.zona}</span></td>`;
+        <span class="zb" style="background:${colorParaZona(f.zona)}22;color:var(--text)">${f.zona}</span></td>`;
     }
     return `<tr${claseSep}>
       ${celdaZona}
@@ -20951,8 +20947,7 @@ function _informesDatalabelChip(color, dark, tamano=15, sufijo='%'){
   return {display:true, anchor:'end', align:'top', offset:6,
     font: ctx => ({size: esUltimo(ctx) ? tamano+4 : tamano, weight:'700'}),
     color: ctx => esUltimo(ctx) ? INFORMES_COLOR_RESALTE : color,
-    formatter: v => v==null ? '' : (sufijo==='%' ? v.toFixed(2)+'%' : Math.round(v).toLocaleString('es-CO')),
-    backgroundColor: dark?'rgba(30,30,40,.85)':'rgba(255,255,255,.9)', borderRadius:3, padding:{left:4,right:4,top:1,bottom:1}};
+    formatter: v => v==null ? '' : (sufijo==='%' ? v.toFixed(2)+'%' : Math.round(v).toLocaleString('es-CO')),};
 }
 
 // Ventana de 24 meses -- mismo largo que la Figura 1 de la plantilla real
@@ -21003,7 +20998,7 @@ async function informesFiguraIptMensual(mesClave){
     labels: visibles.map(f => labelMes(ipClaveNormal(f))),
     datasets: [
       {type:'bar', label:'Pérdida Mensual (kWh)', yAxisID:'y', order:2, data: visibles.map(f=>f.perdida_mensual_kwh),
-        backgroundColor:'rgba(68,114,196,.35)', borderColor:'#4472C4', borderWidth:1, datalabels:{display:false}},
+        backgroundColor:'#4472C4', borderWidth:0, datalabels:{display:false}},
       {type:'line', label:'% Pérdida Mensual', yAxisID:'yPct', order:1, data: visibles.map(f=>f.pct_perdida_mensual*100),
         borderColor:'#ED7D31', backgroundColor:'transparent', borderWidth:3, tension:0,
         ..._informesResaltarUltimo(visibles.length, '#ED7D31'), datalabels:_informesDatalabelChip('#ED7D31', false, 15)},
@@ -21343,13 +21338,12 @@ async function informesFiguraSubestacion(porNem, nemonicos, mesClave){
       ..._informesResaltarUltimo(visibles.length, color, 2, 6),
       datalabels:{display:true, anchor:'end', align:'top', offset:4, formatter:v=>v==null?'':v.toFixed(2)+'%',
         font: ctx => ({size: ctx.dataIndex===ctx.dataset.data.length-1?18:14, weight:'700'}),
-        color: ctx => ctx.dataIndex===ctx.dataset.data.length-1?INFORMES_COLOR_RESALTE:color,
-        backgroundColor:'rgba(255,255,255,.85)', borderRadius:3, padding:{left:4,right:4,top:1,bottom:1}},
+        color: ctx => ctx.dataIndex===ctx.dataset.data.length-1?INFORMES_COLOR_RESALTE:color,},
     };
   });
   return _informesGraficoAImagen({
     titulo: 'Pérdida % por Alimentador',
-    labels: visibles.map(c => labelMesLargo(c)),
+    labels: visibles.map(c => labelMes(c)),
     datasets,
     scales:{ y:{ticks:{callback:v=>v.toFixed(0)+'%'}, title:{display:true,text:'Pérdida (%)', font:{size:13}}} },
   });
@@ -21514,7 +21508,7 @@ async function informesFiguraN21(serie, idx, etiqueta){
   if(!visibles.length) return null;
   return _informesGraficoAImagen({
     titulo: 'Pérdidas Mensuales',
-    labels: visibles.map(f => labelMesLargo(f.clave)),
+    labels: visibles.map(f => labelMes(f.clave)),
     datasets: [
       {type:'line', label:'Entrada kWh/Mes', yAxisID:'y', order:4, fill:'origin',
         data: visibles.map(f=>f.entrada), borderColor:'#00B050', backgroundColor:'rgba(0,176,80,.20)',
@@ -21526,9 +21520,9 @@ async function informesFiguraN21(serie, idx, etiqueta){
         data: visibles.map(f=>f.perdida), borderColor:'#4472C4', backgroundColor:'rgba(68,114,196,.35)',
         borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0, datalabels:{display:false}},
       {type:'line', label:`Pérdida % ${etiqueta}`, yAxisID:'yPct', order:1,
-        data: visibles.map(f=>f.pct), borderColor:'#7030A0', backgroundColor:'transparent',
-        borderWidth:3, spanGaps:true, tension:0, ..._informesResaltarUltimo(visibles.length, '#7030A0'),
-        datalabels:_informesDatalabelChip('#7030A0', false, 15)},
+        data: visibles.map(f=>f.pct), borderColor:'#ED7D31', backgroundColor:'transparent',
+        borderWidth:3, spanGaps:true, tension:0, ..._informesResaltarUltimo(visibles.length, '#ED7D31'),
+        datalabels:_informesDatalabelChip('#ED7D31', false, 15)},
     ],
     scales:{
       yPct:{position:'right', grid:{drawOnChartArea:false}, ticks:{callback:v=>v.toFixed(1)+'%'}},
@@ -21795,7 +21789,7 @@ async function informesFiguraNivelSerie(serie, idx, etiqueta, sufijoTitulo){
   if(!visibles.length) return null;
   return _informesGraficoAImagen({
     titulo: `Pérdidas ${sufijoTitulo} -- ${etiqueta}`,
-    labels: visibles.map(f => labelMesLargo(f.clave)),
+    labels: visibles.map(f => labelMes(f.clave)),
     datasets: [
       {type:'line', label:'Entrada kWh', yAxisID:'y', order:4, fill:'origin',
         data: visibles.map(f=>f.entrada), borderColor:'#00B050', backgroundColor:'rgba(0,176,80,.20)',
@@ -21807,9 +21801,9 @@ async function informesFiguraNivelSerie(serie, idx, etiqueta, sufijoTitulo){
         data: visibles.map(f=>f.perdida), borderColor:'#4472C4', backgroundColor:'rgba(68,114,196,.35)',
         borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0, datalabels:{display:false}},
       {type:'line', label:`Pérdida % ${etiqueta}`, yAxisID:'yPct', order:1,
-        data: visibles.map(f=>f.pct), borderColor:'#7030A0', backgroundColor:'transparent',
-        borderWidth:3, spanGaps:true, tension:0, ..._informesResaltarUltimo(visibles.length, '#7030A0'),
-        datalabels:_informesDatalabelChip('#7030A0', false, 15)},
+        data: visibles.map(f=>f.pct), borderColor:'#ED7D31', backgroundColor:'transparent',
+        borderWidth:3, spanGaps:true, tension:0, ..._informesResaltarUltimo(visibles.length, '#ED7D31'),
+        datalabels:_informesDatalabelChip('#ED7D31', false, 15)},
     ],
     scales:{
       yPct:{position:'right', grid:{drawOnChartArea:false}, ticks:{callback:v=>v.toFixed(1)+'%'}},
@@ -21842,12 +21836,11 @@ async function informesFiguraNivelTecnica(mensual, tecnicaPorMes, etiqueta){
       const delta = v-anterior;
       return [fk(v), `${delta>=0?'▲':'▼'} ${fk(Math.abs(delta))}`];
     },
-    color: colorBase, backgroundColor:'rgba(255,255,255,.85)', borderRadius:4,
-    padding:{top:2,bottom:2,left:5,right:5}, font:{size:10, weight:'700'},
+    color: colorBase, font:{size:10, weight:'700'},
   });
   return _informesGraficoAImagen({
     titulo: `Pérdida Total vs Pérdida Técnica -- ${etiqueta}`,
-    labels: visibles.map(f => labelMesLargo(f.clave)),
+    labels: visibles.map(f => labelMes(f.clave)),
     datasets: [
       {type:'line', label:'Pérdida Total (balance real)', data: valoresTotal, borderColor:'#4472C4', backgroundColor:'rgba(68,114,196,.15)',
         fill:'origin', borderWidth:2.5, pointRadius:2, spanGaps:true, tension:0, datalabels:datalabelsConDelta(valoresTotal,'#4472C4','top')},
@@ -21993,7 +21986,7 @@ async function informesFiguraNivel3ZonasComparativo(porZona, mesClave){
   });
   return _informesGraficoAImagen({
     titulo: 'Comparativo de Índice de Pérdidas por Zona -- Nivel 3',
-    labels: claves.map(c => labelMesLargo(c)),
+    labels: claves.map(c => labelMes(c)),
     datasets,
     scales:{ y:{ticks:{callback:v=>v.toFixed(1)+'%'}} },
   });
@@ -22270,7 +22263,7 @@ function _informesTablaHtmlSubestaciones(filas){
     const colorCrec = f.deltaPerdidaCrec==null ? 'var(--text3)' : (f.deltaPerdidaCrec>=0 ? '#C00000' : '#00B050');
     return `<tr>
       <td style="text-align:left;font-weight:700">${f.sub}</td>
-      <td><span class="zb" style="background:${color}22;color:${color}">${f.zona}</span></td>
+      <td><span class="zb" style="background:${color}22;color:var(--text)">${f.zona}</span></td>
       <td>${fmtKwh(f.entrada)}</td>
       <td class="alimsub-col-var" style="color:${colorDeltaEntrada}">${fmtDeltaKwh(f.deltaEntrada)}</td>
       <td>${fmtKwh(f.salida)}</td>
@@ -22302,8 +22295,8 @@ function _informesTablaHtmlAlimentadores(filas){
     const colorCrec = f.deltaPerdidaCrec==null ? 'var(--text3)' : (f.deltaPerdidaCrec>=0 ? '#C00000' : '#00B050');
     return `<tr>
       <td style="text-align:left;font-weight:700">${f.nombre}</td>
-      <td><span class="zb" style="background:${color}22;color:${color}">${f.zona}</span></td>
-      <td><span class="zb" style="background:${colorLey}22;color:${colorLey}">${f.leyenda}</span></td>
+      <td><span class="zb" style="background:${color}22;color:var(--text)">${f.zona}</span></td>
+      <td><span class="zb" style="background:${colorLey}22;color:var(--text)">${f.leyenda}</span></td>
       <td>${fmt0(f.gestLongitud)}</td>
       <td>${fmt0(f.gestionable)}</td>
       <td>${fmtPct(f.gestPct)}</td>
@@ -22412,9 +22405,9 @@ async function informesFiguraIpComercial(mesClave){
     titulo: 'Índice de Pérdidas Comercial',
     labels: visibles.map(f => labelMes(ipComercialClave(f))),
     datasets: [{type:'line', label:'Índice de Pérdidas Comercial (%)', data: visibles.map(f=>f.perdida_pct_12),
-      borderColor:'#7030A0', backgroundColor:'rgba(112,48,160,.12)', fill:true, borderWidth:2.5, tension:0,
-      ..._informesResaltarUltimo(visibles.length, '#7030A0'),
-      datalabels:_informesDatalabelChip('#7030A0', false)}],
+      borderColor:'#ED7D31', backgroundColor:'rgba(237,125,49,.12)', fill:true, borderWidth:2.5, tension:0,
+      ..._informesResaltarUltimo(visibles.length, '#ED7D31'),
+      datalabels:_informesDatalabelChip('#ED7D31', false)}],
     scales:{ y:{ticks:{callback:v=>v.toFixed(1)+'%'}} },
   });
 }
@@ -23464,7 +23457,7 @@ function pfRenderChartMensual(){
       responsive:true, maintainAspectRatio:false,
       plugins:{legend:{display:false}, tooltip:{callbacks:{label:c=>`${c.raw} día(s)`}}},
       scales:{
-        x:{grid:{display:false}, ticks:{color:tickC, font:{size:10}, maxRotation:45, minRotation:45}},
+        x:{grid:{display:false}, ticks:{color:tickC, font:{size:10}, maxRotation:0, minRotation:0, callback:_tickDosLineas}},
         y:{beginAtZero:true, ticks:{color:tickC, precision:0, stepSize:1}},
       },
     },
