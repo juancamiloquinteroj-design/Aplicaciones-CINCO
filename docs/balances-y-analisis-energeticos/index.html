@@ -2942,7 +2942,7 @@ tfoot td:first-child{text-align:left}
       <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">
         <div style="flex:1;min-width:360px">
           <div class="fbar" style="justify-content:center;margin-bottom:8px">
-            <div style="font-size:13px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Pérdida Gestionable por Circuito</div>
+            <div style="font-size:13px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Pérdida Histórica Gestionable por Circuito</div>
             <button type="button" class="be-modo-btn activo" id="alim3-circuitos-btn-pct" style="margin-left:10px" onclick="alim3ToggleModoCircuitos('pct')">%</button>
             <button type="button" class="be-modo-btn" id="alim3-circuitos-btn-km" onclick="alim3ToggleModoCircuitos('km')">kWh/km</button>
           </div>
@@ -4256,7 +4256,12 @@ function _expTextoTitulo(el){
   const hermanos = _expHermanosDeTitulo(el);
   for(let i = hermanos.length - 1; i >= 0; i--){
     const clon = hermanos[i].cloneNode(true);
-    clon.querySelectorAll('button,select,input').forEach(x => x.remove());
+    // .hidden (ej. el panel desplegable CERRADO de un multiselect .msel,
+    // que igual trae todo el texto de sus opciones en el HTML) también se
+    // saca -- pedido explícito ("no pero ese titulo asi no"): salía la
+    // lista completa de circuitos del multiselect en vez del título real,
+    // porque ese panel, aunque escondido con CSS, sigue teniendo texto.
+    clon.querySelectorAll('button,select,input,.hidden').forEach(x => x.remove());
     const texto = clon.textContent.replace(/\s+/g, ' ').trim();
     if(texto) return texto;
   }
@@ -13611,13 +13616,17 @@ function alim3RenderChartCircuitos(){
     options:{
       responsive:true, maintainAspectRatio:false,
       interaction:{mode:'index', intersect:false},
-      layout:{padding:{top:26}},
+      // padding.right + offset:true en el eje X -- pedido explícito
+      // ("tambien sale cortado el dato de % en junio"): el último punto
+      // quedaba pegado al borde derecho del canvas, así que el chip de
+      // su etiqueta (más ancho que el punto) se salía y se veía cortado.
+      layout:{padding:{top:26, right:16}},
       plugins:{
         legend:{display:true, position:'bottom', labels:{boxWidth:10, font:{size:9}, color:tickC}},
         tooltip:{callbacks:{label:c => c.raw==null ? null : `${c.dataset.label}: ${fmtY(c.raw)}${esPct?'':' kWh/km'}`}},
       },
       scales:{
-        x:{grid:{display:false}, ticks:{color:tickC, font:{size:10}, maxRotation:45, minRotation:45}},
+        x:{grid:{display:false}, offset:true, ticks:{color:tickC, font:{size:10}, maxRotation:45, minRotation:45}},
         y:{ticks:{color:tickC, font:{size:10}, callback:fmtY},
           title:{display:true, text: esPct ? 'Pérdida Gestionable (%)' : 'Pérdida Gestionable (kWh/km)', color:tickC, font:{size:10}}},
       },
