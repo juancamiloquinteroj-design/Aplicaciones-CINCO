@@ -2942,7 +2942,9 @@ tfoot td:first-child{text-align:left}
       <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">
         <div style="flex:1;min-width:360px">
           <div class="fbar" style="justify-content:center;margin-bottom:8px">
-            <div style="font-size:13px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Comparativo de Circuitos</div>
+            <div style="font-size:13px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Pérdida Gestionable por Circuito</div>
+            <button type="button" class="be-modo-btn activo" id="alim3-circuitos-btn-pct" style="margin-left:10px" onclick="alim3ToggleModoCircuitos('pct')">%</button>
+            <button type="button" class="be-modo-btn" id="alim3-circuitos-btn-km" onclick="alim3ToggleModoCircuitos('km')">kWh/km</button>
           </div>
           <div class="msel" id="msel-alim3-circuitos" style="margin-bottom:10px"></div>
           <div class="chart-wrap" style="height:380px"><canvas id="ch-alim3-circuitos"></canvas></div>
@@ -13476,8 +13478,8 @@ async function alim3Cargar(){
   alim3PoblarMselCircuitos();
 }
 
-// Multiselect de circuitos (cualquier zona) para "Comparativo de
-// Circuitos" -- pedido explícito ("poder seleccionar varios circuitos y
+// Multiselect de circuitos (cualquier zona) para "Pérdida Gestionable
+// por Circuito" -- pedido explícito ("poder seleccionar varios circuitos y
 // poderlos mostrar ahi"). Opciones = todos los Nombre Spard distintos de
 // ALIM_FILAS, sin filtrar por la Zona activa (a propósito: el usuario
 // quiere poder comparar circuitos de zonas distintas en la misma
@@ -13491,12 +13493,28 @@ function alim3PoblarMselCircuitos(){
 }
 
 let chAlim3Circuitos = null;
-// Pérdida % mensual de cada circuito elegido, una línea por circuito --
-// respeta el filtro Rango (Desde/Hasta) del resto del módulo
-// (alim3VisiblesRango). Las series pueden tener meses distintos entre sí
-// (un circuito puede no tener dato en algún mes) -- se arma la UNIÓN de
-// claves de todos los seleccionados para el eje X, con huecos (null,
-// spanGaps) donde a alguno le falte.
+// "%" (Gestionable/Pérdida, misma fórmula que "Gestionable % Top" de Top
+// Alimentadores) o "km" (Gestionable/Longitud, misma fórmula que "Gest x
+// Longitud") -- pedido explícito ("quiero que sea la perdida gestionable
+// por circuito en %... puede ser grafico de barras o mostrar la perdida
+// gestionable por km" → "o ambas cosas mostrar"): las dos quedan
+// disponibles con un botón, no hay que elegir una sola.
+let ALIM3_CIRCUITOS_MODO = 'pct';
+function alim3ToggleModoCircuitos(modo){
+  ALIM3_CIRCUITOS_MODO = modo;
+  document.getElementById('alim3-circuitos-btn-pct').classList.toggle('activo', modo==='pct');
+  document.getElementById('alim3-circuitos-btn-km').classList.toggle('activo', modo==='km');
+  alim3RenderChartCircuitos();
+}
+
+// Pérdida GESTIONABLE mensual de cada circuito elegido, una línea por
+// circuito -- pedido explícito ("ahi esta comparando perdida gestionable
+// o que? quiero que sea la perdida gestionable"; antes mostraba Pérdida
+// Total %, no Gestionable). Respeta el filtro Rango (Desde/Hasta) del
+// resto del módulo (alim3VisiblesRango). Las series pueden tener meses
+// distintos entre sí (un circuito puede no tener dato en algún mes) --
+// se arma la UNIÓN de claves de todos los seleccionados para el eje X,
+// con huecos (null, spanGaps) donde a alguno le falte.
 function alim3RenderChartCircuitos(){
   const cv = document.getElementById('ch-alim3-circuitos');
   if(!cv) return;
@@ -13505,10 +13523,14 @@ function alim3RenderChartCircuitos(){
   if(!seleccionados.length) return;
   const dark = document.documentElement.getAttribute('data-theme')==='dark';
   const tickC = dark ? '#aab8d1' : '#4b5e7a';
+  const esPct = ALIM3_CIRCUITOS_MODO === 'pct';
 
   const seriePorCircuito = seleccionados.map(nem => {
     const filas = ALIM_FILAS.filter(f => f.nemonico === nem).sort((a,b) => (a.anio*12+a.mes)-(b.anio*12+b.mes));
-    const mensual = filas.map(f => ({clave: alimN21Clave(f.anio,f.mes), entrada: f.entrada_total||0, perdida: f.perdida_kwh||0}));
+    const mensual = filas.map(f => ({
+      clave: alimN21Clave(f.anio,f.mes), perdida: f.perdida_kwh||0,
+      gestionable: f.gestionable_kwh, longitud: f.longitud_total,
+    }));
     const visibles = alim3VisiblesRango(mensual);
     const nombre = filas.length ? (filas[filas.length-1].nombre_spard || nem) : nem;
     return {nem, nombre, serie: visibles};
@@ -13519,15 +13541,22 @@ function alim3RenderChartCircuitos(){
   const claves = [...clavesSet].sort();
   if(!claves.length) return;
 
+  const valorFila = f => {
+    if(!f || f.gestionable == null) return null;
+    if(esPct) return f.perdida ? f.gestionable/f.perdida*100 : null;
+    return (f.longitud>0) ? f.gestionable/f.longitud : null;
+  };
+
   const datasets = seriePorCircuito.map((c, i) => {
     const porClave = new Map(c.serie.map(f => [f.clave, f]));
     return {
       type:'line', label: c.nombre, borderColor: alimSubColor(i, seriePorCircuito.length), backgroundColor:'transparent',
       borderWidth:2, tension:.25, spanGaps:true, pointRadius:2,
-      data: claves.map(cl => { const f = porClave.get(cl); return (f && f.entrada) ? f.perdida/f.entrada*100 : null; }),
+      data: claves.map(cl => valorFila(porClave.get(cl))),
     };
   });
 
+  const fmtY = v => esPct ? `${v.toFixed(1)}%` : v.toLocaleString('es-CO',{maximumFractionDigits:0});
   chAlim3Circuitos = new Chart(cv, {
     data:{labels: claves.map(c => labelMes(c)), datasets},
     options:{
@@ -13535,11 +13564,12 @@ function alim3RenderChartCircuitos(){
       interaction:{mode:'index', intersect:false},
       plugins:{
         legend:{display:true, position:'bottom', labels:{boxWidth:10, font:{size:9}, color:tickC}},
-        tooltip:{callbacks:{label:c => c.raw==null ? null : `${c.dataset.label}: ${c.raw.toFixed(2)}%`}},
+        tooltip:{callbacks:{label:c => c.raw==null ? null : `${c.dataset.label}: ${fmtY(c.raw)}${esPct?'':' kWh/km'}`}},
       },
       scales:{
         x:{grid:{display:false}, ticks:{color:tickC, font:{size:10}, maxRotation:45, minRotation:45}},
-        y:{ticks:{color:tickC, font:{size:10}, callback:v=>v.toFixed(1)+'%'}, title:{display:true, text:'Pérdida %', color:tickC, font:{size:10}}},
+        y:{ticks:{color:tickC, font:{size:10}, callback:fmtY},
+          title:{display:true, text: esPct ? 'Pérdida Gestionable (%)' : 'Pérdida Gestionable (kWh/km)', color:tickC, font:{size:10}}},
       },
     },
   });
