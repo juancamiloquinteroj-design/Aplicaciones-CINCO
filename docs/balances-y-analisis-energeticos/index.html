@@ -11495,12 +11495,16 @@ function _narrativaTablaHtml(datos, tituloTabla){
   // hablan de "Crecimiento de Pérdidas": una en puntos porcentuales (la
   // diferencia entre cuánto creció la Entrada vs. cuánto creció la Salida),
   // otra en kWh equivalentes (esa misma diferencia, en energía).
+  // Título de cada tabla y encabezado (fila 1) en negro/negrilla, no el
+  // gris tenue de siempre -- pedido explícito ("el titulo o fila 1 de la
+  // tabla... utiliza negrilla con negro para que haya un contraste").
+  const thEstilo = 'color:var(--text);font-weight:800';
   return `
-    <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;margin:10px 0 4px">${tituloTabla}</div>
+    <div style="font-size:11px;font-weight:800;color:var(--text);text-transform:uppercase;margin:10px 0 4px">${tituloTabla}</div>
     <div class="be-tabla-scroll">
       <table class="be-tabla-creadas" style="width:auto">
         <thead><tr>
-          <th>Concepto</th><th>${mesAnteriorTxt}</th><th>${mesActualTxt}</th><th>Δ</th><th>Δ%</th>
+          <th style="${thEstilo}">Concepto</th><th style="${thEstilo}">${mesAnteriorTxt}</th><th style="${thEstilo}">${mesActualTxt}</th><th style="${thEstilo}">Δ</th><th style="${thEstilo}">Δ%</th>
         </tr></thead>
         <tbody>
           ${filaConcepto('Entrada', datos.anterior.entrada, datos.actual.entrada)}
@@ -11530,8 +11534,10 @@ function _narrativaEntradaSalidaHtml(mensual, titulo){
   const datosMensual = claveActual ? _narrativaEntradaSalidaDatos(mensual, claveActual, 'mensual') : null;
   return `
     <div class="be-tabla-creadas-titulo">${titulo}</div>
-    ${_narrativaTablaHtml(datosInteranual, 'Interanual (año contra año)')}
-    ${_narrativaTablaHtml(datosMensual, 'Mensual (mes contra mes)')}
+    <div style="display:flex;gap:28px;flex-wrap:wrap">
+      <div>${_narrativaTablaHtml(datosInteranual, 'Interanual (año contra año)')}</div>
+      <div>${_narrativaTablaHtml(datosMensual, 'Mensual (mes contra mes)')}</div>
+    </div>
   `;
 }
 
@@ -16404,20 +16410,25 @@ function alimN21RenderNarrativaZonas(){
     const crece = datos.brecha > UMBRAL;
     const baja = datos.brecha < -UMBRAL;
     return `<tr>
-      <td style="text-align:left;font-weight:700">${z}</td>
-      <td>${fKwh(datos.actual.entrada)} kWh</td>
-      <td>${signo(datos.pctEntrada)}${fPct(datos.pctEntrada)}%</td>
-      <td>${fKwh(datos.actual.salida)} kWh</td>
-      <td>${signo(datos.pctSalida)}${fPct(datos.pctSalida)}%</td>
+      <td style="text-align:left;font-weight:700;color:var(--text)">${z}</td>
+      <td style="color:var(--text)">${fKwh(datos.actual.entrada)} kWh</td>
+      <td style="color:var(--text)">${signo(datos.pctEntrada)}${fPct(datos.pctEntrada)}%</td>
+      <td style="color:var(--text)">${fKwh(datos.actual.salida)} kWh</td>
+      <td style="color:var(--text)">${signo(datos.pctSalida)}${fPct(datos.pctSalida)}%</td>
       <td><span class="n21tab-impacto ${crece?'sube':(baja?'baja':'')}" style="width:auto;padding:2px 8px">${signo(datos.brecha)}${fPct(datos.brecha)} pp</span></td>
-      <td style="font-weight:700;color:${crece?'#C00000':(baja?'#00B050':'inherit')}">${fGwh(datos.kwhNoFacturado)} GWh</td>
+      <td style="font-weight:700;color:${crece?'#C00000':(baja?'#00B050':'var(--text)')}">${signo(datos.kwhNoFacturado)}${fGwh(datos.kwhNoFacturado)} GWh</td>
     </tr>`;
   }).join('');
 
-  cont.innerHTML = `<div class="be-tabla-creadas-titulo">Por Qué Crece el Indicador -- por Zona</div>
+  // Título/encabezado en negro-negrilla, no gris -- mismo pedido que la
+  // tabla de arriba ("el titulo o fila 1 de la tabla... negrilla con
+  // negro"). Nombres de columna alineados a "Crecimiento de Pérdidas"
+  // (mismo pedido: "no llames brecha... si no que hable de crecimiento de perdidas").
+  const thEstilo = 'color:var(--text);font-weight:800';
+  cont.innerHTML = `<div class="be-tabla-creadas-titulo" style="color:var(--text)">Por Qué Crece el Indicador -- por Zona</div>
   <div class="be-tabla-scroll"><table class="be-tabla-creadas" style="width:auto">
     <thead><tr>
-      <th>Zona</th><th>Entrada (mes actual)</th><th>Δ% Entrada</th><th>Salida (mes actual)</th><th>Δ% Salida</th><th>Brecha</th><th>Acumulado mensual</th>
+      <th style="${thEstilo}">Zona</th><th style="${thEstilo}">Entrada (mes actual)</th><th style="${thEstilo}">Δ% Entrada</th><th style="${thEstilo}">Salida (mes actual)</th><th style="${thEstilo}">Δ% Salida</th><th style="${thEstilo}">Crecimiento de Pérdidas (pp)</th><th style="${thEstilo}">Crecimiento de Pérdidas (kWh)</th>
     </tr></thead>
     <tbody>${filas}</tbody>
   </table></div>`;
@@ -21022,7 +21033,13 @@ async function _informesGraficoAImagen({labels, datasets, scales, titulo, ancho=
   return {bytes: _informesDataUrlAUint8(dataUrl), width: ancho, height: alto, tipo:'jpg'};
 }
 
-function _informesParrafoImagen(imgResultado, anchoDoc=600){
+// anchoDoc=665px -- docx.js trata transformation.width como píxeles a 96
+// DPI; 665px = 17,59cm, el ancho imprimible de una hoja carta con
+// márgenes de 2cm (mismo criterio que _expImagenChart, el botón de
+// exportar PNG de cada gráfica) -- pedido explícito ("así se ve cuando
+// la inserto en Word, se ve cuadrada... yo necesito que se vea así como
+// marco en rojo", marcando que la gráfica debe llegar hasta el margen).
+function _informesParrafoImagen(imgResultado, anchoDoc=665){
   if(!imgResultado) return null;
   const alto = Math.round(anchoDoc * imgResultado.height / imgResultado.width);
   return new docx.Paragraph({
