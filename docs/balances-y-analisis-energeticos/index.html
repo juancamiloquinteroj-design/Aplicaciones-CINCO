@@ -4614,34 +4614,63 @@ function _expEscXml(s){
 // gráfico quede "vivo" en Excel (clickeable/editable), con el valor
 // cacheado también (c:numCache/c:strCache) para que abra con datos sin
 // tener que recalcular nada.
-function _expConstruirChartXmlNativo({tipo, titulo, esHorizontal, esApilada, nombreHoja, categorias, series, filaEncabezado, filaPrimerDato, filaUltimoDato}){
+// `grupos`: 1 o 2 elementos -- cada uno {tipo, esHorizontal, esApilada,
+// series, tituloEje}. Con 2 grupos arma un eje Y SECUNDARIO (a la
+// derecha) -- pedido explícito ("extender el nativo a eje doble... la
+// banda de proyección se mostraria como 2 lineas normales"): OOXML
+// asigna el eje por BLOQUE de tipo de gráfico, no por serie suelta, así
+// que cada grupo es su propio <c:lineChart>/<c:barChart> con su propio
+// par de ejes (categoría+valor) -- el segundo eje de categoría queda
+// oculto (c:delete val="1"), comparte las mismas categorías/orden que el
+// primero, solo existe porque el eje de valor secundario lo necesita
+// para cruzar contra algo.
+function _expConstruirChartXmlNativo({titulo, nombreHoja, categorias, grupos, filaEncabezado, filaPrimerDato, filaUltimoDato}){
   const nHoja = nombreHoja.replace(/'/g, "''");
   const catRef = `'${nHoja}'!$A$${filaPrimerDato}:$A$${filaUltimoDato}`;
   const catCache = categorias.map((c,i) => `<c:pt idx="${i}"><c:v>${_expEscXml(c)}</c:v></c:pt>`).join('');
   const catXml = `<c:cat><c:strRef><c:f>${catRef}</c:f><c:strCache><c:ptCount val="${categorias.length}"/>${catCache}</c:strCache></c:strRef></c:cat>`;
 
-  const serXml = series.map((s, si) => {
-    const col = _expColLetraExcel(si+2);
-    const valRef = `'${nHoja}'!$${col}$${filaPrimerDato}:$${col}$${filaUltimoDato}`;
-    const nameRef = `'${nHoja}'!$${col}$${filaEncabezado}`;
-    const valCache = s.data.map((v,i) => v==null ? '' : `<c:pt idx="${i}"><c:v>${v}</c:v></c:pt>`).join('');
-    const spPr = tipo==='line'
-      ? `<c:spPr><a:ln w="19050"><a:solidFill><a:srgbClr val="${s.color}"/></a:solidFill></a:ln></c:spPr>
-         <c:marker><c:symbol val="circle"/><c:size val="5"/><c:spPr><a:solidFill><a:srgbClr val="${s.color}"/></a:solidFill><a:ln><a:solidFill><a:srgbClr val="${s.color}"/></a:solidFill></a:ln></c:spPr></c:marker>
-         <c:smooth val="0"/>`
-      : `<c:spPr><a:solidFill><a:srgbClr val="${s.color}"/></a:solidFill></c:spPr>`;
-    return `<c:ser>
-      <c:idx val="${si}"/><c:order val="${si}"/>
-      <c:tx><c:strRef><c:f>${nameRef}</c:f><c:strCache><c:ptCount val="1"/><c:pt idx="0"><c:v>${_expEscXml(s.label)}</c:v></c:pt></c:strCache></c:strRef></c:tx>
-      ${spPr}
-      ${catXml}
-      <c:val><c:numRef><c:f>${valRef}</c:f><c:numCache><c:formatCode>General</c:formatCode><c:ptCount val="${s.data.length}"/>${valCache}</c:numCache></c:numRef></c:val>
-    </c:ser>`;
+  // IDs de ejes: grupo 0 = catAx 111.../valAx 222... (izquierda);
+  // grupo 1 (si existe) = catAx 333.../valAx 444... (derecha, oculto el de categoría).
+  const AX_CAT = ['111111111', '333333333'];
+  const AX_VAL = ['222222222', '444444444'];
+
+  let colOffset = 0;  // cada grupo sigue tomando columnas B, C, D... de forma consecutiva
+  const bloques = grupos.map((g, gi) => {
+    const serXml = g.series.map((s, si) => {
+      const col = _expColLetraExcel(colOffset + si + 2);
+      const valRef = `'${nHoja}'!$${col}$${filaPrimerDato}:$${col}$${filaUltimoDato}`;
+      const nameRef = `'${nHoja}'!$${col}$${filaEncabezado}`;
+      const valCache = s.data.map((v,i) => v==null ? '' : `<c:pt idx="${i}"><c:v>${v}</c:v></c:pt>`).join('');
+      const spPr = g.tipo==='line'
+        ? `<c:spPr><a:ln w="19050"><a:solidFill><a:srgbClr val="${s.color}"/></a:solidFill></a:ln></c:spPr>
+           <c:marker><c:symbol val="circle"/><c:size val="5"/><c:spPr><a:solidFill><a:srgbClr val="${s.color}"/></a:solidFill><a:ln><a:solidFill><a:srgbClr val="${s.color}"/></a:solidFill></a:ln></c:spPr></c:marker>`
+        : `<c:spPr><a:solidFill><a:srgbClr val="${s.color}"/></a:solidFill></c:spPr>`;
+      const smoothXml = g.tipo==='line' ? `<c:smooth val="0"/>` : '';
+      return `<c:ser>
+        <c:idx val="${gi*100+si}"/><c:order val="${gi*100+si}"/>
+        <c:tx><c:strRef><c:f>${nameRef}</c:f><c:strCache><c:ptCount val="1"/><c:pt idx="0"><c:v>${_expEscXml(s.label)}</c:v></c:pt></c:strCache></c:strRef></c:tx>
+        ${spPr}
+        ${catXml}
+        <c:val><c:numRef><c:f>${valRef}</c:f><c:numCache><c:formatCode>General</c:formatCode><c:ptCount val="${s.data.length}"/>${valCache}</c:numCache></c:numRef></c:val>
+        ${smoothXml}
+      </c:ser>`;
+    }).join('');
+    colOffset += g.series.length;
+
+    const axIds = `<c:axId val="${AX_CAT[gi]}"/><c:axId val="${AX_VAL[gi]}"/>`;
+    const bloqueTipo = g.tipo === 'line'
+      ? `<c:lineChart><c:grouping val="standard"/><c:varyColors val="0"/>${serXml}<c:marker val="1"/>${axIds}</c:lineChart>`
+      : `<c:barChart><c:barDir val="${g.esHorizontal?'bar':'col'}"/><c:grouping val="${g.esApilada?'stacked':'clustered'}"/><c:varyColors val="0"/>${serXml}<c:gapWidth val="80"/>${g.esApilada?'<c:overlap val="100"/>':''}${axIds}</c:barChart>`;
+    return bloqueTipo;
   }).join('');
 
-  const bloqueTipo = tipo === 'line'
-    ? `<c:lineChart><c:grouping val="standard"/><c:varyColors val="0"/>${serXml}<c:marker val="1"/><c:axId val="111111111"/><c:axId val="222222222"/></c:lineChart>`
-    : `<c:barChart><c:barDir val="${esHorizontal?'bar':'col'}"/><c:grouping val="${esApilada?'stacked':'clustered'}"/><c:varyColors val="0"/>${serXml}<c:gapWidth val="80"/>${esApilada?'<c:overlap val="100"/>':''}<c:axId val="111111111"/><c:axId val="222222222"/></c:barChart>`;
+  const ejeCatXml = (idx, oculto) => `<c:catAx><c:axId val="${AX_CAT[idx]}"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="${oculto?1:0}"/><c:axPos val="b"/>${oculto?'':'<c:txPr><a:bodyPr rot="-2700000"/><a:lstStyle/><a:p><a:pPr><a:defRPr sz="900"/></a:pPr><a:endParaRPr lang="es-CO"/></a:p></c:txPr>'}<c:crossAx val="${AX_VAL[idx]}"/></c:catAx>`;
+  const ejeValXml = (idx, pos, tituloEje, cruzaAlMax) => `<c:valAx><c:axId val="${AX_VAL[idx]}"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="${pos}"/>${pos==='l'?'<c:majorGridlines><c:spPr><a:ln w="9525"><a:solidFill><a:srgbClr val="E1E0D9"/></a:solidFill></a:ln></c:spPr></c:majorGridlines>':''}${tituloEje?`<c:title><c:tx><c:rich><a:bodyPr rot="-5400000" vert="horz"/><a:lstStyle/><a:p><a:r><a:rPr lang="es-CO" sz="900"/><a:t>${_expEscXml(tituloEje)}</a:t></a:r></a:p></c:rich></c:tx><c:overlay val="0"/></c:title>`:''}<c:txPr><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr sz="900"/></a:pPr><a:endParaRPr lang="es-CO"/></a:p></c:txPr><c:crossAx val="${AX_CAT[idx]}"/>${cruzaAlMax?'<c:crosses val="max"/>':''}</c:valAx>`;
+
+  const ejesXml = grupos.length === 1
+    ? ejeCatXml(0,false) + ejeValXml(0,'l',grupos[0].tituloEje,false)
+    : ejeCatXml(0,false) + ejeValXml(0,'l',grupos[0].tituloEje,false) + ejeCatXml(1,true) + ejeValXml(1,'r',grupos[1].tituloEje,true);
 
   const tituloXml = titulo
     ? `<c:title><c:tx><c:rich><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr lang="es-CO" b="1" sz="1400"/><a:t>${_expEscXml(titulo)}</a:t></a:r></a:p></c:rich></c:tx><c:overlay val="0"/></c:title>`
@@ -4653,9 +4682,8 @@ function _expConstruirChartXmlNativo({tipo, titulo, esHorizontal, esApilada, nom
     ${tituloXml}
     <c:plotArea>
       <c:layout/>
-      ${bloqueTipo}
-      <c:catAx><c:axId val="111111111"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="b"/><c:txPr><a:bodyPr rot="-2700000"/><a:lstStyle/><a:p><a:pPr><a:defRPr sz="900"/></a:pPr><a:endParaRPr lang="es-CO"/></a:p></c:txPr><c:crossAx val="222222222"/></c:catAx>
-      <c:valAx><c:axId val="222222222"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="l"/><c:majorGridlines><c:spPr><a:ln w="9525"><a:solidFill><a:srgbClr val="E1E0D9"/></a:solidFill></a:ln></c:spPr></c:majorGridlines><c:txPr><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr sz="900"/></a:pPr><a:endParaRPr lang="es-CO"/></a:p></c:txPr><c:crossAx val="111111111"/></c:valAx>
+      ${bloques}
+      ${ejesXml}
     </c:plotArea>
     <c:legend><c:legendPos val="b"/><c:overlay val="0"/></c:legend>
     <c:plotVisOnly val="1"/>
@@ -4745,13 +4773,29 @@ async function _expChartExcel(wrapId, nombreBase, ev){
 
   const tituloTexto = _expTextoTitulo(wrap);
 
-  // ¿Este gráfico entra en el molde soportado para gráfica NATIVA? Todas
-  // las series del mismo tipo base (line o bar, sin combos) y un solo eje
-  // Y (sin eje doble) -- si no, se cae a la imagen embebida más abajo.
-  const tiposDataset = datasets.map(d => d.type || chart.config.type);
-  const tipoUnico = tiposDataset.every(t => t === tiposDataset[0]) ? tiposDataset[0] : null;
+  // ¿Este gráfico entra en el molde soportado para gráfica NATIVA? Series
+  // de un solo tipo base por eje (line O bar, sin combos DENTRO del mismo
+  // eje) y máximo 2 ejes Y -- pedido explícito ("extender el nativo a eje
+  // doble... la banda de proyección se mostraria como 2 lineas
+  // normales"): cada dataset se agrupa según su yAxisID real de Chart.js
+  // (default 'y' si no lo trae), y las columnas de la tabla de datos se
+  // REORDENAN para que las de un mismo eje queden contiguas -- el XML de
+  // Excel asigna el eje por BLOQUE de tipo de gráfico, no por serie suelta.
   const ejesY = Object.keys(chart.scales||{}).filter(k => chart.scales[k].axis === 'y');
-  const tipoNativoSoportado = (tipoUnico === 'line' || tipoUnico === 'bar') && ejesY.length <= 1;
+  let tipoNativoSoportado = ejesY.length >= 1 && ejesY.length <= 2;
+  const gruposDatasets = ejesY.map(ejeId => datasets.filter(d => (d.yAxisID||'y') === ejeId));
+  if(tipoNativoSoportado){
+    // Cada grupo debe ser homogéneo (todo line o todo bar) para poder
+    // representarlo en un solo bloque OOXML.
+    tipoNativoSoportado = gruposDatasets.every(gr => {
+      if(!gr.length) return true;
+      const tipos = gr.map(d => d.type || chart.config.type);
+      return tipos.every(t => t===tipos[0]) && (tipos[0]==='line' || tipos[0]==='bar');
+    }) && gruposDatasets.some(gr => gr.length);
+  }
+  // Orden final de datasets (agrupados por eje, mismo orden que gruposDatasets)
+  // -- si no es nativo, se usa el orden original tal cual venía.
+  const datasetsOrdenados = tipoNativoSoportado ? gruposDatasets.flat() : datasets;
 
   const workbook = new ExcelJS.Workbook();
   const hoja = workbook.addWorksheet('Gráfica');
@@ -4779,13 +4823,13 @@ async function _expChartExcel(wrapId, nombreBase, ev){
 
   const filaEncabezado = fila;
   const filaEnc = hoja.getRow(fila);
-  filaEnc.values = ['', ...datasets.map((d,i) => d.label || (datasets.length>1 ? `Serie ${i+1}` : 'Valor'))];
+  filaEnc.values = ['', ...datasetsOrdenados.map((d,i) => d.label || (datasetsOrdenados.length>1 ? `Serie ${i+1}` : 'Valor'))];
   filaEnc.font = {bold:true};
   fila++;
 
   const filaPrimerDato = fila;
   labels.forEach((lab, i) => {
-    hoja.getRow(fila).values = [String(lab), ...datasets.map(d => {
+    hoja.getRow(fila).values = [String(lab), ...datasetsOrdenados.map(d => {
       const v = d.data ? d.data[i] : null;
       return (v==null || v===undefined) ? null : (typeof v === 'number' ? v : String(v));
     })];
@@ -4794,22 +4838,29 @@ async function _expChartExcel(wrapId, nombreBase, ev){
   const filaUltimoDato = fila - 1;
 
   hoja.getColumn(1).width = 22;
-  for(let c=2; c<=datasets.length+1; c++) hoja.getColumn(c).width = 16;
+  for(let c=2; c<=datasetsOrdenados.length+1; c++) hoja.getColumn(c).width = 16;
 
   let buffer = await workbook.xlsx.writeBuffer();
 
   if(tipoNativoSoportado){
-    const esHorizontal = tipoUnico==='bar' && chart.options && chart.options.indexAxis === 'y';
-    const escalaY = chart.scales && chart.scales[ejesY[0]];
-    const esApilada = !!(escalaY && escalaY.stacked);
-    const series = datasets.map(d => ({
-      label: d.label || 'Valor',
-      color: _expColorAHex(tipoUnico==='line' ? (d.borderColor||d.backgroundColor) : (d.backgroundColor||d.borderColor)),
-      data: labels.map((_,i) => { const v = d.data ? d.data[i] : null; return (typeof v==='number') ? v : null; }),
-    }));
+    const grupos = ejesY.map((ejeId, gi) => ({ejeId, gr: gruposDatasets[gi]}))
+      .filter(({gr}) => gr.length)
+      .map(({ejeId, gr}) => {
+      const escalaY = chart.scales && chart.scales[ejeId];
+      const tipoGrupo = gr[0].type || chart.config.type;
+      const esHorizontal = tipoGrupo==='bar' && chart.options && chart.options.indexAxis === 'y';
+      const esApilada = !!(escalaY && escalaY.stacked);
+      const tituloEje = (escalaY && escalaY.options && escalaY.options.title && escalaY.options.title.text) || null;
+      const series = gr.map(d => ({
+        label: d.label || 'Valor',
+        color: _expColorAHex(tipoGrupo==='line' ? (d.borderColor||d.backgroundColor) : (d.backgroundColor||d.borderColor)),
+        data: labels.map((_,i) => { const v = d.data ? d.data[i] : null; return (typeof v==='number') ? v : null; }),
+      }));
+      return {tipo: tipoGrupo, esHorizontal, esApilada, series, tituloEje};
+    });
     const chartXml = _expConstruirChartXmlNativo({
-      tipo: tipoUnico, titulo: tituloTexto, esHorizontal, esApilada, nombreHoja: 'Gráfica',
-      categorias: labels.map(String), series, filaEncabezado, filaPrimerDato, filaUltimoDato,
+      titulo: tituloTexto, nombreHoja: 'Gráfica',
+      categorias: labels.map(String), grupos, filaEncabezado, filaPrimerDato, filaUltimoDato,
     });
     try{
       buffer = await _expInyectarChartNativo(buffer, chartXml, filaAnclaGrafico, 0, 8, filaEncabezado-2);
