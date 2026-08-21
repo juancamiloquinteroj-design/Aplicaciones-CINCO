@@ -2809,9 +2809,9 @@ tfoot td:first-child{text-align:left}
     <div class="card">
       <div class="fbar" style="margin-bottom:14px">
         <label>Rango</label>
-        <input type="date" id="alim3-desde" onchange="alim3RenderSeleccion(); alim3RenderTablaVariacion()">
+        <input type="date" id="alim3-desde" onchange="alim3RenderSeleccion(); alim3RenderTablaVariacion(); alim3RenderChartCircuitos()">
         <span style="font-size:11px;color:var(--text3)">→</span>
-        <input type="date" id="alim3-hasta" onchange="alim3RenderSeleccion(); alim3RenderTablaVariacion()">
+        <input type="date" id="alim3-hasta" onchange="alim3RenderSeleccion(); alim3RenderTablaVariacion(); alim3RenderChartCircuitos()">
         <label style="margin-left:10px">Zona</label>
         <div id="alim3-zonas" style="display:flex;gap:6px;flex-wrap:wrap"></div>
       </div>
@@ -2931,25 +2931,44 @@ tfoot td:first-child{text-align:left}
         <input type="number" id="alim3-var-umbral-crecimiento" value="5" min="0" step="0.5" style="width:56px" onchange="alim3RenderTablaVariacion()" title="Umbral de Var. Pérdida (%) para el botón Crecimiento">%
       </div>
       <div id="alim3-var-caption" style="text-align:center;font-size:11px;color:var(--text3);margin-bottom:8px"></div>
-      <div class="tbl-wrap tbl-compacta alim3-tabla-sticky" id="alim3-var-tbl-wrap" style="max-height:520px;overflow-y:auto">
-        <table>
-          <thead><tr>
-            <th style="text-align:left;cursor:pointer" onclick="alim3OrdenarVariacion('nombre')" title="Click para ordenar">Nombre Spard <span id="alim3-var-th-nombre" class="alim3-th-flecha"></span></th>
-            <th style="cursor:pointer" onclick="alim3OrdenarVariacion('zona')" title="Click para ordenar">Zona <span id="alim3-var-th-zona" class="alim3-th-flecha"></span></th>
-            <th class="alim3-col-anterior" style="cursor:pointer" onclick="alim3OrdenarVariacion('entradaAnterior')" title="Click para ordenar">Entrada Mes Anterior <span id="alim3-var-th-entradaAnterior" class="alim3-th-flecha"></span></th>
-            <th style="cursor:pointer" onclick="alim3OrdenarVariacion('entrada')" title="Click para ordenar">Entrada Mes Actual <span id="alim3-var-th-entrada" class="alim3-th-flecha"></span></th>
-            <th style="cursor:pointer" onclick="alim3OrdenarVariacion('deltaEntrada')" title="Click para ordenar">Δ Entrada <span id="alim3-var-th-deltaEntrada" class="alim3-th-flecha"></span></th>
-            <th class="alim3-col-anterior" style="cursor:pointer" onclick="alim3OrdenarVariacion('salidaAnterior')" title="Click para ordenar">Salida Mes Anterior <span id="alim3-var-th-salidaAnterior" class="alim3-th-flecha"></span></th>
-            <th style="cursor:pointer" onclick="alim3OrdenarVariacion('salida')" title="Click para ordenar">Salida Mes Actual <span id="alim3-var-th-salida" class="alim3-th-flecha"></span></th>
-            <th style="cursor:pointer" onclick="alim3OrdenarVariacion('deltaSalida')" title="Click para ordenar">Δ Salida <span id="alim3-var-th-deltaSalida" class="alim3-th-flecha"></span></th>
-            <th style="cursor:pointer" onclick="alim3OrdenarVariacion('perdida')" title="Click para ordenar">Pérdida <span id="alim3-var-th-perdida" class="alim3-th-flecha"></span></th>
-            <th style="cursor:pointer" onclick="alim3OrdenarVariacion('deltaPerdida')" title="Click para ordenar">Δ Pérdida <span id="alim3-var-th-deltaPerdida" class="alim3-th-flecha"></span></th>
-            <th style="cursor:pointer" onclick="alim3OrdenarVariacion('deltaPerdidaCrec')" title="Click para ordenar -- crecimiento real del kWh vs. el mes anterior">Var. Pérdida % <span id="alim3-var-th-deltaPerdidaCrec" class="alim3-th-flecha"></span></th>
-            <th style="cursor:pointer" onclick="alim3OrdenarVariacion('pct')" title="Click para ordenar">Pérdida % <span id="alim3-var-th-pct" class="alim3-th-flecha"></span></th>
-            <th style="cursor:pointer" onclick="alim3OrdenarVariacion('deltaPct')" title="Click para ordenar">Δ pp <span id="alim3-var-th-deltaPct" class="alim3-th-flecha"></span></th>
-          </tr></thead>
-          <tbody id="alim3-tabla-var"></tbody>
-        </table>
+      <!-- Gráfica "Comparativo de Circuitos" -- pedido explícito ("me
+           gustaria una grafica para poder seleccionar varios circuitos y
+           poderlos mostrar ahi... ubicala al lado de Variación de
+           Pérdida por Alimentador"): multiselect de circuitos (cualquier
+           zona) + línea de Pérdida % por mes, una serie por circuito
+           elegido, para justificar visualmente comparaciones tipo
+           "estos 2-3 circuitos tienen el peor desempeño". Respeta el
+           mismo filtro Rango (Desde/Hasta) del resto del módulo. -->
+      <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">
+        <div style="flex:1;min-width:360px">
+          <div class="fbar" style="justify-content:center;margin-bottom:8px">
+            <div style="font-size:13px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Comparativo de Circuitos</div>
+          </div>
+          <div class="msel" id="msel-alim3-circuitos" style="margin-bottom:10px"></div>
+          <div class="chart-wrap" style="height:380px"><canvas id="ch-alim3-circuitos"></canvas></div>
+        </div>
+        <div style="flex:2;min-width:500px">
+          <div class="tbl-wrap tbl-compacta alim3-tabla-sticky" id="alim3-var-tbl-wrap" style="max-height:520px;overflow-y:auto">
+            <table>
+              <thead><tr>
+                <th style="text-align:left;cursor:pointer" onclick="alim3OrdenarVariacion('nombre')" title="Click para ordenar">Nombre Spard <span id="alim3-var-th-nombre" class="alim3-th-flecha"></span></th>
+                <th style="cursor:pointer" onclick="alim3OrdenarVariacion('zona')" title="Click para ordenar">Zona <span id="alim3-var-th-zona" class="alim3-th-flecha"></span></th>
+                <th class="alim3-col-anterior" style="cursor:pointer" onclick="alim3OrdenarVariacion('entradaAnterior')" title="Click para ordenar">Entrada Mes Anterior <span id="alim3-var-th-entradaAnterior" class="alim3-th-flecha"></span></th>
+                <th style="cursor:pointer" onclick="alim3OrdenarVariacion('entrada')" title="Click para ordenar">Entrada Mes Actual <span id="alim3-var-th-entrada" class="alim3-th-flecha"></span></th>
+                <th style="cursor:pointer" onclick="alim3OrdenarVariacion('deltaEntrada')" title="Click para ordenar">Δ Entrada <span id="alim3-var-th-deltaEntrada" class="alim3-th-flecha"></span></th>
+                <th class="alim3-col-anterior" style="cursor:pointer" onclick="alim3OrdenarVariacion('salidaAnterior')" title="Click para ordenar">Salida Mes Anterior <span id="alim3-var-th-salidaAnterior" class="alim3-th-flecha"></span></th>
+                <th style="cursor:pointer" onclick="alim3OrdenarVariacion('salida')" title="Click para ordenar">Salida Mes Actual <span id="alim3-var-th-salida" class="alim3-th-flecha"></span></th>
+                <th style="cursor:pointer" onclick="alim3OrdenarVariacion('deltaSalida')" title="Click para ordenar">Δ Salida <span id="alim3-var-th-deltaSalida" class="alim3-th-flecha"></span></th>
+                <th style="cursor:pointer" onclick="alim3OrdenarVariacion('perdida')" title="Click para ordenar">Pérdida <span id="alim3-var-th-perdida" class="alim3-th-flecha"></span></th>
+                <th style="cursor:pointer" onclick="alim3OrdenarVariacion('deltaPerdida')" title="Click para ordenar">Δ Pérdida <span id="alim3-var-th-deltaPerdida" class="alim3-th-flecha"></span></th>
+                <th style="cursor:pointer" onclick="alim3OrdenarVariacion('deltaPerdidaCrec')" title="Click para ordenar -- crecimiento real del kWh vs. el mes anterior">Var. Pérdida % <span id="alim3-var-th-deltaPerdidaCrec" class="alim3-th-flecha"></span></th>
+                <th style="cursor:pointer" onclick="alim3OrdenarVariacion('pct')" title="Click para ordenar">Pérdida % <span id="alim3-var-th-pct" class="alim3-th-flecha"></span></th>
+                <th style="cursor:pointer" onclick="alim3OrdenarVariacion('deltaPct')" title="Click para ordenar">Δ pp <span id="alim3-var-th-deltaPct" class="alim3-th-flecha"></span></th>
+              </tr></thead>
+              <tbody id="alim3-tabla-var"></tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -13454,6 +13473,76 @@ async function alim3Cargar(){
   alim3RenderTablaTop();
   alim3RenderScatter();
   alim3RenderTablaVariacion();
+  alim3PoblarMselCircuitos();
+}
+
+// Multiselect de circuitos (cualquier zona) para "Comparativo de
+// Circuitos" -- pedido explícito ("poder seleccionar varios circuitos y
+// poderlos mostrar ahi"). Opciones = todos los Nombre Spard distintos de
+// ALIM_FILAS, sin filtrar por la Zona activa (a propósito: el usuario
+// quiere poder comparar circuitos de zonas distintas en la misma
+// gráfica, ej. para armar una recomendación que cruce varias zonas).
+function alim3PoblarMselCircuitos(){
+  const porNem = new Map();
+  ALIM_FILAS.forEach(f => { if(f.nemonico && !porNem.has(f.nemonico)) porNem.set(f.nemonico, f.nombre_spard || f.nemonico); });
+  const opciones = [...porNem.entries()].map(([value,label]) => ({value, label})).sort((a,b) => a.label.localeCompare(b.label));
+  if(MSEL['msel-alim3-circuitos']) mselSetOpciones('msel-alim3-circuitos', opciones);
+  else mselInit('msel-alim3-circuitos', 'Circuitos', 'Ninguno', opciones, alim3RenderChartCircuitos, []);
+}
+
+let chAlim3Circuitos = null;
+// Pérdida % mensual de cada circuito elegido, una línea por circuito --
+// respeta el filtro Rango (Desde/Hasta) del resto del módulo
+// (alim3VisiblesRango). Las series pueden tener meses distintos entre sí
+// (un circuito puede no tener dato en algún mes) -- se arma la UNIÓN de
+// claves de todos los seleccionados para el eje X, con huecos (null,
+// spanGaps) donde a alguno le falte.
+function alim3RenderChartCircuitos(){
+  const cv = document.getElementById('ch-alim3-circuitos');
+  if(!cv) return;
+  const seleccionados = mselValores('msel-alim3-circuitos');
+  if(chAlim3Circuitos){ chAlim3Circuitos.destroy(); chAlim3Circuitos = null; }
+  if(!seleccionados.length) return;
+  const dark = document.documentElement.getAttribute('data-theme')==='dark';
+  const tickC = dark ? '#aab8d1' : '#4b5e7a';
+
+  const seriePorCircuito = seleccionados.map(nem => {
+    const filas = ALIM_FILAS.filter(f => f.nemonico === nem).sort((a,b) => (a.anio*12+a.mes)-(b.anio*12+b.mes));
+    const mensual = filas.map(f => ({clave: alimN21Clave(f.anio,f.mes), entrada: f.entrada_total||0, perdida: f.perdida_kwh||0}));
+    const visibles = alim3VisiblesRango(mensual);
+    const nombre = filas.length ? (filas[filas.length-1].nombre_spard || nem) : nem;
+    return {nem, nombre, serie: visibles};
+  });
+
+  const clavesSet = new Set();
+  seriePorCircuito.forEach(c => c.serie.forEach(f => clavesSet.add(f.clave)));
+  const claves = [...clavesSet].sort();
+  if(!claves.length) return;
+
+  const datasets = seriePorCircuito.map((c, i) => {
+    const porClave = new Map(c.serie.map(f => [f.clave, f]));
+    return {
+      type:'line', label: c.nombre, borderColor: alimSubColor(i, seriePorCircuito.length), backgroundColor:'transparent',
+      borderWidth:2, tension:.25, spanGaps:true, pointRadius:2,
+      data: claves.map(cl => { const f = porClave.get(cl); return (f && f.entrada) ? f.perdida/f.entrada*100 : null; }),
+    };
+  });
+
+  chAlim3Circuitos = new Chart(cv, {
+    data:{labels: claves.map(c => labelMes(c)), datasets},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      interaction:{mode:'index', intersect:false},
+      plugins:{
+        legend:{display:true, position:'bottom', labels:{boxWidth:10, font:{size:9}, color:tickC}},
+        tooltip:{callbacks:{label:c => c.raw==null ? null : `${c.dataset.label}: ${c.raw.toFixed(2)}%`}},
+      },
+      scales:{
+        x:{grid:{display:false}, ticks:{color:tickC, font:{size:10}, maxRotation:45, minRotation:45}},
+        y:{ticks:{color:tickC, font:{size:10}, callback:v=>v.toFixed(1)+'%'}, title:{display:true, text:'Pérdida %', color:tickC, font:{size:10}}},
+      },
+    },
+  });
 }
 
 function alim3RenderZonasChips(){
