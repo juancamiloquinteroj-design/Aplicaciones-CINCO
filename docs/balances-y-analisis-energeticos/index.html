@@ -1504,6 +1504,10 @@ tfoot td:first-child{text-align:left}
     </div>
   </div>
 
+  <div class="card">
+    <div id="ip-narrativa-estructural" class="ip-comentario-caja"></div>
+  </div>
+
 </div>
 <!-- fin vista-ip-reg -->
 
@@ -2345,6 +2349,10 @@ tfoot td:first-child{text-align:left}
     </div>
 
     <div class="card">
+      <div id="alim-nivel4-narrativa" class="ip-comentario-caja"></div>
+    </div>
+
+    <div class="card">
       <div style="text-align:center;margin-bottom:8px">
         <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Pérdida Total vs Pérdida Técnica</div>
       </div>
@@ -2408,6 +2416,10 @@ tfoot td:first-child{text-align:left}
         </div>
       </div>
       <div id="alim-nivel3-tarjetas" class="tarjetas-fila-unica"></div>
+    </div>
+
+    <div class="card">
+      <div id="alim-nivel3-narrativa" class="ip-comentario-caja"></div>
     </div>
 
     <div class="card">
@@ -2552,10 +2564,21 @@ tfoot td:first-child{text-align:left}
     </div>
 
     <div class="card">
+      <div id="alim-n21-narrativa" class="ip-comentario-caja"></div>
+    </div>
+
+    <div class="card">
       <div style="text-align:center;margin-bottom:8px">
         <div style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Comparativo Pérdidas por Zona</div>
       </div>
       <div class="chart-wrap" style="height:380px"><canvas id="ch-alim-n21-zonas"></canvas></div>
+    </div>
+
+    <div class="card">
+      <div style="text-align:center;margin-bottom:8px">
+        <div style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Por Qué Crece el Indicador -- por Zona</div>
+      </div>
+      <div id="alim-n21-narrativa-zonas" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px"></div>
     </div>
 
     <div class="card">
@@ -11278,6 +11301,102 @@ function ipFilaConDatosRealesDe(claveReal){
   return IP_MAPA_POR_NORMAL.get(claveBuscada) || null;
 }
 
+// ---- "Por qué crece el indicador" -- explicación narrativa automática,
+// reutilizable en IP_Reg / Nivel 4 / Nivel 3 / N2-1 / cada zona -- pedido
+// explícito ("tenemos que hacer una tabla donde se muestre esta
+// explicación para IP_REG, nivel 4, nivel 3, nivel N2-1 y cada zona...
+// Siempre comparando la entrada y salida (venta)"). Compara el último mes
+// con dato completo contra el MISMO mes del año anterior (no el mes
+// inmediatamente anterior) -- así el crecimiento no mezcla estacionalidad
+// con tendencia real, igual que el análisis original que se validó a mano
+// para IP_Reg antes de generalizarlo acá.
+//
+// Recibe cualquier array `mensual` con forma {clave:'YYYY-MM', entrada,
+// salida} -- todas las fuentes de la app (IP Nivel 4, IP Nivel 3, N2-1
+// total, N2-1 por zona) ya traen esa forma tal cual; para IP_Reg se arma
+// una vista con esa misma forma en _narrativaIpRegMensual() más abajo.
+function _narrativaUltimaClaveCompleta(mensual){
+  for(let i = mensual.length - 1; i >= 0; i--){
+    if(mensual[i].entrada != null && mensual[i].salida != null) return mensual[i].clave;
+  }
+  return null;
+}
+
+function _narrativaEntradaSalidaDatos(mensual, claveActual){
+  if(!mensual || !mensual.length || !claveActual) return null;
+  const porClave = new Map(mensual.map(f => [f.clave, f]));
+  const actual = porClave.get(claveActual);
+  if(!actual || actual.entrada==null || actual.salida==null) return null;
+  const [anio, mes] = claveActual.split('-').map(Number);
+  const claveAnterior = `${anio-1}-${String(mes).padStart(2,'0')}`;
+  const anterior = porClave.get(claveAnterior);
+  if(!anterior || !anterior.entrada || !anterior.salida) return null;  // !anterior.entrada también evita división por 0
+
+  const pctEntrada = (actual.entrada - anterior.entrada) / anterior.entrada * 100;
+  const pctSalida = (actual.salida - anterior.salida) / anterior.salida * 100;
+  const deltaEntrada = actual.entrada - anterior.entrada;
+  const deltaSalida = actual.salida - anterior.salida;
+  return {
+    claveActual, claveAnterior, actual, anterior,
+    // brecha = diferencia entre los % YA REDONDEADOS a 2 decimales (no la
+    // resta a precisión completa) -- así el texto siempre cuadra con la
+    // resta que el lector puede hacer a mano con los 2 porcentajes que ve
+    // en el párrafo (ej. 10,35% - 10,12% = 0,23 pp, no 0,24).
+    pctEntrada, pctSalida, brecha: Number(pctEntrada.toFixed(2)) - Number(pctSalida.toFixed(2)),
+    kwhNoFacturado: deltaEntrada - deltaSalida,
+  };
+}
+
+function _narrativaEntradaSalidaHtml(mensual, titulo){
+  const claveActual = _narrativaUltimaClaveCompleta(mensual);
+  const datos = claveActual ? _narrativaEntradaSalidaDatos(mensual, claveActual) : null;
+  if(!datos){
+    return `<div class="ip-comentario-titulo">${titulo}</div>
+      <p>No hay suficiente histórico todavía (se necesita el mismo mes del año anterior) para calcular esta explicación.</p>`;
+  }
+  const fKwh = v => Math.round(v).toLocaleString('es-CO');
+  const fGwh = v => (Math.abs(v)/1e6).toLocaleString('es-CO', {maximumFractionDigits:2, minimumFractionDigits:2});
+  const fPct = v => v.toLocaleString('es-CO', {maximumFractionDigits:2, minimumFractionDigits:2});
+  const mesActualTxt = labelMesLargo(datos.claveActual);
+  const mesAnteriorTxt = labelMesLargo(datos.claveAnterior);
+  const UMBRAL = 0.01;  // pp -- por debajo se trata como "prácticamente igual", no sube/baja
+  const crece = datos.brecha > UMBRAL;
+  const baja = datos.brecha < -UMBRAL;
+  return `
+    <div class="ip-comentario-titulo">${titulo}</div>
+    <div class="ip-comentario-cifra ${crece?'sube':(baja?'baja':'')}">${datos.brecha>=0?'+':''}${fPct(datos.brecha)} pp de brecha</div>
+    <p>${crece
+      ? 'La tendencia creciente del indicador no se debe a un evento puntual, sino a un comportamiento estructural.'
+      : (baja ? 'La tendencia del indicador refleja una mejora estructural, no un evento puntual.' : 'La entrada y la salida vienen creciendo prácticamente al mismo ritmo.')
+    } La <b>Entrada</b> pasó de ${fKwh(datos.anterior.entrada)} kWh en ${mesAnteriorTxt} a ${fKwh(datos.actual.entrada)} kWh en ${mesActualTxt}, un crecimiento de <b>${fPct(datos.pctEntrada)}%</b>.</p>
+    <p>En cambio, la <b>Salida (venta)</b> creció un <b>${fPct(datos.pctSalida)}%</b> (de ${fKwh(datos.anterior.salida)} a ${fKwh(datos.actual.salida)} kWh)${crece
+      ? '. Por lo tanto, el incremento de la demanda que ingresa al sistema es mayor que la capacidad de facturación y entrega efectiva'
+      : (baja ? '. Por lo tanto, la salida está alcanzando el ritmo de crecimiento de la entrada' : '')
+    }.</p>
+    <p>${crece ? 'Esta brecha' : (baja ? 'Esta diferencia favorable' : 'Esta diferencia')} de <b>${fPct(Math.abs(datos.brecha))}%</b> ${crece ? 'genera' : 'representa'} un acumulado mensual de <b>${fGwh(datos.kwhNoFacturado)} GWh</b> ${crece?'no facturados, lo que presiona continuamente al alza el porcentaje de pérdidas del sistema.':(baja?'de energía adicional que sí se está facturando.':'de diferencia entre lo que entra y lo que se vende.')}</p>
+  `;
+}
+
+// IP_Reg no trae un par simple {entrada,salida} en sus filas -- solo las
+// columnas crudas por nivel de IP_COLUMNAS_NIVEL. La "Entrada" natural del
+// sistema de distribución es n3_eej (Nivel 3, donde arranca la red propia
+// del operador -- Nivel 4 es la transmisión que alimenta desde afuera); la
+// "Salida (venta)" es la suma de lo que sale en Nivel 3+2+1, que es lo que
+// efectivamente se entrega/factura en toda la red.
+function _narrativaIpRegMensual(){
+  if(!IP_REG_FILAS || !IP_REG_FILAS.length) return [];
+  const claves = [...new Set(IP_REG_FILAS.map(f => ipClaveNormal(f)))].sort();
+  return claves.map(clave => {
+    const fila = ipFilaConDatosRealesDe(clave);
+    if(!fila) return {clave, entrada:null, salida:null};
+    const entrada = fila.n3_eej;
+    const salida = (fila.n1_estj==null || fila.n2_estj==null || fila.n3_estj==null)
+      ? null
+      : fila.n1_estj + fila.n2_estj + fila.n3_estj;
+    return {clave, entrada, salida};
+  });
+}
+
 // IP_REG_FILAS es compartido entre "IP_Reg" y "Nivel de Tensión 1" (dos
 // vistas/sub-módulos separados) -- cualquiera de las dos que se abra
 // primero lo carga; la otra lo reusa sin volver a pedirlo.
@@ -12253,6 +12372,7 @@ function alimNivel4RenderTodo(){
 
   document.getElementById('alim-nivel4-tarjetas').innerHTML = _alimNivelTarjetasHtml(mensual, ALIM_NIVEL4_VAR);
   document.getElementById('alim-nivel4-analisis').innerHTML = _alimNivelComparativoTarjetasHtml(mensualCompleto, tecnicaPorMes, claveAnalisis);
+  document.getElementById('alim-nivel4-narrativa').innerHTML = _narrativaEntradaSalidaHtml(mensualCompleto, 'Por qué crece el indicador -- Nivel 4');
 
   if(chAlimNivel4Mensual) chAlimNivel4Mensual.destroy();
   chAlimNivel4Mensual = _alimNivelConstruirChartMensual(document.getElementById('ch-alim-nivel4-mensual'), mensual, 'Nivel 4', null, '', ALIM_NIVEL4_SIN_RELLENO);
@@ -12394,6 +12514,7 @@ function alimNivel3RenderTodo(){
 
   document.getElementById('alim-nivel3-tarjetas').innerHTML = _alimNivelTarjetasHtml(mensual, ALIM_NIVEL3_VAR);
   document.getElementById('alim-nivel3-analisis').innerHTML = _alimNivelComparativoTarjetasHtml(mensualCompleto, tecnicaPorMes, claveAnalisis);
+  document.getElementById('alim-nivel3-narrativa').innerHTML = _narrativaEntradaSalidaHtml(mensualCompleto, 'Por qué crece el indicador -- Nivel 3');
 
   if(chAlimNivel3Mensual) chAlimNivel3Mensual.destroy();
   chAlimNivel3Mensual = _alimNivelConstruirChartMensual(
@@ -16109,6 +16230,24 @@ function alimN21RenderTodo(){
   alimN21RenderTablaZonas();
   alimN21RenderResumen(datos12);
   alimN21RenderPorZonaCharts();
+
+  const contNarrativa = document.getElementById('alim-n21-narrativa');
+  if(contNarrativa) contNarrativa.innerHTML = _narrativaEntradaSalidaHtml(alimN21AgregarMensual(ALIM_N21_ZONAS_SEL), 'Por qué crece el indicador -- N2-1 (Total)');
+  alimN21RenderNarrativaZonas();
+}
+
+// Un cuadrito "Por qué crece" por cada zona -- pedido explícito
+// ("tenemos que hacer una tabla donde se muestre esta explicación
+// para... nivel N2-1 y cada zona"). SIEMPRE las zonas completas
+// (ALIM_N21_ZONAS), ignora el filtro de chips -- mismo criterio que
+// "Comparativo Pérdidas por Zona", de al lado.
+function alimN21RenderNarrativaZonas(){
+  const cont = document.getElementById('alim-n21-narrativa-zonas');
+  if(!cont) return;
+  cont.innerHTML = ALIM_N21_ZONAS.map(z => {
+    const mensualZona = alimN21AgregarMensual(new Set([z]));
+    return `<div class="ip-comentario-caja">${_narrativaEntradaSalidaHtml(mensualZona, `Zona ${z}`)}</div>`;
+  }).join('');
 }
 
 // "Pérdida Total vs Técnica por Zona" -- un gráfico de líneas POR ZONA,
@@ -18727,6 +18866,9 @@ function ipRenderChart(){
       },
     },
   });
+
+  const contNarrativa = document.getElementById('ip-narrativa-estructural');
+  if(contNarrativa) contNarrativa.innerHTML = _narrativaEntradaSalidaHtml(_narrativaIpRegMensual(), 'Por qué crece el indicador -- IP_Reg');
 }
 
 function ipRenderChartNivel1(){
