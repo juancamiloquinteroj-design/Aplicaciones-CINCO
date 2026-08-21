@@ -2739,8 +2739,14 @@ tfoot td:first-child{text-align:left}
             <!-- pedido explícito: "la que haya tenido un crecimiento
                  superior al 5% que se exporte" -- filtra a esas y las
                  ordena de mayor a menor; el botón ⬇ de exportar (arriba a
-                 la derecha de la tabla) ya sale solo en cualquier tabla. -->
-            <button type="button" class="be-modo-btn" id="alim-sub-top-btn-crecimiento" style="margin-top:6px" onclick="alimSubToggleTopCrecimiento()" title="Muestra solo las subestaciones con Var. Pérdida (%) mayor a 5% vs. el mes anterior, para exportar">Crecimiento &gt; 5%</button>
+                 la derecha de la tabla) ya sale solo en cualquier tabla.
+                 El umbral (antes fijo en 5%) ahora lo digita el usuario --
+                 pedido explícito ("quiero mejor que el usuario digite la
+                 variacion"). -->
+            <span style="display:inline-flex;align-items:center;gap:4px;margin-top:6px">
+              <button type="button" class="be-modo-btn" id="alim-sub-top-btn-crecimiento" onclick="alimSubToggleTopCrecimiento()" title="Muestra solo las subestaciones con Var. Pérdida (%) mayor al umbral de al lado vs. el mes anterior, para exportar">Crecimiento &gt;</button>
+              <input type="number" id="alim-sub-top-umbral-crecimiento" value="5" min="0" step="0.5" style="width:56px" onchange="alimSubRenderTablaTop()" title="Umbral de Var. Pérdida (%) para el botón Crecimiento">%
+            </span>
           </div>
           <div class="tbl-wrap tbl-compacta" id="alim-sub-tbl-top-wrap" style="max-height:420px;overflow-y:auto">
             <table>
@@ -2873,7 +2879,8 @@ tfoot td:first-child{text-align:left}
              del crecimiento de pérdida del 5%" -- filtra y ordena a los
              que superaron ese crecimiento; el botón ⬇ de exportar de la
              tabla ya sale solo. -->
-        <button type="button" class="be-modo-btn" id="alim3-top-btn-crecimiento" style="margin-left:10px" onclick="alim3ToggleTopCrecimiento()" title="Muestra solo los alimentadores con Var. Pérdida (%) mayor a 5% vs. el período anterior, para exportar">Crecimiento &gt; 5%</button>
+        <button type="button" class="be-modo-btn" id="alim3-top-btn-crecimiento" style="margin-left:10px" onclick="alim3ToggleTopCrecimiento()" title="Muestra solo los alimentadores con Var. Pérdida (%) mayor al umbral de al lado vs. el período anterior, para exportar">Crecimiento &gt;</button>
+        <input type="number" id="alim3-top-umbral-crecimiento" value="5" min="0" step="0.5" style="width:56px" onchange="alim3RenderTablaTop()" title="Umbral de Var. Pérdida (%) para el botón Crecimiento">%
       </div>
       <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">
         <!-- Tabla COMPACTA (tbl-compacta -- ancho auto, cada columna mide
@@ -2920,7 +2927,8 @@ tfoot td:first-child{text-align:left}
              al 5% que se exporte" -- filtra a esos y los ordena de mayor a
              menor; el botón ⬇ de exportar (arriba a la derecha de la
              tabla) ya sale solo en cualquier tabla. -->
-        <button type="button" class="be-modo-btn" id="alim3-var-btn-crecimiento" style="margin-left:10px" onclick="alim3ToggleVarCrecimiento()" title="Muestra solo los alimentadores con Var. Pérdida (%) mayor a 5% vs. el mes anterior, para exportar">Crecimiento &gt; 5%</button>
+        <button type="button" class="be-modo-btn" id="alim3-var-btn-crecimiento" style="margin-left:10px" onclick="alim3ToggleVarCrecimiento()" title="Muestra solo los alimentadores con Var. Pérdida (%) mayor al umbral de al lado vs. el mes anterior, para exportar">Crecimiento &gt;</button>
+        <input type="number" id="alim3-var-umbral-crecimiento" value="5" min="0" step="0.5" style="width:56px" onchange="alim3RenderTablaVariacion()" title="Umbral de Var. Pérdida (%) para el botón Crecimiento">%
       </div>
       <div id="alim3-var-caption" style="text-align:center;font-size:11px;color:var(--text3);margin-bottom:8px"></div>
       <div class="tbl-wrap tbl-compacta alim3-tabla-sticky" id="alim3-var-tbl-wrap" style="max-height:520px;overflow-y:auto">
@@ -3111,6 +3119,14 @@ tfoot td:first-child{text-align:left}
             <input type="checkbox" id="informes-chk-n21" checked onchange="document.getElementById('informes-chk-zonas').classList.toggle('hidden', !this.checked)"> Indicador N2-1 (por zona y subestación)
           </label>
           <div id="informes-chk-zonas" style="display:flex;flex-wrap:wrap;gap:10px;margin-left:22px;font-size:12px;color:var(--text2)"></div>
+          <!-- Umbral digitable para las tablas "mayor crecimiento" de N2-1
+               -- pedido explícito ("quiero mejor que el usuario digite la
+               variacion", antes fijo en 5%, mismo criterio que los
+               botones "Crecimiento >" en vivo de Subestaciones/Alimentadores. -->
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2);margin-left:22px">
+            Subestaciones/Alimentadores con crecimiento mayor a
+            <input type="number" id="informes-umbral-crecimiento" value="5" min="0" step="0.5" style="width:56px">%
+          </label>
           <label style="display:flex;align-items:center;gap:6px;font-size:12.5px">
             <input type="checkbox" id="informes-chk-distribucion" checked> Distribución del Flujo por Nivel de Tensión e Impactos
           </label>
@@ -12899,6 +12915,17 @@ function alimSubDescargarCsv(){
 // exportar (⬇, arriba a la derecha de la tabla) ya sale solo -- lo agrega
 // _expEscanear a cualquier .tbl-wrap -- así que solo hace falta filtrar
 // lo que se ve antes de que el usuario le dé exportar.
+// Umbral de "Crecimiento >" digitable -- pedido explícito ("quiero mejor
+// que el usuario digite la variacion", antes fijo en 5%). Reusado por
+// los 3 botones "Crecimiento >" (Subestaciones, Top Alimentadores,
+// Variación de Pérdida por Alimentador), cada uno con su propio input;
+// si el campo está vacío o no es un número válido, cae de vuelta a 5.
+function _alimUmbralCrecimiento(inputId){
+  const el = document.getElementById(inputId);
+  const v = el ? parseFloat(el.value) : NaN;
+  return Number.isFinite(v) ? v : 5;
+}
+
 let ALIM_SUB_TOP_SOLO_CRECIMIENTO = false;
 function alimSubToggleTopCrecimiento(){
   ALIM_SUB_TOP_SOLO_CRECIMIENTO = !ALIM_SUB_TOP_SOLO_CRECIMIENTO;
@@ -12939,8 +12966,9 @@ function alimSubRenderTablaTop(){
     };
   }).filter(Boolean);
 
+  const umbralCrecSub = _alimUmbralCrecimiento('alim-sub-top-umbral-crecimiento');
   if(ALIM_SUB_TOP_SOLO_CRECIMIENTO){
-    filas = filas.filter(f => f.deltaPerdidaCrec != null && f.deltaPerdidaCrec > 5);
+    filas = filas.filter(f => f.deltaPerdidaCrec != null && f.deltaPerdidaCrec > umbralCrecSub);
     filas.sort((a,b) => b.deltaPerdidaCrec - a.deltaPerdidaCrec);
   } else {
     filas.sort((a,b) => (b.pctMensual ?? -Infinity) - (a.pctMensual ?? -Infinity));
@@ -12951,7 +12979,7 @@ function alimSubRenderTablaTop(){
   const fmtDeltaKwh = v => v==null ? '--' : `${v>=0?'+':''}${v.toLocaleString('es-CO',{maximumFractionDigits:0})}`;
 
   if(!filas.length){
-    cont.innerHTML = `<tr><td colspan="11" style="text-align:center;color:var(--text3)">${ALIM_SUB_TOP_SOLO_CRECIMIENTO ? 'Ninguna subestación creció más de 5% vs. el mes anterior.' : 'Sin datos.'}</td></tr>`;
+    cont.innerHTML = `<tr><td colspan="11" style="text-align:center;color:var(--text3)">${ALIM_SUB_TOP_SOLO_CRECIMIENTO ? `Ninguna subestación creció más de ${umbralCrecSub}% vs. el mes anterior.` : 'Sin datos.'}</td></tr>`;
     return;
   }
 
@@ -13593,10 +13621,11 @@ function alim3RenderTablaVariacion(){
     ? (mesAnterior ? `${labelMesLargo(mesAnterior)} → ${labelMesLargo(mesActual)}` : labelMesLargo(mesActual))
     : '';
 
-  if(ALIM3_VAR_SOLO_CRECIMIENTO) filas = filas.filter(f => f.deltaPerdidaCrec != null && f.deltaPerdidaCrec > 5);
+  const umbralCrecVar = _alimUmbralCrecimiento('alim3-var-umbral-crecimiento');
+  if(ALIM3_VAR_SOLO_CRECIMIENTO) filas = filas.filter(f => f.deltaPerdidaCrec != null && f.deltaPerdidaCrec > umbralCrecVar);
 
   if(!filas.length){
-    cont.innerHTML = `<tr><td colspan="13" style="text-align:center;color:var(--text3)">${ALIM3_VAR_SOLO_CRECIMIENTO ? 'Ningún alimentador creció más de 5% vs. el mes anterior.' : 'Sin datos.'}</td></tr>`;
+    cont.innerHTML = `<tr><td colspan="13" style="text-align:center;color:var(--text3)">${ALIM3_VAR_SOLO_CRECIMIENTO ? `Ningún alimentador creció más de ${umbralCrecVar}% vs. el mes anterior.` : 'Sin datos.'}</td></tr>`;
     return;
   }
 
@@ -14079,7 +14108,7 @@ function alim3RenderTablaTop(){
     });
   }
 
-  if(ALIM3_TOP_SOLO_CRECIMIENTO) filas = filas.filter(f => f.deltaPerdidaCrec != null && f.deltaPerdidaCrec > 5);
+  if(ALIM3_TOP_SOLO_CRECIMIENTO) filas = filas.filter(f => f.deltaPerdidaCrec != null && f.deltaPerdidaCrec > _alimUmbralCrecimiento('alim3-top-umbral-crecimiento'));
 
   // Orden por la columna elegida en la cabecera (click, estilo PowerBI) --
   // pedido explícito. Texto (nombre/zona/leyenda) por localeCompare,
@@ -14094,7 +14123,7 @@ function alim3RenderTablaTop(){
     return ALIM3_TOP_ORDEN_DIR==='asc' ? cmp : -cmp;
   });
   if(!filas.length){
-    const motivo = ALIM3_TOP_SOLO_CRECIMIENTO ? 'Ningún alimentador creció más de 5% vs. el período anterior.' : `Sin datos ${esAnual?'para los 12 meses hasta este AñoMes':'para este mes'}.`;
+    const motivo = ALIM3_TOP_SOLO_CRECIMIENTO ? `Ningún alimentador creció más de ${_alimUmbralCrecimiento('alim3-top-umbral-crecimiento')}% vs. el período anterior.` : `Sin datos ${esAnual?'para los 12 meses hasta este AñoMes':'para este mes'}.`;
     cont.innerHTML = `<tr><td colspan="9" style="text-align:center;color:var(--text3)">${motivo}</td></tr>`;
   }
   else{
@@ -21499,19 +21528,23 @@ async function informesSeccionIndicadorN21Total(mesClave){
   if(fig){ children.push(_informesParrafoImagen(fig)); children.push(_informesCaption('Figura', 'Indicador Total N2-1 -- pérdida mensual (kWh y %)')); }
   children.push(new docx.Paragraph({text:''}));
 
-  // Subestaciones/Alimentadores con mayor crecimiento de pérdida (>5%),
-  // uno por zona -- pedido explícito ("mismas tablas misma logica de
+  // Subestaciones/Alimentadores con mayor crecimiento de pérdida, uno por
+  // zona -- pedido explícito ("mismas tablas misma logica de
   // subestaciones y alimentadores las que tienen una variacion superior
-  // al 5%"), igual criterio que los botones "Crecimiento > 5%" en vivo.
+  // al 5%"), igual criterio que los botones "Crecimiento >" en vivo. El
+  // umbral (antes fijo en 5%) ahora lo digita el usuario en la config del
+  // informe -- pedido explícito ("quiero mejor que el usuario digite la
+  // variacion").
+  const umbralCrecInforme = _alimUmbralCrecimiento('informes-umbral-crecimiento');
   const filasSub = _informesFilasSubestacionesCrecimiento(mesClave);
   if(filasSub.length){
-    children.push(_informesParrafo('A continuación, se muestran las subestaciones con mayor crecimiento de pérdida total de cada zona (variación superior al 5% frente al mes anterior):'));
+    children.push(_informesParrafo(`A continuación, se muestran las subestaciones con mayor crecimiento de pérdida total de cada zona (variación superior al ${umbralCrecInforme}% frente al mes anterior):`));
     children.push(...(await _informesBloquesCrecimientoPorZona(filasSub, _informesTablaHtmlSubestaciones)));
     children.push(_informesCaption('Figura', 'Subestaciones con mayor crecimiento de pérdidas'));
   }
   const filasAlim = _informesFilasAlimentadoresCrecimiento(mesClave);
   if(filasAlim.length){
-    children.push(_informesParrafo('A continuación, se muestran los alimentadores con mayor crecimiento de pérdida total de cada zona (variación superior al 5% frente al mes anterior):'));
+    children.push(_informesParrafo(`A continuación, se muestran los alimentadores con mayor crecimiento de pérdida total de cada zona (variación superior al ${umbralCrecInforme}% frente al mes anterior):`));
     children.push(...(await _informesBloquesCrecimientoPorZona(filasAlim, _informesTablaHtmlAlimentadores)));
     children.push(_informesCaption('Figura', 'Alimentadores con mayor crecimiento de pérdidas'));
   }
@@ -21568,7 +21601,8 @@ function _informesFilasSubestacionesCrecimiento(mesClave){
       deltaPerdidaKwh, deltaPerdidaCrec,
     });
   });
-  return filas.filter(f => f.deltaPerdidaCrec != null && f.deltaPerdidaCrec > 5)
+  const umbral = _alimUmbralCrecimiento('informes-umbral-crecimiento');
+  return filas.filter(f => f.deltaPerdidaCrec != null && f.deltaPerdidaCrec > umbral)
     .sort((a,b) => b.deltaPerdidaCrec - a.deltaPerdidaCrec);
 }
 
@@ -21582,7 +21616,8 @@ function _informesFilasAlimentadoresCrecimiento(mesClave){
     return {nombre:f.nombre_spard || f.nemonico, zona:f.zona, leyenda:f.leyenda||'ok', gestLongitud:f.gestionable_kwh/f.longitud_total, gestionable:f.gestionable_kwh,
       gestPct: f.perdida_kwh ? f.gestionable_kwh/f.perdida_kwh*100 : null, perdida:f.perdida_kwh, deltaPerdidaCrec, longitud:f.longitud_total};
   });
-  return filas.filter(f => f.deltaPerdidaCrec!=null && f.deltaPerdidaCrec>5).sort((a,b)=>b.deltaPerdidaCrec-a.deltaPerdidaCrec);
+  const umbral = _alimUmbralCrecimiento('informes-umbral-crecimiento');
+  return filas.filter(f => f.deltaPerdidaCrec!=null && f.deltaPerdidaCrec>umbral).sort((a,b)=>b.deltaPerdidaCrec-a.deltaPerdidaCrec);
 }
 
 // La plantilla de referencia trae estas tablas como IMÁGENES a color
