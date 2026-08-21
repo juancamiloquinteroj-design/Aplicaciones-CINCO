@@ -4558,15 +4558,176 @@ async function _expImagenChart(wrapId, nombreBase, ev){
   cv.toBlob(blob => { if(blob) _expDescargarBlob(blob, `${_expNombreArchivo(nombreBase)}.png`); });
 }
 
+// ---- Gráfica NATIVA de Excel (chart1.xml a mano, OOXML) -- pedido
+// explícito ("cuando digo que exportar grafica en excel me refiero a que
+// use el tipo de graficos que hay en excel"): ExcelJS (la librería que ya
+// carga la app) NO tiene soporte de gráficas -- confirmado revisando su
+// código, no existe "addChart" en su API pública, solo hojas/celdas/
+// imágenes. No hay ninguna librería gratuita con build de navegador que
+// arme gráficas nativas por uno -- así que se arma el XML del gráfico A
+// MANO (mismo formato que escribe Excel de verdad) y se inyecta en el
+// .zip que ya generó ExcelJS con JSZip (ya cargado en la app para
+// docx-preview). Verificado con Playwright + openpyxl (librería Python
+// independiente, no mía) ANTES de integrar esto: abre el .xlsx resultante
+// y lee el LineChart con sus series/rangos correctos.
+// Alcance de esta primera versión: gráficas de línea y de barra, un solo
+// eje Y. Donas/pie, eje doble, y combos línea+barra en la misma gráfica
+// siguen saliendo como imagen embebida (más simple, ya validado) -- ver
+// _expChartExcel más abajo, que decide cuál camino tomar.
+function _expColorAHex(color){
+  if(!color || typeof color !== 'string') return '808080';
+  color = color.trim();
+  if(color[0] === '#'){
+    let h = color.slice(1);
+    if(h.length === 3) h = h.split('').map(c=>c+c).join('');
+    return /^[0-9a-fA-F]{6}$/.test(h) ? h.toUpperCase() : '808080';
+  }
+  let m = color.match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
+  if(m){
+    return [1,2,3].map(i => Number(m[i]).toString(16).padStart(2,'0')).join('').toUpperCase();
+  }
+  m = color.match(/^hsl\(\s*([\d.]+)\s*,\s*([\d.]+)%\s*,\s*([\d.]+)%/i);
+  if(m){
+    const h = Number(m[1])/360, s = Number(m[2])/100, l = Number(m[3])/100;
+    const hue2rgb = (p,q,t) => { if(t<0)t+=1; if(t>1)t-=1; if(t<1/6)return p+(q-p)*6*t; if(t<1/2)return q; if(t<2/3)return p+(q-p)*(2/3-t)*6; return p; };
+    let r,g,b;
+    if(s===0){ r=g=b=l; } else {
+      const q = l<0.5 ? l*(1+s) : l+s-l*s, p = 2*l-q;
+      r = hue2rgb(p,q,h+1/3); g = hue2rgb(p,q,h); b = hue2rgb(p,q,h-1/3);
+    }
+    return [r,g,b].map(v => Math.round(v*255).toString(16).padStart(2,'0')).join('').toUpperCase();
+  }
+  return '808080';
+}
+function _expColLetraExcel(n){
+  let s = '';
+  while(n>0){ const m=(n-1)%26; s=String.fromCharCode(65+m)+s; n=Math.floor((n-1)/26); }
+  return s;
+}
+function _expEscXml(s){
+  return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// Arma el chart1.xml (c:chartSpace) -- tipo 'line' o 'bar', N series, un
+// eje de categorías y un eje de valores. Las referencias apuntan a las
+// celdas reales de la hoja (ya escritas por _expChartExcel) para que el
+// gráfico quede "vivo" en Excel (clickeable/editable), con el valor
+// cacheado también (c:numCache/c:strCache) para que abra con datos sin
+// tener que recalcular nada.
+function _expConstruirChartXmlNativo({tipo, titulo, esHorizontal, esApilada, nombreHoja, categorias, series, filaEncabezado, filaPrimerDato, filaUltimoDato}){
+  const nHoja = nombreHoja.replace(/'/g, "''");
+  const catRef = `'${nHoja}'!$A$${filaPrimerDato}:$A$${filaUltimoDato}`;
+  const catCache = categorias.map((c,i) => `<c:pt idx="${i}"><c:v>${_expEscXml(c)}</c:v></c:pt>`).join('');
+  const catXml = `<c:cat><c:strRef><c:f>${catRef}</c:f><c:strCache><c:ptCount val="${categorias.length}"/>${catCache}</c:strCache></c:strRef></c:cat>`;
+
+  const serXml = series.map((s, si) => {
+    const col = _expColLetraExcel(si+2);
+    const valRef = `'${nHoja}'!$${col}$${filaPrimerDato}:$${col}$${filaUltimoDato}`;
+    const nameRef = `'${nHoja}'!$${col}$${filaEncabezado}`;
+    const valCache = s.data.map((v,i) => v==null ? '' : `<c:pt idx="${i}"><c:v>${v}</c:v></c:pt>`).join('');
+    const spPr = tipo==='line'
+      ? `<c:spPr><a:ln w="19050"><a:solidFill><a:srgbClr val="${s.color}"/></a:solidFill></a:ln></c:spPr>
+         <c:marker><c:symbol val="circle"/><c:size val="5"/><c:spPr><a:solidFill><a:srgbClr val="${s.color}"/></a:solidFill><a:ln><a:solidFill><a:srgbClr val="${s.color}"/></a:solidFill></a:ln></c:spPr></c:marker>
+         <c:smooth val="0"/>`
+      : `<c:spPr><a:solidFill><a:srgbClr val="${s.color}"/></a:solidFill></c:spPr>`;
+    return `<c:ser>
+      <c:idx val="${si}"/><c:order val="${si}"/>
+      <c:tx><c:strRef><c:f>${nameRef}</c:f><c:strCache><c:ptCount val="1"/><c:pt idx="0"><c:v>${_expEscXml(s.label)}</c:v></c:pt></c:strCache></c:strRef></c:tx>
+      ${spPr}
+      ${catXml}
+      <c:val><c:numRef><c:f>${valRef}</c:f><c:numCache><c:formatCode>General</c:formatCode><c:ptCount val="${s.data.length}"/>${valCache}</c:numCache></c:numRef></c:val>
+    </c:ser>`;
+  }).join('');
+
+  const bloqueTipo = tipo === 'line'
+    ? `<c:lineChart><c:grouping val="standard"/><c:varyColors val="0"/>${serXml}<c:marker val="1"/><c:axId val="111111111"/><c:axId val="222222222"/></c:lineChart>`
+    : `<c:barChart><c:barDir val="${esHorizontal?'bar':'col'}"/><c:grouping val="${esApilada?'stacked':'clustered'}"/><c:varyColors val="0"/>${serXml}<c:gapWidth val="80"/>${esApilada?'<c:overlap val="100"/>':''}<c:axId val="111111111"/><c:axId val="222222222"/></c:barChart>`;
+
+  const tituloXml = titulo
+    ? `<c:title><c:tx><c:rich><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr lang="es-CO" b="1" sz="1400"/><a:t>${_expEscXml(titulo)}</a:t></a:r></a:p></c:rich></c:tx><c:overlay val="0"/></c:title>`
+    : `<c:autoTitleDeleted val="1"/>`;
+
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <c:chart>
+    ${tituloXml}
+    <c:plotArea>
+      <c:layout/>
+      ${bloqueTipo}
+      <c:catAx><c:axId val="111111111"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="b"/><c:txPr><a:bodyPr rot="-2700000"/><a:lstStyle/><a:p><a:pPr><a:defRPr sz="900"/></a:pPr><a:endParaRPr lang="es-CO"/></a:p></c:txPr><c:crossAx val="222222222"/></c:catAx>
+      <c:valAx><c:axId val="222222222"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:delete val="0"/><c:axPos val="l"/><c:majorGridlines><c:spPr><a:ln w="9525"><a:solidFill><a:srgbClr val="E1E0D9"/></a:solidFill></a:ln></c:spPr></c:majorGridlines><c:txPr><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr sz="900"/></a:pPr><a:endParaRPr lang="es-CO"/></a:p></c:txPr><c:crossAx val="111111111"/></c:valAx>
+    </c:plotArea>
+    <c:legend><c:legendPos val="b"/><c:overlay val="0"/></c:legend>
+    <c:plotVisOnly val="1"/>
+  </c:chart>
+</c:chartSpace>`;
+}
+
+// Inyecta chart1.xml + drawing1.xml (con sus .rels) en el .zip que ya
+// armó ExcelJS, y los relaciona con la primera hoja (sheet1.xml, así
+// nombra ExcelJS siempre la primera hoja que se agrega). `filaAncla`/
+// `colAncla` son 0-based -- dónde arranca el gráfico en la hoja.
+async function _expInyectarChartNativo(zipBuffer, chartXml, filaAncla, colAncla, colHasta, filaHasta){
+  const zip = await JSZip.loadAsync(zipBuffer);
+
+  const drawingXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <xdr:twoCellAnchor>
+    <xdr:from><xdr:col>${colAncla}</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>${filaAncla}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>
+    <xdr:to><xdr:col>${colHasta}</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>${filaHasta}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to>
+    <xdr:graphicFrame macro="">
+      <xdr:nvGraphicFramePr><xdr:cNvPr id="2" name="Gráfica 1"/><xdr:cNvGraphicFramePr/></xdr:nvGraphicFramePr>
+      <xdr:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/></xdr:xfrm>
+      <a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart">
+        <c:chart xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:id="rId1"/>
+      </a:graphicData></a:graphic>
+    </xdr:graphicFrame>
+    <xdr:clientData/>
+  </xdr:twoCellAnchor>
+</xdr:wsDr>`;
+
+  const drawingRelsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart" Target="../charts/chart1.xml"/>
+</Relationships>`;
+
+  zip.file('xl/charts/chart1.xml', chartXml);
+  zip.file('xl/drawings/drawing1.xml', drawingXml);
+  zip.file('xl/drawings/_rels/drawing1.xml.rels', drawingRelsXml);
+
+  const sheetRelsPath = 'xl/worksheets/_rels/sheet1.xml.rels';
+  const relsFile = zip.file(sheetRelsPath);
+  let sheetRelsXml = relsFile
+    ? await relsFile.async('string')
+    : `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>`;
+  const relId = 'rIdDrawing1';
+  sheetRelsXml = sheetRelsXml.replace('</Relationships>', `<Relationship Id="${relId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawing1.xml"/></Relationships>`);
+  zip.file(sheetRelsPath, sheetRelsXml);
+
+  let sheetXml = await zip.file('xl/worksheets/sheet1.xml').async('string');
+  if(!sheetXml.includes('<drawing ')) sheetXml = sheetXml.replace('</worksheet>', `<drawing r:id="${relId}"/></worksheet>`);
+  zip.file('xl/worksheets/sheet1.xml', sheetXml);
+
+  let contentTypesXml = await zip.file('[Content_Types].xml').async('string');
+  [
+    `<Override PartName="/xl/charts/chart1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawingml.chart+xml"/>`,
+    `<Override PartName="/xl/drawings/drawing1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>`,
+  ].forEach(o => { if(!contentTypesXml.includes(o)) contentTypesXml = contentTypesXml.replace('</Types>', o+'</Types>'); });
+  zip.file('[Content_Types].xml', contentTypesXml);
+
+  return zip.generateAsync({type:'uint8array'});
+}
+
 // Excel de una GRÁFICA -- lee directo chart.data (Chart.js), no depende
 // de que cada módulo ya tenga su propio "Descargar CSV" -- funciona igual
 // para cualquiera de las ~40 gráficas de la app.
 // .xlsx REAL (ExcelJS, no el truco de HTML-con-extensión-.xls que usa
-// _expDescargarXls) -- pedido explícito ("el boton que exporta cada
-// grafica a xlsx tambien quiero que se descargue la grafica"): antes solo
-// bajaba los datos crudos, ahora la imagen de la gráfica queda embebida
-// ARRIBA de la tabla de datos, en el mismo archivo. Aplica sola a
-// cualquier gráfica de la app (mismo botón compartido, ver _expEscanear).
+// _expDescargarXls). Intenta primero una gráfica NATIVA de Excel (chart
+// XML a mano, ver arriba) -- pedido explícito ("que use el tipo de
+// graficos que hay en excel"); si el tipo de gráfica no está soportado
+// (dona/pie, eje doble, combo línea+barra) cae a la imagen embebida
+// (aplica sola a cualquier gráfica de la app -- mismo botón compartido,
+// ver _expEscanear).
 async function _expChartExcel(wrapId, nombreBase, ev){
   if(ev) ev.stopPropagation();
   _expCerrarMenus();
@@ -4580,13 +4741,17 @@ async function _expChartExcel(wrapId, nombreBase, ev){
   // cada categoría, no la serie), filtrar por label las dejaba vacías.
   const datasets = chart.data.datasets || [];
   if(!labels.length || !datasets.length) return;
-  if(typeof ExcelJS === 'undefined') return;
+  if(typeof ExcelJS === 'undefined' || typeof JSZip === 'undefined') return;
 
   const tituloTexto = _expTextoTitulo(wrap);
-  // Misma lectura NÍTIDA que _expImagenChart -- toBase64Image lee el
-  // canvas de Chart.js en su resolución real (ya al doble por
-  // devicePixelRatio), no un screenshot re-escalado.
-  const base64 = chart.toBase64Image('image/png', 1).split(',')[1];
+
+  // ¿Este gráfico entra en el molde soportado para gráfica NATIVA? Todas
+  // las series del mismo tipo base (line o bar, sin combos) y un solo eje
+  // Y (sin eje doble) -- si no, se cae a la imagen embebida más abajo.
+  const tiposDataset = datasets.map(d => d.type || chart.config.type);
+  const tipoUnico = tiposDataset.every(t => t === tiposDataset[0]) ? tiposDataset[0] : null;
+  const ejesY = Object.keys(chart.scales||{}).filter(k => chart.scales[k].axis === 'y');
+  const tipoNativoSoportado = (tipoUnico === 'line' || tipoUnico === 'bar') && ejesY.length <= 1;
 
   const workbook = new ExcelJS.Workbook();
   const hoja = workbook.addWorksheet('Gráfica');
@@ -4598,17 +4763,27 @@ async function _expChartExcel(wrapId, nombreBase, ev){
     fila += 2;
   }
 
-  const anchoImg = 700;
-  const altoImg = Math.round(anchoImg * (chart.height||400) / (chart.width||760));
-  const imgId = workbook.addImage({base64, extension:'png'});
-  hoja.addImage(imgId, {tl:{col:0, row:fila-1}, ext:{width:anchoImg, height:altoImg}});
-  fila += Math.ceil(altoImg/20) + 2;  // deja suficientes filas libres para no solapar la tabla con la imagen
+  const filaAnclaGrafico = fila - 1;  // 0-based, para el drawing nativo
+  let imgId = null, anchoImg = 700, altoImg = 400;
+  if(!tipoNativoSoportado){
+    // Camino de respaldo (ya validado) -- imagen embebida, misma lectura
+    // NÍTIDA que _expImagenChart (toBase64Image en resolución real).
+    const base64 = chart.toBase64Image('image/png', 1).split(',')[1];
+    altoImg = Math.round(anchoImg * (chart.height||400) / (chart.width||760));
+    imgId = workbook.addImage({base64, extension:'png'});
+    hoja.addImage(imgId, {tl:{col:0, row:fila-1}, ext:{width:anchoImg, height:altoImg}});
+    fila += Math.ceil(altoImg/20) + 2;
+  }else{
+    fila += 20;  // deja el mismo alto aproximado libre para el gráfico nativo, que se ancla después
+  }
 
+  const filaEncabezado = fila;
   const filaEnc = hoja.getRow(fila);
   filaEnc.values = ['', ...datasets.map((d,i) => d.label || (datasets.length>1 ? `Serie ${i+1}` : 'Valor'))];
   filaEnc.font = {bold:true};
   fila++;
 
+  const filaPrimerDato = fila;
   labels.forEach((lab, i) => {
     hoja.getRow(fila).values = [String(lab), ...datasets.map(d => {
       const v = d.data ? d.data[i] : null;
@@ -4616,11 +4791,33 @@ async function _expChartExcel(wrapId, nombreBase, ev){
     })];
     fila++;
   });
+  const filaUltimoDato = fila - 1;
 
   hoja.getColumn(1).width = 22;
   for(let c=2; c<=datasets.length+1; c++) hoja.getColumn(c).width = 16;
 
-  const buffer = await workbook.xlsx.writeBuffer();
+  let buffer = await workbook.xlsx.writeBuffer();
+
+  if(tipoNativoSoportado){
+    const esHorizontal = tipoUnico==='bar' && chart.options && chart.options.indexAxis === 'y';
+    const escalaY = chart.scales && chart.scales[ejesY[0]];
+    const esApilada = !!(escalaY && escalaY.stacked);
+    const series = datasets.map(d => ({
+      label: d.label || 'Valor',
+      color: _expColorAHex(tipoUnico==='line' ? (d.borderColor||d.backgroundColor) : (d.backgroundColor||d.borderColor)),
+      data: labels.map((_,i) => { const v = d.data ? d.data[i] : null; return (typeof v==='number') ? v : null; }),
+    }));
+    const chartXml = _expConstruirChartXmlNativo({
+      tipo: tipoUnico, titulo: tituloTexto, esHorizontal, esApilada, nombreHoja: 'Gráfica',
+      categorias: labels.map(String), series, filaEncabezado, filaPrimerDato, filaUltimoDato,
+    });
+    try{
+      buffer = await _expInyectarChartNativo(buffer, chartXml, filaAnclaGrafico, 0, 8, filaEncabezado-2);
+    }catch(e){
+      console.error('Gráfica nativa de Excel falló, se descarga solo con los datos:', e);
+    }
+  }
+
   const blob = new Blob([buffer], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
   _expDescargarBlob(blob, `${_expNombreArchivo(nombreBase)}.xlsx`);
 }
