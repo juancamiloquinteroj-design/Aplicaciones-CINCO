@@ -996,6 +996,7 @@ tfoot td:first-child{text-align:left}
     <!-- Diagrama Unifilar oculto a pedido del usuario (dibujo lento/difícil de usar) -- código y tablas se dejan intactos por si se retoma más adelante. -->
   </div>
   <button class="sidebar-link" data-vista="informes" onclick="mostrarVista('informes')">📄 Informes</button>
+  <button class="sidebar-link" data-vista="programa-facturacion" onclick="mostrarVista('programa-facturacion')">🧾 Programa de Facturación</button>
   <div class="sidebar-proximamente">Más módulos próximamente</div>
   <div class="sidebar-acceso" id="sidebar-acceso"></div>
 </aside>
@@ -3123,6 +3124,62 @@ tfoot td:first-child{text-align:left}
 </div>
 <!-- fin vista-informes -->
 
+<!-- ---------------- PROGRAMA DE FACTURACIÓN ---------------- -->
+<div id="vista-programa-facturacion" class="vista-modulo hidden">
+
+  <div class="sec-hdr">
+    <div class="sec-title">Programa de Facturación</div>
+    <div class="sec-sub">Depende exclusivamente de "PROGRAMA FACTURACION_LECTURAS.csv" -- calendario de lectura/facturación por Zona y Ciclo, con la cantidad de usuarios de cada ciclo mes a mes.</div>
+  </div>
+
+  <div id="pf-vacio" class="card"><div style="color:var(--text3)">Cargando…</div></div>
+
+  <div id="pf-contenido" class="hidden">
+
+    <div class="card">
+      <div class="fbar" style="margin-bottom:10px">
+        <label>Zona</label>
+        <div id="pf-zonas" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+        <label style="margin-left:16px">Ciclo</label>
+        <select id="pf-ciclo" onchange="pfRenderTodo()" style="min-width:100px"></select>
+        <label style="margin-left:16px">Año</label>
+        <select id="pf-anio" onchange="pfRenderTodo()" style="min-width:100px"></select>
+        <button type="button" class="btn-theme" style="width:auto;padding:0 14px;margin-left:auto" onclick="pfDescargarCsv()">⬇ Descargar CSV</button>
+      </div>
+      <div id="pf-resumen" class="be-resumen-cards"></div>
+    </div>
+
+    <div class="card">
+      <div style="text-align:center;margin-bottom:8px">
+        <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Calendario de Lectura/Facturación -- Ciclo seleccionado</div>
+        <div style="font-size:10.5px;color:var(--text3);margin-top:2px">Un mes por fila, de Enero a Diciembre del año elegido. LE = Lectura · FS = Facturación en Sitio (se lee y factura el mismo día).</div>
+      </div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th style="text-align:left">Mes</th><th>Usuarios</th><th>Día(s) marcado(s)</th><th>Tipo</th></tr></thead>
+          <tbody id="pf-tabla-mensual"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <div style="text-align:center;margin-bottom:8px">
+        <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Resumen Anual por Ciclo -- Zona y Año seleccionados</div>
+        <div style="font-size:10.5px;color:var(--text3);margin-top:2px">Días facturados = cantidad de días marcados (LE+FS) en los 12 meses del año.</div>
+      </div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th style="text-align:left">Ciclo</th><th>Usuarios (último mes)</th><th>Meses con dato</th><th>Días facturados en el año</th><th>Primera fecha</th><th>Última fecha</th></tr></thead>
+          <tbody id="pf-tabla-anual"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+
+</div>
+<!-- fin vista-programa-facturacion -->
+
 <!-- ---------------- BALANCES POR ESTRUCTURA · CREAR ---------------- -->
 <div id="vista-be-crear" class="vista-modulo hidden">
 
@@ -4673,7 +4730,7 @@ function toggleSubmenuAlim(){
   }
 }
 
-let vistaCargada = {perdidas:false, parametrizacion:false, telemedidos:false, balancesEstructura:false, ipReg:false, ipComercial:false, ipNivel1:false, reportesSspd:false, tridevanados:false, alimResumen:false, alimNivel4:false, alimNivel3:false, alimN21:false, alimSubestaciones:false, alimAlimentadores:false, tempEntrada:false, informes:false};
+let vistaCargada = {perdidas:false, parametrizacion:false, telemedidos:false, balancesEstructura:false, ipReg:false, ipComercial:false, ipNivel1:false, reportesSspd:false, tridevanados:false, alimResumen:false, alimNivel4:false, alimNivel3:false, alimN21:false, alimSubestaciones:false, alimAlimentadores:false, tempEntrada:false, informes:false, programaFacturacion:false};
 
 async function mostrarVista(nombre){
   document.querySelectorAll('.vista-modulo').forEach(v=>v.classList.add('hidden'));
@@ -4775,6 +4832,10 @@ async function mostrarVista(nombre){
   if(nombre==='informes' && !vistaCargada.informes){
     vistaCargada.informes = true;
     await informesCargar();
+  }
+  if(nombre==='programa-facturacion' && !vistaCargada.programaFacturacion){
+    vistaCargada.programaFacturacion = true;
+    await cargarProgramaFacturacion();
   }
   // Las alertas se piden de nuevo cada vez que se entra a esta vista puntual
   // (no solo la primera vez) -- son datos que cambian seguido (atraso día a
@@ -22489,6 +22550,213 @@ async function informesGenerarPDF(){
   }finally{
     btn.disabled = false;
   }
+}
+
+/* ---- Programa de Facturación -- depende EXCLUSIVAMENTE de
+   "PROGRAMA FACTURACION_LECTURAS.csv" (ver load_programa_facturacion.py
+   en el backend de Pérdidas Técnicas -- este módulo consume
+   /api/programa-facturacion del mismo backend que Alimentadores/IP_Reg).
+   Cada fila = Zona+Ciclo+Año+Mes con Usuarios y 0-2 días marcados en el
+   mes (LE=Lectura, FS=Facturación en Sitio -- ambos son fechas de
+   lectura, FS es la variante donde también se factura en sitio el mismo
+   día, confirmado con el usuario). ---- */
+let PF_FILAS = null;
+let PF_ZONAS = [];
+let PF_ZONA_SEL = null;
+
+async function cargarProgramaFacturacion(){
+  const vacio = document.getElementById('pf-vacio');
+  const contenido = document.getElementById('pf-contenido');
+  let resp;
+  try{
+    resp = DEMO ? {filas:[]} : await apiGet('/api/programa-facturacion', AUTH_TIMEOUT_MS);
+  }catch(e){
+    vacio.classList.remove('hidden'); contenido.classList.add('hidden');
+    vacio.querySelector('div').textContent = e.message || 'No se pudo cargar Programa de Facturación.';
+    return;
+  }
+  PF_FILAS = (resp && resp.filas) || [];
+  if(!PF_FILAS.length){
+    vacio.classList.remove('hidden'); contenido.classList.add('hidden');
+    vacio.querySelector('div').textContent = DEMO ? 'No disponible en modo demo (sin conexión al servidor).' : 'Sin datos cargados todavía.';
+    return;
+  }
+  vacio.classList.add('hidden'); contenido.classList.remove('hidden');
+
+  PF_ZONAS = [...new Set(PF_FILAS.map(f=>f.zona))].sort();
+  if(!PF_ZONA_SEL || !PF_ZONAS.includes(PF_ZONA_SEL)) PF_ZONA_SEL = PF_ZONAS[0];
+  pfRenderZonasChips();
+  pfPoblarCiclo();
+  pfPoblarAnio();
+  pfRenderTodo();
+}
+
+function pfRenderZonasChips(){
+  const cont = document.getElementById('pf-zonas');
+  cont.innerHTML = PF_ZONAS.map(z => {
+    const color = colorParaZona(z);
+    const activa = z===PF_ZONA_SEL;
+    const estilo = activa ? `background:${color};border-color:${color};color:#fff` : `border-color:${color};color:${color};background:transparent`;
+    return `<button type="button" class="be-modo-btn" style="${estilo}" onclick="pfSeleccionarZona('${z}')">Zona ${z}</button>`;
+  }).join('');
+}
+
+function pfSeleccionarZona(z){
+  PF_ZONA_SEL = z;
+  pfRenderZonasChips();
+  pfPoblarCiclo();
+  pfPoblarAnio();
+  pfRenderTodo();
+}
+
+function pfFilasZona(){
+  return PF_FILAS.filter(f => f.zona === PF_ZONA_SEL);
+}
+
+function pfPoblarCiclo(){
+  const sel = document.getElementById('pf-ciclo');
+  const anterior = sel.value;
+  const ciclos = [...new Set(pfFilasZona().map(f=>f.ciclo))].sort((a,b)=>a-b);
+  sel.innerHTML = ciclos.map(c => `<option value="${c}">Ciclo ${c}</option>`).join('');
+  sel.value = (anterior && ciclos.some(c=>String(c)===anterior)) ? anterior : (ciclos.length ? String(ciclos[0]) : '');
+}
+
+function pfPoblarAnio(){
+  const sel = document.getElementById('pf-anio');
+  const anterior = sel.value;
+  const anios = [...new Set(pfFilasZona().map(f=>f.anio))].sort((a,b)=>b-a);
+  sel.innerHTML = anios.map(a => `<option value="${a}">${a}</option>`).join('');
+  sel.value = (anterior && anios.some(a=>String(a)===anterior)) ? anterior : (anios.length ? String(anios[0]) : '');
+}
+
+const PF_MESES_NOMBRE = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+// Unos pocos días vienen marcados fuera del rango real del mes (ej.
+// "día 30" en Febrero, "día 31" en Septiembre) -- error de captura del
+// CSV fuente (~0.6% de las marcas, el resto cae dentro del mes real). Se
+// recortan al último día real del mes al mostrar la fecha, con un "*"
+// para dejar visible que se ajustó.
+function pfUltimoDiaMes(anio, mes){ return new Date(anio, mes, 0).getDate(); }
+function pfFechaTexto(anio, mes, dia){
+  const ultimo = pfUltimoDiaMes(anio, mes);
+  const diaReal = Math.min(dia, ultimo);
+  return `${String(diaReal).padStart(2,'0')}/${String(mes).padStart(2,'0')}/${anio}${dia>ultimo?' *':''}`;
+}
+
+function pfCicloSel(){ return Number(document.getElementById('pf-ciclo').value); }
+function pfAnioSel(){ return Number(document.getElementById('pf-anio').value); }
+
+function pfRenderTodo(){
+  if(!PF_FILAS) return;
+  pfRenderResumen();
+  pfRenderTablaMensual();
+  pfRenderTablaAnual();
+}
+
+function pfRenderResumen(){
+  const cont = document.getElementById('pf-resumen');
+  const ciclo = pfCicloSel();
+  const filasCiclo = pfFilasZona().filter(f => f.ciclo === ciclo).sort((a,b) => (a.anio*12+a.mes)-(b.anio*12+b.mes));
+  const ultimo = filasCiclo[filasCiclo.length-1] || null;
+  const anio = pfAnioSel();
+  const filasAnio = filasCiclo.filter(f => f.anio === anio);
+  const diasAnio = filasAnio.reduce((s,f) => s + f.dias.length, 0);
+  const mesesConDato = filasAnio.filter(f => f.dias.length > 0).length;
+  const totalCiclos = new Set(pfFilasZona().map(f=>f.ciclo)).size;
+
+  const tarjeta = (etiqueta, valor, sub) => `<div class="be-resumen-tile">
+    <div class="etiqueta">${etiqueta}</div>
+    <div class="valor">${valor}</div>
+    ${sub?`<div class="sub">${sub}</div>`:''}
+  </div>`;
+  cont.innerHTML = [
+    tarjeta('Usuarios (último mes)', ultimo && ultimo.usuarios!=null ? ultimo.usuarios.toLocaleString('es-CO') : '--', ultimo ? labelMesLargo(`${ultimo.anio}-${String(ultimo.mes).padStart(2,'0')}`) : ''),
+    tarjeta('Meses con dato en el año', mesesConDato, `de 12 · ${anio}`),
+    tarjeta('Días facturados en el año', diasAnio, anio),
+    tarjeta('Ciclos en esta zona', totalCiclos, `Zona ${PF_ZONA_SEL}`),
+  ].join('');
+}
+
+function pfRenderTablaMensual(){
+  const cuerpo = document.getElementById('pf-tabla-mensual');
+  const ciclo = pfCicloSel(), anio = pfAnioSel();
+  const filas = pfFilasZona().filter(f => f.ciclo===ciclo && f.anio===anio);
+  const porMes = new Map(filas.map(f => [f.mes, f]));
+  cuerpo.innerHTML = PF_MESES_NOMBRE.map((nombre, i) => {
+    const mes = i+1;
+    const f = porMes.get(mes);
+    if(!f) return `<tr><td style="text-align:left">${nombre}</td><td colspan="3" style="color:var(--text3)">Sin dato</td></tr>`;
+    const fechas = f.dias.map(d => pfFechaTexto(anio, mes, d.dia)).join(', ') || '--';
+    const tipos = [...new Set(f.dias.map(d=>d.tipo))].join(', ') || '--';
+    return `<tr>
+      <td style="text-align:left">${nombre}</td>
+      <td>${f.usuarios!=null ? f.usuarios.toLocaleString('es-CO') : '--'}</td>
+      <td>${fechas}</td>
+      <td>${tipos}</td>
+    </tr>`;
+  }).join('');
+}
+
+function pfRenderTablaAnual(){
+  const cuerpo = document.getElementById('pf-tabla-anual');
+  const anio = pfAnioSel();
+  const filas = pfFilasZona().filter(f => f.anio===anio);
+  const porCiclo = new Map();
+  filas.forEach(f => {
+    if(!porCiclo.has(f.ciclo)) porCiclo.set(f.ciclo, []);
+    porCiclo.get(f.ciclo).push(f);
+  });
+  const ciclos = [...porCiclo.keys()].sort((a,b)=>a-b);
+  if(!ciclos.length){ cuerpo.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text3)">Sin datos para este año.</td></tr>`; return; }
+  cuerpo.innerHTML = ciclos.map(c => {
+    const fs = porCiclo.get(c).sort((a,b)=>a.mes-b.mes);
+    const ultimo = fs[fs.length-1];
+    const mesesConDato = fs.filter(f=>f.dias.length>0).length;
+    const diasTotal = fs.reduce((s,f)=>s+f.dias.length,0);
+    const fechas = [];
+    fs.forEach(f => f.dias.forEach(d => fechas.push({clave: f.mes*100+d.dia, texto: pfFechaTexto(anio, f.mes, d.dia)})));
+    fechas.sort((a,b)=>a.clave-b.clave);
+    const primera = fechas.length ? fechas[0].texto : '--';
+    const ultima = fechas.length ? fechas[fechas.length-1].texto : '--';
+    return `<tr onclick="pfSeleccionarCiclo(${c})" style="cursor:pointer">
+      <td style="text-align:left;font-weight:700">Ciclo ${c}</td>
+      <td>${ultimo.usuarios!=null ? ultimo.usuarios.toLocaleString('es-CO') : '--'}</td>
+      <td>${mesesConDato} / 12</td>
+      <td>${diasTotal}</td>
+      <td>${primera}</td>
+      <td>${ultima}</td>
+    </tr>`;
+  }).join('');
+}
+
+function pfSeleccionarCiclo(ciclo){
+  document.getElementById('pf-ciclo').value = String(ciclo);
+  pfRenderTodo();
+}
+
+function pfDescargarCsv(){
+  const encabezado = ['Zona','Ciclo','Año','Mes','Usuarios','Fecha','Tipo'];
+  const filas = [];
+  pfFilasZona().forEach(f => {
+    if(!f.dias.length){
+      filas.push([`Zona ${f.zona}`, f.ciclo, f.anio, PF_MESES_NOMBRE[f.mes-1], f.usuarios ?? '', '', '']);
+    }else{
+      f.dias.forEach(d => {
+        filas.push([`Zona ${f.zona}`, f.ciclo, f.anio, PF_MESES_NOMBRE[f.mes-1], f.usuarios ?? '', pfFechaTexto(f.anio, f.mes, d.dia), d.tipo]);
+      });
+    }
+  });
+  const linea = fila => fila.map(v => {
+    if(v==null||v===undefined) return '';
+    return typeof v === 'number' ? String(v).replace('.',',') : String(v);
+  }).join(';');
+  const csv = [linea(encabezado), ...filas.map(linea)].join('\r\n');
+  const blob = new Blob(['﻿'+csv], {type:'text/csv;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `programa_facturacion_zona${PF_ZONA_SEL}_${(OPERADOR&&OPERADOR.slug)||'operador'}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
 }
 </script>
 </body>
