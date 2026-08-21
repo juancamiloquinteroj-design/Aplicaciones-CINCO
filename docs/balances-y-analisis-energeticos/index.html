@@ -1471,13 +1471,7 @@ tfoot td:first-child{text-align:left}
       </select>
       <div id="ip-overlay-variables" style="display:flex;gap:6px;flex-wrap:wrap"></div>
     </div>
-    <!-- data-export-h más alto que el default (325) -- pedido explícito
-         ("la grafica del indicador general si esta saliendo amontonada"):
-         esta gráfica en particular trae rango largo + banda de proyección +
-         doble eje + leyenda + etiqueta en cada punto -- más contenido que
-         el resto, necesita más alto para no encimarse, aunque el ancho
-         siga fijo (17,59cm, sigue cabiendo en la hoja). -->
-    <div class="chart-wrap" style="height:420px" data-export-h="480"><canvas id="ch-ip-reg"></canvas></div>
+    <div class="chart-wrap" style="height:420px"><canvas id="ch-ip-reg"></canvas></div>
     <div class="be-resumen-cards" id="ip-resumen-principal" style="margin:16px 0 0"></div>
   </div>
 
@@ -4715,16 +4709,25 @@ async function _expImagenChart(wrapId, nombreBase, ev){
   // precisamente lo que rompía la suposición de 96 DPI, haciendo que el
   // tamaño interpretado saliera 3 veces más grande de lo esperado.
   //
-  // Ahora: el PNG se genera con el conteo de píxeles EXACTO que Word
-  // asume por defecto (96 DPI) para el ancho imprimible de una hoja
-  // carta con márgenes de 2cm (17,59cm = 665px a 96 DPI) -- así CUALQUIER
-  // programa que use la suposición estándar (que es casi todos) lo
-  // interpreta al tamaño correcto, sin depender de que el metadato de
-  // tamaño físico sobreviva el copiar/pegar. devicePixelRatio se fuerza a
-  // 1 (nada de nitidez extra) -- exactamente lo que se pidió ("no importa
-  // la calidad"). El alto queda proporcional a la misma relación 5:3 ya
-  // usada antes. data-export-w/h en el .chart-wrap lo pisa para series
-  // largas en el tiempo que necesitan MÁS ancho todavía.
+  // El PNG se genera con el conteo de píxeles EXACTO que Word asume por
+  // defecto (96 DPI) -- así CUALQUIER programa que use la suposición
+  // estándar (que es casi todos) lo interpreta al tamaño correcto, sin
+  // depender de que el metadato de tamaño físico sobreviva el
+  // copiar/pegar. devicePixelRatio se fuerza a 1 (nada de nitidez extra)
+  // -- exactamente lo que se pidió ("no importa la calidad"). El alto
+  // queda proporcional (misma relación 1,9:1 de la gráfica del informe
+  // automático, que ya se usó como referencia de proporción).
+  //
+  // ANCHO -- pedido explícito, con 2 requisitos que terminaron en
+  // tensión directa: primero "que quepa en una hoja carta con márgenes
+  // de 2cm" (665px, así se hizo), después "no esta saliendo del tamaño
+  // que marque en rojo... dar mas prioridad al eje X" (más ancho para
+  // que las etiquetas de mes no se amontonen). Se le preguntó
+  // directamente al usuario cuál priorizar -- eligió "Más ancho,
+  // prioridad al eje X" -- aceptando que ya NO cabe a tamaño real dentro
+  // de esa página (en Word habría que reducirlo a mano, o dejar que
+  // Word lo encoja automáticamente al insertar). 1000x526 -- misma
+  // relación 1,9:1, bastante más aire por mes que 617x325.
   //
   // BUG real encontrado antes (por eso los intentos anteriores -- 760x560,
   // luego 900x540 -- seguían saliendo con el tamaño de PANTALLA): Chart.js
@@ -4736,14 +4739,8 @@ async function _expImagenChart(wrapId, nombreBase, ev){
   // requestAnimationFrame). Ahora se espera explícitamente a que
   // chart.width/height reflejen expW/expH (máx. 20 frames) antes de
   // capturar.
-  // 617x325 -- proporción 1,9:1 (ancho:alto), la MISMA que usa la
-  // gráfica del informe automático (760x400) que el usuario confirmó
-  // como "casi perfecta" -- pedido explícito ("mira como salio el png
-  // asi es de alto pero que sea mas ancho asi como te lo dibuje en rojo
-  // para todas las graficas"): 5:3 (1,67:1, el intento anterior) salía
-  // más alto/cuadrado de lo que se quiere.
-  const expW = Number(wrap.dataset.exportW) || 617;
-  const expH = Number(wrap.dataset.exportH) || 325;
+  const expW = Number(wrap.dataset.exportW) || 1000;
+  const expH = Number(wrap.dataset.exportH) || 526;
   const dprOriginal = chart.options.devicePixelRatio;
   chart.options.devicePixelRatio = 1;
   chart.resize(expW, expH);
