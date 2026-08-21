@@ -4150,6 +4150,18 @@ if(window.ChartDataLabels){
 //    pulido, menos "por defecto de librería".
 Chart.defaults.font.family = '"Segoe UI", system-ui, -apple-system, sans-serif';
 Chart.defaults.elements.line.tension = 0;
+// Margen automático arriba/abajo del rango real de los datos en TODOS los
+// ejes lineales -- pedido explícito ("cuando exporto en png sale cortada
+// algun dato... quiero que ajustes siempre el eje Y... excel siempre deja
+// un rango"). Sin esto, Chart.js pone el máximo del eje justo en el punto
+// más alto -- si esa etiqueta va ANCLADA arriba del punto (anchor:'end',
+// align:'top', como casi todas acá), no le queda aire y se corta contra
+// el borde del canvas al exportar. `grace` es la opción NATIVA de
+// Chart.js para esto (agrega margen automático al min/max calculado,
+// sin necesidad de fijar un min/max manual por gráfica) -- aplica a
+// cualquier eje que resuelva a type:'linear' (el default cuando no se
+// especifica), que es prácticamente todos los de la app.
+Chart.defaults.scales.linear.grace = '10%';
 // Leyenda con muestra de LÍNEA (no círculo) -- estilo Excel -- pedido
 // explícito ("quiero que en la aplicacion las garficas sean asi estilo
 // excel con colores de excel").
@@ -4594,17 +4606,29 @@ async function _expImagenChart(wrapId, nombreBase, ev){
   const tituloTexto = _expTextoTitulo(wrap);
 
   // Se redimensiona la gráfica REAL a un tamaño fijo antes de capturar y
-  // se devuelve a su tamaño normal apenas después -- todo en el mismo
-  // tramo síncrono (sin ningún await entre medio), así el navegador no
-  // llega a pintar el tamaño intermedio en pantalla (nada de parpadeo).
-  // 900x540 = proporción 5:3, la MISMA que usa Excel por defecto al
-  // insertar una gráfica nueva -- pedido explícito ("cuando las descarga
-  // en png las saca cuadradas quiero que sea estilo excel como
-  // rectangular"). data-export-w/h en el .chart-wrap lo pisa para series
-  // largas en el tiempo que necesitan MÁS ancho todavía.
-  const expW = Number(wrap.dataset.exportW) || 900;
-  const expH = Number(wrap.dataset.exportH) || 540;
+  // se devuelve a su tamaño normal apenas después. 1000x500 = proporción
+  // 2:1 -- pedido explícito, repetido varias veces ("sigue viendo
+  // demasiado cuadrado... quiero que sea rectangular te puedes basar en
+  // las dimensiones de una grafica de excel"). data-export-w/h en el
+  // .chart-wrap lo pisa para series largas en el tiempo que necesitan
+  // MÁS ancho todavía.
+  //
+  // BUG real encontrado (por eso los intentos anteriores -- 760x560,
+  // luego 900x540 -- seguían saliendo con el tamaño de PANTALLA): Chart.js
+  // aplica chart.resize(w,h) de forma ASÍNCRONA -- llamar a
+  // toBase64Image() inmediatamente después capturaba el canvas ANTES de
+  // que el resize surtiera efecto, siempre con el tamaño en pantalla
+  // (confirmado con Playwright: chart.width seguía en su valor viejo en
+  // el mismo tick, y solo cambiaba al valor pedido tras 1
+  // requestAnimationFrame). Ahora se espera explícitamente a que
+  // chart.width/height reflejen expW/expH (máx. 20 frames) antes de
+  // capturar.
+  const expW = Number(wrap.dataset.exportW) || 1000;
+  const expH = Number(wrap.dataset.exportH) || 500;
   chart.resize(expW, expH);
+  for(let intento=0; intento<20 && (chart.width!==expW || chart.height!==expH); intento++){
+    await new Promise(res => requestAnimationFrame(res));
+  }
   const dataUrl = chart.toBase64Image('image/png', 1);
   chart.resize();  // sin argumentos -- vuelve a leer el tamaño real del .chart-wrap en pantalla
 
@@ -9599,7 +9623,7 @@ function renderChartComparacionEstructura(datos){
         },
       },
       scales:{
-        x:{ grid:{display:false}, ticks:{color:tickXFuerte, font:{size:10}, maxRotation:0, autoSkip:true, maxTicksLimit:14} },
+        x:{ grid:{display:false}, ticks:{color:tickXFuerte, font:{size:10}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false} },
         y:{ beginAtZero:true, grid:{color:gridC},
           ticks:{color:tickC, font:{size:11}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
           title:{display:true, text:'Pérdida (kWh/mes)', color:tickC, font:{size:11}} },
@@ -9763,7 +9787,7 @@ function renderChartMovilAnual(datos){
         },
       },
       scales:{
-        x:{ grid:{display:false}, ticks:{color:tickXFuerte, font:{size:10}, maxRotation:0, autoSkip:true, maxTicksLimit:14} },
+        x:{ grid:{display:false}, ticks:{color:tickXFuerte, font:{size:10}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false} },
         y:{ beginAtZero:true, grid:{color:gridC},
           ticks:{color:tickC, font:{size:11}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
           title:{display:true, text:'Pérdida móvil anual (kWh/12 meses)', color:tickC, font:{size:11}} },
@@ -18693,7 +18717,7 @@ function ipRenderChart(){
       },
       scales:{
         x:{grid:{display:false}, offset:true,
-          ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, autoSkip:false},
+          ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false},
           afterBuildTicks: ipConstruirTicksEspaciados(16)},
         yPct:{type:'linear', position:'left', grid:{color:gridC},
           ticks:{color:'#ED7D31', font:{size:11}, callback:v=>v.toFixed(1)+'%'},
@@ -18755,7 +18779,7 @@ function ipRenderChartNivel1(){
       },
       scales:{
         x:{grid:{display:false}, offset:true,
-          ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, autoSkip:false},
+          ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false},
           afterBuildTicks: ipConstruirTicksEspaciados(16)},
         yPct:{type:'linear', position:'left', grid:{color:gridC},
           ticks:{color:'#31859B', font:{size:11}, callback:v=>v.toFixed(1)+'%'},
@@ -18894,7 +18918,7 @@ function ipRenderChartMensual(){
       },
       scales:{
         x:{grid:{display:false}, offset:true,
-          ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, autoSkip:false},
+          ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false},
           afterBuildTicks: ipConstruirTicksEspaciados(6)},
         yPct:{type:'linear', position:'left', grid:{color:gridC},
           ticks:{color:'#ED7D31', font:{size:11}, callback:v=>v.toFixed(1)+'%'},
@@ -18956,7 +18980,7 @@ function ipRenderChartAnualInicio(){
       },
       scales:{
         x:{grid:{display:false}, offset:true,
-          ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, autoSkip:false},
+          ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false},
           afterBuildTicks: ipConstruirTicksEspaciados(6)},
         yPct:{type:'linear', position:'left', grid:{color:gridC},
           ticks:{color:'#ED7D31', font:{size:11}, callback:v=>v.toFixed(1)+'%'},
