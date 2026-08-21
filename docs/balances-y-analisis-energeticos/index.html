@@ -4065,7 +4065,13 @@ function requiereEditor(){
 // Las zonas se muestran TAL CUAL vienen en el CSV de cada operador -- no hay
 // una lista fija de nombres/códigos, cada operador puede traer los suyos.
 // Solo se les asigna un color consistente para distinguirlas visualmente.
-const PALETA_ZONAS = ['#00b4d8','#f4a261','#06d6a0','#ef476f','#7b2fff','#0096c7','#ffb703','#2a9d5c','#c0132a','#4a5e7a'];
+// Paleta categórica validada (orden fijo, NUNCA se reordena/cicla dentro de
+// los primeros 8 slots) -- pedido explícito ("necesito que sean elegantes"):
+// la paleta anterior (#00b4d8/#f4a261/#06d6a0/...) reprobó la validación de
+// accesibilidad (banda de luminosidad + contraste), confirmado corriendo
+// scripts/validate_palette.js del skill de dataviz. Este orden sí pasa CVD
+// ΔE≥8 y contraste en ambos temas -- ver referencia del skill para el detalle.
+const PALETA_ZONAS = ['#2a78d6','#eb6834','#1baf7a','#eda100','#e87ba4','#008300','#4a3aa7','#e34948'];
 const _colorZonaCache = new Map();
 // Colores personalizados desde el módulo de Parametrización (uno por zona,
 // por operador) -- se cargan una vez al iniciar sesión. Si una zona no tiene
@@ -4077,7 +4083,8 @@ function colorParaZona(z){
   if(!_colorZonaCache.has(key)) _colorZonaCache.set(key, PALETA_ZONAS[_colorZonaCache.size % PALETA_ZONAS.length]);
   return _colorZonaCache.get(key);
 }
-const PALETA_NIVELES = ['#8a9ab5','#06d6a0','#00b4d8','#f4a261','#7b2fff','#ef476f'];
+// Mismo orden validado, primeros 6 slots (Nivel 1-4 + N2-1 + "sin nivel" en la práctica).
+const PALETA_NIVELES = ['#2a78d6','#eb6834','#1baf7a','#eda100','#e87ba4','#008300'];
 function colorParaNivel(n, niveles){
   const i = niveles.indexOf(n);
   return PALETA_NIVELES[(i<0?0:i) % PALETA_NIVELES.length];
@@ -4123,6 +4130,33 @@ if(window.ChartDataLabels){
   Chart.register(ChartDataLabels);
   Chart.defaults.set('plugins.datalabels', {display:false});
 }
+
+// Estética general de TODAS las gráficas -- pedido explícito ("necesito
+// que se genere una estetica generalziada... son muy escueleros, necesito
+// que sean elegantes"). Son DEFAULTS globales de Chart.js -- se aplican
+// solo donde una gráfica puntual no fija su propio valor (la mayoría de
+// las gráficas de la app SÍ fijan sus propios colores de tick/grid según
+// tema claro/oscuro con su propia lógica -- eso NO se toca acá, sigue
+// funcionando igual). Lo que sí queda parejo en todas partes:
+//  - Tipografía = la misma de la interfaz (antes Chart.js caía en su
+//    propia fuente por defecto, distinta de "Segoe UI").
+//  - Curvas RECTAS, no suavizadas -- pedido explícito ("quitar la
+//    suavidad de todas las graficas"). El valor por defecto de acá es un
+//    respaldo; los `tension:` puntuales de cada dataset (que antes traían
+//    .15/.2/.25/.3/.35) se dejaron todos en 0 también.
+//  - Leyenda con marcador circular (usePointStyle) en vez de cuadrado
+//    grande, y tooltip con esquinas redondeadas y más aire -- look más
+//    pulido, menos "por defecto de librería".
+Chart.defaults.font.family = '"Segoe UI", system-ui, -apple-system, sans-serif';
+Chart.defaults.elements.line.tension = 0;
+Chart.defaults.plugins.legend.labels.usePointStyle = true;
+Chart.defaults.plugins.legend.labels.pointStyle = 'circle';
+Chart.defaults.plugins.legend.labels.boxWidth = 8;
+Chart.defaults.plugins.legend.labels.boxHeight = 8;
+Chart.defaults.plugins.tooltip.cornerRadius = 6;
+Chart.defaults.plugins.tooltip.padding = 10;
+Chart.defaults.plugins.tooltip.titleFont = {weight:'700'};
+Chart.defaults.plugins.tooltip.boxPadding = 4;
 
 function toggleTheme(){
   const html=document.documentElement;
@@ -8908,13 +8942,13 @@ async function renderChartBalanceEstructura(datos, modo){
     yKwhTitulo = 'Entrada / Salida (kWh)';
     datasets = [
       {type:'line', label:'Entrada', data:entradaKwh, borderColor:'#06d6a0', backgroundColor:'transparent',
-        borderWidth:2, tension:.15, spanGaps:true, yAxisID:'yKwh', order:2, ..._puntosAjuste('#06d6a0')},
+        borderWidth:2, tension:0, spanGaps:true, yAxisID:'yKwh', order:2, ..._puntosAjuste('#06d6a0')},
       // fill:0 sombrea el área entre esta línea y "Entrada" (dataset 0) --
       // entrada y salida quedan tan pegadas en esta escala que la pérdida
       // (la diferencia entre ambas) es casi invisible como dos líneas
       // sueltas; como banda sombreada, se nota de inmediato.
       {type:'line', label:'Salida', data:salidaKwh, borderColor:'#ef476f', backgroundColor:'rgba(239,71,111,.18)',
-        borderWidth:2, tension:.15, spanGaps:true, yAxisID:'yKwh', order:2, fill:0, ..._puntosAjuste('#ef476f')},
+        borderWidth:2, tension:0, spanGaps:true, yAxisID:'yKwh', order:2, fill:0, ..._puntosAjuste('#ef476f')},
     ];
   }else{
     usaPct = true;
@@ -8922,11 +8956,11 @@ async function renderChartBalanceEstructura(datos, modo){
     const tecnicaKwh = await _beTecnicaDiariaProrateada(fechas);
     datasets = [
       {type:'line', label:'Pérdida kWh', data:perdidaKwh, borderColor:'#3454d1', backgroundColor:'transparent',
-        borderWidth:2.5, tension:.15, spanGaps:true, yAxisID:'yKwh', order:1, ..._puntosAjuste('#3454d1')},
+        borderWidth:2.5, tension:0, spanGaps:true, yAxisID:'yKwh', order:1, ..._puntosAjuste('#3454d1')},
       {type:'line', label:'Pérdida técnica (prorrateada)', data:tecnicaKwh, borderColor:'#00b4d8', backgroundColor:'transparent',
-        borderWidth:2, pointRadius:0, tension:.15, spanGaps:true, yAxisID:'yKwh', order:1, borderDash:[2,2]},
+        borderWidth:2, pointRadius:0, tension:0, spanGaps:true, yAxisID:'yKwh', order:1, borderDash:[2,2]},
       {type:'line', label:'Pérdida %', data:perdidaPct, borderColor:'#f4a261', backgroundColor:'transparent',
-        borderWidth:2, tension:.15, spanGaps:true, yAxisID:'yPct', order:1, borderDash:[6,3], ..._puntosAjuste('#f4a261'),
+        borderWidth:2, tension:0, spanGaps:true, yAxisID:'yPct', order:1, borderDash:[6,3], ..._puntosAjuste('#f4a261'),
         datalabels:{display: mesUnico, anchor:'end', align:'top', offset:6,
           formatter:v=>v==null ? '' : v.toFixed(2)+'%', font:{size:11, weight:'800'}, color:'#f4a261',
           backgroundColor:'rgba(255,255,255,.9)', borderRadius:4, padding:{left:5,right:5,top:2,bottom:2}}},
@@ -8975,7 +9009,7 @@ async function renderChartBalanceEstructura(datos, modo){
     datasets.push(
       {type:'line', label:`${serieCliente.nombre||cliente.nombre} (canal 1)`, data:valores,
         borderColor: IP_PALETA_OVERLAY[i % IP_PALETA_OVERLAY.length], backgroundColor:'transparent', borderWidth:2, borderDash:[4,3],
-        pointRadius:0, tension:.15, spanGaps:true, yAxisID:'yCliente', order:2});
+        pointRadius:0, tension:0, spanGaps:true, yAxisID:'yCliente', order:2});
   });
 
   // El fetch de la técnica prorrateada es async -- si mientras se esperaba
@@ -9168,10 +9202,10 @@ function renderChartComparacionEstructura(datos){
   const datasets = [
     {type:'line', label:'Pérdida técnica (Pérdidas Técnicas)', data:datos.perdida_tecnica_kwh, hidden:mostrarEntradaSalida,
       borderColor:'#00b4d8', backgroundColor:'transparent', borderWidth:2.5, pointRadius:2,
-      tension:.15, spanGaps:true, yAxisID:'y'},
+      tension:0, spanGaps:true, yAxisID:'y'},
     {type:'line', label:'Pérdida del balance (esta estructura)', data:datos.perdida_balance_kwh, hidden:mostrarEntradaSalida,
       borderColor:'#ef476f', backgroundColor:'transparent', borderWidth:2.5, pointRadius:2,
-      tension:.15, spanGaps:true, yAxisID:'y',
+      tension:0, spanGaps:true, yAxisID:'y',
       // Igual que en "Anual" -- con como máximo unas pocas decenas de
       // puntos (uno por mes) el valor se puede etiquetar sin que se
       // amontonen las etiquetas.
@@ -9181,20 +9215,20 @@ function renderChartComparacionEstructura(datos){
         backgroundColor:'rgba(255,255,255,.85)', borderRadius:3, padding:{left:4,right:4,top:1,bottom:1}}},
     {type:'line', label:'Pérdida %', data:datos.perdida_balance_pct, hidden:mostrarEntradaSalida,
       borderColor:'#f4a261', backgroundColor:'transparent', borderWidth:2, pointRadius:2,
-      tension:.15, spanGaps:true, borderDash:[6,3], yAxisID:'yPct',
+      tension:0, spanGaps:true, borderDash:[6,3], yAxisID:'yPct',
       datalabels:{display:!mostrarEntradaSalida, anchor:'end', align:'bottom', offset:6,
         formatter:v=>v==null ? '' : v.toFixed(2)+'%', font:{size:11, weight:'800'}, color:'#f4a261',
         backgroundColor:'rgba(255,255,255,.9)', borderRadius:4, padding:{left:5,right:5,top:2,bottom:2}}},
     {type:'line', label:'Entrada mensual', data:datos.entrada_kwh, _rol:'entrada', hidden:!mostrarEntradaSalida,
       borderColor:'#06d6a0', backgroundColor:'transparent', borderWidth:2, pointRadius:2,
-      tension:.15, spanGaps:true, yAxisID:'yVolumen'},
+      tension:0, spanGaps:true, yAxisID:'yVolumen'},
     // fill:3 sombrea el área hacia "Entrada mensual" (dataset 3) -- en
     // esta escala compartida (millones de kWh) entrada y salida quedan
     // casi pegadas, y la pérdida (la diferencia entre ambas) se pierde
     // como dos líneas sueltas; como banda sombreada, se nota de inmediato.
     {type:'line', label:'Salida mensual', data:datos.salida_kwh, _rol:'salida', hidden:!mostrarEntradaSalida,
       borderColor:'#9d4edd', backgroundColor:'rgba(157,78,221,.18)', borderWidth:2, pointRadius:2,
-      tension:.15, spanGaps:true, yAxisID:'yVolumen', fill:3},
+      tension:0, spanGaps:true, yAxisID:'yVolumen', fill:3},
   ];
   // Cliente sobrepuesto (ver "Sobreponer cliente" arriba) -- se suma el
   // consumo diario del cliente por MES para que sus puntos coincidan con
@@ -9208,7 +9242,7 @@ function renderChartComparacionEstructura(datos){
     datasets.push(
       {type:'line', label:`${nombreCliente} (canal 1)`, data:_beClienteMesesAlineado(datos.meses, cliente),
         borderColor: IP_PALETA_OVERLAY[i % IP_PALETA_OVERLAY.length], backgroundColor:'transparent', borderWidth:2, pointRadius:2, borderDash:[4,3],
-        tension:.15, spanGaps:true, yAxisID:'yCliente'});
+        tension:0, spanGaps:true, yAxisID:'yCliente'});
   });
 
   if(chBalanceEstructura) chBalanceEstructura.destroy();
@@ -9342,10 +9376,10 @@ function renderChartMovilAnual(datos){
   const datasets = [
     {type:'line', label:'Pérdida técnica móvil anual (Pérdidas Técnicas)', data:datos.perdida_tecnica_movil_kwh, hidden:mostrarEntradaSalida,
       borderColor:'#00b4d8', backgroundColor:'transparent', borderWidth:2.5, pointRadius:2,
-      tension:.15, spanGaps:true, yAxisID:'y'},
+      tension:0, spanGaps:true, yAxisID:'y'},
     {type:'line', label:'Pérdida del balance móvil anual (esta estructura)', data:datos.perdida_balance_movil_kwh, hidden:mostrarEntradaSalida,
       borderColor:'#ef476f', backgroundColor:'transparent', borderWidth:2.5, pointRadius:2,
-      tension:.15, spanGaps:true, yAxisID:'y',
+      tension:0, spanGaps:true, yAxisID:'y',
       // Como máximo 12-13 puntos en este modo (uno por mes) -- a
       // diferencia del gráfico diario, aquí el valor siempre se puede
       // etiquetar sin que se amontonen las etiquetas.
@@ -9355,16 +9389,16 @@ function renderChartMovilAnual(datos){
         backgroundColor:'rgba(255,255,255,.85)', borderRadius:3, padding:{left:4,right:4,top:1,bottom:1}}},
     {type:'line', label:'Pérdida % móvil anual', data:datos.perdida_balance_movil_pct, hidden:mostrarEntradaSalida,
       borderColor:'#f4a261', backgroundColor:'transparent', borderWidth:2, pointRadius:2,
-      tension:.15, spanGaps:true, borderDash:[6,3], yAxisID:'yPct',
+      tension:0, spanGaps:true, borderDash:[6,3], yAxisID:'yPct',
       datalabels:{display:true, anchor:'end', align:'bottom', offset:6,
         formatter:v=>v==null ? '' : v.toFixed(2)+'%', font:{size:11, weight:'800'}, color:'#f4a261',
         backgroundColor:'rgba(255,255,255,.9)', borderRadius:4, padding:{left:5,right:5,top:2,bottom:2}}},
     {type:'line', label:'Entrada móvil anual', data:datos.entrada_movil_kwh, _rol:'entrada', hidden:!mostrarEntradaSalida,
       borderColor:'#06d6a0', backgroundColor:'transparent', borderWidth:2, pointRadius:2,
-      tension:.15, spanGaps:true, yAxisID:'yVolumen'},
+      tension:0, spanGaps:true, yAxisID:'yVolumen'},
     {type:'line', label:'Salida móvil anual', data:datos.salida_movil_kwh, _rol:'salida', hidden:!mostrarEntradaSalida,
       borderColor:'#9d4edd', backgroundColor:'rgba(157,78,221,.18)', borderWidth:2, pointRadius:2,
-      tension:.15, spanGaps:true, yAxisID:'yVolumen', fill:3},
+      tension:0, spanGaps:true, yAxisID:'yVolumen', fill:3},
   ];
   let hayCliente = false;
   BE_CLIENTES_ACTIVOS.forEach((cliente, i) => {
@@ -9375,7 +9409,7 @@ function renderChartMovilAnual(datos){
     datasets.push(
       {type:'line', label:`${nombreCliente} (canal 1)`, data:_beClienteMesesAlineado(datos.meses, cliente),
         borderColor: IP_PALETA_OVERLAY[i % IP_PALETA_OVERLAY.length], backgroundColor:'transparent', borderWidth:2, pointRadius:2, borderDash:[4,3],
-        tension:.15, spanGaps:true, yAxisID:'yCliente'});
+        tension:0, spanGaps:true, yAxisID:'yCliente'});
   });
 
   if(chBalanceEstructura) chBalanceEstructura.destroy();
@@ -10578,7 +10612,7 @@ function renderTelemedida(datos, canales){
         type:'line', label: etiqueta, data,
         borderColor: color, backgroundColor:'transparent',
         borderWidth:2, borderDash: si>0 ? [si*2+3, 2] : [],
-        pointRadius:0, pointHoverRadius:3, tension:.1, spanGaps:true,
+        pointRadius:0, pointHoverRadius:3, tension:0, spanGaps:true,
       });
       if(data.length >= 14){
         datasets.push({
@@ -10587,7 +10621,7 @@ function renderTelemedida(datos, canales){
           // o usuario sea.
           type:'line', label:`Tendencia · ${etiqueta}`, data: tmPromedioMovil(data, 30),
           borderColor: TM_COLOR_TENDENCIA, backgroundColor:'transparent',
-          borderWidth:2, borderDash:[7,4], pointRadius:0, tension:.25, spanGaps:true,
+          borderWidth:2, borderDash:[7,4], pointRadius:0, tension:0, spanGaps:true,
         });
       }
 
@@ -11256,13 +11290,13 @@ function _alimNivelConstruirChartMensual(cv, mensual, etiquetaNivel, seriesExtra
   const datasets = [
     {type:'line', label:`Entrada kWh/${etiquetaPeriodo}`, yAxisID:'y', order:5, fill:'origin',
       data: visibles.map(f=>f[campoEntrada]), borderColor:'#06d6a0', backgroundColor:'rgba(6,214,160,.20)',
-      borderWidth:2, pointRadius:1.5, spanGaps:true, tension:.2, datalabels:{display:false}},
+      borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0, datalabels:{display:false}},
     {type:'line', label:`Salida kWh/${etiquetaPeriodo}`, yAxisID:'y', order:4, fill:'origin',
       data: visibles.map(f=>f[campoSalida]), borderColor:'#ef476f', backgroundColor:'rgba(239,71,111,.20)',
-      borderWidth:2, pointRadius:1.5, spanGaps:true, tension:.2, datalabels:{display:false}},
+      borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0, datalabels:{display:false}},
     {type:'line', label:`Pérdida % ${etiquetaNivel} (${etiquetaPeriodo})`, yAxisID:'yPct', order:1,
       data: visibles.map(f=>f[campoPct]), borderColor:'#7b2fff', backgroundColor:'transparent',
-      borderWidth:2.5, pointRadius:2, spanGaps:true, tension:.25,
+      borderWidth:2.5, pointRadius:2, spanGaps:true, tension:0,
       datalabels:{display:true, anchor:'end', align:'top', offset:6, formatter:v=>v==null?'':v.toFixed(2)+'%',
         font:{size:10, weight:'700'}, color:'#7b2fff',
         backgroundColor: dark?'rgba(30,30,40,.85)':'rgba(255,255,255,.85)', borderRadius:3, padding:{left:4,right:4,top:1,bottom:1}}},
@@ -11313,7 +11347,7 @@ function _alimNivelSeriesZonas(mensualTotal, porZona, zonasFiltro){
       type:'line', label:`Zona ${z}`, yAxisID:'yPct', order:2,
       data: clavesTotal.map(c => porClave.has(c) ? porClave.get(c) : null),
       borderColor: colorParaZona(z), backgroundColor:'transparent',
-      borderWidth:1.5, borderDash:[5,3], pointRadius:1, spanGaps:true, tension:.2,
+      borderWidth:1.5, borderDash:[5,3], pointRadius:1, spanGaps:true, tension:0,
       datalabels:{display:false},
     };
   });
@@ -11333,7 +11367,7 @@ function _alimNivelSeriesZonasAnual(anualVisible, porZona, zonasFiltro){
       type:'line', label:`Zona ${z}`, yAxisID:'yPct', order:2,
       data: clavesVisibles.map(c => porClave.has(c) ? porClave.get(c) : null),
       borderColor: colorParaZona(z), backgroundColor:'transparent',
-      borderWidth:1.5, borderDash:[5,3], pointRadius:1, spanGaps:true, tension:.2,
+      borderWidth:1.5, borderDash:[5,3], pointRadius:1, spanGaps:true, tension:0,
       datalabels:{display:false},
     };
   });
@@ -11379,11 +11413,11 @@ function _alimNivelConstruirChartTecnica(cv, mensual, tecnicaPorMes, etiquetaNiv
       datasets:[
         {type:'line', label:'Pérdida Total (balance real)', order:2,
           data: valoresTotal, borderColor:'#4361ee', backgroundColor:'rgba(67,97,238,.15)', fill:'origin',
-          borderWidth:2.5, pointRadius:2, spanGaps:true, tension:.2,
+          borderWidth:2.5, pointRadius:2, spanGaps:true, tension:0,
           datalabels: datalabelsConDelta(valoresTotal, '#4361ee', 'top')},
         {type:'line', label:'Pérdida Técnica (calculada)', order:1,
           data: valoresTecnica, borderColor:'#f4a261', backgroundColor:'transparent',
-          borderWidth:2.5, pointRadius:2, spanGaps:true, tension:.2, borderDash:[6,3],
+          borderWidth:2.5, pointRadius:2, spanGaps:true, tension:0, borderDash:[6,3],
           datalabels: datalabelsConDelta(valoresTecnica, '#f4a261', 'bottom')},
       ],
     },
@@ -11658,7 +11692,7 @@ function alimNivel3RenderChartZonasComparativo(){
         return {
           type: tipo, label:`Zona ${z}`, data: porZonaVisible[z],
           borderColor: color, backgroundColor: tipo==='bar' ? color : 'transparent',
-          borderWidth: tipo==='bar' ? 1 : 2, pointRadius:1.5, spanGaps:true, tension:.25,
+          borderWidth: tipo==='bar' ? 1 : 2, pointRadius:1.5, spanGaps:true, tension:0,
           // Pedido explícito: "el valor en porcentaje que se vea más
           // grande" (8px a 11px) y "que no se sobreponga" -- con 5 zonas
           // muy seguido quedan 2-3 valores casi iguales en el mismo mes.
@@ -11765,13 +11799,13 @@ function _alimNivel4ConstruirChartImportExport(cv, mensual){
       datasets:[
         {type:'line', label:'Importaciones 230 kV', data: visibles.map(f=>f.imp230),
           borderColor:'#4361ee', backgroundColor:'rgba(67,97,238,.15)', fill:'origin',
-          borderWidth:2, pointRadius:1.5, spanGaps:true, tension:.2, datalabels:{display:false}},
+          borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0, datalabels:{display:false}},
         {type:'line', label:'Importaciones 115 kV', data: visibles.map(f=>f.imp115),
           borderColor:'#06d6a0', backgroundColor:'rgba(6,214,160,.15)', fill:'origin',
-          borderWidth:2, pointRadius:1.5, spanGaps:true, tension:.2, datalabels:{display:false}},
+          borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0, datalabels:{display:false}},
         {type:'line', label:'Exportaciones 115 kV', data: visibles.map(f=>f.exp115),
           borderColor:'#ef476f', backgroundColor:'rgba(239,71,111,.15)', fill:'origin',
-          borderWidth:2, pointRadius:1.5, spanGaps:true, tension:.2, datalabels:{display:false}},
+          borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0, datalabels:{display:false}},
       ],
     },
     options:{
@@ -12646,7 +12680,13 @@ function alimSubVisibles(serie){
 // "color por subestación" parametrizado como con las zonas, así que se
 // reparten tonos parejos alrededor del círculo de matices (HSL), estables
 // mientras no cambie el ORDEN de la lista (orden alfabético, fijo).
+// Paleta categórica validada para los primeros 8 -- pedido explícito
+// ("necesito que sean elegantes"), misma que PALETA_ZONAS/PALETA_NIVELES.
+// Con más de 8 series (subestaciones/circuitos elegidos a mano, sin techo
+// real) se cae de vuelta a la rotación HSL de siempre -- el skill de
+// dataviz solo garantiza distinción hasta 8 slots.
 function alimSubColor(indice, total){
+  if(indice < PALETA_ZONAS.length) return PALETA_ZONAS[indice];
   const hue = Math.round((indice / Math.max(1,total)) * 330);
   return `hsl(${hue}, 65%, 52%)`;
 }
@@ -12865,7 +12905,7 @@ function alimSubRenderChartSubestaciones(){
     return {
       type:'line', label: sub, data: visibles.map(f => f[ALIM_SUB_METRICA]),
       borderColor: alimSubColor(i, subestaciones.length), backgroundColor:'transparent',
-      borderWidth:1.75, pointRadius:1, spanGaps:true, tension:.2, datalabels:{display:false},
+      borderWidth:1.75, pointRadius:1, spanGaps:true, tension:0, datalabels:{display:false},
     };
   });
   if(!etiquetas || !etiquetas.length) return;
@@ -12928,7 +12968,7 @@ function alimSubRenderChartVariacion(){
     return {
       type:'line', label: sub, data: datos,
       borderColor: color, backgroundColor:'transparent',
-      borderWidth:1.5, pointRadius:2, spanGaps:true, tension:.2,
+      borderWidth:1.5, pointRadius:2, spanGaps:true, tension:0,
       datalabels:{display:true, anchor:'end', align:'top', offset:2,
         formatter:v=>v==null?'':`${v>=0?'+':''}${v.toFixed(0)}%`,
         font:{size:8, weight:'700'}, color,
@@ -13225,7 +13265,7 @@ function alimSubRenderChartAlimentadores(){
     datasets.push({
       type:'line', label: nem, yAxisID:'yPct', order:1, nemonico: nem,
       data: pctDatos, borderColor: color, backgroundColor:'transparent',
-      borderWidth:1.75, pointRadius:1, spanGaps:true, tension:.2, datalabels: datalabelsPct,
+      borderWidth:1.75, pointRadius:1, spanGaps:true, tension:0, datalabels: datalabelsPct,
     });
 
     // "Poder graficar Entrada/Salida en el mismo gráfico" (toggle) -- una
@@ -13236,12 +13276,12 @@ function alimSubRenderChartAlimentadores(){
       datasets.push({
         type:'line', label: `${nem} · Entrada`, yAxisID:'y', order:3, nemonico: nem,
         data: entradaDatos, borderColor: color, backgroundColor:'transparent',
-        borderWidth:1, borderDash:[6,3], pointRadius:0, spanGaps:true, tension:.2, datalabels:{display:false},
+        borderWidth:1, borderDash:[6,3], pointRadius:0, spanGaps:true, tension:0, datalabels:{display:false},
       });
       datasets.push({
         type:'line', label: `${nem} · Salida`, yAxisID:'y', order:2, nemonico: nem,
         data: salidaDatos, borderColor: color, backgroundColor:'transparent',
-        borderWidth:1, borderDash:[2,2], pointRadius:0, spanGaps:true, tension:.2, datalabels:{display:false},
+        borderWidth:1, borderDash:[2,2], pointRadius:0, spanGaps:true, tension:0, datalabels:{display:false},
       });
     }
   });
@@ -13647,7 +13687,7 @@ function alim3RenderChartCircuitos(){
     const color = alimSubColor(i, seriePorCircuito.length);
     return {
       type:'line', label: c.nombre, borderColor: color, backgroundColor:'transparent',
-      borderWidth:2, tension:.25, spanGaps:true, pointRadius:2,
+      borderWidth:2, tension:0, spanGaps:true, pointRadius:2,
       data: claves.map(cl => valorFila(porClave.get(cl))),
       // Tamaño más grande que el chip genérico (8px) -- pedido explícito
       // ("se ven muy pequeños los quiero mas grandes"), acá hay margen
@@ -14095,13 +14135,13 @@ function alim3RenderChartEsp(filasConClave){
       datasets:[
         {type:'line', label: esAnual?'Entrada kWh/12M':'Entrada Total kWh', yAxisID:'y', order:3, fill:'origin',
           data: entradaDatos, borderColor:'#06d6a0', backgroundColor:'rgba(6,214,160,.20)',
-          borderWidth:2, pointRadius:1.5, spanGaps:true, tension:.2, datalabels:{display:false}},
+          borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0, datalabels:{display:false}},
         {type:'line', label: esAnual?'Salida kWh/12M':'Salida Total kWh', yAxisID:'y', order:2, fill:'origin',
           data: salidaDatos, borderColor:'#ef476f', backgroundColor:'rgba(239,71,111,.20)',
-          borderWidth:2, pointRadius:1.5, spanGaps:true, tension:.2, datalabels:{display:false}},
+          borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0, datalabels:{display:false}},
         {type:'line', label: esAnual?'Pérdida %/12M':'Pérdida %', yAxisID:'yPct', order:1, borderDash:[4,3],
           data: pctDatos, borderColor:'#ffc300', backgroundColor:'transparent',
-          borderWidth:2, pointRadius:2, spanGaps:true, tension:.25, datalabels: datalabelsPct},
+          borderWidth:2, pointRadius:2, spanGaps:true, tension:0, datalabels: datalabelsPct},
       ],
     },
     options:{
@@ -14158,9 +14198,9 @@ function alim3RenderChartTecnica(filasConClave){
       labels: etiquetas,
       datasets:[
         {type:'line', label:'Pérdida Total kWh', data: visibles.map(f=>f.perdida_kwh), borderColor:'#4361ee', backgroundColor:'transparent',
-          borderWidth:2, pointRadius:1.5, spanGaps:true, tension:.2, datalabels:{display:false}},
+          borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0, datalabels:{display:false}},
         {type:'line', label:'Pérdida Técnica kWh', data: visibles.map(f=>f.perdida_tecnica_kwh), borderColor:'#f4a261', backgroundColor:'transparent',
-          borderWidth:2, pointRadius:1.5, spanGaps:true, tension:.2, datalabels:{display:false}},
+          borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0, datalabels:{display:false}},
       ],
     },
     options:{
@@ -14198,7 +14238,7 @@ function alim3RenderChartAgpe(filasConClave){
       labels: etiquetas,
       datasets:[
         {type:'line', label:'Inyección AGPE kWh', data: visibles.map(f=>f.entrada_agpe), borderColor:'#a1c623', backgroundColor:'rgba(161,198,35,.18)',
-          fill:'origin', borderWidth:2, pointRadius:1.5, spanGaps:true, tension:.2, datalabels:{display:false}},
+          fill:'origin', borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0, datalabels:{display:false}},
       ],
     },
     options:{
@@ -14675,10 +14715,10 @@ function tempEntradaRender(){
   const datasets = [
     {type:'line', label:'Entrada Total kWh'+(esMensual?' (mensual)':' (diaria)'), yAxisID:'y', order:2,
       data: entradaDatos, borderColor:'#4361ee', backgroundColor:'transparent',
-      borderWidth:1.5, pointRadius:0, spanGaps:true, tension:.2, datalabels:{display:false}},
+      borderWidth:1.5, pointRadius:0, spanGaps:true, tension:0, datalabels:{display:false}},
     {type:'line', label:tempLabel, yAxisID:'yTemp', order:1,
       data: tempDatos, borderColor:colorVar, backgroundColor:'transparent',
-      borderWidth:1.75, pointRadius:0, spanGaps:true, tension:.3, datalabels:{display:false}},
+      borderWidth:1.75, pointRadius:0, spanGaps:true, tension:0, datalabels:{display:false}},
   ];
   if(esMensual && TEMP_ENTRADA_MOSTRAR_IPREG){
     const ptDatos = agrupado.map(g => {
@@ -14687,7 +14727,7 @@ function tempEntradaRender(){
     });
     datasets.push({type:'line', label:'Pérdida IP_Reg -- PT (kWh)', yAxisID:'y', order:3,
       data: ptDatos, borderColor:'#f4a261', backgroundColor:'transparent',
-      borderWidth:2, borderDash:[6,3], pointRadius:0, spanGaps:true, tension:.2, datalabels:{display:false}});
+      borderWidth:2, borderDash:[6,3], pointRadius:0, spanGaps:true, tension:0, datalabels:{display:false}});
   }
 
   chTempEntrada = new Chart(cv, {
@@ -14758,7 +14798,7 @@ function tempHorariaRender(filas){
       datasets:[
         {type:'line', label:'Temperatura °C', data: filas.map(f => f.temperatura),
           borderColor:'#ef476f', backgroundColor:'rgba(239,71,111,.15)', fill:'origin',
-          borderWidth:1.75, pointRadius:filas.length>60?0:2, spanGaps:true, tension:.3, datalabels:{display:false}},
+          borderWidth:1.75, pointRadius:filas.length>60?0:2, spanGaps:true, tension:0, datalabels:{display:false}},
       ],
     },
     options:{
@@ -15822,10 +15862,10 @@ function _alimN21ConstruirChartPorZona(cv, zona, modo){
       labels: etiquetas,
       datasets:[
         {type:'line', label:`Pérdida Total ${zona}`, yAxisID:'yTotal', data: valoresTotal, borderColor: colorTotal, backgroundColor:'transparent',
-          borderWidth:2.5, pointRadius:2.5, pointBackgroundColor:colorTotal, spanGaps:true, tension:.25,
+          borderWidth:2.5, pointRadius:2.5, pointBackgroundColor:colorTotal, spanGaps:true, tension:0,
           datalabels:{...estiloEtiqueta(colorTotal), anchor:'end', align:'top', offset:4}},
         {type:'line', label:`Pérdida Técnica ${zona}`, yAxisID:idEjeTec, data: valoresTec, borderColor: colorTecnica, backgroundColor:'transparent',
-          borderWidth:2, pointRadius:2.5, pointBackgroundColor:colorTecnica, spanGaps:true, tension:.25,
+          borderWidth:2, pointRadius:2.5, pointBackgroundColor:colorTecnica, spanGaps:true, tension:0,
           datalabels:{...estiloEtiqueta(colorTecnica), anchor:'end', align:'bottom', offset:4}},
       ],
     },
@@ -16246,16 +16286,16 @@ function alimN21RenderChartMensual(datos12){
       datasets:[
         {type:'line', label:'Entrada kWh/Mes', yAxisID:'y', order:4, fill:'origin', hidden: ALIM_N21_OCULTAR_ES,
           data: entradaDatos, borderColor:'#06d6a0', backgroundColor:'rgba(6,214,160,.20)',
-          borderWidth:2, pointRadius:1.5, spanGaps:true, tension:.2, datalabels:{display:false}},
+          borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0, datalabels:{display:false}},
         {type:'line', label:'Salida kWh/Mes', yAxisID:'y', order:3, fill:'origin', hidden: ALIM_N21_OCULTAR_ES,
           data: salidaDatos, borderColor:'#ef476f', backgroundColor:'rgba(239,71,111,.20)',
-          borderWidth:2, pointRadius:1.5, spanGaps:true, tension:.2, datalabels:{display:false}},
+          borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0, datalabels:{display:false}},
         {type:'line', label:'Pérdida kWh/Mes', yAxisID:'y', order:2, fill:'origin',
           data: perdidaDatos, borderColor:'#4361ee', backgroundColor:'rgba(67,97,238,.35)',
-          borderWidth:2, pointRadius:1.5, spanGaps:true, tension:.2, datalabels:{display:false}},
+          borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0, datalabels:{display:false}},
         {type:'line', label:'Pérdida %/Mes', yAxisID:'yPct', order:1,
           data: pctDatos, borderColor:'#7b2fff', backgroundColor:'transparent',
-          borderWidth:2.5, pointRadius:2, spanGaps:true, tension:.25, datalabels:datalabelsPct},
+          borderWidth:2.5, pointRadius:2, spanGaps:true, tension:0, datalabels:datalabelsPct},
       ],
     },
     options:{
@@ -16330,16 +16370,16 @@ function alimN21RenderChartAnual(datos12){
       datasets:[
         {type:'line', label:'Entrada kWh/12M', yAxisID:'y', order:4, fill:'origin', hidden: ALIM_N21_OCULTAR_ES,
           data: entrada12Datos, borderColor:'#06d6a0', backgroundColor:'rgba(6,214,160,.20)',
-          borderWidth:2, pointRadius:1.5, spanGaps:true, tension:.2, datalabels:{display:false}},
+          borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0, datalabels:{display:false}},
         {type:'line', label:'Salida kWh/12M', yAxisID:'y', order:3, fill:'origin', hidden: ALIM_N21_OCULTAR_ES,
           data: salida12Datos, borderColor:'#ef476f', backgroundColor:'rgba(239,71,111,.20)',
-          borderWidth:2, pointRadius:1.5, spanGaps:true, tension:.2, datalabels:{display:false}},
+          borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0, datalabels:{display:false}},
         {type:'line', label:'Pérdida kWh/12M', yAxisID:'y', order:2, fill:'origin',
           data: perdida12Datos, borderColor:'#4361ee', backgroundColor:'rgba(67,97,238,.35)',
-          borderWidth:2, pointRadius:1.5, spanGaps:true, tension:.2, datalabels:{display:false}},
+          borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0, datalabels:{display:false}},
         {type:'line', label:'Pérdida %/12M', yAxisID:'yPct', order:1,
           data: pct12Datos, borderColor:'#7b2fff', backgroundColor:'transparent',
-          borderWidth:2.5, pointRadius:2, spanGaps:true, tension:.25, datalabels:datalabelsPct},
+          borderWidth:2.5, pointRadius:2, spanGaps:true, tension:0, datalabels:datalabelsPct},
       ],
     },
     options:{
@@ -16393,7 +16433,7 @@ function alimN21RenderChartZonas(){
       labels: etiquetas,
       datasets: ALIM_N21_ZONAS.map(z => ({
         type:'line', label:z, data: porZona[z], borderColor: colorParaZona(z), backgroundColor:'transparent',
-        borderWidth:2, pointRadius:1.5, spanGaps:true, tension:.25, datalabels:{display:false},
+        borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0, datalabels:{display:false},
       })),
     },
     options:{
@@ -16540,12 +16580,12 @@ function ipComercialRenderChart(){
     const kwhDatos = visibles.map(f=>f.perdida_kwh_12);
     datasets = [
       {type:'line', label:'IPT Comercial -- Pérdida % Anual (12m)', yAxisID:'yPct', data: pctDatos, order:1,
-        borderColor:'#f4a261', backgroundColor:'rgba(244,162,97,.12)', borderWidth:2.5, pointRadius:2, spanGaps:true, tension:.25,
+        borderColor:'#f4a261', backgroundColor:'rgba(244,162,97,.12)', borderWidth:2.5, pointRadius:2, spanGaps:true, tension:0,
         datalabels:{display:true, anchor:'end', align:'top', offset:6, formatter:v=>v==null?'':v.toFixed(2)+'%',
           font:{size:10, weight:'700'}, color:'#f4a261',
           backgroundColor: dark?'rgba(30,30,40,.85)':'rgba(255,255,255,.85)', borderRadius:3, padding:{left:4,right:4,top:1,bottom:1}}},
       {type:'line', label:'PT Comercial -- Pérdida kWh Anual (12m)', yAxisID:'y', data: kwhDatos, hidden: IP_COMERCIAL_PT_OCULTO, order:2,
-        borderColor:'#4361ee', backgroundColor:'transparent', borderWidth:2, pointRadius:1.5, spanGaps:true, tension:.2,
+        borderColor:'#4361ee', backgroundColor:'transparent', borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0,
         datalabels:{display:true, anchor:'end', align:'bottom', offset:6, formatter:v=>v==null?'':v.toLocaleString('es-CO',{maximumFractionDigits:0}),
           font:{size:10, weight:'700'}, color:'#4361ee',
           backgroundColor: dark?'rgba(30,30,40,.85)':'rgba(255,255,255,.85)', borderRadius:3, padding:{left:4,right:4,top:1,bottom:1}}},
@@ -16616,9 +16656,9 @@ function ipComercialRenderChart(){
     const venta12 = _ipComercialRolling12(clavesVisibles, 'venta_kwh');
     datasets = [
       {type:'line', label:'Compra Anual (12m, kWh)', yAxisID:'y', data: compra12,
-        borderColor:'#06d6a0', backgroundColor:'transparent', borderWidth:2, pointRadius:1.5, spanGaps:true, tension:.15, datalabels:{display:false}},
+        borderColor:'#06d6a0', backgroundColor:'transparent', borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0, datalabels:{display:false}},
       {type:'line', label:'Venta Anual (12m, kWh)', yAxisID:'y', data: venta12,
-        borderColor:'#7b2fff', backgroundColor:'transparent', borderWidth:2, pointRadius:1.5, spanGaps:true, tension:.15, datalabels:{display:false}},
+        borderColor:'#7b2fff', backgroundColor:'transparent', borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0, datalabels:{display:false}},
     ];
     scales = {
       x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:45, minRotation:45}},
@@ -16825,7 +16865,7 @@ function ipComercialRenderChartMensual(){
           datalabels:{display:false}},
         {type:'line', label:'% Pérdida Mensual', yAxisID:'yPct', order:1,
           data: visibles.map(f=>f.perdida_pct), borderColor:'#f4a261',
-          backgroundColor:'rgba(244,162,97,.12)', borderWidth:2.5, pointRadius:2.5, spanGaps:true, tension:.25,
+          backgroundColor:'rgba(244,162,97,.12)', borderWidth:2.5, pointRadius:2.5, spanGaps:true, tension:0,
           datalabels:{display:true, anchor:'end', align:'top', offset:6,
             formatter:v=>v==null?'':v.toFixed(2)+'%', font:{size:10, weight:'700'}, color:'#f4a261',
             backgroundColor: dark?'rgba(30,30,40,.85)':'rgba(255,255,255,.85)', borderRadius:3, padding:{left:4,right:4,top:1,bottom:1}}},
@@ -17776,7 +17816,7 @@ function tridRenderGraficas(filasXm){
       label: dev,
       data: fechas.map(f => g.series[dev].get(f) ?? null),
       borderColor: colores[dev], backgroundColor:'transparent',
-      borderWidth:2, pointRadius:2, spanGaps:true, tension:.15,
+      borderWidth:2, pointRadius:2, spanGaps:true, tension:0,
     }));
     TRIDE_CHARTS[i] = new Chart(document.getElementById(`ch-tride-${i}`), {
       type:'line',
@@ -18168,7 +18208,7 @@ function ipRenderChart(){
     {
       type:'line', label:'PT -- Pérdida Total (kWh)', data: ptDatos, yAxisID:'y', hidden: IP_PT_OCULTO,
       borderColor:'#4361ee', backgroundColor:'transparent', borderWidth:2, pointRadius:1.5,
-      spanGaps:true, tension:.2, order:3,
+      spanGaps:true, tension:0, order:3,
       datalabels:{display: IP_MOSTRAR_VARIACION, anchor:'end', align:'bottom', offset:8,
         formatter:(v,ctx)=>{
           if(v==null) return '';
@@ -18186,7 +18226,7 @@ function ipRenderChart(){
     {
       type:'line', label:'IPT -- Índice de Pérdidas Totales (%)', data: iptDatos, yAxisID:'yPct',
       borderColor:'#f4a261', backgroundColor:'rgba(244,162,97,.12)', borderWidth:2.5, pointRadius:2,
-      spanGaps:true, tension:.25, order:1,
+      spanGaps:true, tension:0, order:1,
       datalabels: IP_MOSTRAR_VARIACION ? {
         display:true, anchor:'end', align:'top', offset:8,
         formatter:(v,ctx)=>{
@@ -18277,7 +18317,7 @@ function ipRenderChart(){
         return fReal ? ipValorOverlay(fReal, campo) : null;
       }),
       borderColor: IP_PALETA_OVERLAY[colorOverlay++ % IP_PALETA_OVERLAY.length], backgroundColor:'transparent',
-      borderWidth:1.75, borderDash:[3,2], pointRadius:1.5, spanGaps:true, tension:.15, datalabels:{display:false},
+      borderWidth:1.75, borderDash:[3,2], pointRadius:1.5, spanGaps:true, tension:0, datalabels:{display:false},
     });
   }
 
@@ -18290,7 +18330,7 @@ function ipRenderChart(){
       type:'line', label:`Medidor ${med.nombre} (kWh)`, yAxisID:'y', order:6,
       data: visibles.map(f => med.porClaveNormal.get(ipClaveNormal(f)) ?? null),
       borderColor: IP_PALETA_OVERLAY[colorOverlay++ % IP_PALETA_OVERLAY.length], backgroundColor:'transparent',
-      borderWidth:1.75, borderDash:[1,1], pointRadius:1.5, spanGaps:true, tension:.15, datalabels:{display:false},
+      borderWidth:1.75, borderDash:[1,1], pointRadius:1.5, spanGaps:true, tension:0, datalabels:{display:false},
     });
   }
 
@@ -18355,10 +18395,10 @@ function ipRenderChartNivel1(){
       datasets:[
         {type:'line', label:'PTj,1,t (kWh) -- Nivel 1', yAxisID:'y', order:2,
           data: visibles.map(f=>f.ptj1t_kwh), borderColor:'#4361ee', backgroundColor:'transparent',
-          borderWidth:2, pointRadius:1.5, spanGaps:true, tension:.2},
+          borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0},
         {type:'line', label:'IPTj,1,t (%) -- Nivel 1', yAxisID:'yPct', order:1,
           data: visibles.map(f=>f.iptj1t_pct==null?null:f.iptj1t_pct*100), borderColor:'#2a9d8f',
-          backgroundColor:'rgba(42,157,143,.12)', borderWidth:2.5, pointRadius:2, spanGaps:true, tension:.25,
+          backgroundColor:'rgba(42,157,143,.12)', borderWidth:2.5, pointRadius:2, spanGaps:true, tension:0,
           datalabels:{display:true, anchor:'end', align:'top', offset:6,
             formatter:v=>v==null?'':v.toFixed(2)+'%', font:{size:12, weight:'700'}, color:'#2a9d8f',
             backgroundColor: dark?'rgba(30,30,40,.85)':'rgba(255,255,255,.85)', borderRadius:3, padding:{left:4,right:4,top:1,bottom:1}}},
@@ -18499,7 +18539,7 @@ function ipRenderChartMensual(){
           data: visibles.map(f=>f.perdida_mensual_kwh), backgroundColor:'rgba(67,97,238,.35)', borderColor:'#4361ee', borderWidth:1},
         {type:'line', label:'% Pérdida Mensual', yAxisID:'yPct', order:1,
           data: visibles.map(f=>f.pct_perdida_mensual==null?null:f.pct_perdida_mensual*100), borderColor:'#f4a261',
-          backgroundColor:'rgba(244,162,97,.12)', borderWidth:2.5, pointRadius:2.5, spanGaps:true, tension:.25,
+          backgroundColor:'rgba(244,162,97,.12)', borderWidth:2.5, pointRadius:2.5, spanGaps:true, tension:0,
           datalabels:{display:true, anchor:'end', align:'top', offset:6,
             formatter:v=>v==null?'':v.toFixed(2)+'%', font:{size:11, weight:'700'}, color:'#f4a261',
             backgroundColor: dark?'rgba(30,30,40,.85)':'rgba(255,255,255,.85)', borderRadius:3, padding:{left:4,right:4,top:1,bottom:1}}},
@@ -18560,10 +18600,10 @@ function ipRenderChartAnualInicio(){
       datasets:[
         {type:'line', label:'PT -- Pérdida Total (kWh)', yAxisID:'y', order:2,
           data: visibles.map(f=>f.pt_kwh), borderColor:'#4361ee', backgroundColor:'transparent',
-          borderWidth:2, pointRadius:1.5, spanGaps:true, tension:.2},
+          borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0},
         {type:'line', label:'IPT -- Índice de Pérdidas Totales (%)', yAxisID:'yPct', order:1,
           data: visibles.map(f=>f.ipt_pct==null?null:f.ipt_pct*100), borderColor:'#f4a261',
-          backgroundColor:'rgba(244,162,97,.12)', borderWidth:2.5, pointRadius:2, spanGaps:true, tension:.25,
+          backgroundColor:'rgba(244,162,97,.12)', borderWidth:2.5, pointRadius:2, spanGaps:true, tension:0,
           datalabels:{display:true, anchor:'end', align:'top', offset:6,
             formatter:v=>v==null?'':v.toFixed(2)+'%', font:{size:11, weight:'700'}, color:'#f4a261',
             backgroundColor: dark?'rgba(30,30,40,.85)':'rgba(255,255,255,.85)', borderRadius:3, padding:{left:4,right:4,top:1,bottom:1}}},
@@ -19314,7 +19354,7 @@ function renderPrincipalUnNivel(){
         {type:'line', label:'Proyección PT%', data:projPct,
           borderColor:'rgba(244,162,97,.65)', backgroundColor:'rgba(244,162,97,.04)', borderWidth:2.5, borderDash:[7,5],
           pointRadius:5, pointBackgroundColor:'rgba(244,162,97,.65)', pointBorderColor:'#fff', pointBorderWidth:1.5,
-          tension:.25, fill:false, yAxisID:'yPct', order:1, spanGaps:false},
+          tension:0, fill:false, yAxisID:'yPct', order:1, spanGaps:false},
       ];
     }
   }
@@ -19334,7 +19374,7 @@ function renderPrincipalUnNivel(){
             formatter:v=>(v||0).toLocaleString('es-CO',{maximumFractionDigits:0}), font:{size:13,weight:'bold'}, color:'#fff', rotation:-90}},
         {type:'line', label:'Pérdidas Técnicas %', data:pctV, borderColor:colorPct, backgroundColor:hexA(colorZona||'#f4a261',.08),
           borderWidth:3, pointRadius:6, pointBackgroundColor:colorPct, pointBorderColor:'#fff', pointBorderWidth:2,
-          tension:.35, fill:false, yAxisID:'yPct', order:1, spanGaps:false,
+          tension:0, fill:false, yAxisID:'yPct', order:1, spanGaps:false,
           datalabels:{display:labels.length<=24, anchor:'end', align:'top', offset:10,
             formatter:v=>(v||0).toFixed(2)+'%', font:{size:13,weight:'800'}, color:colorPct,
             backgroundColor:'rgba(255,255,255,.92)', borderRadius:4, padding:{left:5,right:5,top:2,bottom:2}}},
@@ -19429,7 +19469,7 @@ function renderPrincipalMultiNivel(){
       type:'line', label:`PT% Nivel ${s.clave}`, data,
       borderColor: colorParaNivel(s.clave, niveles), backgroundColor:'transparent', borderWidth:2.5,
       pointRadius:4, pointBackgroundColor: colorParaNivel(s.clave, niveles), pointBorderColor:'#fff', pointBorderWidth:1.5,
-      tension:.3, fill:false, yAxisID:'yPct', spanGaps:false,
+      tension:0, fill:false, yAxisID:'yPct', spanGaps:false,
       datalabels:{
         display:ctx2=> labels.length<=24 && ctx2.dataIndex===data.length-1 && data[ctx2.dataIndex]!=null,
         anchor:'end', align:'right', offset:4,
@@ -20624,7 +20664,7 @@ async function informesFiguraIptAnual(mesClave){
     datasets: [
       {type:'line', label:'IPT -- Índice de Pérdidas Totales (%)', order:1,
         data: visibles.map(f => f.ipt_pct*100), borderColor:'#f4a261', backgroundColor:'rgba(244,162,97,.15)',
-        fill:true, borderWidth:3, tension:.25, ..._informesResaltarUltimo(visibles.length, '#f4a261'),
+        fill:true, borderWidth:3, tension:0, ..._informesResaltarUltimo(visibles.length, '#f4a261'),
         datalabels:_informesDatalabelChip('#f4a261', false, 15)},
     ],
     scales:{
@@ -20651,7 +20691,7 @@ async function informesFiguraIptMensual(mesClave){
       {type:'bar', label:'Pérdida Mensual (kWh)', yAxisID:'y', order:2, data: visibles.map(f=>f.perdida_mensual_kwh),
         backgroundColor:'rgba(67,97,238,.35)', borderColor:'#4361ee', borderWidth:1, datalabels:{display:false}},
       {type:'line', label:'% Pérdida Mensual', yAxisID:'yPct', order:1, data: visibles.map(f=>f.pct_perdida_mensual*100),
-        borderColor:'#f4a261', backgroundColor:'transparent', borderWidth:3, tension:.25,
+        borderColor:'#f4a261', backgroundColor:'transparent', borderWidth:3, tension:0,
         ..._informesResaltarUltimo(visibles.length, '#f4a261'), datalabels:_informesDatalabelChip('#f4a261', false, 15)},
     ],
     scales:{
@@ -20985,7 +21025,7 @@ async function informesFiguraSubestacion(porNem, nemonicos, mesClave){
     return {
       type:'line', label: nem,
       data: visibles.map(c => { const f = porNem[nem].find(x=>x.clave===c); return f && f.pct!=null ? f.pct : null; }),
-      borderColor: color, backgroundColor:'transparent', borderWidth:2, tension:.2, spanGaps:true,
+      borderColor: color, backgroundColor:'transparent', borderWidth:2, tension:0, spanGaps:true,
       ..._informesResaltarUltimo(visibles.length, color, 2, 6),
       datalabels:{display:true, anchor:'end', align:'top', offset:4, formatter:v=>v==null?'':v.toFixed(2)+'%',
         font: ctx => ({size: ctx.dataIndex===ctx.dataset.data.length-1?18:14, weight:'700'}),
@@ -21164,16 +21204,16 @@ async function informesFiguraN21(serie, idx, etiqueta){
     datasets: [
       {type:'line', label:'Entrada kWh/Mes', yAxisID:'y', order:4, fill:'origin',
         data: visibles.map(f=>f.entrada), borderColor:'#06d6a0', backgroundColor:'rgba(6,214,160,.20)',
-        borderWidth:2, pointRadius:1.5, spanGaps:true, tension:.2, datalabels:{display:false}},
+        borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0, datalabels:{display:false}},
       {type:'line', label:'Salida kWh/Mes', yAxisID:'y', order:3, fill:'origin',
         data: visibles.map(f=>f.salida), borderColor:'#ef476f', backgroundColor:'rgba(239,71,111,.20)',
-        borderWidth:2, pointRadius:1.5, spanGaps:true, tension:.2, datalabels:{display:false}},
+        borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0, datalabels:{display:false}},
       {type:'line', label:'Pérdida kWh/Mes', yAxisID:'y', order:2, fill:'origin',
         data: visibles.map(f=>f.perdida), borderColor:'#4361ee', backgroundColor:'rgba(67,97,238,.35)',
-        borderWidth:2, pointRadius:1.5, spanGaps:true, tension:.2, datalabels:{display:false}},
+        borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0, datalabels:{display:false}},
       {type:'line', label:`Pérdida % ${etiqueta}`, yAxisID:'yPct', order:1,
         data: visibles.map(f=>f.pct), borderColor:'#7b2fff', backgroundColor:'transparent',
-        borderWidth:3, spanGaps:true, tension:.25, ..._informesResaltarUltimo(visibles.length, '#7b2fff'),
+        borderWidth:3, spanGaps:true, tension:0, ..._informesResaltarUltimo(visibles.length, '#7b2fff'),
         datalabels:_informesDatalabelChip('#7b2fff', false, 15)},
     ],
     scales:{
@@ -21445,16 +21485,16 @@ async function informesFiguraNivelSerie(serie, idx, etiqueta, sufijoTitulo){
     datasets: [
       {type:'line', label:'Entrada kWh', yAxisID:'y', order:4, fill:'origin',
         data: visibles.map(f=>f.entrada), borderColor:'#06d6a0', backgroundColor:'rgba(6,214,160,.20)',
-        borderWidth:2, pointRadius:1.5, spanGaps:true, tension:.2, datalabels:{display:false}},
+        borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0, datalabels:{display:false}},
       {type:'line', label:'Salida kWh', yAxisID:'y', order:3, fill:'origin',
         data: visibles.map(f=>f.salida), borderColor:'#ef476f', backgroundColor:'rgba(239,71,111,.20)',
-        borderWidth:2, pointRadius:1.5, spanGaps:true, tension:.2, datalabels:{display:false}},
+        borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0, datalabels:{display:false}},
       {type:'line', label:'Pérdida kWh', yAxisID:'y', order:2, fill:'origin',
         data: visibles.map(f=>f.perdida), borderColor:'#4361ee', backgroundColor:'rgba(67,97,238,.35)',
-        borderWidth:2, pointRadius:1.5, spanGaps:true, tension:.2, datalabels:{display:false}},
+        borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0, datalabels:{display:false}},
       {type:'line', label:`Pérdida % ${etiqueta}`, yAxisID:'yPct', order:1,
         data: visibles.map(f=>f.pct), borderColor:'#7b2fff', backgroundColor:'transparent',
-        borderWidth:3, spanGaps:true, tension:.25, ..._informesResaltarUltimo(visibles.length, '#7b2fff'),
+        borderWidth:3, spanGaps:true, tension:0, ..._informesResaltarUltimo(visibles.length, '#7b2fff'),
         datalabels:_informesDatalabelChip('#7b2fff', false, 15)},
     ],
     scales:{
@@ -21496,9 +21536,9 @@ async function informesFiguraNivelTecnica(mensual, tecnicaPorMes, etiqueta){
     labels: visibles.map(f => labelMesLargo(f.clave)),
     datasets: [
       {type:'line', label:'Pérdida Total (balance real)', data: valoresTotal, borderColor:'#4361ee', backgroundColor:'rgba(67,97,238,.15)',
-        fill:'origin', borderWidth:2.5, pointRadius:2, spanGaps:true, tension:.2, datalabels:datalabelsConDelta(valoresTotal,'#4361ee','top')},
+        fill:'origin', borderWidth:2.5, pointRadius:2, spanGaps:true, tension:0, datalabels:datalabelsConDelta(valoresTotal,'#4361ee','top')},
       {type:'line', label:'Pérdida Técnica (calculada)', data: valoresTecnica, borderColor:'#f4a261', backgroundColor:'transparent',
-        borderWidth:2.5, pointRadius:2, spanGaps:true, tension:.2, borderDash:[6,3], datalabels:datalabelsConDelta(valoresTecnica,'#f4a261','bottom')},
+        borderWidth:2.5, pointRadius:2, spanGaps:true, tension:0, borderDash:[6,3], datalabels:datalabelsConDelta(valoresTecnica,'#f4a261','bottom')},
     ],
     scales:{ y:{ticks:{callback:v=>v.toLocaleString('es-CO')+' kWh'}} },
   });
@@ -21635,7 +21675,7 @@ async function informesFiguraNivel3ZonasComparativo(porZona, mesClave){
     const color = colorParaZona(z);
     const data = claves.map(c => { const f = serie.find(x=>x.clave===c); return f ? f.pct : null; });
     return {type:'line', label:`Zona ${z}`, data, borderColor:color, backgroundColor:'transparent',
-      borderWidth:2, spanGaps:true, tension:.25, pointRadius:1.5, datalabels:{display:false}};
+      borderWidth:2, spanGaps:true, tension:0, pointRadius:1.5, datalabels:{display:false}};
   });
   return _informesGraficoAImagen({
     titulo: 'Comparativo de Índice de Pérdidas por Zona -- Nivel 3',
@@ -22058,7 +22098,7 @@ async function informesFiguraIpComercial(mesClave){
     titulo: 'Índice de Pérdidas Comercial',
     labels: visibles.map(f => labelMes(ipComercialClave(f))),
     datasets: [{type:'line', label:'Índice de Pérdidas Comercial (%)', data: visibles.map(f=>f.perdida_pct_12),
-      borderColor:'#7b2fff', backgroundColor:'rgba(123,47,255,.12)', fill:true, borderWidth:2.5, tension:.25,
+      borderColor:'#7b2fff', backgroundColor:'rgba(123,47,255,.12)', fill:true, borderWidth:2.5, tension:0,
       ..._informesResaltarUltimo(visibles.length, '#7b2fff'),
       datalabels:_informesDatalabelChip('#7b2fff', false)}],
     scales:{ y:{ticks:{callback:v=>v.toFixed(1)+'%'}} },
@@ -22089,8 +22129,8 @@ async function informesFiguraTemperaturaEntrada(dias){
     titulo: 'Relación Temperatura vs Energía de Entrada',
     labels: dias.map(f=>f.fecha),
     datasets: [
-      {type:'line', label:'Entrada (kWh)', yAxisID:'y', data: dias.map(f=>TEMP_ENTRADA_BALANCE_DIARIO[f.fecha] ?? null), borderColor:'#4361ee', backgroundColor:'transparent', borderWidth:1.5, pointRadius:0, spanGaps:true, tension:.2},
-      {type:'line', label:'Temperatura (°C)', yAxisID:'yTemp', data: dias.map(f=>f.temp_promedio), borderColor:'#ef476f', backgroundColor:'transparent', borderWidth:1.5, pointRadius:0, spanGaps:true, tension:.3},
+      {type:'line', label:'Entrada (kWh)', yAxisID:'y', data: dias.map(f=>TEMP_ENTRADA_BALANCE_DIARIO[f.fecha] ?? null), borderColor:'#4361ee', backgroundColor:'transparent', borderWidth:1.5, pointRadius:0, spanGaps:true, tension:0},
+      {type:'line', label:'Temperatura (°C)', yAxisID:'yTemp', data: dias.map(f=>f.temp_promedio), borderColor:'#ef476f', backgroundColor:'transparent', borderWidth:1.5, pointRadius:0, spanGaps:true, tension:0},
     ],
     scales:{ y:{position:'left'}, yTemp:{position:'right'} },
   });
