@@ -2947,6 +2947,12 @@ tfoot td:first-child{text-align:left}
             <button type="button" class="be-modo-btn" id="alim3-circuitos-btn-km" onclick="alim3ToggleModoCircuitos('km')">kWh/km</button>
           </div>
           <div class="msel" id="msel-alim3-circuitos" style="margin-bottom:10px"></div>
+          <div class="fbar" style="margin-bottom:8px">
+            <label style="font-size:11px">Rango</label>
+            <input type="date" id="alim3-circuitos-desde" onchange="alim3RenderChartCircuitos()" style="font-size:11px">
+            <span style="font-size:11px;color:var(--text3)">→</span>
+            <input type="date" id="alim3-circuitos-hasta" onchange="alim3RenderChartCircuitos()" style="font-size:11px">
+          </div>
           <div class="chart-wrap" style="height:380px"><canvas id="ch-alim3-circuitos"></canvas></div>
         </div>
         <div style="flex:2;min-width:500px">
@@ -13490,6 +13496,30 @@ function alim3PoblarMselCircuitos(){
   const opciones = [...porNem.entries()].map(([value,label]) => ({value, label})).sort((a,b) => a.label.localeCompare(b.label));
   if(MSEL['msel-alim3-circuitos']) mselSetOpciones('msel-alim3-circuitos', opciones);
   else mselInit('msel-alim3-circuitos', 'Circuitos', 'Ninguno', opciones, alim3RenderChartCircuitos, []);
+
+  // Rango PROPIO de esta gráfica -- pedido explícito ("el grafico tambien
+  // debe tener filtro de fecha"), independiente del Rango de arriba de
+  // todo el módulo. Arranca con los mismos últimos 12 meses por defecto,
+  // el usuario lo puede mover aparte después.
+  const inDesde = document.getElementById('alim3-circuitos-desde');
+  const inHasta = document.getElementById('alim3-circuitos-hasta');
+  if(inDesde && inHasta && (!inDesde.value || !inHasta.value)){
+    const claves = [...new Set(ALIM_FILAS.map(f => alimN21Clave(f.anio, f.mes)))].sort();
+    if(claves.length){
+      const ultima = claves[claves.length-1];
+      if(!inHasta.value) inHasta.value = ultima + '-01';
+      if(!inDesde.value){
+        const idx = claves.length - 12;
+        inDesde.value = (claves[Math.max(0, idx)]) + '-01';
+      }
+    }
+  }
+}
+
+function alim3VisiblesRangoCircuitos(serie){
+  const desde = document.getElementById('alim3-circuitos-desde').value ? document.getElementById('alim3-circuitos-desde').value.slice(0,7) : null;
+  const hasta = document.getElementById('alim3-circuitos-hasta').value ? document.getElementById('alim3-circuitos-hasta').value.slice(0,7) : null;
+  return serie.filter(f => (!desde || f.clave >= desde) && (!hasta || f.clave <= hasta));
 }
 
 let chAlim3Circuitos = null;
@@ -13510,11 +13540,15 @@ function alim3ToggleModoCircuitos(modo){
 // Pérdida GESTIONABLE mensual de cada circuito elegido, una línea por
 // circuito -- pedido explícito ("ahi esta comparando perdida gestionable
 // o que? quiero que sea la perdida gestionable"; antes mostraba Pérdida
-// Total %, no Gestionable). Respeta el filtro Rango (Desde/Hasta) del
-// resto del módulo (alim3VisiblesRango). Las series pueden tener meses
-// distintos entre sí (un circuito puede no tener dato en algún mes) --
-// se arma la UNIÓN de claves de todos los seleccionados para el eje X,
-// con huecos (null, spanGaps) donde a alguno le falte.
+// Total %, no Gestionable). Respeta el Rango PROPIO de esta gráfica
+// (alim3VisiblesRangoCircuitos, pedido explícito: "el grafico tambien
+// debe tener filtro de fecha"). Las series pueden tener meses distintos
+// entre sí (un circuito puede no tener dato en algún mes) -- se arma la
+// UNIÓN de claves de todos los seleccionados para el eje X, con huecos
+// (null, spanGaps) donde a alguno le falte. Datalabels con el valor de
+// cada punto -- pedido explícito ("no aparece el valor de %... en el
+// grafico"), mismo estilo chip que alimSubRenderChartAlimentadores
+// (texto del color de la línea, fondo semitransparente).
 function alim3RenderChartCircuitos(){
   const cv = document.getElementById('ch-alim3-circuitos');
   if(!cv) return;
@@ -13531,7 +13565,7 @@ function alim3RenderChartCircuitos(){
       clave: alimN21Clave(f.anio,f.mes), perdida: f.perdida_kwh||0,
       gestionable: f.gestionable_kwh, longitud: f.longitud_total,
     }));
-    const visibles = alim3VisiblesRango(mensual);
+    const visibles = alim3VisiblesRangoCircuitos(mensual);
     const nombre = filas.length ? (filas[filas.length-1].nombre_spard || nem) : nem;
     return {nem, nombre, serie: visibles};
   });
@@ -13546,22 +13580,28 @@ function alim3RenderChartCircuitos(){
     if(esPct) return f.perdida ? f.gestionable/f.perdida*100 : null;
     return (f.longitud>0) ? f.gestionable/f.longitud : null;
   };
+  const fmtY = v => esPct ? `${v.toFixed(1)}%` : v.toLocaleString('es-CO',{maximumFractionDigits:0});
 
   const datasets = seriePorCircuito.map((c, i) => {
     const porClave = new Map(c.serie.map(f => [f.clave, f]));
+    const color = alimSubColor(i, seriePorCircuito.length);
     return {
-      type:'line', label: c.nombre, borderColor: alimSubColor(i, seriePorCircuito.length), backgroundColor:'transparent',
+      type:'line', label: c.nombre, borderColor: color, backgroundColor:'transparent',
       borderWidth:2, tension:.25, spanGaps:true, pointRadius:2,
       data: claves.map(cl => valorFila(porClave.get(cl))),
+      datalabels:{display:true, anchor:'end', align:'top', offset:2,
+        formatter:v=>v==null?'':fmtY(v),
+        font:{size:8, weight:'700'}, color,
+        backgroundColor: dark?'rgba(30,30,40,.72)':'rgba(255,255,255,.72)', borderRadius:2, padding:{left:2,right:2,top:0,bottom:0}},
     };
   });
 
-  const fmtY = v => esPct ? `${v.toFixed(1)}%` : v.toLocaleString('es-CO',{maximumFractionDigits:0});
   chAlim3Circuitos = new Chart(cv, {
     data:{labels: claves.map(c => labelMes(c)), datasets},
     options:{
       responsive:true, maintainAspectRatio:false,
       interaction:{mode:'index', intersect:false},
+      layout:{padding:{top:16}},
       plugins:{
         legend:{display:true, position:'bottom', labels:{boxWidth:10, font:{size:9}, color:tickC}},
         tooltip:{callbacks:{label:c => c.raw==null ? null : `${c.dataset.label}: ${fmtY(c.raw)}${esPct?'':' kWh/km'}`}},
