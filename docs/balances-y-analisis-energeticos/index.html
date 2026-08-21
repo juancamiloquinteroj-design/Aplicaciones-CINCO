@@ -416,8 +416,8 @@ canvas[id^="ch-tride-"]:active{cursor:grabbing}
 .n21tab-col-es{display:none}
 .n21tab-mostrar-es .n21tab-col-es{display:table-cell}
 .n21tab-impacto{display:inline-flex;align-items:center;justify-content:center;width:22px;height:18px;border-radius:4px;font-weight:800;font-size:11px}
-.n21tab-impacto.sube{background:rgba(192,0,0,.18);color:#ef476f}
-.n21tab-impacto.baja{background:rgba(0,176,80,.18);color:#06d6a0}
+.n21tab-impacto.sube{background:rgba(192,0,0,.18);color:#C00000}
+.n21tab-impacto.baja{background:rgba(0,176,80,.18);color:#00B050}
 
 /* Botón "Exportar" genérico (Imagen/Excel) -- inyectado automáticamente
    por JS en TODA gráfica (.chart-wrap) y TODA tabla (.tbl-wrap) de la
@@ -4647,11 +4647,19 @@ async function _expImagenChart(wrapId, nombreBase, ev){
   // capturar.
   const expW = Number(wrap.dataset.exportW) || 1000;
   const expH = Number(wrap.dataset.exportH) || 600;
+  // Alta calidad -- pedido explícito ("que salga en alta acalidad y ben
+  // contrsate"): sin esto, el canvas se dibuja a 1 píxel físico por
+  // píxel lógico (1000x600 reales), que se ve borroso/suave al ampliar
+  // la imagen. x3 dibuja a 3000x1800 -- nítido incluso haciendo zoom en
+  // el PNG -- y se restaura el valor original apenas termina de capturar.
+  const dprOriginal = chart.options.devicePixelRatio;
+  chart.options.devicePixelRatio = 3;
   chart.resize(expW, expH);
   for(let intento=0; intento<20 && (chart.width!==expW || chart.height!==expH); intento++){
     await new Promise(res => requestAnimationFrame(res));
   }
   const dataUrl = chart.toBase64Image('image/png', 1);
+  chart.options.devicePixelRatio = dprOriginal;
   chart.resize();  // sin argumentos -- vuelve a leer el tamaño real del .chart-wrap en pantalla
 
   const img = new Image();
@@ -4665,11 +4673,17 @@ async function _expImagenChart(wrapId, nombreBase, ev){
   // (15px CSS × 2 de escala ≈ 30px). El margen de separación entre el
   // título y la gráfica también se acotó (antes +40, quedaba un hueco
   // grande) -- pedido explícito: "el título sale muy lejos de la gráfica".
-  const fontTitulo = Math.max(18, Math.min(30, Math.round(img.width*0.014)));
-  const margenLat = 24, margenSup = tituloTexto ? fontTitulo + 20 : 16;
+  //
+  // ESCALA=3 (ver devicePixelRatio arriba) -- img.width/height ya vienen
+  // 3 veces más grandes que antes (mismo tamaño VISUAL, más nítido). Los
+  // márgenes/tope de fuente de acá estaban pensados a 1x -- sin escalarlos
+  // también, quedarían minúsculos comparados con la imagen ahora enorme.
+  const ESCALA = 3;
+  const fontTitulo = Math.max(18*ESCALA, Math.min(30*ESCALA, Math.round(img.width*0.014)));
+  const margenLat = 24*ESCALA, margenSup = tituloTexto ? fontTitulo + 20*ESCALA : 16*ESCALA;
   const cv = document.createElement('canvas');
   cv.width = img.width + margenLat*2;
-  cv.height = img.height + margenSup + 16;
+  cv.height = img.height + margenSup + 16*ESCALA;
   const ctx = cv.getContext('2d');
   ctx.fillStyle = colorFondo;
   ctx.fillRect(0, 0, cv.width, cv.height);
@@ -4678,7 +4692,7 @@ async function _expImagenChart(wrapId, nombreBase, ev){
     ctx.font = `bold ${fontTitulo}px "Segoe UI", sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(tituloTexto, cv.width/2, margenSup/2 + 8, cv.width - margenLat*2);
+    ctx.fillText(tituloTexto, cv.width/2, margenSup/2 + 8*ESCALA, cv.width - margenLat*2);
   }
   ctx.drawImage(img, margenLat, margenSup);
   cv.toBlob(blob => { if(blob) _expDescargarBlob(blob, `${_expNombreArchivo(nombreBase)}.png`); });
@@ -11351,29 +11365,57 @@ function _narrativaEntradaSalidaHtml(mensual, titulo){
   const claveActual = _narrativaUltimaClaveCompleta(mensual);
   const datos = claveActual ? _narrativaEntradaSalidaDatos(mensual, claveActual) : null;
   if(!datos){
-    return `<div class="ip-comentario-titulo">${titulo}</div>
-      <p>No hay suficiente histórico todavía (se necesita el mismo mes del año anterior) para calcular esta explicación.</p>`;
+    return `<div class="be-tabla-creadas-titulo">${titulo}</div>
+      <p style="color:var(--text3);font-size:12px;margin:8px 0 0">No hay suficiente histórico todavía (se necesita el mismo mes del año anterior) para calcular esta tabla.</p>`;
   }
   const fKwh = v => Math.round(v).toLocaleString('es-CO');
   const fGwh = v => (Math.abs(v)/1e6).toLocaleString('es-CO', {maximumFractionDigits:2, minimumFractionDigits:2});
   const fPct = v => v.toLocaleString('es-CO', {maximumFractionDigits:2, minimumFractionDigits:2});
+  const signo = v => v>=0 ? '+' : '';
   const mesActualTxt = labelMesLargo(datos.claveActual);
   const mesAnteriorTxt = labelMesLargo(datos.claveAnterior);
   const UMBRAL = 0.01;  // pp -- por debajo se trata como "prácticamente igual", no sube/baja
   const crece = datos.brecha > UMBRAL;
   const baja = datos.brecha < -UMBRAL;
+
+  // Entrada/Salida son filas NEUTRAS (crecer no es "bueno" ni "malo" en sí
+  // mismo) -- el color solo va en la fila Brecha/Acumulado, que es donde
+  // sí importa la dirección (pedido explícito: "yo quiero es una tabla").
+  const filaConcepto = (nombre, anterior, actual) => {
+    const delta = actual - anterior;
+    const deltaPct = anterior ? delta/anterior*100 : null;
+    return `<tr>
+      <td style="text-align:left;font-weight:700">${nombre}</td>
+      <td>${fKwh(anterior)} kWh</td>
+      <td>${fKwh(actual)} kWh</td>
+      <td>${signo(delta)}${fKwh(delta)} kWh</td>
+      <td>${deltaPct==null?'--':signo(deltaPct)+fPct(deltaPct)+'%'}</td>
+    </tr>`;
+  };
+
   return `
-    <div class="ip-comentario-titulo">${titulo}</div>
-    <div class="ip-comentario-cifra ${crece?'sube':(baja?'baja':'')}">${datos.brecha>=0?'+':''}${fPct(datos.brecha)} pp de brecha</div>
-    <p>${crece
-      ? 'La tendencia creciente del indicador no se debe a un evento puntual, sino a un comportamiento estructural.'
-      : (baja ? 'La tendencia del indicador refleja una mejora estructural, no un evento puntual.' : 'La entrada y la salida vienen creciendo prácticamente al mismo ritmo.')
-    } La <b>Entrada</b> pasó de ${fKwh(datos.anterior.entrada)} kWh en ${mesAnteriorTxt} a ${fKwh(datos.actual.entrada)} kWh en ${mesActualTxt}, un crecimiento de <b>${fPct(datos.pctEntrada)}%</b>.</p>
-    <p>En cambio, la <b>Salida (venta)</b> creció un <b>${fPct(datos.pctSalida)}%</b> (de ${fKwh(datos.anterior.salida)} a ${fKwh(datos.actual.salida)} kWh)${crece
-      ? '. Por lo tanto, el incremento de la demanda que ingresa al sistema es mayor que la capacidad de facturación y entrega efectiva'
-      : (baja ? '. Por lo tanto, la salida está alcanzando el ritmo de crecimiento de la entrada' : '')
-    }.</p>
-    <p>${crece ? 'Esta brecha' : (baja ? 'Esta diferencia favorable' : 'Esta diferencia')} de <b>${fPct(Math.abs(datos.brecha))}%</b> ${crece ? 'genera' : 'representa'} un acumulado mensual de <b>${fGwh(datos.kwhNoFacturado)} GWh</b> ${crece?'no facturados, lo que presiona continuamente al alza el porcentaje de pérdidas del sistema.':(baja?'de energía adicional que sí se está facturando.':'de diferencia entre lo que entra y lo que se vende.')}</p>
+    <div class="be-tabla-creadas-titulo">${titulo}</div>
+    <div class="be-tabla-scroll">
+      <table class="be-tabla-creadas">
+        <thead><tr>
+          <th>Concepto</th><th>${mesAnteriorTxt}</th><th>${mesActualTxt}</th><th>Δ</th><th>Δ%</th>
+        </tr></thead>
+        <tbody>
+          ${filaConcepto('Entrada', datos.anterior.entrada, datos.actual.entrada)}
+          ${filaConcepto('Salida (venta)', datos.anterior.salida, datos.actual.salida)}
+          <tr>
+            <td style="text-align:left;font-weight:700">Brecha (Entrada - Salida)</td>
+            <td colspan="3"></td>
+            <td><span class="n21tab-impacto ${crece?'sube':(baja?'baja':'')}" style="width:auto;padding:2px 8px">${signo(datos.brecha)}${fPct(datos.brecha)} pp</span></td>
+          </tr>
+          <tr>
+            <td style="text-align:left;font-weight:700">Acumulado mensual ${crece?'no facturado':(baja?'a favor':'')}</td>
+            <td colspan="3"></td>
+            <td style="font-weight:700;color:${crece?'#C00000':(baja?'#00B050':'inherit')}">${fGwh(datos.kwhNoFacturado)} GWh</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
   `;
 }
 
