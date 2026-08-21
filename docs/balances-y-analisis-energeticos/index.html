@@ -1454,14 +1454,14 @@ tfoot td:first-child{text-align:left}
     <div style="text-align:center;margin-bottom:8px">
       <div id="ip-titulo-grafico" style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Indicador de Pérdidas Totales (IP_REG)</div>
     </div>
-    <div class="fbar" style="margin-bottom:6px">
+    <div class="fbar no-exportar" style="margin-bottom:6px">
       <label title="Buscar un medidor/frontera (código SIC, ej. Frt00264) que aplique al cálculo del indicador y sobreponer su consumo">Medidor (código SIC)</label>
       <input type="text" id="ip-medidor-buscar" placeholder="Ej. Frt00264" style="width:120px;padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg)"
         onkeydown="if(event.key==='Enter') ipAgregarMedidor()">
       <button class="btn-theme" style="width:auto;padding:0 12px" onclick="ipAgregarMedidor()">＋ Agregar</button>
       <div id="ip-medidores-activos" style="display:flex;gap:6px;flex-wrap:wrap"></div>
     </div>
-    <div class="fbar" style="margin-bottom:6px">
+    <div class="fbar no-exportar" style="margin-bottom:6px">
       <label>Sobreponer variable</label>
       <select id="ip-overlay-nivel" onchange="ipPoblarVariablesOverlay()">
         <option value="1">Nivel 1</option>
@@ -2325,6 +2325,7 @@ tfoot td:first-child{text-align:left}
       </div>
       <div class="fbar" style="justify-content:center;margin-bottom:10px">
         <button type="button" class="be-modo-btn" id="alim-nivel4-btn-var" onclick="alimNivel4ToggleVariacion()" title="Agrega tarjetas de variación (Δ Entrada, Δ Salida, Δ Pérdida %) vs. el mes anterior">Δ Variación</button>
+        <button type="button" class="be-modo-btn" id="alim-nivel4-btn-relleno" onclick="alimNivel4ToggleRelleno()" title="Quita el sombreado bajo las líneas de Entrada/Salida">▨ Relleno</button>
       </div>
       <div class="alim-n21-grid-2">
         <div>
@@ -2390,6 +2391,7 @@ tfoot td:first-child{text-align:left}
       </div>
       <div class="fbar" style="justify-content:center;margin-bottom:10px">
         <button type="button" class="be-modo-btn" id="alim-nivel3-btn-var" onclick="alimNivel3ToggleVariacion()" title="Agrega tarjetas de variación (Δ Entrada, Δ Salida, Δ Pérdida %) vs. el mes anterior">Δ Variación</button>
+        <button type="button" class="be-modo-btn" id="alim-nivel3-btn-relleno" onclick="alimNivel3ToggleRelleno()" title="Quita el sombreado bajo las líneas de Entrada/Salida">▨ Relleno</button>
       </div>
       <div class="alim-n21-grid-2">
         <div>
@@ -4153,8 +4155,15 @@ Chart.defaults.elements.line.tension = 0;
 // excel con colores de excel").
 Chart.defaults.plugins.legend.labels.usePointStyle = true;
 Chart.defaults.plugins.legend.labels.pointStyle = 'line';
-Chart.defaults.plugins.legend.labels.boxWidth = 22;
-Chart.defaults.plugins.legend.labels.boxHeight = 2;
+Chart.defaults.plugins.legend.labels.boxWidth = 30;
+// boxHeight:2 casi no se veía -- pedido explícito ("la leyenda casi no se
+// ve el color sale un punto muy pequeño"): Chart.js usa
+// min(boxWidth,boxHeight) como radio del marcador en modo usePointStyle,
+// así que con 2 quedaba un punto minúsculo SIEMPRE, incluso en las
+// gráficas que fijan su propio boxWidth (12-14) sin tocar boxHeight (que
+// sigue heredando este default). 10 es lo bastante grande para que el
+// mínimo salga visible en todos los casos.
+Chart.defaults.plugins.legend.labels.boxHeight = 10;
 Chart.defaults.plugins.tooltip.cornerRadius = 6;
 Chart.defaults.plugins.tooltip.padding = 10;
 Chart.defaults.plugins.tooltip.titleFont = {weight:'700'};
@@ -9280,7 +9289,7 @@ async function renderChartBalanceEstructura(datos, modo){
         borderWidth:2, pointRadius:0, tension:0, spanGaps:true, yAxisID:'yKwh', order:1, borderDash:[2,2]},
       {type:'line', label:'Pérdida %', data:perdidaPct, borderColor:'#ED7D31', backgroundColor:'transparent',
         borderWidth:2, tension:0, spanGaps:true, yAxisID:'yPct', order:1, borderDash:[6,3], ..._puntosAjuste('#ED7D31'),
-        datalabels:{display: mesUnico, anchor:'end', align:'top', offset:6,
+        datalabels:{display: mesUnico, anchor:'end', align:'top', offset:12,
           formatter:v=>v==null ? '' : v.toFixed(2)+'%', font:{size:11, weight:'800'}, color:'#ED7D31',}},
     ];
     // Límites "típicos" (ver "Datos típicos de esta estructura", arriba de
@@ -9527,13 +9536,13 @@ function renderChartComparacionEstructura(datos){
       // Igual que en "Anual" -- con como máximo unas pocas decenas de
       // puntos (uno por mes) el valor se puede etiquetar sin que se
       // amontonen las etiquetas.
-      datalabels:{display:!mostrarEntradaSalida, anchor:'end', align:'top', offset:6,
+      datalabels:{display:!mostrarEntradaSalida, anchor:'end', align:'top', offset:12,
         formatter:v=>v==null ? '' : v.toLocaleString('es-CO',{maximumFractionDigits:0}),
         font:{size:10, weight:'700'}, color:'#C00000',}},
     {type:'line', label:'Pérdida %', data:datos.perdida_balance_pct, hidden:mostrarEntradaSalida,
       borderColor:'#ED7D31', backgroundColor:'transparent', borderWidth:2, pointRadius:2,
       tension:0, spanGaps:true, borderDash:[6,3], yAxisID:'yPct',
-      datalabels:{display:!mostrarEntradaSalida, anchor:'end', align:'bottom', offset:6,
+      datalabels:{display:!mostrarEntradaSalida, anchor:'end', align:'bottom', offset:12,
         formatter:v=>v==null ? '' : v.toFixed(2)+'%', font:{size:11, weight:'800'}, color:'#ED7D31',}},
     {type:'line', label:'Entrada mensual', data:datos.entrada_kwh, _rol:'entrada', hidden:!mostrarEntradaSalida,
       borderColor:'#00B050', backgroundColor:'transparent', borderWidth:2, pointRadius:2,
@@ -9699,13 +9708,13 @@ function renderChartMovilAnual(datos){
       // Como máximo 12-13 puntos en este modo (uno por mes) -- a
       // diferencia del gráfico diario, aquí el valor siempre se puede
       // etiquetar sin que se amontonen las etiquetas.
-      datalabels:{display:true, anchor:'end', align:'top', offset:6,
+      datalabels:{display:true, anchor:'end', align:'top', offset:12,
         formatter:v=>v==null ? '' : v.toLocaleString('es-CO',{maximumFractionDigits:0}),
         font:{size:10, weight:'700'}, color:'#C00000',}},
     {type:'line', label:'Pérdida % móvil anual', data:datos.perdida_balance_movil_pct, hidden:mostrarEntradaSalida,
       borderColor:'#ED7D31', backgroundColor:'transparent', borderWidth:2, pointRadius:2,
       tension:0, spanGaps:true, borderDash:[6,3], yAxisID:'yPct',
-      datalabels:{display:true, anchor:'end', align:'bottom', offset:6,
+      datalabels:{display:true, anchor:'end', align:'bottom', offset:12,
         formatter:v=>v==null ? '' : v.toFixed(2)+'%', font:{size:11, weight:'800'}, color:'#ED7D31',}},
     {type:'line', label:'Entrada móvil anual', data:datos.entrada_movil_kwh, _rol:'entrada', hidden:!mostrarEntradaSalida,
       borderColor:'#00B050', backgroundColor:'transparent', borderWidth:2, pointRadius:2,
@@ -11408,6 +11417,8 @@ let chAlimNivel3Mensual = null, chAlimNivel3Anual = null, chAlimNivel3Tecnica = 
 // explícito) -- el botón sigue estando para poder apagarlo si molesta.
 let ALIM_NIVEL4_VAR = true;
 let ALIM_NIVEL3_VAR = true;
+let ALIM_NIVEL4_SIN_RELLENO = false;
+let ALIM_NIVEL3_SIN_RELLENO = false;
 
 // Mismo criterio de filtro Rango que alimN21Visibles -- opera sobre la
 // serie YA agregada a mensual (campo .clave "AAAA-MM"), leyendo los
@@ -11608,7 +11619,7 @@ function _alimNivelComparativoTarjetasHtml(mensual, tecnicaPorMes, claveSeleccio
 // `sufijo` ('' mensual, '12' anual 12M móvil) elige qué campos leer
 // (entrada/entrada12, etc.) -- misma función para las 2 gráficas lado a
 // lado (Mensual/Anual), igual criterio que alim-n21 (botón/gráfica anual).
-function _alimNivelConstruirChartMensual(cv, mensual, etiquetaNivel, seriesExtra, sufijo){
+function _alimNivelConstruirChartMensual(cv, mensual, etiquetaNivel, seriesExtra, sufijo, sinRelleno){
   if(!cv) return null;
   sufijo = sufijo || '';
   const campoPct = 'pct'+sufijo, campoEntrada = 'entrada'+sufijo, campoSalida = 'salida'+sufijo;
@@ -11620,18 +11631,23 @@ function _alimNivelConstruirChartMensual(cv, mensual, etiquetaNivel, seriesExtra
   const tickXFuerte = dark ? '#ffffff' : '#000000';
   const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
   const etiquetas = visibles.map(f => labelMes(f.clave));
+  // Relleno entre Entrada/Salida y el eje -- apagable con un botón sutil
+  // (pedido explícito: "que se desctive el relleno de los graficos de
+  // entrada y salida"), porque al superponerse las 2 áreas queda una
+  // franja de un tono mezclado que no siempre ayuda a leer el gráfico.
+  const fillES = sinRelleno ? false : 'origin';
 
   const datasets = [
-    {type:'line', label:`Entrada kWh/${etiquetaPeriodo}`, yAxisID:'y', order:5, fill:'origin',
+    {type:'line', label:`Entrada kWh/${etiquetaPeriodo}`, yAxisID:'y', order:5, fill:fillES,
       data: visibles.map(f=>f[campoEntrada]), borderColor:'#00B050', backgroundColor:'rgba(0,176,80,.20)',
       borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0, datalabels:{display:false}},
-    {type:'line', label:`Salida kWh/${etiquetaPeriodo}`, yAxisID:'y', order:4, fill:'origin',
+    {type:'line', label:`Salida kWh/${etiquetaPeriodo}`, yAxisID:'y', order:4, fill:fillES,
       data: visibles.map(f=>f[campoSalida]), borderColor:'#C00000', backgroundColor:'rgba(192,0,0,.20)',
       borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0, datalabels:{display:false}},
     {type:'line', label:`Pérdida % ${etiquetaNivel} (${etiquetaPeriodo})`, yAxisID:'yPct', order:1,
       data: visibles.map(f=>f[campoPct]), borderColor:'#ED7D31', backgroundColor:'transparent',
       borderWidth:2.5, pointRadius:2, spanGaps:true, tension:0,
-      datalabels:{display:true, anchor:'end', align:'top', offset:6, formatter:v=>v==null?'':v.toFixed(2)+'%',
+      datalabels:{display:true, anchor:'end', align:'top', offset:12, formatter:v=>v==null?'':v.toFixed(2)+'%',
         font:{size:10, weight:'700'}, color:'#ED7D31',}},
     ...(seriesExtra||[]),
   ];
@@ -11651,7 +11667,7 @@ function _alimNivelConstruirChartMensual(cv, mensual, etiquetaNivel, seriesExtra
         zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:3}}},
       },
       scales:{
-        x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas}},
+        x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
         yPct:{type:'linear', position:'right', grid:{drawOnChartArea:false},
           ticks:{color:'#ED7D31', font:{size:11}, callback:v=>v.toFixed(1)+'%'},
           title:{display:true, text:`Pérdida ${etiquetaNivel} (%)`, color:'#ED7D31', font:{size:11}}},
@@ -11726,7 +11742,7 @@ function _alimNivelConstruirChartTecnica(cv, mensual, tecnicaPorMes, etiquetaNiv
   // gráfico en ambas curvas... cada punto la variación").
   const fk = v => v.toLocaleString('es-CO', {maximumFractionDigits:0});
   const datalabelsConDelta = (valores, colorBase, align) => ({
-    display:true, anchor:'end', align, offset:6,
+    display:true, anchor:'end', align, offset:12,
     formatter:(v,ctx)=>{
       if(v==null) return '';
       const anterior = ctx.dataIndex>0 ? valores[ctx.dataIndex-1] : null;
@@ -11762,7 +11778,7 @@ function _alimNivelConstruirChartTecnica(cv, mensual, tecnicaPorMes, etiquetaNiv
         zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:3}}},
       },
       scales:{
-        x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas}},
+        x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
         y:{position:'left', grid:{color:gridC},
           ticks:{color:tickC, font:{size:10}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
           title:{display:true, text:'Pérdida (kWh)', color:tickC, font:{size:10}}},
@@ -12074,7 +12090,7 @@ function alimNivel3RenderChartZonasComparativo(){
         zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:3}}},
       },
       scales:{
-        x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas}},
+        x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
         y:{grid:{color:gridC}, ticks:{color:tickC, font:{size:11}, callback:v=>v.toFixed(0)+'%'},
           title:{display:true, text:'Pérdida (%)', color:tickC, font:{size:11}}},
       },
@@ -12146,7 +12162,7 @@ function _alimNivel4ConstruirChartImportExport(cv, mensual){
         zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:3}}},
       },
       scales:{
-        x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas}},
+        x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
         y:{position:'left', grid:{color:gridC},
           ticks:{color:tickC, font:{size:10}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
           title:{display:true, text:'Energía (kWh)', color:tickC, font:{size:10}}},
@@ -12194,6 +12210,12 @@ function alimNivel4ToggleVariacion(){
   alimNivel4RenderTodo();
 }
 
+function alimNivel4ToggleRelleno(){
+  ALIM_NIVEL4_SIN_RELLENO = !ALIM_NIVEL4_SIN_RELLENO;
+  document.getElementById('alim-nivel4-btn-relleno').classList.toggle('activo', ALIM_NIVEL4_SIN_RELLENO);
+  alimNivel4RenderTodo();
+}
+
 function alimNivel4RenderTodo(){
   const filas = ALIM_NIVEL4_FILAS || [];
   if(!filas.length) return;
@@ -12204,14 +12226,15 @@ function alimNivel4RenderTodo(){
   const tecnicaPorMes = _alimNivelTecnicaPorMes(ALIM_NIVEL4_TECNICA);
   const claveAnalisis = _alimNivelPoblarSelectorAnalisis('alim-nivel4', mensualCompleto);
   document.getElementById('alim-nivel4-btn-var').classList.toggle('activo', ALIM_NIVEL4_VAR);
+  document.getElementById('alim-nivel4-btn-relleno').classList.toggle('activo', ALIM_NIVEL4_SIN_RELLENO);
 
   document.getElementById('alim-nivel4-tarjetas').innerHTML = _alimNivelTarjetasHtml(mensual, ALIM_NIVEL4_VAR);
   document.getElementById('alim-nivel4-analisis').innerHTML = _alimNivelComparativoTarjetasHtml(mensualCompleto, tecnicaPorMes, claveAnalisis);
 
   if(chAlimNivel4Mensual) chAlimNivel4Mensual.destroy();
-  chAlimNivel4Mensual = _alimNivelConstruirChartMensual(document.getElementById('ch-alim-nivel4-mensual'), mensual, 'Nivel 4');
+  chAlimNivel4Mensual = _alimNivelConstruirChartMensual(document.getElementById('ch-alim-nivel4-mensual'), mensual, 'Nivel 4', null, '', ALIM_NIVEL4_SIN_RELLENO);
   if(chAlimNivel4Anual) chAlimNivel4Anual.destroy();
-  chAlimNivel4Anual = _alimNivelConstruirChartMensual(document.getElementById('ch-alim-nivel4-anual'), anual, 'Nivel 4', null, '12');
+  chAlimNivel4Anual = _alimNivelConstruirChartMensual(document.getElementById('ch-alim-nivel4-anual'), anual, 'Nivel 4', null, '12', ALIM_NIVEL4_SIN_RELLENO);
   if(chAlimNivel4Tecnica) chAlimNivel4Tecnica.destroy();
   chAlimNivel4Tecnica = _alimNivelConstruirChartTecnica(document.getElementById('ch-alim-nivel4-tecnica'), mensual, tecnicaPorMes, 'Nivel 4');
 
@@ -12326,6 +12349,12 @@ function alimNivel3ToggleVariacion(){
   alimNivel3RenderTodo();
 }
 
+function alimNivel3ToggleRelleno(){
+  ALIM_NIVEL3_SIN_RELLENO = !ALIM_NIVEL3_SIN_RELLENO;
+  document.getElementById('alim-nivel3-btn-relleno').classList.toggle('activo', ALIM_NIVEL3_SIN_RELLENO);
+  alimNivel3RenderTodo();
+}
+
 function alimNivel3RenderTodo(){
   const filas = ALIM_NIVEL3_FILAS || [];
   if(!filas.length) return;
@@ -12338,16 +12367,17 @@ function alimNivel3RenderTodo(){
   const claveAnalisis = _alimNivelPoblarSelectorAnalisis('alim-nivel3', mensualCompleto);
   const claveTabla = _alimNivelPoblarSelectorAnalisis('alim-nivel3-tabla', mensualCompleto);
   document.getElementById('alim-nivel3-btn-var').classList.toggle('activo', ALIM_NIVEL3_VAR);
+  document.getElementById('alim-nivel3-btn-relleno').classList.toggle('activo', ALIM_NIVEL3_SIN_RELLENO);
 
   document.getElementById('alim-nivel3-tarjetas').innerHTML = _alimNivelTarjetasHtml(mensual, ALIM_NIVEL3_VAR);
   document.getElementById('alim-nivel3-analisis').innerHTML = _alimNivelComparativoTarjetasHtml(mensualCompleto, tecnicaPorMes, claveAnalisis);
 
   if(chAlimNivel3Mensual) chAlimNivel3Mensual.destroy();
   chAlimNivel3Mensual = _alimNivelConstruirChartMensual(
-    document.getElementById('ch-alim-nivel3-mensual'), mensual, 'Total (Nivel 3)', _alimNivelSeriesZonas(mensual, porZona, ALIM_NIVEL3_ZONAS_SEL));
+    document.getElementById('ch-alim-nivel3-mensual'), mensual, 'Total (Nivel 3)', _alimNivelSeriesZonas(mensual, porZona, ALIM_NIVEL3_ZONAS_SEL), '', ALIM_NIVEL3_SIN_RELLENO);
   if(chAlimNivel3Anual) chAlimNivel3Anual.destroy();
   chAlimNivel3Anual = _alimNivelConstruirChartMensual(
-    document.getElementById('ch-alim-nivel3-anual'), anual, 'Total (Nivel 3)', _alimNivelSeriesZonasAnual(anual, porZona, ALIM_NIVEL3_ZONAS_SEL), '12');
+    document.getElementById('ch-alim-nivel3-anual'), anual, 'Total (Nivel 3)', _alimNivelSeriesZonasAnual(anual, porZona, ALIM_NIVEL3_ZONAS_SEL), '12', ALIM_NIVEL3_SIN_RELLENO);
   if(chAlimNivel3Tecnica) chAlimNivel3Tecnica.destroy();
   chAlimNivel3Tecnica = _alimNivelConstruirChartTecnica(document.getElementById('ch-alim-nivel3-tecnica'), mensual, tecnicaPorMes, 'Total (Nivel 3)');
 
@@ -13253,7 +13283,7 @@ function alimSubRenderChartSubestaciones(){
         zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:3}}},
       },
       scales:{
-        x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas}},
+        x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
         y:{grid:{color:gridC}, ticks:{color:tickC, font:{size:11}, callback:v=>v.toLocaleString('es-CO')},
           title:{display:true, text: nombreMetrica, color:tickC, font:{size:11}}},
       },
@@ -13296,7 +13326,7 @@ function alimSubRenderChartVariacion(){
       type:'line', label: sub, data: datos,
       borderColor: color, backgroundColor:'transparent',
       borderWidth:1.5, pointRadius:2, spanGaps:true, tension:0,
-      datalabels:{display:true, anchor:'end', align:'top', offset:2,
+      datalabels:{display:true, anchor:'end', align:'top', offset:8,
         formatter:v=>v==null?'':`${v>=0?'+':''}${v.toFixed(0)}%`,
         font:{size:8, weight:'700'}, color,},
     };
@@ -13317,7 +13347,7 @@ function alimSubRenderChartVariacion(){
         zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:3}}},
       },
       scales:{
-        x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas}},
+        x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
         y:{grid:{color:gridC}, ticks:{color:tickC, font:{size:11}, callback:v=>v.toFixed(0)+'%'},
           title:{display:true, text:`Variación de ${nombreMetrica} vs. mes anterior (%)`, color:tickC, font:{size:11}}},
       },
@@ -13553,7 +13583,7 @@ function alimSubRenderChartAlimentadores(){
     // abajo, con la variación incluida ahí también).
     const datalabelsPct = ALIM_SUB_AL_VAR ? {
       display:(ctx)=> ctx.dataIndex === pctDatos.length-1,
-      anchor:'end', align:'top', offset:6,
+      anchor:'end', align:'top', offset:12,
       formatter:(v,ctx)=>{
         if(v==null) return '';
         const base = v.toFixed(2)+'%';
@@ -13582,7 +13612,7 @@ function alimSubRenderChartAlimentadores(){
       // se vea el porcentaje de meses hacia atrás"); el que se
       // superponía era el cartel de 3 renglones de Variación, no este.
       display:true,
-      anchor:'end', align:'top', offset:4, formatter:v=>v==null?'':v.toFixed(2)+'%',
+      anchor:'end', align:'top', offset:10, formatter:v=>v==null?'':v.toFixed(2)+'%',
       font:{size:10, weight:'700'}, color,
     };
 
@@ -13612,7 +13642,7 @@ function alimSubRenderChartAlimentadores(){
   if(!etiquetas || !etiquetas.length) return;
 
   const scales = {
-    x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas}},
+    x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
     yPct:{type:'linear', position:'left', grid:{color:gridC}, ticks:{color:tickC, font:{size:11}, callback:v=>v.toFixed(0)+'%'},
       title:{display:true, text: esAnual ? 'Pérdida Anual 12M (%)' : 'Pérdida (%)', color:tickC, font:{size:11}}},
   };
@@ -14015,7 +14045,7 @@ function alim3RenderChartCircuitos(){
       // Tamaño más grande que el chip genérico (8px) -- pedido explícito
       // ("se ven muy pequeños los quiero mas grandes"), acá hay margen
       // de sobra (pocas series a la vez, no una comparación densa).
-      datalabels:{display:true, anchor:'end', align:'top', offset:3,
+      datalabels:{display:true, anchor:'end', align:'top', offset:9,
         formatter:v=>v==null?'':fmtY(v),
         font:{size:11, weight:'700'}, color,},
     };
@@ -14036,7 +14066,7 @@ function alim3RenderChartCircuitos(){
         tooltip:{callbacks:{label:c => c.raw==null ? null : `${c.dataset.label}: ${fmtY(c.raw)}${esPct?'':' kWh/km'}`}},
       },
       scales:{
-        x:{grid:{display:false}, offset:true, ticks:{color:tickC, font:{size:10}, maxRotation:0, minRotation:0, callback:_tickDosLineas}},
+        x:{grid:{display:false}, offset:true, ticks:{color:tickC, font:{size:10}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
         y:{ticks:{color:tickC, font:{size:10}, callback:fmtY},
           title:{display:true, text: esPct ? 'Pérdida Gestionable (%)' : 'Pérdida Gestionable (kWh/km)', color:tickC, font:{size:10}}},
       },
@@ -14419,7 +14449,7 @@ function alim3RenderChartEsp(filasConClave){
   // con la "tarjetita" prolija de IP_Reg/N2-1 en vez de un cartel plano.
   const estiloVar = {...ipEstiloTarjetaVariacion(dark), font:[{size:13, weight:'800'}, {size:11, weight:'800'}, {size:10, weight:'700'}]};
   const datalabelsPct = ALIM3_ESP_VAR ? {
-    display:true, anchor:'end', align:'top', offset:6,
+    display:true, anchor:'end', align:'top', offset:12,
     formatter:(v,ctx)=>{
       if(v==null) return '';
       const base = v.toFixed(2)+'%';
@@ -14443,7 +14473,7 @@ function alim3RenderChartEsp(filasConClave){
     },
     ...estiloVar,
   } : {
-    display:true, anchor:'end', align:'top', offset:4, formatter:v=>v==null?'':v.toFixed(2)+'%',
+    display:true, anchor:'end', align:'top', offset:10, formatter:v=>v==null?'':v.toFixed(2)+'%',
     font:{size:13,weight:'800'}, color:'#FFC000',
   };
 
@@ -14490,7 +14520,7 @@ function alim3RenderChartEsp(filasConClave){
         zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:3}}},
       },
       scales:{
-        x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:9, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas}},
+        x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:9, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
         y:{position:'left', grid:{color:gridC}, ticks:{color:tickC, font:{size:10}, callback:v=>v.toLocaleString('es-CO')},
           title:{display:true, text: esAnual?'Energía Anual 12M (kWh)':'Energía (kWh)', color:tickC, font:{size:10}}},
         yPct:{type:'linear', position:'right', grid:{drawOnChartArea:false}, ticks:{color:'#FFC000', font:{size:10}, callback:v=>v.toFixed(0)+'%'},
@@ -14532,7 +14562,7 @@ function alim3RenderChartTecnica(filasConClave){
         zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:3}}},
       },
       scales:{
-        x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:9, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas}},
+        x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:9, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
         y:{grid:{color:gridC}, ticks:{color:tickC, font:{size:10}, callback:v=>v.toLocaleString('es-CO')}, title:{display:true, text:'kWh', color:tickC, font:{size:10}}},
       },
     },
@@ -14569,7 +14599,7 @@ function alim3RenderChartAgpe(filasConClave){
         zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:3}}},
       },
       scales:{
-        x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:9, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas}},
+        x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:9, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
         y:{grid:{color:gridC}, ticks:{color:tickC, font:{size:10}, callback:v=>v.toLocaleString('es-CO')}, title:{display:true, text:'kWh', color:tickC, font:{size:10}}},
       },
     },
@@ -15066,7 +15096,7 @@ function tempEntradaRender(){
         zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:7}}},
       },
       scales:{
-        x:{grid:{display:false}, ticks:{color:tickXFuerte, font:{size:9, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:true, maxTicksLimit:24}},
+        x:{grid:{display:false}, ticks:{color:tickXFuerte, font:{size:9, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
         y:{position:'left', grid:{color:gridC}, ticks:{color:tickC, font:{size:10}, callback:v=>v.toLocaleString('es-CO')},
           title:{display:true, text:entradaTitulo, color:tickC, font:{size:10}}},
         yTemp:{type:'linear', position:'right', grid:{drawOnChartArea:false}, ticks:{color:colorVar, font:{size:10}, callback:v=>v.toFixed(0)+TEMP_ENTRADA_UNIDAD},
@@ -15126,7 +15156,7 @@ function tempHorariaRender(filas){
         tooltip:{callbacks:{label:c => c.raw==null?null:`Temperatura: ${c.raw.toFixed(1)}°C`}},
       },
       scales:{
-        x:{grid:{display:false}, ticks:{color:tickXFuerte, font:{size:9, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:true, maxTicksLimit:24}},
+        x:{grid:{display:false}, ticks:{color:tickXFuerte, font:{size:9, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
         y:{grid:{color:gridC}, ticks:{color:tickC, font:{size:10}, callback:v=>v.toFixed(0)+'°C'},
           title:{display:true, text:'Temperatura (°C)', color:tickC, font:{size:10}}},
       },
@@ -16178,10 +16208,10 @@ function _alimN21ConstruirChartPorZona(cv, zona, modo){
       datasets:[
         {type:'line', label:`Pérdida Total ${zona}`, yAxisID:'yTotal', data: valoresTotal, borderColor: colorTotal, backgroundColor:'transparent',
           borderWidth:2.5, pointRadius:2.5, pointBackgroundColor:colorTotal, spanGaps:true, tension:0,
-          datalabels:{...estiloEtiqueta(colorTotal), anchor:'end', align:'top', offset:4}},
+          datalabels:{...estiloEtiqueta(colorTotal), anchor:'end', align:'top', offset:10}},
         {type:'line', label:`Pérdida Técnica ${zona}`, yAxisID:idEjeTec, data: valoresTec, borderColor: colorTecnica, backgroundColor:'transparent',
           borderWidth:2, pointRadius:2.5, pointBackgroundColor:colorTecnica, spanGaps:true, tension:0,
-          datalabels:{...estiloEtiqueta(colorTecnica), anchor:'end', align:'bottom', offset:4}},
+          datalabels:{...estiloEtiqueta(colorTecnica), anchor:'end', align:'bottom', offset:10}},
       ],
     },
     options:{
@@ -16194,7 +16224,7 @@ function _alimN21ConstruirChartPorZona(cv, zona, modo){
         zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:3}}},
       },
       scales:{
-        x:{grid:{display:false}, ticks:{color:tickC, font:{size:8}, maxRotation:0, minRotation:0, callback:_tickDosLineas}},
+        x:{grid:{display:false}, ticks:{color:tickC, font:{size:8}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
         ...escalas,
       },
     },
@@ -16575,7 +16605,7 @@ function alimN21RenderChartMensual(datos12){
   document.getElementById('alim-n21-btn-var').classList.toggle('activo', ALIM_N21_VAR);
 
   const datalabelsPct = ALIM_N21_VAR ? {
-    display:true, anchor:'end', align:'top', offset:8,
+    display:true, anchor:'end', align:'top', offset:14,
     formatter:(v,ctx)=>{
       if(v==null) return '';
       const base = v.toFixed(2)+'%';
@@ -16588,7 +16618,7 @@ function alimN21RenderChartMensual(datos12){
     color:(ctx)=> ['#ED7D31', ipColorVariacion(pctDatos[ctx.dataIndex], pctDatos[ctx.dataIndex-1], dark?'#aab8d1':'#6b7280')],
     ...ipEstiloTarjetaVariacion(dark),
   } : {
-    display:true, anchor:'end', align:'top', offset:6, formatter:v=>v==null?'':v.toFixed(2)+'%',
+    display:true, anchor:'end', align:'top', offset:12, formatter:v=>v==null?'':v.toFixed(2)+'%',
     font:{size:10, weight:'700'}, color:'#ED7D31',
   };
 
@@ -16624,7 +16654,7 @@ function alimN21RenderChartMensual(datos12){
         zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:3}}},
       },
       scales:{
-        x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas}},
+        x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
         yPct:{type:'linear', position:'right', grid:{drawOnChartArea:false},
           ticks:{color:'#ED7D31', font:{size:11}, callback:v=>v.toFixed(1)+'%'},
           title:{display:true, text:'Pérdida Zonal (%)', color:'#ED7D31', font:{size:11}}},
@@ -16657,7 +16687,7 @@ function alimN21RenderChartAnual(datos12){
   document.getElementById('alim-n21-btn-var').classList.toggle('activo', ALIM_N21_VAR);
 
   const datalabelsPct = ALIM_N21_VAR ? {
-    display:true, anchor:'end', align:'top', offset:8,
+    display:true, anchor:'end', align:'top', offset:14,
     formatter:(v,ctx)=>{
       if(v==null) return '';
       const base = v.toFixed(2)+'%';
@@ -16670,7 +16700,7 @@ function alimN21RenderChartAnual(datos12){
     color:(ctx)=> ['#ED7D31', ipColorVariacion(pct12Datos[ctx.dataIndex], pct12Datos[ctx.dataIndex-1], dark?'#aab8d1':'#6b7280')],
     ...ipEstiloTarjetaVariacion(dark),
   } : {
-    display:true, anchor:'end', align:'top', offset:6, formatter:v=>v==null?'':v.toFixed(2)+'%',
+    display:true, anchor:'end', align:'top', offset:12, formatter:v=>v==null?'':v.toFixed(2)+'%',
     font:{size:10, weight:'700'}, color:'#ED7D31',
   };
 
@@ -16706,7 +16736,7 @@ function alimN21RenderChartAnual(datos12){
         zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:3}}},
       },
       scales:{
-        x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas}},
+        x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
         yPct:{type:'linear', position:'right', grid:{drawOnChartArea:false},
           ticks:{color:'#ED7D31', font:{size:11}, callback:v=>v.toFixed(1)+'%'},
           title:{display:true, text:'Pérdida N21 Anual (%)', color:'#ED7D31', font:{size:11}}},
@@ -16759,7 +16789,7 @@ function alimN21RenderChartZonas(){
         zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:3}}},
       },
       scales:{
-        x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas}},
+        x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
         y:{grid:{color:gridC}, ticks:{color:tickC, font:{size:11}, callback:v=>v.toFixed(0)+'%'},
           title:{display:true, text:'Pérdida (%)', color:tickC, font:{size:11}}},
       },
@@ -16891,11 +16921,11 @@ function ipComercialRenderChart(){
     datasets = [
       {type:'line', label:'IPT Comercial -- Pérdida % Anual (12m)', yAxisID:'yPct', data: pctDatos, order:1,
         borderColor:'#ED7D31', backgroundColor:'rgba(237,125,49,.12)', borderWidth:2.5, pointRadius:2, spanGaps:true, tension:0,
-        datalabels:{display:true, anchor:'end', align:'top', offset:6, formatter:v=>v==null?'':v.toFixed(2)+'%',
+        datalabels:{display:true, anchor:'end', align:'top', offset:12, formatter:v=>v==null?'':v.toFixed(2)+'%',
           font:{size:10, weight:'700'}, color:'#ED7D31',}},
       {type:'line', label:'PT Comercial -- Pérdida kWh Anual (12m)', yAxisID:'y', data: kwhDatos, hidden: IP_COMERCIAL_PT_OCULTO, order:2,
         borderColor:'#4472C4', backgroundColor:'transparent', borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0,
-        datalabels:{display:true, anchor:'end', align:'bottom', offset:6, formatter:v=>v==null?'':v.toLocaleString('es-CO',{maximumFractionDigits:0}),
+        datalabels:{display:true, anchor:'end', align:'bottom', offset:12, formatter:v=>v==null?'':v.toLocaleString('es-CO',{maximumFractionDigits:0}),
           font:{size:10, weight:'700'}, color:'#4472C4',}},
     ];
 
@@ -16933,12 +16963,12 @@ function ipComercialRenderChart(){
           data: inf, borderWidth:0, pointRadius:0, spanGaps:true, fill:'-1', backgroundColor:colorBanda, datalabels:{display:false}},
         {type:'line', label:'Proyección', yAxisID:'yPct', order:2,
           data: centro, borderColor:'#00B050', borderWidth:2, borderDash:[5,3], pointRadius:0, spanGaps:true,
-          datalabels:{display:true, anchor:'end', align:'top', offset:6, formatter:v=>v==null?'':v.toFixed(2)+'%',
+          datalabels:{display:true, anchor:'end', align:'top', offset:12, formatter:v=>v==null?'':v.toFixed(2)+'%',
             font:{size:10, weight:'700'}, color:'#00B050',}},
       );
     }
     scales = {
-      x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas}},
+      x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
       // min:16 -- pedido explícito ("ajustar el eje Y que inicie desde
       // 16% para que no se vea tan variable"): sin piso, Chart.js autoescala
       // pegado al rango real de los datos (ej. 20.6%-22.2%) y una variación
@@ -16968,7 +16998,7 @@ function ipComercialRenderChart(){
         borderColor:'#7030A0', backgroundColor:'transparent', borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0, datalabels:{display:false}},
     ];
     scales = {
-      x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas}},
+      x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
       y:{grid:{color:gridC},
         ticks:{color:tickC, font:{size:11}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
         title:{display:true, text:'Energía Anual (12M, kWh)', color:tickC, font:{size:11}}},
@@ -17173,7 +17203,7 @@ function ipComercialRenderChartMensual(){
         {type:'line', label:'% Pérdida Mensual', yAxisID:'yPct', order:1,
           data: visibles.map(f=>f.perdida_pct), borderColor:'#ED7D31',
           backgroundColor:'rgba(237,125,49,.12)', borderWidth:2.5, pointRadius:2.5, spanGaps:true, tension:0,
-          datalabels:{display:true, anchor:'end', align:'top', offset:6,
+          datalabels:{display:true, anchor:'end', align:'top', offset:12,
             formatter:v=>v==null?'':v.toFixed(2)+'%', font:{size:10, weight:'700'}, color:'#ED7D31',}},
       ],
     },
@@ -17194,7 +17224,7 @@ function ipComercialRenderChartMensual(){
         },
       },
       scales:{
-        x:{grid:{display:false}, ticks:{color:tickXFuerte, font:{size:9, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas}},
+        x:{grid:{display:false}, ticks:{color:tickXFuerte, font:{size:9, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
         yPct:{type:'linear', position:'left', grid:{color:gridC},
           ticks:{color:'#ED7D31', font:{size:10}, callback:v=>v.toFixed(1)+'%'},
           title:{display:true, text:'% Pérdida Mensual', color:'#ED7D31', font:{size:10}}},
@@ -18139,7 +18169,7 @@ function tridRenderGraficas(filasXm){
           },
         },
         scales:{
-          x:{grid:{display:false}, ticks:{color:tickC, font:{size:9}, maxRotation:0, minRotation:0, callback:_tickDosLineas}},
+          x:{grid:{display:false}, ticks:{color:tickC, font:{size:9}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
           y:{grid:{color:gridC}, ticks:{color:tickC, font:{size:9}, callback:v=>v.toLocaleString('es-CO')}},
         },
       },
@@ -18515,7 +18545,7 @@ function ipRenderChart(){
       type:'line', label:'PT -- Pérdida Total (kWh)', data: ptDatos, yAxisID:'y', hidden: IP_PT_OCULTO,
       borderColor:'#4472C4', backgroundColor:'transparent', borderWidth:2, pointRadius:1.5,
       spanGaps:true, tension:0, order:3,
-      datalabels:{display: IP_MOSTRAR_VARIACION, anchor:'end', align:'bottom', offset:8,
+      datalabels:{display: IP_MOSTRAR_VARIACION, anchor:'end', align:'bottom', offset:14,
         formatter:(v,ctx)=>{
           if(v==null) return '';
           const anterior = ptDatos[ctx.dataIndex-1];
@@ -18534,7 +18564,7 @@ function ipRenderChart(){
       borderColor:'#ED7D31', backgroundColor:'rgba(237,125,49,.12)', borderWidth:2.5, pointRadius:2,
       spanGaps:true, tension:0, order:1,
       datalabels: IP_MOSTRAR_VARIACION ? {
-        display:true, anchor:'end', align:'top', offset:8,
+        display:true, anchor:'end', align:'top', offset:14,
         formatter:(v,ctx)=>{
           if(v==null) return '';
           const base = v.toFixed(2)+'%';
@@ -18547,7 +18577,7 @@ function ipRenderChart(){
         color:(ctx)=> ['#ED7D31', ipColorVariacion(iptDatos[ctx.dataIndex], iptDatos[ctx.dataIndex-1], dark?'#aab8d1':'#6b7280')],
         ...ipEstiloTarjetaVariacion(dark),
       } : {
-        display:true, anchor:'end', align:'top', offset:6,
+        display:true, anchor:'end', align:'top', offset:12,
         formatter:v=>v==null?'':v.toFixed(2)+'%',
         font:{size:12, weight:'700'}, color:'#ED7D31',
       },
@@ -18703,7 +18733,7 @@ function ipRenderChartNivel1(){
         {type:'line', label:'IPTj,1,t (%) -- Nivel 1', yAxisID:'yPct', order:1,
           data: visibles.map(f=>f.iptj1t_pct==null?null:f.iptj1t_pct*100), borderColor:'#31859B',
           backgroundColor:'rgba(42,157,143,.12)', borderWidth:2.5, pointRadius:2, spanGaps:true, tension:0,
-          datalabels:{display:true, anchor:'end', align:'top', offset:6,
+          datalabels:{display:true, anchor:'end', align:'top', offset:12,
             formatter:v=>v==null?'':v.toFixed(2)+'%', font:{size:12, weight:'700'}, color:'#31859B',}},
       ],
     },
@@ -18842,7 +18872,7 @@ function ipRenderChartMensual(){
         {type:'line', label:'% Pérdida Mensual', yAxisID:'yPct', order:1,
           data: visibles.map(f=>f.pct_perdida_mensual==null?null:f.pct_perdida_mensual*100), borderColor:'#ED7D31',
           backgroundColor:'rgba(237,125,49,.12)', borderWidth:2.5, pointRadius:2.5, spanGaps:true, tension:0,
-          datalabels:{display:true, anchor:'end', align:'top', offset:6,
+          datalabels:{display:true, anchor:'end', align:'top', offset:12,
             formatter:v=>v==null?'':v.toFixed(2)+'%', font:{size:11, weight:'700'}, color:'#ED7D31',}},
       ],
     },
@@ -18904,7 +18934,7 @@ function ipRenderChartAnualInicio(){
         {type:'line', label:'IPT -- Índice de Pérdidas Totales (%)', yAxisID:'yPct', order:1,
           data: visibles.map(f=>f.ipt_pct==null?null:f.ipt_pct*100), borderColor:'#ED7D31',
           backgroundColor:'rgba(237,125,49,.12)', borderWidth:2.5, pointRadius:2, spanGaps:true, tension:0,
-          datalabels:{display:true, anchor:'end', align:'top', offset:6,
+          datalabels:{display:true, anchor:'end', align:'top', offset:12,
             formatter:v=>v==null?'':v.toFixed(2)+'%', font:{size:11, weight:'700'}, color:'#ED7D31',}},
       ],
     },
@@ -19687,7 +19717,7 @@ function renderPrincipalUnNivel(){
         {type:'line', label:'Pérdidas Técnicas %', data:pctV, borderColor:colorPct, backgroundColor:hexA(colorZona||'#ED7D31',.08),
           borderWidth:3, pointRadius:6, pointBackgroundColor:colorPct, pointBorderColor:'#fff', pointBorderWidth:2,
           tension:0, fill:false, yAxisID:'yPct', order:1, spanGaps:false,
-          datalabels:{display:labels.length<=24, anchor:'end', align:'top', offset:10,
+          datalabels:{display:labels.length<=24, anchor:'end', align:'top', offset:16,
             formatter:v=>(v||0).toFixed(2)+'%', font:{size:13,weight:'800'}, color:colorPct,}},
         {type:'line', label:'Senda Regulatoria', data:labels.map(()=>cregVal),
           borderColor:'rgba(120,120,120,.7)', backgroundColor:'transparent', borderWidth:2, borderDash:[7,5],
@@ -19710,7 +19740,7 @@ function renderPrincipalUnNivel(){
         }}},
       },
       scales:{
-        x:{grid:{display:false}, ticks:{color:tickXFuerte, font:{size:12}, autoSkip:false, maxRotation:0, minRotation:0, callback:_tickDosLineas}},
+        x:{grid:{display:false}, ticks:{color:tickXFuerte, font:{size:12}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
         yEnt:{type:'linear', position:'left', beginAtZero:true, grid:{color:gridC},
           ticks:{color:'#0096c7', font:{size:13}, callback:v=>fmtGwh(v)},
           title:{display:true, text:'Entradas (GWh)', color:'#0096c7', font:{size:12}}},
@@ -19805,7 +19835,7 @@ function renderPrincipalMultiNivel(){
         }}},
       },
       scales:{
-        x:{grid:{display:false}, ticks:{color:tickXFuerte, font:{size:12}, autoSkip:false, maxRotation:0, minRotation:0, callback:_tickDosLineas}},
+        x:{grid:{display:false}, ticks:{color:tickXFuerte, font:{size:12}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
         yEnt:{type:'linear', position:'left', beginAtZero:true, display:mostrarEntrada, grid:{color:gridC},
           ticks:{color:'#0096c7', font:{size:13}, callback:v=>fmtGwh(v)},
           title:{display:true, text:'Entradas (GWh)', color:'#0096c7', font:{size:12}}},
@@ -19884,7 +19914,7 @@ function renderApilado(key, canvasId, datos, formatEtiqueta, getColor){
   datasets.push({
     type:'line', label:'Total', data: totales, borderWidth:0, pointRadius:0, pointHoverRadius:0,
     backgroundColor:'transparent', borderColor:'transparent', fill:false,
-    datalabels:{display:true, anchor:'end', align:'top', offset:4,
+    datalabels:{display:true, anchor:'end', align:'top', offset:10,
       formatter:v=>fmtGwh(v), font:{size:12,weight:'800'}, color:tickC},
   });
 
@@ -20944,7 +20974,7 @@ function _informesResaltarUltimo(n, colorBase, radioBase=2.5, radioResalte=7){
 
 function _informesDatalabelChip(color, dark, tamano=15, sufijo='%'){
   const esUltimo = ctx => ctx.dataIndex === ctx.dataset.data.length-1;
-  return {display:true, anchor:'end', align:'top', offset:6,
+  return {display:true, anchor:'end', align:'top', offset:12,
     font: ctx => ({size: esUltimo(ctx) ? tamano+4 : tamano, weight:'700'}),
     color: ctx => esUltimo(ctx) ? INFORMES_COLOR_RESALTE : color,
     formatter: v => v==null ? '' : (sufijo==='%' ? v.toFixed(2)+'%' : Math.round(v).toLocaleString('es-CO')),};
@@ -21336,7 +21366,7 @@ async function informesFiguraSubestacion(porNem, nemonicos, mesClave){
       data: visibles.map(c => { const f = porNem[nem].find(x=>x.clave===c); return f && f.pct!=null ? f.pct : null; }),
       borderColor: color, backgroundColor:'transparent', borderWidth:2, tension:0, spanGaps:true,
       ..._informesResaltarUltimo(visibles.length, color, 2, 6),
-      datalabels:{display:true, anchor:'end', align:'top', offset:4, formatter:v=>v==null?'':v.toFixed(2)+'%',
+      datalabels:{display:true, anchor:'end', align:'top', offset:10, formatter:v=>v==null?'':v.toFixed(2)+'%',
         font: ctx => ({size: ctx.dataIndex===ctx.dataset.data.length-1?18:14, weight:'700'}),
         color: ctx => ctx.dataIndex===ctx.dataset.data.length-1?INFORMES_COLOR_RESALTE:color,},
     };
@@ -21828,7 +21858,7 @@ async function informesFiguraNivelTecnica(mensual, tecnicaPorMes, etiqueta){
   const valoresTotal = visibles.map(f=>f.perdida);
   const valoresTecnica = visibles.map(f=>tecnicaPorMes[f.clave].perdida);
   const datalabelsConDelta = (valores, colorBase, align) => ({
-    display:true, anchor:'end', align, offset:6,
+    display:true, anchor:'end', align, offset:12,
     formatter:(v,ctx)=>{
       if(v==null) return '';
       const anterior = ctx.dataIndex>0 ? valores[ctx.dataIndex-1] : null;
@@ -23457,7 +23487,7 @@ function pfRenderChartMensual(){
       responsive:true, maintainAspectRatio:false,
       plugins:{legend:{display:false}, tooltip:{callbacks:{label:c=>`${c.raw} día(s)`}}},
       scales:{
-        x:{grid:{display:false}, ticks:{color:tickC, font:{size:10}, maxRotation:0, minRotation:0, callback:_tickDosLineas}},
+        x:{grid:{display:false}, ticks:{color:tickC, font:{size:10}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
         y:{beginAtZero:true, ticks:{color:tickC, precision:0, stepSize:1}},
       },
     },
