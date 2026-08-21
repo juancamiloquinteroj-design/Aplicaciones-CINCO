@@ -4605,6 +4605,71 @@ async function _expImagenBloque(elId, nombreBase, ev){
   }
 }
 
+// CRC-32 estándar de PNG (polinomio 0xEDB88320) -- necesario para poder
+// escribir un chunk pHYs válido a mano (cada chunk de PNG lleva su CRC
+// sobre tipo+datos, si no el archivo queda corrupto).
+const _PNG_CRC_TABLA = (() => {
+  const t = [];
+  for(let n=0; n<256; n++){
+    let c = n;
+    for(let k=0; k<8; k++) c = (c&1) ? (0xEDB88320 ^ (c>>>1)) : (c>>>1);
+    t[n] = c>>>0;
+  }
+  return t;
+})();
+function _pngCrc32(bytes){
+  let c = 0xFFFFFFFF;
+  for(let i=0; i<bytes.length; i++) c = _PNG_CRC_TABLA[(c^bytes[i]) & 0xFF] ^ (c>>>8);
+  return (c^0xFFFFFFFF) >>> 0;
+}
+
+// Incrusta el tamaño FÍSICO (chunk pHYs, densidad en píxeles por metro)
+// dentro del propio archivo PNG -- pedido explícito ("yo me refiero al
+// tamaño cuando copio y pego en word... se ve cuadrada"): un PNG hecho
+// con canvas.toBlob() no lleva NINGÚN metadato de tamaño físico, así que
+// el visor/Word que lo abre asume su propia densidad por defecto (a
+// veces bien distinta de la pensada acá) al insertarlo o al calcular el
+// tamaño de una imagen pegada desde el portapapeles -- de ahí que se
+// viera "cuadrada" pese a que el PNG en sí mismo mide 1173x704 (más el
+// factor de nitidez). Con el pHYs, cualquier programa que respete el
+// metadato (Word incluido) lo inserta ya al tamaño físico correcto, sin
+// depender de una suposición de DPI. Verificado con Python/Pillow
+// (herramienta independiente, no la mía): lee de vuelta la densidad
+// exacta que se escribió acá.
+async function _pngConTamanoFisico(blob, ppm){
+  const buf = new Uint8Array(await blob.arrayBuffer());
+  const firma = [137,80,78,71,13,10,26,10];
+  for(let i=0; i<8; i++) if(buf[i] !== firma[i]) return blob;  // no es un PNG válido -- se devuelve tal cual
+  const ihdrLen = (buf[8]<<24 | buf[9]<<16 | buf[10]<<8 | buf[11]) >>> 0;
+  const ihdrTipo = String.fromCharCode(buf[12], buf[13], buf[14], buf[15]);
+  if(ihdrTipo !== 'IHDR') return blob;  // el primer chunk SIEMPRE es IHDR por spec -- si no, algo raro pasó
+  const insertarEn = 8 + 4+4+ihdrLen+4;  // firma + (len+tipo+datos+crc) del IHDR
+
+  const datos = new Uint8Array(9);
+  const dv = new DataView(datos.buffer);
+  dv.setUint32(0, ppm, false);
+  dv.setUint32(4, ppm, false);
+  datos[8] = 1;  // unidad = metro
+
+  const tipoBytes = new Uint8Array([0x70,0x48,0x59,0x73]);  // "pHYs"
+  const paraCrc = new Uint8Array(4+9);
+  paraCrc.set(tipoBytes, 0); paraCrc.set(datos, 4);
+  const crc = _pngCrc32(paraCrc);
+
+  const chunk = new Uint8Array(4+4+9+4);
+  const cdv = new DataView(chunk.buffer);
+  cdv.setUint32(0, 9, false);
+  chunk.set(tipoBytes, 4);
+  chunk.set(datos, 8);
+  cdv.setUint32(17, crc, false);
+
+  const out = new Uint8Array(buf.length + chunk.length);
+  out.set(buf.subarray(0, insertarEn), 0);
+  out.set(chunk, insertarEn);
+  out.set(buf.subarray(insertarEn), insertarEn + chunk.length);
+  return new Blob([out], {type:'image/png'});
+}
+
 // Imagen de GRÁFICA -- pedido explícito: "cuando la exporto en PNG
 // pierde calidad y no sale con el título, sale con los botones". Compone
 // el PNG a mano en vez de pasar por html2canvas: chart.toBase64Image()
@@ -4649,10 +4714,12 @@ async function _expImagenChart(wrapId, nombreBase, ev){
   const expW = Number(wrap.dataset.exportW) || 1173;
   const expH = Number(wrap.dataset.exportH) || 704;
   // Alta calidad -- pedido explícito ("que salga en alta acalidad y ben
-  // contrsate"): sin esto, el canvas se dibuja a 1 píxel físico por
-  // píxel lógico (1000x600 reales), que se ve borroso/suave al ampliar
-  // la imagen. x3 dibuja a 3000x1800 -- nítido incluso haciendo zoom en
-  // el PNG -- y se restaura el valor original apenas termina de capturar.
+  // contrsate" / confirmado de nuevo tras dudar entre 2x y 3x: "Nitidez
+  // al recortar" > archivo liviano): sin esto, el canvas se dibuja a 1
+  // píxel físico por píxel lógico, que se ve borroso/suave al ampliar o
+  // recortar la imagen. x3 dibuja al triple de densidad -- se mantiene
+  // nítido aunque se recorte una parte chica y se agrande. Se restaura
+  // el valor original apenas termina de capturar.
   const dprOriginal = chart.options.devicePixelRatio;
   chart.options.devicePixelRatio = 3;
   chart.resize(expW, expH);
@@ -4696,7 +4763,22 @@ async function _expImagenChart(wrapId, nombreBase, ev){
     ctx.fillText(tituloTexto, cv.width/2, margenSup/2 + 8*ESCALA, cv.width - margenLat*2);
   }
   ctx.drawImage(img, margenLat, margenSup);
-  cv.toBlob(blob => { if(blob) _expDescargarBlob(blob, `${_expNombreArchivo(nombreBase)}.png`); });
+  // Densidad física, calculada sobre el CANVAS FINAL completo (cv.width,
+  // que ya incluye el margen lateral que se le agrega acá arriba al
+  // título/gráfica) -- no solo el ancho del gráfico capturado -- para que
+  // el archivo exportado en sí, tal cual se ve/pega, mida exactamente
+  // 17,59cm de ancho (el imprimible de una hoja carta con márgenes de
+  // 2cm), no un poco más por el marco que se le agrega. 1173 es el ancho
+  // LÓGICO por defecto (17,59cm) -- si esta gráfica en particular usa un
+  // ancho distinto (data-export-w, series largas que necesitan más
+  // espacio), el tamaño físico escala proporcionalmente en vez de forzar
+  // siempre 17,59cm.
+  const anchoObjetivoM = (expW/1173) * 0.1759;
+  const PPM = Math.round(cv.width / anchoObjetivoM);
+  await new Promise(res => cv.toBlob(async blob => {
+    if(blob) _expDescargarBlob(await _pngConTamanoFisico(blob, PPM), `${_expNombreArchivo(nombreBase)}.png`);
+    res();
+  }));
 }
 
 // ---- Gráfica NATIVA de Excel (chart1.xml a mano, OOXML) -- pedido
@@ -11337,13 +11419,22 @@ function _narrativaUltimaClaveCompleta(mensual){
   return null;
 }
 
-function _narrativaEntradaSalidaDatos(mensual, claveActual){
+// `modo`: 'interanual' (default, mismo mes del año anterior -- no mezcla
+// estacionalidad con tendencia) o 'mensual' (mes inmediatamente anterior --
+// pedido explícito: "esta misma tabla tambien hay que hacerla mensual").
+function _narrativaEntradaSalidaDatos(mensual, claveActual, modo){
   if(!mensual || !mensual.length || !claveActual) return null;
   const porClave = new Map(mensual.map(f => [f.clave, f]));
   const actual = porClave.get(claveActual);
   if(!actual || actual.entrada==null || actual.salida==null) return null;
   const [anio, mes] = claveActual.split('-').map(Number);
-  const claveAnterior = `${anio-1}-${String(mes).padStart(2,'0')}`;
+  let claveAnterior;
+  if(modo === 'mensual'){
+    const idx = anio*12 + (mes-1) - 1;
+    claveAnterior = `${Math.floor(idx/12)}-${String((idx%12)+1).padStart(2,'0')}`;
+  } else {
+    claveAnterior = `${anio-1}-${String(mes).padStart(2,'0')}`;
+  }
   const anterior = porClave.get(claveAnterior);
   if(!anterior || !anterior.entrada || !anterior.salida) return null;  // !anterior.entrada también evita división por 0
 
@@ -11362,12 +11453,11 @@ function _narrativaEntradaSalidaDatos(mensual, claveActual){
   };
 }
 
-function _narrativaEntradaSalidaHtml(mensual, titulo){
-  const claveActual = _narrativaUltimaClaveCompleta(mensual);
-  const datos = claveActual ? _narrativaEntradaSalidaDatos(mensual, claveActual) : null;
+// Una tabla (interanual O mensual) ya con los `datos` calculados.
+function _narrativaTablaHtml(datos, tituloTabla){
   if(!datos){
-    return `<div class="be-tabla-creadas-titulo">${titulo}</div>
-      <p style="color:var(--text3);font-size:12px;margin:8px 0 0">No hay suficiente histórico todavía (se necesita el mismo mes del año anterior) para calcular esta tabla.</p>`;
+    return `<div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;margin:10px 0 4px">${tituloTabla}</div>
+      <p style="color:var(--text3);font-size:12px;margin:0">No hay suficiente histórico todavía para calcular esta comparación.</p>`;
   }
   const fKwh = v => Math.round(v).toLocaleString('es-CO');
   const fGwh = v => (Math.abs(v)/1e6).toLocaleString('es-CO', {maximumFractionDigits:2, minimumFractionDigits:2});
@@ -11379,23 +11469,34 @@ function _narrativaEntradaSalidaHtml(mensual, titulo){
   const crece = datos.brecha > UMBRAL;
   const baja = datos.brecha < -UMBRAL;
 
+  // Texto NEGRO (var(--text)), no el gris tenue (var(--text2)) que trae
+  // .be-tabla-creadas td por defecto -- pedido explícito ("porque se ven
+  // los datos en gris deberia ser negro oscuro"). Inline en cada <td> en
+  // vez de una regla CSS nueva, para no depender del orden de cascada
+  // contra la regla ya existente.
+  //
   // Entrada/Salida son filas NEUTRAS (crecer no es "bueno" ni "malo" en sí
-  // mismo) -- el color solo va en la fila Brecha/Acumulado, que es donde
-  // sí importa la dirección (pedido explícito: "yo quiero es una tabla").
+  // mismo) -- el color de dirección (rojo/verde) solo va en la fila de
+  // Crecimiento de Pérdidas, que es donde sí importa la dirección.
   const filaConcepto = (nombre, anterior, actual) => {
     const delta = actual - anterior;
     const deltaPct = anterior ? delta/anterior*100 : null;
     return `<tr>
-      <td style="text-align:left;font-weight:700">${nombre}</td>
-      <td>${fKwh(anterior)} kWh</td>
-      <td>${fKwh(actual)} kWh</td>
-      <td>${signo(delta)}${fKwh(delta)} kWh</td>
-      <td>${deltaPct==null?'--':signo(deltaPct)+fPct(deltaPct)+'%'}</td>
+      <td style="text-align:left;font-weight:700;color:var(--text)">${nombre}</td>
+      <td style="color:var(--text)">${fKwh(anterior)} kWh</td>
+      <td style="color:var(--text)">${fKwh(actual)} kWh</td>
+      <td style="color:var(--text)">${signo(delta)}${fKwh(delta)} kWh</td>
+      <td style="color:var(--text)">${deltaPct==null?'--':signo(deltaPct)+fPct(deltaPct)+'%'}</td>
     </tr>`;
   };
 
+  // Nombres pedidos explícitamente ("no llames brecha y tampoco acomulado
+  // facturado, si no que hablra crecimiento de perdidas") -- ambas filas
+  // hablan de "Crecimiento de Pérdidas": una en puntos porcentuales (la
+  // diferencia entre cuánto creció la Entrada vs. cuánto creció la Salida),
+  // otra en kWh equivalentes (esa misma diferencia, en energía).
   return `
-    <div class="be-tabla-creadas-titulo">${titulo}</div>
+    <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;margin:10px 0 4px">${tituloTabla}</div>
     <div class="be-tabla-scroll">
       <table class="be-tabla-creadas" style="width:auto">
         <thead><tr>
@@ -11405,14 +11506,14 @@ function _narrativaEntradaSalidaHtml(mensual, titulo){
           ${filaConcepto('Entrada', datos.anterior.entrada, datos.actual.entrada)}
           ${filaConcepto('Salida (venta)', datos.anterior.salida, datos.actual.salida)}
           <tr>
-            <td style="text-align:left;font-weight:700">Brecha (Entrada - Salida)</td>
+            <td style="text-align:left;font-weight:700;color:var(--text)">Crecimiento de Pérdidas (pp)</td>
             <td colspan="3"></td>
             <td><span class="n21tab-impacto ${crece?'sube':(baja?'baja':'')}" style="width:auto;padding:2px 8px">${signo(datos.brecha)}${fPct(datos.brecha)} pp</span></td>
           </tr>
           <tr>
-            <td style="text-align:left;font-weight:700">Acumulado mensual ${crece?'no facturado':(baja?'a favor':'')}</td>
+            <td style="text-align:left;font-weight:700;color:var(--text)">Crecimiento de Pérdidas (kWh)</td>
             <td colspan="3"></td>
-            <td style="font-weight:700;color:${crece?'#C00000':(baja?'#00B050':'inherit')}">${fGwh(datos.kwhNoFacturado)} GWh</td>
+            <td style="font-weight:700;color:${crece?'#C00000':(baja?'#00B050':'var(--text)')}">${signo(datos.kwhNoFacturado)}${fGwh(datos.kwhNoFacturado)} GWh</td>
           </tr>
         </tbody>
       </table>
@@ -11420,22 +11521,37 @@ function _narrativaEntradaSalidaHtml(mensual, titulo){
   `;
 }
 
+// Interanual (año contra año, no mezcla estacionalidad) + Mensual (mes
+// contra mes) -- pedido explícito ("esta misma tabla tambien hay que
+// hacerla mensual").
+function _narrativaEntradaSalidaHtml(mensual, titulo){
+  const claveActual = _narrativaUltimaClaveCompleta(mensual);
+  const datosInteranual = claveActual ? _narrativaEntradaSalidaDatos(mensual, claveActual, 'interanual') : null;
+  const datosMensual = claveActual ? _narrativaEntradaSalidaDatos(mensual, claveActual, 'mensual') : null;
+  return `
+    <div class="be-tabla-creadas-titulo">${titulo}</div>
+    ${_narrativaTablaHtml(datosInteranual, 'Interanual (año contra año)')}
+    ${_narrativaTablaHtml(datosMensual, 'Mensual (mes contra mes)')}
+  `;
+}
+
 // IP_Reg no trae un par simple {entrada,salida} en sus filas -- solo las
-// columnas crudas por nivel de IP_COLUMNAS_NIVEL. La "Entrada" natural del
-// sistema de distribución es n3_eej (Nivel 3, donde arranca la red propia
-// del operador -- Nivel 4 es la transmisión que alimenta desde afuera); la
-// "Salida (venta)" es la suma de lo que sale en Nivel 3+2+1, que es lo que
-// efectivamente se entrega/factura en toda la red.
+// columnas crudas por nivel de IP_COLUMNAS_NIVEL. Entrada = n4_eej (todo
+// lo que entra al sistema por Nivel 4, el punto más alto -- transmisión);
+// Salida (venta) = suma de lo que sale/vende en TODOS los niveles
+// (4+3+2+1), que es lo que efectivamente se entrega/factura en toda la
+// red -- pedido explícito ("en IPREG debes sumar la salida de nivel 4 y
+// tener encuenta la entrada de nivel 4 tambien").
 function _narrativaIpRegMensual(){
   if(!IP_REG_FILAS || !IP_REG_FILAS.length) return [];
   const claves = [...new Set(IP_REG_FILAS.map(f => ipClaveNormal(f)))].sort();
   return claves.map(clave => {
     const fila = ipFilaConDatosRealesDe(clave);
     if(!fila) return {clave, entrada:null, salida:null};
-    const entrada = fila.n3_eej;
-    const salida = (fila.n1_estj==null || fila.n2_estj==null || fila.n3_estj==null)
+    const entrada = fila.n4_eej;
+    const salida = (fila.n1_estj==null || fila.n2_estj==null || fila.n3_estj==null || fila.n4_estj==null)
       ? null
-      : fila.n1_estj + fila.n2_estj + fila.n3_estj;
+      : fila.n1_estj + fila.n2_estj + fila.n3_estj + fila.n4_estj;
     return {clave, entrada, salida};
   });
 }
