@@ -1505,7 +1505,10 @@ tfoot td:first-child{text-align:left}
   </div>
 
   <div class="card">
-    <div id="ip-narrativa-estructural"></div>
+    <div style="display:flex;gap:28px;flex-wrap:wrap;align-items:flex-start">
+      <div id="ip-narrativa-estructural" style="flex:2 1 520px"></div>
+      <div id="ip-caja-balance" style="flex:1 1 320px"></div>
+    </div>
   </div>
 
 </div>
@@ -4670,6 +4673,36 @@ async function _pngConTamanoFisico(blob, ppm){
   return new Blob([out], {type:'image/png'});
 }
 
+// Agranda (temporalmente) el font.size de las etiquetas de dato
+// (datalabels) de cada dataset, en proporción a cuánto se agranda la
+// gráfica al exportar -- pedido explícito ("cuando exporto en PNG nivel
+// 3 y nivel 21 me gustaria que los numeros en % fueran mas grandes se
+// ven muy pequeños en todas las graficas"). El tamaño de fuente de
+// Chart.js es en píxeles FIJOS -- no se reescala solo al agrandar el
+// canvas con chart.resize(), así que en una gráfica exportada mucho más
+// ancha que su tamaño en pantalla, el mismo "10px" de siempre se ve
+// proporcionalmente chico. Recorre datalabels.font (objeto único o
+// arreglo, para las etiquetas de 2 renglones tipo valor+delta) de cada
+// dataset y devuelve una función para deshacer el cambio EXACTO después
+// de capturar (guarda el valor original de cada uno, no divide de
+// vuelta -- evita arrastrar redondeos en exportaciones repetidas).
+function _expEscalarDatalabels(chart, factor){
+  const deshacer = [];
+  const escalarFont = f => {
+    if(!f || typeof f !== 'object' || typeof f.size !== 'number') return;
+    const original = f.size;
+    deshacer.push(() => { f.size = original; });
+    f.size = Math.round(original * factor);
+  };
+  (chart.data.datasets || []).forEach(ds => {
+    const dl = ds.datalabels;
+    if(!dl || typeof dl !== 'object') return;
+    if(Array.isArray(dl.font)) dl.font.forEach(escalarFont);
+    else escalarFont(dl.font);
+  });
+  return () => deshacer.forEach(fn => fn());
+}
+
 // Imagen de GRÁFICA -- pedido explícito: "cuando la exporto en PNG
 // pierde calidad y no sale con el título, sale con los botones". Compone
 // el PNG a mano en vez de pasar por html2canvas: chart.toBase64Image()
@@ -4741,14 +4774,26 @@ async function _expImagenChart(wrapId, nombreBase, ev){
   // capturar.
   const expW = Number(wrap.dataset.exportW) || 1000;
   const expH = Number(wrap.dataset.exportH) || 526;
+  // El factor se calcula ANTES del resize (mientras chart.width todavía
+  // es el ancho real en pantalla), pero el agrandado de las etiquetas se
+  // APLICA DESPUÉS de que el resize ya surtió efecto -- si no, por un
+  // instante se verían las etiquetas ya grandes encimadas en el canvas
+  // todavía chico (antes de que requestAnimationFrame ponga al día el
+  // tamaño), un parpadeo feo de más.
+  const anchoEnPantalla = chart.width || expW;
+  const factorDatalabels = expW / anchoEnPantalla;
   const dprOriginal = chart.options.devicePixelRatio;
   chart.options.devicePixelRatio = 1;
   chart.resize(expW, expH);
   for(let intento=0; intento<20 && (chart.width!==expW || chart.height!==expH); intento++){
     await new Promise(res => requestAnimationFrame(res));
   }
+  const restaurarDatalabels = _expEscalarDatalabels(chart, factorDatalabels);
+  chart.update('none');
   const dataUrl = chart.toBase64Image('image/png', 1);
   chart.options.devicePixelRatio = dprOriginal;
+  restaurarDatalabels();
+  chart.update('none');
   chart.resize();  // sin argumentos -- vuelve a leer el tamaño real del .chart-wrap en pantalla
 
   const img = new Image();
@@ -11592,6 +11637,44 @@ function _narrativaIpRegMensual(){
   });
 }
 
+// "Información del Balance Energético Anual" -- las 4 cajas (Entrada =
+// Salida + Pérdida kWh = Pérdida %) que ya existían en el informe
+// automático (informesCajaBalanceIpt), pero solo ahí -- pedido explícito
+// ("esta solo tengo en el informe... tiene que haber una forma de que
+// quede en la aplicación justo al lado de las tablas de Por qué crece el
+// indicador -- IP_Reg"). MISMA fórmula que el informe (Entrada=PT/IPT,
+// Salida=Entrada-PT) -- se deriva de PT/IPT y no de las columnas crudas
+// por nivel a propósito, para que este balance siempre cuadre con el
+// mismo IPT que se ve en el resto de la vista (no es la misma cuenta que
+// _narrativaIpRegMensual, que compara Nivel 4 completo -- son 2
+// conceptos distintos, cada uno correcto para lo que muestra).
+function _ipCajaBalanceHtml(claveActual){
+  const fila = claveActual ? IP_MAPA_POR_NORMAL.get(claveActual) : null;
+  if(!fila || fila.ipt_pct == null){
+    return '<p style="color:var(--text3);font-size:12px;margin:0">No hay datos suficientes para el balance de este mes.</p>';
+  }
+  const entrada = fila.pt_kwh / fila.ipt_pct;
+  const salida = entrada - fila.pt_kwh;
+  const caja = (etiqueta, valor, colorValor) => `
+    <div class="be-resumen-tile" style="text-align:center;min-width:150px">
+      <div class="etiqueta">${etiqueta}</div>
+      <div class="valor"${colorValor?` style="color:${colorValor}"`:''}>${valor}</div>
+    </div>`;
+  const igual = `<div style="align-self:center;font-size:18px;font-weight:800;color:var(--text3)">=</div>`;
+  return `
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+      ${caja('Energía de Entrada', `${_informesFKwh(entrada)} kWh`)}
+      ${igual}
+      ${caja('Energía de Salida', `${_informesFKwh(salida)} kWh`)}
+      ${igual}
+      ${caja('Pérdida de Energía', `${_informesFKwh(fila.pt_kwh)} kWh`, '#C00000')}
+    </div>
+    <div style="display:flex">
+      ${caja('Pérdida de Energía (%)', `${(fila.ipt_pct*100).toFixed(2)}%`, '#C00000')}
+    </div>
+  `;
+}
+
 // IP_REG_FILAS es compartido entre "IP_Reg" y "Nivel de Tensión 1" (dos
 // vistas/sub-módulos separados) -- cualquiera de las dos que se abra
 // primero lo carga; la otra lo reusa sin volver a pedirlo.
@@ -17733,11 +17816,13 @@ function ipGenerarAnalisisPrincipal(){
   const claveActual = ipClaveNormal(actual);
   const claveAnterior = ipClaveNormal(anterior);
 
-  // La tabla "Por qué crece" usa el mismo mes elegido acá -- pedido
-  // explícito ("yo puedo cambiar esos valores de las tablas con el
-  // filtro de arriba Mes del análisis").
+  // La tabla "Por qué crece" y la caja de balance usan el mismo mes
+  // elegido acá -- pedido explícito ("yo puedo cambiar esos valores de
+  // las tablas con el filtro de arriba Mes del análisis").
   const contNarrativa = document.getElementById('ip-narrativa-estructural');
   if(contNarrativa) contNarrativa.innerHTML = _narrativaEntradaSalidaHtml(_narrativaIpRegMensual(), 'Por qué crece el indicador -- IP_Reg', claveActual);
+  const contCajaBalance = document.getElementById('ip-caja-balance');
+  if(contCajaBalance) contCajaBalance.innerHTML = `<div class="be-tabla-creadas-titulo" style="text-align:center">Información del Balance Energético</div>` + _ipCajaBalanceHtml(claveActual);
   const [anioAct, mesAct] = claveActual.split('-').map(Number);
   const mesActualTitulo = labelMes(claveActual);
   const mesActualLargo = labelMesLargo(claveActual);
