@@ -4691,17 +4691,36 @@ async function _expImagenChart(wrapId, nombreBase, ev){
   const tituloTexto = _expTextoTitulo(wrap);
 
   // Se redimensiona la gráfica REAL a un tamaño fijo antes de capturar y
-  // se devuelve a su tamaño normal apenas después. 1173x704 = el ancho
-  // IMPRIMIBLE de una hoja carta (21,59cm) con márgenes de 2cm a cada
-  // lado (17,59cm), a la misma escala 1cm≈66,7px que ya se usaba, con el
-  // alto proporcional (misma relación 5:3 de antes) -- pedido explícito
-  // ("quiero que quepa de ancho en una hoja tamaño carta con margenes
-  // 2cm eso debe ser el largo y el año [alto] debe ser proporcional"),
-  // con captura de un Word mostrando la gráfica encajada justo entre los
-  // márgenes de la página. data-export-w/h en el .chart-wrap lo pisa para
-  // series largas en el tiempo que necesitan MÁS ancho todavía.
+  // se devuelve a su tamaño normal apenas después.
   //
-  // BUG real encontrado (por eso los intentos anteriores -- 760x560,
+  // CAMBIO DE ENFOQUE -- pedido explícito ("yo se que si se puede mira el
+  // tamaño de ese grafico esta casi perfecto quiero que el png salga de
+  // ese tamaño en rojo si o si no importa la caldiad"), comparando contra
+  // la gráfica del INFORME AUTOMÁTICO (que sí sale siempre bien en Word).
+  // La razón por la que la del informe SIEMPRE funciona: se inserta con
+  // docx.ImageRun({transformation:{width,height}}) -- el tamaño queda
+  // ESCRITO en el .docx directamente, así que Word nunca tiene que
+  // ADIVINAR el tamaño a partir del archivo. Un PNG suelto que el usuario
+  // copia/pega, en cambio, depende de que Word (o el paso intermedio del
+  // portapapeles) interprete bien el tamaño del archivo -- y por default,
+  // Word/Windows asumen 96 DPI cuando no hay metadato (o cuando se
+  // pierde en el portapapeles). Antes se generaba el PNG con MÁS
+  // resolución (devicePixelRatio 3x) para que se viera nítido -- eso es
+  // precisamente lo que rompía la suposición de 96 DPI, haciendo que el
+  // tamaño interpretado saliera 3 veces más grande de lo esperado.
+  //
+  // Ahora: el PNG se genera con el conteo de píxeles EXACTO que Word
+  // asume por defecto (96 DPI) para el ancho imprimible de una hoja
+  // carta con márgenes de 2cm (17,59cm = 665px a 96 DPI) -- así CUALQUIER
+  // programa que use la suposición estándar (que es casi todos) lo
+  // interpreta al tamaño correcto, sin depender de que el metadato de
+  // tamaño físico sobreviva el copiar/pegar. devicePixelRatio se fuerza a
+  // 1 (nada de nitidez extra) -- exactamente lo que se pidió ("no importa
+  // la calidad"). El alto queda proporcional a la misma relación 5:3 ya
+  // usada antes. data-export-w/h en el .chart-wrap lo pisa para series
+  // largas en el tiempo que necesitan MÁS ancho todavía.
+  //
+  // BUG real encontrado antes (por eso los intentos anteriores -- 760x560,
   // luego 900x540 -- seguían saliendo con el tamaño de PANTALLA): Chart.js
   // aplica chart.resize(w,h) de forma ASÍNCRONA -- llamar a
   // toBase64Image() inmediatamente después capturaba el canvas ANTES de
@@ -4711,17 +4730,10 @@ async function _expImagenChart(wrapId, nombreBase, ev){
   // requestAnimationFrame). Ahora se espera explícitamente a que
   // chart.width/height reflejen expW/expH (máx. 20 frames) antes de
   // capturar.
-  const expW = Number(wrap.dataset.exportW) || 1173;
-  const expH = Number(wrap.dataset.exportH) || 704;
-  // Alta calidad -- pedido explícito ("que salga en alta acalidad y ben
-  // contrsate" / confirmado de nuevo tras dudar entre 2x y 3x: "Nitidez
-  // al recortar" > archivo liviano): sin esto, el canvas se dibuja a 1
-  // píxel físico por píxel lógico, que se ve borroso/suave al ampliar o
-  // recortar la imagen. x3 dibuja al triple de densidad -- se mantiene
-  // nítido aunque se recorte una parte chica y se agrande. Se restaura
-  // el valor original apenas termina de capturar.
+  const expW = Number(wrap.dataset.exportW) || 617;
+  const expH = Number(wrap.dataset.exportH) || 370;
   const dprOriginal = chart.options.devicePixelRatio;
-  chart.options.devicePixelRatio = 3;
+  chart.options.devicePixelRatio = 1;
   chart.resize(expW, expH);
   for(let intento=0; intento<20 && (chart.width!==expW || chart.height!==expH); intento++){
     await new Promise(res => requestAnimationFrame(res));
@@ -4742,11 +4754,10 @@ async function _expImagenChart(wrapId, nombreBase, ev){
   // título y la gráfica también se acotó (antes +40, quedaba un hueco
   // grande) -- pedido explícito: "el título sale muy lejos de la gráfica".
   //
-  // ESCALA=3 (ver devicePixelRatio arriba) -- img.width/height ya vienen
-  // 3 veces más grandes que antes (mismo tamaño VISUAL, más nítido). Los
-  // márgenes/tope de fuente de acá estaban pensados a 1x -- sin escalarlos
-  // también, quedarían minúsculos comparados con la imagen ahora enorme.
-  const ESCALA = 3;
+  // ESCALA=1 (sin devicePixelRatio extra, ver arriba) -- img.width/height
+  // ya son el tamaño físico final buscado, no hace falta escalar
+  // márgenes/fuente por ningún factor extra.
+  const ESCALA = 1;
   const fontTitulo = Math.max(18*ESCALA, Math.min(30*ESCALA, Math.round(img.width*0.014)));
   const margenLat = 24*ESCALA, margenSup = tituloTexto ? fontTitulo + 20*ESCALA : 16*ESCALA;
   const cv = document.createElement('canvas');
@@ -4763,18 +4774,13 @@ async function _expImagenChart(wrapId, nombreBase, ev){
     ctx.fillText(tituloTexto, cv.width/2, margenSup/2 + 8*ESCALA, cv.width - margenLat*2);
   }
   ctx.drawImage(img, margenLat, margenSup);
-  // Densidad física, calculada sobre el CANVAS FINAL completo (cv.width,
-  // que ya incluye el margen lateral que se le agrega acá arriba al
-  // título/gráfica) -- no solo el ancho del gráfico capturado -- para que
-  // el archivo exportado en sí, tal cual se ve/pega, mida exactamente
-  // 17,59cm de ancho (el imprimible de una hoja carta con márgenes de
-  // 2cm), no un poco más por el marco que se le agrega. 1173 es el ancho
-  // LÓGICO por defecto (17,59cm) -- si esta gráfica en particular usa un
-  // ancho distinto (data-export-w, series largas que necesitan más
-  // espacio), el tamaño físico escala proporcionalmente en vez de forzar
-  // siempre 17,59cm.
-  const anchoObjetivoM = (expW/1173) * 0.1759;
-  const PPM = Math.round(cv.width / anchoObjetivoM);
+  // pHYs a 96 DPI EXACTO (3780 px/m) -- ya NO es lo que hace que el
+  // tamaño salga bien (eso ahora lo garantiza el conteo de píxeles del
+  // archivo, ver expW/expH arriba) -- queda como refuerzo/redundancia
+  // para cualquier programa que sí lea el metadato: como 96 DPI es
+  // también la suposición estándar que se está aprovechando, escribirlo
+  // explícito solo CONFIRMA el mismo tamaño, nunca lo contradice.
+  const PPM = 3780;
   await new Promise(res => cv.toBlob(async blob => {
     if(blob) _expDescargarBlob(await _pngConTamanoFisico(blob, PPM), `${_expNombreArchivo(nombreBase)}.png`);
     res();
@@ -11511,11 +11517,11 @@ function _narrativaTablaHtml(datos, tituloTabla){
   // tabla... utiliza negrilla con negro para que haya un contraste").
   const thEstilo = `color:var(--text);font-weight:800`;
   return `
-    <div style="font-size:11px;font-weight:800;color:var(--text);text-transform:uppercase;margin:10px 0 4px">${tituloTabla}</div>
+    <div style="font-size:11px;font-weight:800;color:var(--text);text-transform:uppercase;margin:10px 0 4px;text-align:center">${tituloTabla}</div>
     <div class="be-tabla-scroll">
-      <table class="be-tabla-creadas" style="width:auto">
+      <table class="be-tabla-creadas" style="width:auto;border:1px solid var(--border)">
         <thead><tr>
-          <th style="${thEstilo};${BORDE}">Concepto</th><th style="${thEstilo};${BORDE}">${mesAnteriorTxt}</th><th style="${thEstilo};${BORDE}">${mesActualTxt}</th><th style="${thEstilo};${BORDE}">Δ</th><th style="${thEstilo}">Δ%</th>
+          <th style="${thEstilo};${BORDE}"></th><th style="${thEstilo};${BORDE}">${mesAnteriorTxt}</th><th style="${thEstilo};${BORDE}">${mesActualTxt}</th><th style="${thEstilo};${BORDE}">Δ</th><th style="${thEstilo}">Δ%</th>
         </tr></thead>
         <tbody>
           ${filaConcepto('Entrada', datos.anterior.entrada, datos.actual.entrada)}
@@ -11548,7 +11554,7 @@ function _narrativaEntradaSalidaHtml(mensual, titulo, claveActual){
   const datosInteranual = claveActual ? _narrativaEntradaSalidaDatos(mensual, claveActual, 'interanual') : null;
   const datosMensual = claveActual ? _narrativaEntradaSalidaDatos(mensual, claveActual, 'mensual') : null;
   return `
-    <div class="be-tabla-creadas-titulo">${titulo}</div>
+    <div class="be-tabla-creadas-titulo" style="text-align:center">${titulo}</div>
     <div style="display:flex;gap:28px;flex-wrap:wrap">
       <div>${_narrativaTablaHtml(datosInteranual, 'Interanual (año contra año)')}</div>
       <div>${_narrativaTablaHtml(datosMensual, 'Mensual (mes contra mes)')}</div>
@@ -16441,8 +16447,8 @@ function alimN21RenderNarrativaZonas(){
   // negro"). Nombres de columna alineados a "Crecimiento de Pérdidas"
   // (mismo pedido: "no llames brecha... si no que hable de crecimiento de perdidas").
   const thEstilo = 'color:var(--text);font-weight:800;border-right:1px solid var(--border)';
-  cont.innerHTML = `<div class="be-tabla-creadas-titulo" style="color:var(--text)">Por Qué Crece el Indicador -- por Zona</div>
-  <div class="be-tabla-scroll"><table class="be-tabla-creadas" style="width:auto">
+  cont.innerHTML = `<div class="be-tabla-creadas-titulo" style="color:var(--text);text-align:center">Por Qué Crece el Indicador -- por Zona</div>
+  <div class="be-tabla-scroll"><table class="be-tabla-creadas" style="width:auto;border:1px solid var(--border)">
     <thead><tr>
       <th style="${thEstilo}">Zona</th><th style="${thEstilo}">Entrada (mes actual)</th><th style="${thEstilo}">Δ% Entrada</th><th style="${thEstilo}">Salida (mes actual)</th><th style="${thEstilo}">Δ% Salida</th><th style="${thEstilo}">Crecimiento de Pérdidas (pp)</th><th style="color:var(--text);font-weight:800">Crecimiento de Pérdidas (kWh)</th>
     </tr></thead>
