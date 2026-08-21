@@ -19915,6 +19915,18 @@ async function _informesCapturarBloque(elId){
 
   const temporal = document.createElement('div');
   temporal.style.cssText = `position:fixed;left:-99999px;top:0;background:${bg};padding:16px;display:inline-block`;
+  // Contraste reforzado para lo que se vaya a imprimir/escanear -- pedido
+  // explícito ("hay que mejorar el contraste de las lineas y letras"):
+  // --border/--text2/--text3 del tema en vivo son grises muy claros
+  // (#d5dde8/#4b5e7a/#8a9ab5, pensados para pantalla), casi invisibles
+  // en Word impreso a tamaño reducido. Se pisan con variables CSS más
+  // oscuras SOLO en este clon (no afecta la app en vivo ni el botón de
+  // exportar PNG normal, _expImagenBloque, que sí debe verse igual que
+  // en pantalla) -- como son variables CSS, cascadean solas a cualquier
+  // borde/texto que las use adentro del bloque capturado.
+  temporal.style.setProperty('--border', '#334155');
+  temporal.style.setProperty('--text2', '#1e293b');
+  temporal.style.setProperty('--text3', '#334155');
   const clonEl = el.cloneNode(true);
   clonEl.querySelectorAll('.exp-wrap, .no-exportar').forEach(b => b.remove());
 
@@ -21504,7 +21516,11 @@ async function informesSeccionDistribucionFlujo(mesClave){
   const children = [_informesHeading1('Distribución del Flujo por cada Nivel de Tensión e Impactos')];
   const fig = await informesFiguraResumenNiveles(mesClave);
   if(fig){
-    children.push(_informesParrafoImagen(fig, 650));
+    // 490pt -- ancho útil real de la página con márgenes de 2cm (498.6pt),
+    // antes 650pt se salía de la hoja y quedaba cortada/apenas visible --
+    // pedido explícito ("no dse alcanza a ver en el word... que quede en
+    // una hoja tamaño carta con margenes 2 cm a cada lado").
+    children.push(_informesParrafoImagen(fig, 490));
     children.push(_informesCaption('Figura', 'Resumen por Nivel de Tensión -- distribución del flujo e impactos'));
   }else{
     children.push(new docx.Paragraph({children:[new docx.TextRun({text:'No se pudo generar la figura de Resumen por Nivel de Tensión (revisa que el módulo tenga datos cargados).', italics:true})]}));
@@ -22040,7 +22056,13 @@ async function _informesConstruirDocumento(meses, sel){
         children: childrenPortada,
       },
       {
-        properties:{page:{size:{width:12240, height:15840}, margin:{top:1440,bottom:1440,left:1440,right:1440}}},
+        // Márgenes izq/der a 2cm (1134 twips, antes 1 pulgada/2.54cm) --
+        // pedido explícito ("que quede en una hoja tamaño carta con
+        // margenes 2 cm a cada lado"), motivado por la Figura de
+        // Distribución del Flujo (#alim-resumen-card, tarjeta ancha) que
+        // no se alcanzaba a ver bien -- más ancho de página disponible
+        // para esa imagen (y de paso para el resto de figuras/tablas).
+        properties:{page:{size:{width:12240, height:15840}, margin:{top:1440,bottom:1440,left:1134,right:1134}}},
         headers:{default: encabezadoPagina},
         children,
       },
