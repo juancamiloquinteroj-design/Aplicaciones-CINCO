@@ -2947,7 +2947,10 @@ tfoot td:first-child{text-align:left}
             <button type="button" class="be-modo-btn" id="alim3-circuitos-btn-km" onclick="alim3ToggleModoCircuitos('km')">kWh/km</button>
           </div>
           <div class="msel" id="msel-alim3-circuitos" style="margin-bottom:10px"></div>
-          <div class="fbar" style="margin-bottom:8px">
+          <!-- no-exportar -- pedido explícito ("sale sin el titulo"): sin
+               esta clase, _expTextoTitulo agarraba esta fila ("Rango →")
+               en vez del título real de la gráfica al exportar a PNG. -->
+          <div class="fbar no-exportar" style="margin-bottom:8px">
             <label style="font-size:11px">Rango</label>
             <input type="date" id="alim3-circuitos-desde" onchange="alim3RenderChartCircuitos()" style="font-size:11px">
             <span style="font-size:11px;color:var(--text3)">→</span>
@@ -4229,7 +4232,11 @@ function _expHermanosDeTitulo(el){
     const hermanos = [];
     let prev = nodo.previousElementSibling;
     while(prev){ hermanos.unshift(prev); prev = prev.previousElementSibling; }
-    const utiles = hermanos.filter(h => !(h.querySelector && (h.querySelector('canvas') || h.querySelector('table'))));
+    // .no-exportar (ej. un filtro "Rango" propio de la gráfica) queda
+    // afuera de los candidatos a título -- pedido explícito ("sale sin
+    // el titulo", salía "Rango →" en vez del título real porque ese
+    // filtro quedó más cerca de la gráfica que el título).
+    const utiles = hermanos.filter(h => !(h.querySelector && (h.querySelector('canvas') || h.querySelector('table'))) && !(h.classList && h.classList.contains('no-exportar')));
     if(utiles.length) return utiles;
     nodo = nodo.parentElement;
   }
@@ -13589,10 +13596,13 @@ function alim3RenderChartCircuitos(){
       type:'line', label: c.nombre, borderColor: color, backgroundColor:'transparent',
       borderWidth:2, tension:.25, spanGaps:true, pointRadius:2,
       data: claves.map(cl => valorFila(porClave.get(cl))),
-      datalabels:{display:true, anchor:'end', align:'top', offset:2,
+      // Tamaño más grande que el chip genérico (8px) -- pedido explícito
+      // ("se ven muy pequeños los quiero mas grandes"), acá hay margen
+      // de sobra (pocas series a la vez, no una comparación densa).
+      datalabels:{display:true, anchor:'end', align:'top', offset:3,
         formatter:v=>v==null?'':fmtY(v),
-        font:{size:8, weight:'700'}, color,
-        backgroundColor: dark?'rgba(30,30,40,.72)':'rgba(255,255,255,.72)', borderRadius:2, padding:{left:2,right:2,top:0,bottom:0}},
+        font:{size:11, weight:'700'}, color,
+        backgroundColor: dark?'rgba(30,30,40,.78)':'rgba(255,255,255,.78)', borderRadius:3, padding:{left:3,right:3,top:1,bottom:1}},
     };
   });
 
@@ -13601,7 +13611,7 @@ function alim3RenderChartCircuitos(){
     options:{
       responsive:true, maintainAspectRatio:false,
       interaction:{mode:'index', intersect:false},
-      layout:{padding:{top:16}},
+      layout:{padding:{top:26}},
       plugins:{
         legend:{display:true, position:'bottom', labels:{boxWidth:10, font:{size:9}, color:tickC}},
         tooltip:{callbacks:{label:c => c.raw==null ? null : `${c.dataset.label}: ${fmtY(c.raw)}${esPct?'':' kWh/km'}`}},
