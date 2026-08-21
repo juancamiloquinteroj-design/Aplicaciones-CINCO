@@ -9019,7 +9019,7 @@ async function renderChartBalanceEstructura(datos, modo){
   if(chBalanceEstructura) chBalanceEstructura.destroy();
   chBalanceEstructura = new Chart(ctx, {
     data:{ labels: fechas, datasets },
-    plugins:[tmPluginSeparadores, tmPluginCrosshair],
+    plugins:[tmPluginSeparadores],
     options:{
       responsive:true, maintainAspectRatio:false,
       // OJO: NO agregar 'mousedown'/'mouseup' acá -- el pan (arrastrar con
@@ -10554,27 +10554,47 @@ const tmPluginSeparadores = {
   },
 };
 
-// Línea guía vertical punteada gris, del día que se está mirando (hover)
-// hasta el punto -- usa el mismo punto activo que ya calcula el tooltip
-// (interaction.mode:'index'), no hace falta rastrear el mouse aparte.
+// Línea guía vertical punteada, del EJE X hasta el punto que se está
+// mirando (hover) -- pedido explícito ("una linea punteada elegante
+// desde el eje X hasta donde esta el punto de la garfica... mostrando a
+// que valor del mes corresponde"). Usa el mismo punto activo que ya
+// calcula el tooltip (interaction.mode:'index'), no hace falta rastrear
+// el mouse aparte. Va SOLO de la base (eje X) hasta la altura del punto
+// -- antes cruzaba TODA la altura del área del gráfico de punta a punta;
+// un puntito en la base marca justo dónde toca el eje. Registrado
+// GLOBAL (Chart.register más abajo) -- aplica solo a TODAS las gráficas
+// cartesianas de la app, no hace falta agregarlo gráfica por gráfica.
 const tmPluginCrosshair = {
   id: 'crosshair',
   afterDraw(chart){
     const activos = chart.tooltip && chart.tooltip._active;
     if(!activos || !activos.length) return;
+    if(!chart.scales || !chart.scales.x) return;  // donas/pie no tienen eje X -- no aplica
     const {ctx, chartArea} = chart;
     const x = activos[0].element.x;
+    // Con varias series activas a la vez (interaction.mode:'index'), cada
+    // una tiene su propio punto a distinta altura -- la línea sube hasta
+    // la MÁS ALTA (menor y en canvas) para que pase cerca de todas, no
+    // solo de la primera serie.
+    const yTop = Math.min(...activos.map(a => a.element.y).filter(v => v!=null));
+    if(x==null || !Number.isFinite(yTop)) return;
     ctx.save();
     ctx.beginPath();
-    ctx.setLineDash([4,4]);
-    ctx.strokeStyle = 'rgba(140,140,140,.65)';
+    ctx.setLineDash([4,3]);
+    ctx.strokeStyle = 'rgba(120,120,120,.55)';
     ctx.lineWidth = 1;
-    ctx.moveTo(x, chartArea.top);
-    ctx.lineTo(x, chartArea.bottom);
+    ctx.moveTo(x, chartArea.bottom);
+    ctx.lineTo(x, yTop);
     ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.fillStyle = 'rgba(120,120,120,.75)';
+    ctx.arc(x, chartArea.bottom, 2, 0, Math.PI*2);
+    ctx.fill();
     ctx.restore();
   },
 };
+Chart.register(tmPluginCrosshair);
 
 function renderTelemedida(datos, canales){
   const ctx = document.getElementById('ch-telemedida');
@@ -11304,7 +11324,6 @@ function _alimNivelConstruirChartMensual(cv, mensual, etiquetaNivel, seriesExtra
   ];
 
   return new Chart(cv, {
-    plugins:[tmPluginCrosshair],
     data:{ labels: etiquetas, datasets },
     options:{
       responsive:true, maintainAspectRatio:false,
@@ -11407,7 +11426,6 @@ function _alimNivelConstruirChartTecnica(cv, mensual, tecnicaPorMes, etiquetaNiv
   });
 
   return new Chart(cv, {
-    plugins:[tmPluginCrosshair],
     data:{
       labels: etiquetas,
       datasets:[
@@ -11684,7 +11702,6 @@ function alimNivel3RenderChartZonasComparativo(){
 
   const tipo = ALIM_NIVEL3_ZONAS_CHART_TIPO;
   chAlimNivel3ZonasComparativo = new Chart(cv, {
-    plugins:[tmPluginCrosshair],
     data:{
       labels: etiquetas,
       datasets: porZona.zonas.map(z => {
@@ -11793,7 +11810,6 @@ function _alimNivel4ConstruirChartImportExport(cv, mensual){
   const etiquetas = visibles.map(f => labelMesLargo(f.clave));
 
   return new Chart(cv, {
-    plugins:[tmPluginCrosshair],
     data:{
       labels: etiquetas,
       datasets:[
@@ -12914,7 +12930,6 @@ function alimSubRenderChartSubestaciones(){
 
   if(chAlimSubSubestaciones) chAlimSubSubestaciones.destroy();
   chAlimSubSubestaciones = new Chart(cv, {
-    plugins:[tmPluginCrosshair],
     data:{labels: etiquetas, datasets},
     options:{
       responsive:true, maintainAspectRatio:false,
@@ -12980,7 +12995,6 @@ function alimSubRenderChartVariacion(){
   const nombreMetrica = {entrada:'Entrada', salida:'Salida', perdida:'Pérdida'}[ALIM_SUB_METRICA];
 
   chAlimSubSubestaciones = new Chart(cv, {
-    plugins:[tmPluginCrosshair],
     data:{labels: etiquetas, datasets},
     options:{
       responsive:true, maintainAspectRatio:false,
@@ -13299,7 +13313,6 @@ function alimSubRenderChartAlimentadores(){
   }
 
   chAlimSubAlimentadores = new Chart(cv, {
-    plugins:[tmPluginCrosshair],
     data:{labels: etiquetas, datasets},
     options:{
       responsive:true, maintainAspectRatio:false,
@@ -14129,7 +14142,6 @@ function alim3RenderChartEsp(filasConClave){
   if(chAlim3Esp) chAlim3Esp.destroy();
   if(!etiquetas.length) return;
   chAlim3Esp = new Chart(cv, {
-    plugins:[tmPluginCrosshair],
     data:{
       labels: etiquetas,
       datasets:[
@@ -14193,7 +14205,6 @@ function alim3RenderChartTecnica(filasConClave){
   if(chAlim3Tecnica) chAlim3Tecnica.destroy();
   if(!etiquetas.length) return;
   chAlim3Tecnica = new Chart(cv, {
-    plugins:[tmPluginCrosshair],
     data:{
       labels: etiquetas,
       datasets:[
@@ -14233,7 +14244,6 @@ function alim3RenderChartAgpe(filasConClave){
   if(chAlim3Agpe) chAlim3Agpe.destroy();
   if(!etiquetas.length) return;
   chAlim3Agpe = new Chart(cv, {
-    plugins:[tmPluginCrosshair],
     data:{
       labels: etiquetas,
       datasets:[
@@ -14731,7 +14741,6 @@ function tempEntradaRender(){
   }
 
   chTempEntrada = new Chart(cv, {
-    plugins:[tmPluginCrosshair],
     data:{
       labels: etiquetas,
       datasets,
@@ -14792,7 +14801,6 @@ function tempHorariaRender(filas){
   const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
 
   chTempHoraria = new Chart(cv, {
-    plugins:[tmPluginCrosshair],
     data:{
       labels: filas.map(f => f.hora),
       datasets:[
@@ -16280,7 +16288,6 @@ function alimN21RenderChartMensual(datos12){
 
   if(chAlimN21Mensual) chAlimN21Mensual.destroy();
   chAlimN21Mensual = new Chart(cv, {
-    plugins:[tmPluginCrosshair],
     data:{
       labels: etiquetas,
       datasets:[
@@ -16364,7 +16371,6 @@ function alimN21RenderChartAnual(datos12){
 
   if(chAlimN21Anual) chAlimN21Anual.destroy();
   chAlimN21Anual = new Chart(cv, {
-    plugins:[tmPluginCrosshair],
     data:{
       labels: etiquetas,
       datasets:[
@@ -16428,7 +16434,6 @@ function alimN21RenderChartZonas(){
 
   if(chAlimN21Zonas) chAlimN21Zonas.destroy();
   chAlimN21Zonas = new Chart(cv, {
-    plugins:[tmPluginCrosshair],
     data:{
       labels: etiquetas,
       datasets: ALIM_N21_ZONAS.map(z => ({
@@ -18337,7 +18342,7 @@ function ipRenderChart(){
   if(chIpReg) chIpReg.destroy();
   chIpReg = new Chart(document.getElementById('ch-ip-reg'), {
     data:{labels: etiquetas, datasets},
-    plugins:[tmPluginCrosshair, ipPluginSombraVentana],
+    plugins:[ipPluginSombraVentana],
     options:{
       responsive:true, maintainAspectRatio:false,
       layout:{padding:{top:24, right:28}},
@@ -18389,7 +18394,6 @@ function ipRenderChartNivel1(){
 
   if(chIpNivel1) chIpNivel1.destroy();
   chIpNivel1 = new Chart(document.getElementById('ch-ip-nivel1'), {
-    plugins:[tmPluginCrosshair],
     data:{
       labels: etiquetas,
       datasets:[
@@ -18531,7 +18535,6 @@ function ipRenderChartMensual(){
 
   if(chIpMensual) chIpMensual.destroy();
   chIpMensual = new Chart(document.getElementById('ch-ip-mensual'), {
-    plugins:[tmPluginCrosshair],
     data:{
       labels: etiquetas,
       datasets:[
@@ -18594,7 +18597,6 @@ function ipRenderChartAnualInicio(){
 
   if(chIniIpAnual) chIniIpAnual.destroy();
   chIniIpAnual = new Chart(document.getElementById('ch-ini-ip-anual'), {
-    plugins:[tmPluginCrosshair],
     data:{
       labels: etiquetas,
       datasets:[
