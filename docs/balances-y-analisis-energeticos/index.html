@@ -1505,7 +1505,7 @@ tfoot td:first-child{text-align:left}
   </div>
 
   <div class="card">
-    <div id="ip-narrativa-estructural" class="ip-comentario-caja"></div>
+    <div id="ip-narrativa-estructural"></div>
   </div>
 
 </div>
@@ -2349,7 +2349,7 @@ tfoot td:first-child{text-align:left}
     </div>
 
     <div class="card">
-      <div id="alim-nivel4-narrativa" class="ip-comentario-caja"></div>
+      <div id="alim-nivel4-narrativa"></div>
     </div>
 
     <div class="card">
@@ -2419,7 +2419,7 @@ tfoot td:first-child{text-align:left}
     </div>
 
     <div class="card">
-      <div id="alim-nivel3-narrativa" class="ip-comentario-caja"></div>
+      <div id="alim-nivel3-narrativa"></div>
     </div>
 
     <div class="card">
@@ -2564,7 +2564,7 @@ tfoot td:first-child{text-align:left}
     </div>
 
     <div class="card">
-      <div id="alim-n21-narrativa" class="ip-comentario-caja"></div>
+      <div id="alim-n21-narrativa"></div>
     </div>
 
     <div class="card">
@@ -2575,10 +2575,7 @@ tfoot td:first-child{text-align:left}
     </div>
 
     <div class="card">
-      <div style="text-align:center;margin-bottom:8px">
-        <div style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Por Qué Crece el Indicador -- por Zona</div>
-      </div>
-      <div id="alim-n21-narrativa-zonas" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px"></div>
+      <div id="alim-n21-narrativa-zonas"></div>
     </div>
 
     <div class="card">
@@ -16278,18 +16275,47 @@ function alimN21RenderTodo(){
   alimN21RenderNarrativaZonas();
 }
 
-// Un cuadrito "Por qué crece" por cada zona -- pedido explícito
-// ("tenemos que hacer una tabla donde se muestre esta explicación
-// para... nivel N2-1 y cada zona"). SIEMPRE las zonas completas
-// (ALIM_N21_ZONAS), ignora el filtro de chips -- mismo criterio que
-// "Comparativo Pérdidas por Zona", de al lado.
+// UNA tabla, una fila por zona -- pedido explícito ("tenemos que hacer
+// una tabla donde se muestre esta explicación para... nivel N2-1 y cada
+// zona" / "yo quiero es una tabla", corrigiendo un primer intento en
+// prosa). SIEMPRE las zonas completas (ALIM_N21_ZONAS), ignora el filtro
+// de chips -- mismo criterio que "Comparativo Pérdidas por Zona", de al lado.
 function alimN21RenderNarrativaZonas(){
   const cont = document.getElementById('alim-n21-narrativa-zonas');
   if(!cont) return;
-  cont.innerHTML = ALIM_N21_ZONAS.map(z => {
+  const fKwh = v => Math.round(v).toLocaleString('es-CO');
+  const fGwh = v => (Math.abs(v)/1e6).toLocaleString('es-CO', {maximumFractionDigits:2, minimumFractionDigits:2});
+  const fPct = v => v.toLocaleString('es-CO', {maximumFractionDigits:2, minimumFractionDigits:2});
+  const signo = v => v>=0 ? '+' : '';
+  const UMBRAL = 0.01;
+
+  const filas = ALIM_N21_ZONAS.map(z => {
     const mensualZona = alimN21AgregarMensual(new Set([z]));
-    return `<div class="ip-comentario-caja">${_narrativaEntradaSalidaHtml(mensualZona, `Zona ${z}`)}</div>`;
+    const claveActual = _narrativaUltimaClaveCompleta(mensualZona);
+    const datos = claveActual ? _narrativaEntradaSalidaDatos(mensualZona, claveActual) : null;
+    if(!datos){
+      return `<tr><td style="text-align:left;font-weight:700">${z}</td><td colspan="6" style="color:var(--text3)">Sin histórico suficiente (falta el mismo mes del año anterior).</td></tr>`;
+    }
+    const crece = datos.brecha > UMBRAL;
+    const baja = datos.brecha < -UMBRAL;
+    return `<tr>
+      <td style="text-align:left;font-weight:700">${z}</td>
+      <td>${fKwh(datos.actual.entrada)} kWh</td>
+      <td>${signo(datos.pctEntrada)}${fPct(datos.pctEntrada)}%</td>
+      <td>${fKwh(datos.actual.salida)} kWh</td>
+      <td>${signo(datos.pctSalida)}${fPct(datos.pctSalida)}%</td>
+      <td><span class="n21tab-impacto ${crece?'sube':(baja?'baja':'')}" style="width:auto;padding:2px 8px">${signo(datos.brecha)}${fPct(datos.brecha)} pp</span></td>
+      <td style="font-weight:700;color:${crece?'#C00000':(baja?'#00B050':'inherit')}">${fGwh(datos.kwhNoFacturado)} GWh</td>
+    </tr>`;
   }).join('');
+
+  cont.innerHTML = `<div class="be-tabla-creadas-titulo">Por Qué Crece el Indicador -- por Zona</div>
+  <div class="be-tabla-scroll"><table class="be-tabla-creadas">
+    <thead><tr>
+      <th>Zona</th><th>Entrada (mes actual)</th><th>Δ% Entrada</th><th>Salida (mes actual)</th><th>Δ% Salida</th><th>Brecha</th><th>Acumulado mensual</th>
+    </tr></thead>
+    <tbody>${filas}</tbody>
+  </table></div>`;
 }
 
 // "Pérdida Total vs Técnica por Zona" -- un gráfico de líneas POR ZONA,
