@@ -4939,7 +4939,11 @@ async function _expImagenChart(wrapId, nombreBase, ev){
   // todavía chico (antes de que requestAnimationFrame ponga al día el
   // tamaño), un parpadeo feo de más.
   const anchoEnPantalla = chart.width || expW;
-  const factorDatalabels = expW / anchoEnPantalla;
+  // ×1.35 extra sobre el factor de ancho -- pedido explícito ("en la
+  // exportacion a png quiero que... salga los valores de la grafica (Los
+  // datos) mas grandes"): el factor de ancho solo mantenía la MISMA
+  // proporción visual que en pantalla; esto los agranda un extra real.
+  const factorDatalabels = (expW / anchoEnPantalla) * 1.35;
   const dprOriginal = chart.options.devicePixelRatio;
   chart.options.devicePixelRatio = 1;
   chart.resize(expW, expH);
@@ -11813,23 +11817,27 @@ function _ipCajaBalanceHtml(claveActual){
   }
   const entrada = fila.pt_kwh / fila.ipt_pct;
   const salida = entrada - fila.pt_kwh;
-  const caja = (etiqueta, valor, colorValor) => `
-    <div class="be-resumen-tile" style="text-align:center">
+  const caja = (etiqueta, valor, colorValor, encogible) => `
+    <div class="be-resumen-tile" style="text-align:center${encogible?';flex:1 1 0;min-width:0':''}">
       <div class="etiqueta">${etiqueta}</div>
       <div class="valor"${colorValor?` style="color:${colorValor}"`:''}>${valor}</div>
     </div>`;
-  const signo = simbolo => `<div style="font-size:16px;font-weight:800;color:var(--text3)">${simbolo}</div>`;
+  const signo = simbolo => `<div style="flex:0 0 auto;font-size:16px;font-weight:800;color:var(--text3)">${simbolo}</div>`;
   // Una sola fila Entrada + Salida = Pérdida (kWh), y debajo, centrada, la
   // fila de Pérdida (%) -- pedido explícito: "Energia de entrada + Energia
   // de salida = Perdida de energias (Esto una sola fila) / perdida energia
-  // (Otra fila centrada)".
+  // (Otra fila centrada)". flex-wrap:nowrap + tiles encogibles (flex:1 1 0,
+  // min-width:0) para que la fila NUNCA se parta en 2 líneas aunque el
+  // contenedor sea angosto -- si no alcanza el ancho, el número se
+  // envuelve DENTRO de la caja en vez de mandar toda la caja a otra fila
+  // (pedido explícito: "lo sigo viendo en 3 filas yo te pedi 2").
   return `
-    <div style="display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;margin-bottom:8px">
-      ${caja('Energía de Entrada', `${_informesFKwh(entrada)} kWh`)}
+    <div style="display:flex;align-items:center;justify-content:center;gap:6px;flex-wrap:nowrap;margin-bottom:8px">
+      ${caja('Energía de Entrada', `${_informesFKwh(entrada)} kWh`, null, true)}
       ${signo('+')}
-      ${caja('Energía de Salida', `${_informesFKwh(salida)} kWh`)}
+      ${caja('Energía de Salida', `${_informesFKwh(salida)} kWh`, null, true)}
       ${signo('=')}
-      ${caja('Pérdida de Energía', `${_informesFKwh(fila.pt_kwh)} kWh`, '#C00000')}
+      ${caja('Pérdida de Energía', `${_informesFKwh(fila.pt_kwh)} kWh`, '#C00000', true)}
     </div>
     <div style="display:flex;justify-content:center">
       ${caja('Pérdida de Energía (%)', `${(fila.ipt_pct*100).toFixed(2)}%`, '#C00000')}
@@ -12622,44 +12630,16 @@ function alimNivel3RenderChartZonasComparativo(){
   if(!etiquetas || !etiquetas.length) return;
 
   const tipo = ALIM_NIVEL3_ZONAS_CHART_TIPO;
-  // Apilado de etiquetas por PÍXELES reales (no por diferencia en puntos
-  // porcentuales) -- pedido explícito: "los % ahi pero con el numero asi
-  // grande... y tratar que no se traslapes los valores con las graficas".
-  // El intento anterior comparaba valores dentro de un margen EPS fijo en
-  // pp, pero como el eje Y se comprime/expande según el rango visible, esa
-  // distancia en pp no siempre correspondía a una distancia segura en
-  // pantalla -- 2 valores "lejos" en pp podían terminar con las etiquetas
-  // pegadas si el eje estaba comprimido, dejando texto ilegible encimado
-  // (ver captura). Ahora, por cada mes, se ordenan las zonas de mayor a
-  // menor valor y se calcula la posición en píxeles de cada etiqueta
-  // garantizando al menos GAP_PX de separación respecto a la etiqueta ya
-  // colocada arriba -- la más alta no se mueve de su posición natural, las
-  // demás solo se empujan lo mínimo necesario para no chocar.
-  const GAP_PX = 16;
-  const stackCache = new Map();
-  const offsetApilado = ctx => {
-    const idx = ctx.dataIndex;
-    const miValor = ctx.dataset.data[idx];
-    if(miValor == null) return 4;
-    if(!stackCache.has(idx)){
-      const scale = ctx.chart.scales.y;
-      const entradas = ctx.chart.data.datasets
-        .map((d,i) => ({i, v: d.data[idx]}))
-        .filter(e => e.v != null)
-        .sort((a,b) => b.v - a.v);
-      const mapa = new Map();
-      let pixelTope = null;
-      entradas.forEach(e => {
-        const pixelPunto = scale.getPixelForValue(e.v);
-        const pixelNatural = pixelPunto - 4;
-        const pixelFinal = pixelTope == null ? pixelNatural : Math.min(pixelNatural, pixelTope - GAP_PX);
-        mapa.set(e.i, pixelPunto - pixelFinal);
-        pixelTope = pixelFinal;
-      });
-      stackCache.set(idx, mapa);
-    }
-    return stackCache.get(idx).get(ctx.datasetIndex) ?? 4;
-  };
+  // Cada punto con su propio número pegado, sin apilar -- pedido explícito
+  // ("porque lo colocaste en una columna yo quiero es que cada punto tenga
+  // su numero como en excel"). El intento anterior (apilar en "escalerita"
+  // para evitar cualquier solapamiento) terminaba separando la etiqueta de
+  // su punto real cuando varias zonas quedaban cerca en varios meses
+  // seguidos -- exactamente lo que Excel NO hace: ahí cada etiqueta va
+  // pegada a su propio punto, aunque a veces 2 valores muy cercanos se
+  // toquen un poco. Si el usuario necesita más aire para leerlos, ya
+  // existe el control "Eje Y ▾" (arriba a la derecha de cada gráfica) para
+  // ampliar el rango a mano.
   chAlimNivel3ZonasComparativo = new Chart(cv, {
     data:{
       labels: etiquetas,
@@ -12669,7 +12649,7 @@ function alimNivel3RenderChartZonasComparativo(){
           type: tipo, label:`Zona ${z}`, data: porZonaVisible[z],
           borderColor: color, backgroundColor: tipo==='bar' ? color : 'transparent',
           borderWidth: tipo==='bar' ? 1 : 2, pointRadius:1.5, spanGaps:true, tension:0,
-          datalabels:{display:true, anchor:'end', align:'top', offset: offsetApilado,
+          datalabels:{display:true, anchor:'end', align:'top', offset:4,
             formatter:v=>v==null?'':v.toFixed(1)+'%',
             font:{size:12, weight:'700'}, color,},
         };
@@ -12677,9 +12657,7 @@ function alimNivel3RenderChartZonasComparativo(){
     },
     options:{
       responsive:true, maintainAspectRatio:false,
-      // Hasta 5 zonas apiladas (ver offsetApilado arriba) -- padding de
-      // sobra para que la más alta no se corte contra el borde.
-      layout:{padding:{top:130, right:20}},
+      layout:{padding:{top:24, right:20}},
       interaction:{mode:'index', intersect:false},
       plugins:{
         legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:10}, color:tickC}},
