@@ -2597,6 +2597,7 @@ tfoot td:first-child{text-align:left}
       <div class="fbar" style="justify-content:center;margin-bottom:10px">
         <button type="button" class="be-modo-btn" id="alim-n21-btn-es" onclick="alimN21ToggleEntradaSalida()" title="Oculta/muestra Entrada y Salida Total en las 2 gráficas, para ver mejor Pérdida y %">Entrada / Salida</button>
         <button type="button" class="be-modo-btn" id="alim-n21-btn-var" onclick="alimN21ToggleVariacion()" title="Agrega el delta vs. el mes anterior a la etiqueta de Pérdida % en las 2 gráficas">Δ Variación</button>
+        <button type="button" class="be-modo-btn" id="alim-n21-btn-relleno" onclick="alimN21ToggleRelleno()" title="Quita el sombreado bajo las líneas de Entrada/Salida/Pérdida">▨ Relleno</button>
       </div>
 
       <div class="alim-n21-grid-2">
@@ -16284,6 +16285,7 @@ let chAlimN21Mensual = null, chAlimN21Anual = null, chAlimN21Zonas = null;
 // compartido entre Mensual y Anual (pedido explícito, antes eran 2+2).
 let ALIM_N21_VAR = false;
 let ALIM_N21_OCULTAR_ES = false;
+let ALIM_N21_SIN_RELLENO = false;
 // "Variación Mensual por Zona" -- Pérdida Técnica y Gestionable POR ZONA
 // (pedido explícito, "Cuadro 7" que mostró el usuario): /api/resumen
 // acepta ?zona= repetido, así que se pide una vez por zona (nivel=2 --
@@ -17219,6 +17221,17 @@ function alimN21ToggleEntradaSalida(){
   alimN21RenderChartAnual(datos12);
 }
 
+// Mismo botón "▨ Relleno" que ya tienen Nivel 4/Nivel 3 (quita el
+// sombreado bajo las líneas) -- pedido explícito: "porque en el indicador
+// N2-1 no esta el boton par quitar el relleno de las graficas".
+function alimN21ToggleRelleno(){
+  ALIM_N21_SIN_RELLENO = !ALIM_N21_SIN_RELLENO;
+  document.getElementById('alim-n21-btn-relleno').classList.toggle('activo', ALIM_N21_SIN_RELLENO);
+  const datos12 = alimN21Con12Meses(alimN21AgregarMensual(ALIM_N21_ZONAS_SEL));
+  alimN21RenderChartMensual(datos12);
+  alimN21RenderChartAnual(datos12);
+}
+
 function alimN21DescargarCsv(){
   const datos12 = alimN21Visibles(alimN21Con12Meses(alimN21AgregarMensual(ALIM_N21_ZONAS_SEL)));
   const encabezado = ['Mes','Entrada Total (kWh)','Salida Total (kWh)','Pérdida (kWh)','Pérdida (%)','Entrada Anual 12M (kWh)','Salida Anual 12M (kWh)','Pérdida Anual 12M (kWh)','Pérdida Anual 12M (%)'];
@@ -17262,6 +17275,8 @@ function alimN21RenderChartMensual(datos12){
 
   document.getElementById('alim-n21-btn-es').classList.toggle('activo', ALIM_N21_OCULTAR_ES);
   document.getElementById('alim-n21-btn-var').classList.toggle('activo', ALIM_N21_VAR);
+  document.getElementById('alim-n21-btn-relleno').classList.toggle('activo', ALIM_N21_SIN_RELLENO);
+  const fillES = ALIM_N21_SIN_RELLENO ? false : 'origin';
 
   const datalabelsPct = ALIM_N21_VAR ? {
     display:true, anchor:'end', align:'top', offset:14,
@@ -17286,13 +17301,13 @@ function alimN21RenderChartMensual(datos12){
     data:{
       labels: etiquetas,
       datasets:[
-        {type:'line', label:'Entrada kWh/Mes', yAxisID:'y', order:4, fill:'origin', hidden: ALIM_N21_OCULTAR_ES,
+        {type:'line', label:'Entrada kWh/Mes', yAxisID:'y', order:4, fill:fillES, hidden: ALIM_N21_OCULTAR_ES,
           data: entradaDatos, borderColor:'#00B050', backgroundColor:'rgba(0,176,80,.20)',
           borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0, datalabels:{display:false}},
-        {type:'line', label:'Salida kWh/Mes', yAxisID:'y', order:3, fill:'origin', hidden: ALIM_N21_OCULTAR_ES,
+        {type:'line', label:'Salida kWh/Mes', yAxisID:'y', order:3, fill:fillES, hidden: ALIM_N21_OCULTAR_ES,
           data: salidaDatos, borderColor:'#C00000', backgroundColor:'rgba(192,0,0,.20)',
           borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0, datalabels:{display:false}},
-        {type:'line', label:'Pérdida kWh/Mes', yAxisID:'y', order:2, fill:'origin',
+        {type:'line', label:'Pérdida kWh/Mes', yAxisID:'y', order:2, fill:fillES,
           data: perdidaDatos, borderColor:'#4472C4', backgroundColor:'rgba(68,114,196,.35)',
           borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0, datalabels:{display:false}},
         {type:'line', label:'Pérdida %/Mes', yAxisID:'yPct', order:1,
@@ -17344,6 +17359,8 @@ function alimN21RenderChartAnual(datos12){
 
   document.getElementById('alim-n21-btn-es').classList.toggle('activo', ALIM_N21_OCULTAR_ES);
   document.getElementById('alim-n21-btn-var').classList.toggle('activo', ALIM_N21_VAR);
+  document.getElementById('alim-n21-btn-relleno').classList.toggle('activo', ALIM_N21_SIN_RELLENO);
+  const fillES = ALIM_N21_SIN_RELLENO ? false : 'origin';
 
   const datalabelsPct = ALIM_N21_VAR ? {
     display:true, anchor:'end', align:'top', offset:14,
@@ -17368,13 +17385,13 @@ function alimN21RenderChartAnual(datos12){
     data:{
       labels: etiquetas,
       datasets:[
-        {type:'line', label:'Entrada kWh/12M', yAxisID:'y', order:4, fill:'origin', hidden: ALIM_N21_OCULTAR_ES,
+        {type:'line', label:'Entrada kWh/12M', yAxisID:'y', order:4, fill:fillES, hidden: ALIM_N21_OCULTAR_ES,
           data: entrada12Datos, borderColor:'#00B050', backgroundColor:'rgba(0,176,80,.20)',
           borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0, datalabels:{display:false}},
-        {type:'line', label:'Salida kWh/12M', yAxisID:'y', order:3, fill:'origin', hidden: ALIM_N21_OCULTAR_ES,
+        {type:'line', label:'Salida kWh/12M', yAxisID:'y', order:3, fill:fillES, hidden: ALIM_N21_OCULTAR_ES,
           data: salida12Datos, borderColor:'#C00000', backgroundColor:'rgba(192,0,0,.20)',
           borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0, datalabels:{display:false}},
-        {type:'line', label:'Pérdida kWh/12M', yAxisID:'y', order:2, fill:'origin',
+        {type:'line', label:'Pérdida kWh/12M', yAxisID:'y', order:2, fill:fillES,
           data: perdida12Datos, borderColor:'#4472C4', backgroundColor:'rgba(68,114,196,.35)',
           borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0, datalabels:{display:false}},
         {type:'line', label:'Pérdida %/12M', yAxisID:'yPct', order:1,
@@ -17430,14 +17447,23 @@ function alimN21RenderChartZonas(){
   chAlimN21Zonas = new Chart(cv, {
     data:{
       labels: etiquetas,
-      datasets: ALIM_N21_ZONAS.map(z => ({
-        type:'line', label:z, data: porZona[z], borderColor: colorParaZona(z), backgroundColor:'transparent',
-        borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0, datalabels:{display:false},
-      })),
+      datasets: ALIM_N21_ZONAS.map(z => {
+        const color = colorParaZona(z);
+        return {
+          type:'line', label:z, data: porZona[z], borderColor: color, backgroundColor:'transparent',
+          borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0,
+          // Cada punto con su propio número pegado, sin apilar -- mismo
+          // criterio que "Comparativo de Índice de Pérdidas por Zona" (Nivel
+          // 3). Pedido explícito: "el comparativo zonas del N2-1 tampoco
+          // tiene los datos en la grafica".
+          datalabels:{display:true, anchor:'end', align:'top', offset:4,
+            formatter:v=>v==null?'':v.toFixed(1)+'%', font:{size:12, weight:'700'}, color},
+        };
+      }),
     },
     options:{
       responsive:true, maintainAspectRatio:false,
-      layout:{padding:{top:20, right:20}},
+      layout:{padding:{top:24, right:20}},
       interaction:{mode:'index', intersect:false},
       plugins:{
         legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:10}, color:tickC}},
