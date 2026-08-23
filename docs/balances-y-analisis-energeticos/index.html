@@ -325,6 +325,27 @@ select{padding:6px 10px;border:1px solid var(--border);border-radius:7px;font-si
   border-radius:6px;font-size:11.5px;color:var(--text);background:var(--bg);outline:none}
 
 .chart-wrap{position:relative;height:320px}
+
+/* Control "acotar el eje Y" -- pedido explícito ("en todas las graficas
+   quiero que haya una forma de poder acotar o cambiar el rango en el eje
+   y"). Se inyecta solo (ver el plugin ejeYControl, registrado en el JS de
+   la app) como un botoncito flotante en la esquina de CADA gráfica con eje
+   numérico, sin tener que tocar el HTML de cada una. */
+.eje-y-ctrl{position:absolute;top:4px;right:6px;z-index:5;font-size:11px}
+.eje-y-ctrl-btn{border:1px solid var(--border);background:var(--bg2);color:var(--text3);
+  border-radius:6px;padding:2px 6px;font-size:10.5px;cursor:pointer;line-height:1.4}
+.eje-y-ctrl-btn:hover{color:var(--text);border-color:var(--text3)}
+.eje-y-ctrl-panel{position:absolute;top:100%;right:0;margin-top:4px;background:var(--bg);
+  border:1px solid var(--border);border-radius:8px;padding:8px 10px;box-shadow:0 2px 10px rgba(0,0,0,.15);
+  display:flex;flex-direction:column;gap:6px;min-width:170px}
+.eje-y-ctrl-fila{display:flex;align-items:center;gap:5px}
+.eje-y-ctrl-fila span{flex:1;color:var(--text3);font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.eje-y-ctrl-fila input{width:52px;box-sizing:border-box;padding:2px 4px;border:1px solid var(--border);
+  border-radius:4px;font-size:10.5px;color:var(--text);background:var(--bg2)}
+.eje-y-ctrl-reset{border:none;background:none;color:#4472C4;font-size:10.5px;cursor:pointer;
+  text-align:left;padding:2px 0}
+.eje-y-ctrl-reset:hover{text-decoration:underline}
+
 /* Se puede arrastrar (pan) el gráfico de Ver Balance -- mostrar una manito
    como pista, y la manito "cerrada" mientras se sostiene el clic. */
 #ch-balance-estructura{cursor:grab}
@@ -4241,6 +4262,100 @@ Chart.defaults.plugins.tooltip.cornerRadius = 6;
 Chart.defaults.plugins.tooltip.padding = 10;
 Chart.defaults.plugins.tooltip.titleFont = {weight:'700'};
 Chart.defaults.plugins.tooltip.boxPadding = 4;
+
+// ---- Control "acotar el eje Y" en TODAS las gráficas -- pedido explícito
+// ("en todas las graficas quiero que haya una forma de poder acotar o
+// cambiar el rango en el eje y"). En vez de tocar una por una las ~37
+// gráficas de la app (cada `new Chart(...)`), se implementa como plugin
+// GLOBAL de Chart.js: se registra UNA vez y Chart.js lo dispara solo en
+// CADA gráfica que se cree, presente o futura, sin duplicar código.
+// EJE_Y_MANUAL persiste el rango elegido por canvas mientras la pestaña
+// siga abierta (mismo criterio que otros filtros "propios" de gráfica en
+// esta app, que tampoco sobreviven a un F5) -- se reaplica solo cada vez
+// que la gráfica se reconstruye (destroy()+new Chart(), el patrón normal
+// de esta app al cambiar de filtro), vía beforeUpdate/afterInit.
+let EJE_Y_MANUAL = {}; // canvasId -> { ejeId: {min, max} }
+
+function _ejeYEjesNumericos(chart){
+  const escalas = chart.options.scales || {};
+  return Object.keys(escalas).filter(id => id !== 'x' && (!escalas[id].type || escalas[id].type === 'linear' || escalas[id].type === 'logarithmic'));
+}
+
+function _ejeYAplicarGuardado(chart){
+  const canvasId = chart.canvas && chart.canvas.id;
+  const guardado = canvasId && EJE_Y_MANUAL[canvasId];
+  if(!guardado) return;
+  Object.keys(guardado).forEach(eje => {
+    const esc = chart.options.scales && chart.options.scales[eje];
+    if(!esc) return;
+    const cfg = guardado[eje];
+    esc.min = (cfg.min === '' || cfg.min == null) ? undefined : cfg.min;
+    esc.max = (cfg.max === '' || cfg.max == null) ? undefined : cfg.max;
+  });
+}
+
+function _ejeYInstalarControl(chart){
+  const canvasId = chart.canvas && chart.canvas.id;
+  if(!canvasId) return;
+  const wrap = chart.canvas.closest('.chart-wrap');
+  if(!wrap) return;
+  const ejes = _ejeYEjesNumericos(chart);
+  const idCont = `eje-y-ctrl-${canvasId}`;
+  let cont = document.getElementById(idCont);
+  if(!ejes.length){ if(cont) cont.remove(); return; }
+  if(!cont){
+    cont = document.createElement('div');
+    cont.id = idCont;
+    cont.className = 'eje-y-ctrl no-exportar';
+    wrap.appendChild(cont);
+  }
+  const guardado = EJE_Y_MANUAL[canvasId] || {};
+  const abierto = cont.querySelector('.eje-y-ctrl-panel') && !cont.querySelector('.eje-y-ctrl-panel').classList.contains('hidden');
+  cont.innerHTML = `
+    <button type="button" class="eje-y-ctrl-btn" title="Acotar el rango del eje Y">Eje Y ▾</button>
+    <div class="eje-y-ctrl-panel${abierto ? '' : ' hidden'}">
+      ${ejes.map(eje => `
+        <div class="eje-y-ctrl-fila">
+          <span title="${(chart.options.scales[eje].title && chart.options.scales[eje].title.text) || eje}">${(chart.options.scales[eje].title && chart.options.scales[eje].title.text) || eje}</span>
+          <input type="number" step="any" placeholder="mín" data-eje="${eje}" data-campo="min" value="${guardado[eje] && guardado[eje].min != null ? guardado[eje].min : ''}">
+          <input type="number" step="any" placeholder="máx" data-eje="${eje}" data-campo="max" value="${guardado[eje] && guardado[eje].max != null ? guardado[eje].max : ''}">
+        </div>`).join('')}
+      <button type="button" class="eje-y-ctrl-reset">Restablecer automático</button>
+    </div>`;
+  const btn = cont.querySelector('.eje-y-ctrl-btn');
+  const panel = cont.querySelector('.eje-y-ctrl-panel');
+  btn.onclick = ev => { ev.stopPropagation(); panel.classList.toggle('hidden'); };
+  cont.querySelectorAll('input').forEach(inp => {
+    inp.onclick = ev => ev.stopPropagation();
+    inp.onchange = () => {
+      const eje = inp.dataset.eje, campo = inp.dataset.campo;
+      EJE_Y_MANUAL[canvasId] = EJE_Y_MANUAL[canvasId] || {};
+      EJE_Y_MANUAL[canvasId][eje] = EJE_Y_MANUAL[canvasId][eje] || {};
+      EJE_Y_MANUAL[canvasId][eje][campo] = inp.value === '' ? '' : Number(inp.value);
+      const chartActual = Chart.getChart(canvasId);
+      if(chartActual){ _ejeYAplicarGuardado(chartActual); chartActual.update(); }
+    };
+  });
+  cont.querySelector('.eje-y-ctrl-reset').onclick = ev => {
+    ev.stopPropagation();
+    delete EJE_Y_MANUAL[canvasId];
+    cont.querySelectorAll('input').forEach(inp => inp.value = '');
+    const chartActual = Chart.getChart(canvasId);
+    if(chartActual){
+      _ejeYEjesNumericos(chartActual).forEach(eje => {
+        chartActual.options.scales[eje].min = undefined;
+        chartActual.options.scales[eje].max = undefined;
+      });
+      chartActual.update();
+    }
+  };
+}
+
+Chart.register({
+  id: 'ejeYControl',
+  afterInit(chart){ _ejeYAplicarGuardado(chart); _ejeYInstalarControl(chart); },
+  beforeUpdate(chart){ _ejeYAplicarGuardado(chart); },
+});
 
 // Fondo degradado del área de trazado -- estilo Excel (el "chart style"
 // por defecto de Excel rellena la plotArea con un degradado sutil de
