@@ -11697,14 +11697,20 @@ function _ipCajaBalanceHtml(claveActual){
       <div class="etiqueta">${etiqueta}</div>
       <div class="valor"${colorValor?` style="color:${colorValor}"`:''}>${valor}</div>
     </div>`;
-  // Mismo diseño 2x2 (sin signos) que informesCajaBalanceIpt en el informe
-  // Word -- pedido explícito: "el balance energetico tiene que ser asi
-  // como te lo dibujo" (cuadrícula de cajas, no la cadena con +/=).
+  const signo = simbolo => `<div style="font-size:16px;font-weight:800;color:var(--text3)">${simbolo}</div>`;
+  // Una sola fila Entrada + Salida = Pérdida (kWh), y debajo, centrada, la
+  // fila de Pérdida (%) -- pedido explícito: "Energia de entrada + Energia
+  // de salida = Perdida de energias (Esto una sola fila) / perdida energia
+  // (Otra fila centrada)".
   return `
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;max-width:320px;margin:0 auto">
+    <div style="display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;margin-bottom:8px">
       ${caja('Energía de Entrada', `${_informesFKwh(entrada)} kWh`)}
+      ${signo('+')}
       ${caja('Energía de Salida', `${_informesFKwh(salida)} kWh`)}
-      ${caja('Pérdida de Energía (kWh)', `${_informesFKwh(fila.pt_kwh)} kWh`, '#C00000')}
+      ${signo('=')}
+      ${caja('Pérdida de Energía', `${_informesFKwh(fila.pt_kwh)} kWh`, '#C00000')}
+    </div>
+    <div style="display:flex;justify-content:center">
       ${caja('Pérdida de Energía (%)', `${(fila.ipt_pct*100).toFixed(2)}%`, '#C00000')}
     </div>
   `;
@@ -11759,9 +11765,8 @@ async function cargarIndicadorPerdidasComercial(){
     cont.innerHTML = `<div style="text-align:center;color:#ef476f;padding:40px">${e.message || 'No se pudo cargar el indicador comercial.'}</div>`;
     return;
   }
-  // Ventana móvil de IP_VENTANA_MESES_DEFECTO meses (misma que IP_Reg, ver
-  // _ipVentanaPorDefecto) -- cada vez que aparece un mes nuevo, el rango
-  // se corre hacia adelante en vez de solo estirarse desde un "desde" fijo.
+  // Arranca en enero-2025 y crece hasta el último mes real (misma que
+  // IP_Reg, ver _ipVentanaPorDefecto) -- no se desliza.
   const inDesde = document.getElementById('ip-com-desde');
   const inHasta = document.getElementById('ip-com-hasta');
   if(IP_COMERCIAL_FILAS.length){
@@ -11901,17 +11906,17 @@ function _alimNivelPoblarSelectorAnalisis(prefijo, mensualCompleto){
   return claveSel;
 }
 
-// Ventana deslizante de 7 meses, ANCLADA a partir de enero-2026 -- pedido
-// explícito ("todas grafias a exceipcion del IPT_Reg quiero que siempre
-// inicien a mostrar datos de enero-2026 mostrando 6-7 meses y cuando
-// lelgue el 8m es quitar el mes anterior"). Mientras el último mes
-// disponible esté dentro de esos 7 meses (hasta Jul-2026), la ventana
-// CRECE desde Ene-2026 sin recortarse; desde el 8vo mes en adelante
-// (Ago-2026+) se desliza -- siempre termina en el último mes real, arranca
-// 6 meses atrás (7 meses totales), sin bajar nunca de Ene-2026. Solo pisa
-// el valor INICIAL de los inputs (si ya tienen algo, sea porque el
-// usuario ya los tocó o porque quedaron guardados de antes, se respeta --
-// mismo criterio que el resto de esta función ya tenía).
+// Ventana deslizante de 8 meses, ANCLADA a partir de enero-2026 -- pedido
+// explícito ("quiero que todas las graficas inicien desde enero-2026 hasta
+// agosto-2026 y cuando se agregue un nuevo mes... ya seria el rango desde
+// Febrero2026 hasta septiembre2026"). Mientras el último mes disponible
+// esté dentro de esos 8 meses (hasta Ago-2026), la ventana CRECE desde
+// Ene-2026 sin recortarse; desde el 9vo mes en adelante (Sept-2026+) se
+// desliza -- siempre termina en el último mes real, arranca 7 meses atrás
+// (8 meses totales), sin bajar nunca de Ene-2026. Solo pisa el valor
+// INICIAL de los inputs (si ya tienen algo, sea porque el usuario ya los
+// tocó o porque quedaron guardados de antes, se respeta -- mismo criterio
+// que el resto de esta función ya tenía).
 const ALIM_RANGO_ANCLA = '2026-01';
 function _alimNivelPoblarRangoDefecto(prefijo, claves){
   const inDesde = document.getElementById(`${prefijo}-desde`);
@@ -11921,7 +11926,7 @@ function _alimNivelPoblarRangoDefecto(prefijo, claves){
   if(!inHasta.value) inHasta.value = ultima + '-01';
   if(!inDesde.value){
     const [aH, mH] = ultima.split('-').map(Number);
-    const idx = aH*12 + (mH-1) - 6;
+    const idx = aH*12 + (mH-1) - 7;
     const aD = Math.floor(idx/12), mD = (idx%12)+1;
     const claveVentana = alimN21Clave(aD, mD);
     const claveD = claveVentana > ALIM_RANGO_ANCLA ? claveVentana : ALIM_RANGO_ANCLA;
@@ -12771,15 +12776,9 @@ async function alimNivel3Cargar(){
   _alimNivelPoblarRangoDefecto('alim-nivel3', claves);
 
   // Filtro de fechas propio de "Comparativo de Índice de Pérdidas por
-  // Zona" -- pedido explícito: arranca en Enero-2026 hasta el último mes
-  // real disponible (si el histórico no llega a 2026-01, cae al primer
-  // mes que sí haya).
-  const inZonasDesde = document.getElementById('alim-nivel3-zonas-chart-desde');
-  const inZonasHasta = document.getElementById('alim-nivel3-zonas-chart-hasta');
-  if(inZonasDesde && inZonasHasta && claves.length){
-    if(!inZonasHasta.value) inZonasHasta.value = claves[claves.length-1] + '-01';
-    if(!inZonasDesde.value) inZonasDesde.value = (claves.includes('2026-01') ? '2026-01' : claves[0]) + '-01';
-  }
+  // Zona" -- misma ventana deslizante de 8 meses que el resto de la app
+  // (pedido explícito: "todas las graficas").
+  _alimNivelPoblarRangoDefecto('alim-nivel3-zonas-chart', claves);
 
   alimNivel3RenderTodo();
 }
@@ -14403,21 +14402,10 @@ function alim3PoblarMselCircuitos(){
 
   // Rango PROPIO de esta gráfica -- pedido explícito ("el grafico tambien
   // debe tener filtro de fecha"), independiente del Rango de arriba de
-  // todo el módulo. Arranca con los mismos últimos 12 meses por defecto,
-  // el usuario lo puede mover aparte después.
-  const inDesde = document.getElementById('alim3-circuitos-desde');
-  const inHasta = document.getElementById('alim3-circuitos-hasta');
-  if(inDesde && inHasta && (!inDesde.value || !inHasta.value)){
-    const claves = [...new Set(ALIM_FILAS.map(f => alimN21Clave(f.anio, f.mes)))].sort();
-    if(claves.length){
-      const ultima = claves[claves.length-1];
-      if(!inHasta.value) inHasta.value = ultima + '-01';
-      if(!inDesde.value){
-        const idx = claves.length - 12;
-        inDesde.value = (claves[Math.max(0, idx)]) + '-01';
-      }
-    }
-  }
+  // todo el módulo. Misma ventana deslizante de 8 meses que el resto de
+  // la app (pedido explícito: "todas las graficas").
+  const claves = [...new Set(ALIM_FILAS.map(f => alimN21Clave(f.anio, f.mes)))].sort();
+  _alimNivelPoblarRangoDefecto('alim3-circuitos', claves);
 }
 
 function alim3VisiblesRangoCircuitos(serie){
@@ -18715,23 +18703,15 @@ function confirmarDescargaTride(){
 }
 
 // "YYYY-MM" +/- N meses -- reusado por el rango por defecto de IP_Reg y de
-// Indicador de Pérdidas Comercial (ventana móvil, ver _ipVentanaPorDefecto).
-function _ipSumarMesesClave(clave, delta){
-  const [y, m] = clave.split('-').map(Number);
-  const total = y*12 + (m-1) + delta;
-  const anio = Math.floor(total/12), mes = (total%12)+1;
-  return `${anio}-${String(mes).padStart(2,'0')}`;
-}
-
-// Ventana móvil de ancho fijo (pedido explícito: "cada vez que se detecte
-// un nuevo mes el mes más antiguo debe ir saliendo del gráfico") -- arranca
-// IP_VENTANA_MESES_DEFECTO meses atrás del último real disponible, así que
-// cuando aparece un mes nuevo el rango completo se corre un mes hacia
-// adelante en vez de solo estirarse. Se recalcula desde cero cada vez que
-// se entra al módulo (no queda "pegada" a un desde fijo en el calendario).
-const IP_VENTANA_MESES_DEFECTO = 29;
+// Arranca SIEMPRE en enero-2025 y crece hasta el último mes real disponible
+// (sin deslizarse, a diferencia de la ventana móvil del resto de la app) --
+// pedido explícito: "Lo anterior menos para IP_reg esta debe ser de
+// enero-2025 hasta actual y igual para indicador de perdidas comercial y
+// indicador de perdidas nivel de tension 1". Compartida por IP_Reg,
+// Indicador de Pérdidas Comercial y Nivel de Tensión 1.
+const IP_VENTANA_ANCLA = '2025-01';
 function _ipVentanaPorDefecto(ultimaClave){
-  return {desde: _ipSumarMesesClave(ultimaClave, -(IP_VENTANA_MESES_DEFECTO-1)), hasta: ultimaClave};
+  return {desde: IP_VENTANA_ANCLA, hasta: ultimaClave};
 }
 
 function ipPoblarRangoFechas(idDesde, idHasta){
