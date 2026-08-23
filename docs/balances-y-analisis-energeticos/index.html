@@ -12501,6 +12501,44 @@ function alimNivel3RenderChartZonasComparativo(){
   if(!etiquetas || !etiquetas.length) return;
 
   const tipo = ALIM_NIVEL3_ZONAS_CHART_TIPO;
+  // Apilado de etiquetas por PÍXELES reales (no por diferencia en puntos
+  // porcentuales) -- pedido explícito: "los % ahi pero con el numero asi
+  // grande... y tratar que no se traslapes los valores con las graficas".
+  // El intento anterior comparaba valores dentro de un margen EPS fijo en
+  // pp, pero como el eje Y se comprime/expande según el rango visible, esa
+  // distancia en pp no siempre correspondía a una distancia segura en
+  // pantalla -- 2 valores "lejos" en pp podían terminar con las etiquetas
+  // pegadas si el eje estaba comprimido, dejando texto ilegible encimado
+  // (ver captura). Ahora, por cada mes, se ordenan las zonas de mayor a
+  // menor valor y se calcula la posición en píxeles de cada etiqueta
+  // garantizando al menos GAP_PX de separación respecto a la etiqueta ya
+  // colocada arriba -- la más alta no se mueve de su posición natural, las
+  // demás solo se empujan lo mínimo necesario para no chocar.
+  const GAP_PX = 16;
+  const stackCache = new Map();
+  const offsetApilado = ctx => {
+    const idx = ctx.dataIndex;
+    const miValor = ctx.dataset.data[idx];
+    if(miValor == null) return 4;
+    if(!stackCache.has(idx)){
+      const scale = ctx.chart.scales.y;
+      const entradas = ctx.chart.data.datasets
+        .map((d,i) => ({i, v: d.data[idx]}))
+        .filter(e => e.v != null)
+        .sort((a,b) => b.v - a.v);
+      const mapa = new Map();
+      let pixelTope = null;
+      entradas.forEach(e => {
+        const pixelPunto = scale.getPixelForValue(e.v);
+        const pixelNatural = pixelPunto - 4;
+        const pixelFinal = pixelTope == null ? pixelNatural : Math.min(pixelNatural, pixelTope - GAP_PX);
+        mapa.set(e.i, pixelPunto - pixelFinal);
+        pixelTope = pixelFinal;
+      });
+      stackCache.set(idx, mapa);
+    }
+    return stackCache.get(idx).get(ctx.datasetIndex) ?? 4;
+  };
   chAlimNivel3ZonasComparativo = new Chart(cv, {
     data:{
       labels: etiquetas,
@@ -12510,50 +12548,17 @@ function alimNivel3RenderChartZonasComparativo(){
           type: tipo, label:`Zona ${z}`, data: porZonaVisible[z],
           borderColor: color, backgroundColor: tipo==='bar' ? color : 'transparent',
           borderWidth: tipo==='bar' ? 1 : 2, pointRadius:1.5, spanGaps:true, tension:0,
-          // Pedido explícito: "el valor en porcentaje que se vea más
-          // grande" (8px a 11px) y "que no se sobreponga" -- con 5 zonas
-          // muy seguido quedan 2-3 valores casi iguales en el mismo mes.
-          // chartjs-plugin-datalabels no evita solapamientos solo, así
-          // que se arma un "escalerita": en cada mes se ordenan las 5
-          // zonas de mayor a menor y cada una se offsetea según su
-          // puesto (la más alta pegada al punto, la siguiente más
-          // arriba, etc.) -- así las etiquetas parecidas quedan
-          // apiladas en vez de encimadas.
-          datalabels:{display:true, anchor:'end', align:'top',
-            offset: ctx => {
-              const idx = ctx.dataIndex;
-              const valores = ctx.chart.data.datasets.map(d => d.data[idx]);
-              const miValor = valores[ctx.datasetIndex];
-              if(miValor == null) return 4;
-              // El intento anterior (rankear TODAS las series por valor,
-              // sin importar qué tan separadas están) empujaba etiquetas
-              // que YA estaban lejos de las demás -- como sus puntos ya
-              // estaban lejos en pantalla, ese empuje extra las hacía
-              // chocar con la línea/etiqueta de OTRA zona más arriba
-              // (nuevo choque que antes no existía). Ahora solo cuenta
-              // cuántas zonas están REALMENTE cerca en valor (dentro de
-              // EPS=0.35 pp) Y por encima -- una zona bien separada de
-              // las demás se queda con el offset base, sin empujarse de más.
-              const EPS = 0.35;
-              let ranking = 0;
-              valores.forEach((v,i) => {
-                if(i === ctx.datasetIndex || v == null) return;
-                if(v > miValor && (v-miValor) < EPS) ranking++;
-                else if(v === miValor && i < ctx.datasetIndex) ranking++;
-              });
-              return 4 + ranking*18;
-            },
+          datalabels:{display:true, anchor:'end', align:'top', offset: offsetApilado,
             formatter:v=>v==null?'':v.toFixed(1)+'%',
-            font:{size:11, weight:'700'}, color,},
+            font:{size:12, weight:'700'}, color,},
         };
       }),
     },
     options:{
       responsive:true, maintainAspectRatio:false,
-      // Hasta 5 zonas apiladas en "escalerita" (ver offset de los
-      // datalabels arriba, paso de 18px) -- padding de sobra para que la
-      // más alta no se corte contra el borde de la gráfica.
-      layout:{padding:{top:100, right:20}},
+      // Hasta 5 zonas apiladas (ver offsetApilado arriba) -- padding de
+      // sobra para que la más alta no se corte contra el borde.
+      layout:{padding:{top:130, right:20}},
       interaction:{mode:'index', intersect:false},
       plugins:{
         legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:10}, color:tickC}},
