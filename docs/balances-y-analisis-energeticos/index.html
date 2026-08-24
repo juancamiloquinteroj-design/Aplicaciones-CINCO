@@ -21271,8 +21271,21 @@ async function _informesGraficoAImagen({labels, datasets, scales, titulo, ancho=
   // x3 (antes x2) -- pedido explícito ("las imagenes estan muy borrosas
   // quiero que sea alta calidad"): más resolución real detrás del mismo
   // tamaño mostrado, sin cambiar proporciones de nada.
+  // BUG REAL encontrado y confirmado con una prueba real (Playwright,
+  // canvas.naturalWidth) -- Chart.js YA multiplica el tamaño del canvas
+  // por `devicePixelRatio` internamente (options.devicePixelRatio:escala
+  // más abajo) al inicializar; si acá ADEMÁS se pre-multiplica cv.width a
+  // mano, el canvas terminaba en escala² (ancho×9 con escala=3, medido
+  // 9432px en vez de los 3144px esperados) -- la imagen quedaba 3 VECES
+  // más grande de lo pensado y, al insertarse a un ancho fijo en Word, se
+  // reducía 3 veces más de la cuenta: TODO el texto salía diminuto sin
+  // importar qué tan grande se pusiera el font.size. Esta es la causa real
+  // de "no se alcanza a ver la gráfica... no se ven los datos ni las
+  // curvas ni eje x ni eje y" -- no era un problema de tamaño de fuente.
+  // cv.width/height van al tamaño LÓGICO nada más; Chart.js hace el
+  // escalado a alta resolución una sola vez, vía devicePixelRatio.
   const escala = 3;
-  cv.width = ancho*escala; cv.height = alto*escala;
+  cv.width = ancho; cv.height = alto;
   cv.style.width = ancho+'px'; cv.style.height = alto+'px';
   cont.appendChild(cv);
   document.body.appendChild(cont);
