@@ -23457,31 +23457,6 @@ function informesSeccionRecomendacionAlimentadores(mesClave){
   return children;
 }
 
-async function informesSeccionZonaN21(zona, mesClave){
-  const children = [_informesHeading2(`Indicador N2-1 ZONA ${zona}`)];
-  const serie = alimN21AgregarMensual(new Set([zona]));
-  const idx = serie.findIndex(f => f.clave === mesClave);
-  if(idx >= 0){
-    const actual = serie[idx], anterior = idx>0 ? serie[idx-1] : null;
-    children.push(informesTextoN21(`La zona ${zona}`, actual, anterior));
-    // Gráfica del indicador mensual histórico DE LA ZONA -- pedido
-    // explícito ("no está presentando la gráfica del indicador mensual
-    // histórico de la zona"); antes solo el Total N2-1 tenía figura.
-    const figZona = await informesFiguraN21(serie, idx, `Zona ${zona}`);
-    if(figZona){ children.push(_informesParrafoImagen(figZona)); children.push(_informesCaption('Figura', `Indicador N2-1 Mensual -- Zona ${zona}`)); }
-  }
-  // El detalle completo por Subestación (narrativa+gráfica+3 tablas anchas
-  // por S/E, antes seleccionado con informesSubestacionesDestacadas) se
-  // QUITÓ del flujo automático -- pedido explícito: la plantilla de
-  // referencia ("Informe Balances Indicadores.docx") no trae ese detalle,
-  // solo las tablas resumen de crecimiento >5% que ya se agregan en
-  // informesSeccionIndicadorN21Total. informesSeccionSubestacion se
-  // conserva TAL CUAL para el modo "Solo una subestación" (ver
-  // informesGenerar, sel.subestacion), que sigue siendo un reporte aparte
-  // a propósito.
-  return children;
-}
-
 // ==========================================================================
 // IP COMERCIAL
 // ==========================================================================
@@ -23698,7 +23673,6 @@ async function _informesConstruirDocumento(meses, sel){
     if(sel.nivel3) children.push(...await informesSeccionIndicadorNivel3(mesNivel3));
     if(sel.n21){
       children.push(...await informesSeccionIndicadorN21Total(mesN21));
-      for(const zona of sel.zonas){ children.push(...await informesSeccionZonaN21(zona, mesN21)); }
     }
     if(sel.distribucion) children.push(...await informesSeccionDistribucionFlujo(mesDistribucion));
     if(sel.recomendacion) children.push(...informesSeccionRecomendacionAlimentadores(mesN21));
@@ -24345,21 +24319,14 @@ async function _informesPdfCuerpo(doc, sel, mesIpReg, mesN21, toc, mesComercial,
       y = _informesPdfParrafo(doc, 'No hay datos de N2-1 para el mes seleccionado.', y, {italica:true});
     }
 
-    for(const zona of sel.zonas){
-      y = _informesPdfHeading(doc, contador, 1, `Indicador N2-1 ZONA ${zona}`, y, toc);
-      const serieZona = alimN21AgregarMensual(new Set([zona]));
-      const idxZona = serieZona.findIndex(f=>f.clave===mesN21);
-      if(idxZona>=0){
-        const anterior = idxZona>0 ? serieZona[idxZona-1] : null;
-        const parrafoZona = _informesTextosPlanos(_informesConTextoPlano(() => informesTextoN21(`La zona ${zona}`, serieZona[idxZona], anterior)));
-        for(const p of parrafoZona) y = _informesPdfParrafo(doc, p, y);
-        const figZona = await informesFiguraN21(serieZona, idxZona, `Zona ${zona}`);
-        y = await _informesPdfImagen(doc, figZona, y, `Indicador N2-1 Mensual -- Zona ${zona}`);
-      }
-      // El detalle completo por Subestación se quitó del flujo automático --
-      // mismo criterio que el .docx (informesSeccionZonaN21): la plantilla
-      // de referencia no lo trae.
-    }
+    // El detalle "Indicador N2-1 ZONA X" (título + narrativa + gráfica por
+    // cada zona, uno por uno) se QUITÓ del flujo automático -- confirmado
+    // contra la plantilla real ("Informe Balances Indicadores.docx"), que
+    // NO trae esos subtítulos/gráficas por zona bajo "Indicador Total
+    // N2-1", solo el Total + los cuadros comparativos de abajo. Pedido
+    // explícito ("EN la figura 17 no deberia esta el titulo de cada zona
+    // ni tampoco la grafica por zona eso es muy difernete al que yo
+    // hice").
 
     // Comparativo Mensual por Zona (2 cuadros) + histórico por zona +
     // Subestaciones/Alimentadores con mayor crecimiento -- faltaban por
