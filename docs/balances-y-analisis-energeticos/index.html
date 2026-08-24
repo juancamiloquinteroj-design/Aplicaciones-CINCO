@@ -21292,19 +21292,17 @@ async function _informesGraficoAImagen({labels, datasets, scales, titulo, ancho=
   // Ancho por defecto 1048x400 -- pedido explícito ("el tamaño de la
   // gráfica del informe... esta en formato 1048x400 (Eso para todas)"),
   // mismo formato que ya usa _expImagenChart (botón "Exportar PNG" en
-  // vivo). IMPORTANTE -- esta imagen se INSERTA en Word a un ancho FIJO
-  // de 665px (ver _informesParrafoImagen), sin importar el ancho real
-  // del canvas -- al subir el canvas de 760 a 1048px el factor de
-  // reducción pasó de 665/760≈0.87 a 665/1048≈0.63, así que un tamaño de
-  // fuente que se veía bien a 760px queda ~28% MÁS CHICO a 1048px si no
-  // se compensa. Bug real: la vez pasada se dejaron los tamaños en su
-  // valor "normal" de antes (13/14) asumiendo que el ancho nuevo alcanzaba
-  // solo, y terminó saliendo ILEGIBLE ("no se alcanza a ver la gráfica...
-  // no se ven los datos ni las curvas ni eje x ni eje y") -- los tamaños
-  // de acá están escalados por ese mismo factor (1048/665≈1.58) para que
-  // el tamaño FINAL en Word sea legible. Solo el DATO (datalabels) se
-  // agranda un extra aparte más abajo con _expEscalarDatalabels, pedido
-  // explícito ("Solo el dato").
+  // vivo). Tamaños de fuente NORMALES (13/14/13/16) -- el ajuste anterior
+  // (26/28/25/32) partía de un diagnóstico equivocado: se pensó que hacía
+  // falta compensar el ancho fijo de inserción en Word (665px), pero el
+  // problema real era el bug de devicePixelRatio duplicado de arriba (el
+  // canvas de fondo salía 9x más grande de lo debido) -- con ESE bug ya
+  // arreglado, agrandar el font.size además terminaba en títulos/ejes/
+  // leyenda desproporcionadamente grandes, aplastando la gráfica misma
+  // (pedido explícito: "esta saliendo muy grande los titulos y valores
+  // del eje Y y X y la leyendas"). Solo el DATO (datalabels) se agranda
+  // un extra aparte más abajo con _expEscalarDatalabels, pedido explícito
+  // ("Solo el dato").
   // Grilla SÓLIDA gris clara (no punteada) y ticks en negro fuerte --
   // mismo criterio "estilo Excel" que ya usa TODA la app (gridC/tickXFuerte
   // en las gráficas en vivo) -- pedido explícito ("que cuando se exporten
@@ -21316,21 +21314,21 @@ async function _informesGraficoAImagen({labels, datasets, scales, titulo, ancho=
   // del último mes (más grande, ver _informesResaltarUltimo) no quede
   // pegada/cortada contra el borde derecho del gráfico -- pedido explícito
   // ("todas las gráficas están saliendo cortadas al lado derecho").
-  const scalesConFuente = {x:{offset:true, ticks:{font:{size:26}, color:'#000000'}, grid:{display:false}}};
+  const scalesConFuente = {x:{offset:true, ticks:{font:{size:13}, color:'#000000'}, grid:{display:false}}};
   Object.entries(scales||{}).forEach(([eje, cfg]) => {
     const sinGrid = cfg.grid && cfg.grid.drawOnChartArea === false;
-    scalesConFuente[eje] = {...cfg, ticks:{font:{size:28}, color:'#000000', ...(cfg.ticks||{})},
+    scalesConFuente[eje] = {...cfg, ticks:{font:{size:14}, color:'#000000', ...(cfg.ticks||{})},
       grid:{display:!sinGrid, drawOnChartArea:!sinGrid, color:'rgba(0,0,0,.08)'}};
   });
   const chart = new Chart(cv, {
     data:{labels: labels||[], datasets},
     options:{
       responsive:false, animation:false, devicePixelRatio:escala,
-      font:{size:26},
+      font:{size:13},
       layout:{padding:{top: titulo?30:18, right:60, bottom:10, left:10}},
       plugins:{
-        legend:{display:true, position:'bottom', labels:{boxWidth:22, font:{size:25}, usePointStyle:true, pointStyle:'line'}},
-        title: titulo ? {display:true, text:titulo.toUpperCase(), align:'center', font:{size:32, weight:'700'}, color:'#1a2a4a', padding:{bottom:16}} : {display:false},
+        legend:{display:true, position:'bottom', labels:{boxWidth:14, font:{size:13}, usePointStyle:true, pointStyle:'line'}},
+        title: titulo ? {display:true, text:titulo.toUpperCase(), align:'center', font:{size:16, weight:'700'}, color:'#1a2a4a', padding:{bottom:16}} : {display:false},
       },
       scales: scalesConFuente,
     },
@@ -21386,12 +21384,12 @@ async function _informesGraficoAImagen({labels, datasets, scales, titulo, ancho=
       }},
     ],
   });
-  // Mismo boost que usa el botón "Exportar PNG" en vivo (_expImagenChart)
-  // para que los datalabels no se vean chicos al reducirlos a 665px en
-  // Word -- cada dataset define su propio datalabels.font.size, no hay
-  // un único valor central que subir arriba. 1.4 (antes 1.3) -- compensa
-  // el mismo factor 1048/760≈1.38 del cambio de ancho de canvas de arriba.
-  _expEscalarDatalabels(chart, 1.4);
+  // Boost leve SOLO al dato (datalabels), pedido explícito ("Solo el
+  // dato" debe verse un poco más grande que el resto) -- cada dataset
+  // define su propio datalabels.font.size, no hay un único valor central
+  // que subir arriba. 1.15 (antes 1.4, que ya quedaba grande de más
+  // ahora que el bug de tamaño real -- ver arriba -- está arreglado).
+  _expEscalarDatalabels(chart, 1.15);
   chart.update('none');
   // JPEG en vez de PNG -- pedido explícito ("el archivo pesa 24MB, debe
   // ser más liviano"): un gráfico con relleno degradado pesa ~20x menos
