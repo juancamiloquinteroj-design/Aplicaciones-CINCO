@@ -21279,10 +21279,19 @@ async function _informesGraficoAImagen({labels, datasets, scales, titulo, ancho=
   // Ancho por defecto 1048x400 -- pedido explícito ("el tamaño de la
   // gráfica del informe... esta en formato 1048x400 (Eso para todas)"),
   // mismo formato que ya usa _expImagenChart (botón "Exportar PNG" en
-  // vivo). Tamaños de fuente NORMALES (13/14, no agrandados) -- a este
-  // ancho ya se ven bien, coincide con el tamaño real de la plantilla de
-  // referencia; solo el DATO (datalabels) se agranda aparte más abajo
-  // con _expEscalarDatalabels, pedido explícito ("Solo el dato").
+  // vivo). IMPORTANTE -- esta imagen se INSERTA en Word a un ancho FIJO
+  // de 665px (ver _informesParrafoImagen), sin importar el ancho real
+  // del canvas -- al subir el canvas de 760 a 1048px el factor de
+  // reducción pasó de 665/760≈0.87 a 665/1048≈0.63, así que un tamaño de
+  // fuente que se veía bien a 760px queda ~28% MÁS CHICO a 1048px si no
+  // se compensa. Bug real: la vez pasada se dejaron los tamaños en su
+  // valor "normal" de antes (13/14) asumiendo que el ancho nuevo alcanzaba
+  // solo, y terminó saliendo ILEGIBLE ("no se alcanza a ver la gráfica...
+  // no se ven los datos ni las curvas ni eje x ni eje y") -- los tamaños
+  // de acá están escalados por ese mismo factor (1048/665≈1.58) para que
+  // el tamaño FINAL en Word sea legible. Solo el DATO (datalabels) se
+  // agranda un extra aparte más abajo con _expEscalarDatalabels, pedido
+  // explícito ("Solo el dato").
   // Grilla SÓLIDA gris clara (no punteada) y ticks en negro fuerte --
   // mismo criterio "estilo Excel" que ya usa TODA la app (gridC/tickXFuerte
   // en las gráficas en vivo) -- pedido explícito ("que cuando se exporten
@@ -21294,21 +21303,21 @@ async function _informesGraficoAImagen({labels, datasets, scales, titulo, ancho=
   // del último mes (más grande, ver _informesResaltarUltimo) no quede
   // pegada/cortada contra el borde derecho del gráfico -- pedido explícito
   // ("todas las gráficas están saliendo cortadas al lado derecho").
-  const scalesConFuente = {x:{offset:true, ticks:{font:{size:13}, color:'#000000'}, grid:{display:false}}};
+  const scalesConFuente = {x:{offset:true, ticks:{font:{size:26}, color:'#000000'}, grid:{display:false}}};
   Object.entries(scales||{}).forEach(([eje, cfg]) => {
     const sinGrid = cfg.grid && cfg.grid.drawOnChartArea === false;
-    scalesConFuente[eje] = {...cfg, ticks:{font:{size:14}, color:'#000000', ...(cfg.ticks||{})},
+    scalesConFuente[eje] = {...cfg, ticks:{font:{size:28}, color:'#000000', ...(cfg.ticks||{})},
       grid:{display:!sinGrid, drawOnChartArea:!sinGrid, color:'rgba(0,0,0,.08)'}};
   });
   const chart = new Chart(cv, {
     data:{labels: labels||[], datasets},
     options:{
       responsive:false, animation:false, devicePixelRatio:escala,
-      font:{size:13},
+      font:{size:26},
       layout:{padding:{top: titulo?30:18, right:60, bottom:10, left:10}},
       plugins:{
-        legend:{display:true, position:'bottom', labels:{boxWidth:14, font:{size:13}, usePointStyle:true, pointStyle:'line'}},
-        title: titulo ? {display:true, text:titulo.toUpperCase(), align:'center', font:{size:16, weight:'700'}, color:'#1a2a4a', padding:{bottom:16}} : {display:false},
+        legend:{display:true, position:'bottom', labels:{boxWidth:22, font:{size:25}, usePointStyle:true, pointStyle:'line'}},
+        title: titulo ? {display:true, text:titulo.toUpperCase(), align:'center', font:{size:32, weight:'700'}, color:'#1a2a4a', padding:{bottom:16}} : {display:false},
       },
       scales: scalesConFuente,
     },
@@ -21367,8 +21376,9 @@ async function _informesGraficoAImagen({labels, datasets, scales, titulo, ancho=
   // Mismo boost que usa el botón "Exportar PNG" en vivo (_expImagenChart)
   // para que los datalabels no se vean chicos al reducirlos a 665px en
   // Word -- cada dataset define su propio datalabels.font.size, no hay
-  // un único valor central que subir arriba.
-  _expEscalarDatalabels(chart, 1.3);
+  // un único valor central que subir arriba. 1.4 (antes 1.3) -- compensa
+  // el mismo factor 1048/760≈1.38 del cambio de ancho de canvas de arriba.
+  _expEscalarDatalabels(chart, 1.4);
   chart.update('none');
   // JPEG en vez de PNG -- pedido explícito ("el archivo pesa 24MB, debe
   // ser más liviano"): un gráfico con relleno degradado pesa ~20x menos
@@ -22315,147 +22325,8 @@ async function informesFiguraN21(serie, idx, etiqueta){
   });
 }
 
-// Mapa ESTÁTICO de zonas con las MISMAS tarjetas flotantes (Zona/%/
-// Entrada/Salida/Pérdida + línea a su territorio) que ya usa el mapa EN
-// VIVO del Indicador N2-1 (alimN21RenderMarcadoresZona) -- pedido
-// explícito ("el mapa debe traer las tarjetas, como en la aplicación").
-// Reusa la MISMA posición guardada a mano (o el mismo reparto automático
-// en círculo si la zona no tiene una guardada) que ya usa esa vista, así
-// la figura no vuelve a caer en tarjetas que se superponen: si en la app
-// no se superponen, tampoco acá, porque es la misma posición.
-// NO usa Leaflet/tiles de fondo (capturar un mapa interactivo con tiles
-// externos offscreen es frágil -- CORS, timing de carga de tiles) -- se
-// dibuja directo en un canvas 2D con los mismos datos, colores y
-// posiciones que el croquis en vivo.
-async function informesFiguraMapaZonas(mesClave){
-  let topo, resp;
-  try{
-    topo = await mapaZonasCargarTopo();
-    resp = await apiGet('/api/mapa-zonas');
-  }catch(e){ return null; }
-  if(!resp || !resp.departamento) return null;
-  const features = mapaZonasFeaturesDeDepto(topo, resp.departamento);
-  if(!features.length) return null;
 
-  const centros = mapaZonasCentroPorZona(features, resp.municipios);
-  const datosPorZona = {};
-  informesZonasDisponibles().forEach(z => {
-    if(!centros[z]) return;
-    const f = alimN21AgregarMensual(new Set([z])).find(x => x.clave === mesClave);
-    if(f && f.pct != null) datosPorZona[z] = f;
-  });
-  const zonasConDatos = Object.keys(datosPorZona);
-  if(!zonasConDatos.length) return null;
 
-  const deptoBounds = L.geoJSON(features).getBounds();
-  const posicionesGuardadas = resp.posiciones || {};
-  const auto = mapaZonasPosicionesAutomaticas(centros, deptoBounds);
-  const cajaPos = {};
-  zonasConDatos.forEach(z => {
-    const g = posicionesGuardadas[z];
-    cajaPos[z] = g ? {lat:g.lat, lng:g.lng} : {lat:auto[z].lat, lng:auto[z].lng};
-  });
-
-  const ancho = 760, alto = 560, pad = 24, padTarjeta = 92;
-  let minLon=Infinity, maxLon=-Infinity, minLat=Infinity, maxLat=-Infinity;
-  const paraCadaAnillo = (f, cb) => {
-    if(f.geometry.type==='Polygon') f.geometry.coordinates.forEach(cb);
-    else if(f.geometry.type==='MultiPolygon') f.geometry.coordinates.forEach(poly => poly.forEach(cb));
-  };
-  features.forEach(f => paraCadaAnillo(f, anillo => anillo.forEach(([lon,lat]) => {
-    if(lon<minLon) minLon=lon; if(lon>maxLon) maxLon=lon;
-    if(lat<minLat) minLat=lat; if(lat>maxLat) maxLat=lat;
-  })));
-  // La posición de la tarjeta puede caer FUERA del territorio coloreado
-  // (reparto automático en círculo) -- se incluye en el bounding box para
-  // que el canvas no la corte en el borde.
-  zonasConDatos.forEach(z => {
-    const {lat,lng} = cajaPos[z];
-    if(lng<minLon) minLon=lng; if(lng>maxLon) maxLon=lng;
-    if(lat<minLat) minLat=lat; if(lat>maxLat) maxLat=lat;
-  });
-  const spanLon = (maxLon-minLon)||1, spanLat = (maxLat-minLat)||1;
-  const escala = Math.min((ancho-pad*2-padTarjeta*2)/spanLon, (alto-pad*2-padTarjeta*2)/spanLat);
-  const offX = pad+padTarjeta + ((ancho-pad*2-padTarjeta*2) - spanLon*escala)/2;
-  const offY = pad+padTarjeta + ((alto-pad*2-padTarjeta*2) - spanLat*escala)/2;
-  const proyectar = ([lon,lat]) => [offX + (lon-minLon)*escala, alto - (offY + (lat-minLat)*escala)];
-
-  const dpr = 2;
-  const cont = document.createElement('div');
-  cont.style.cssText = 'position:fixed;left:-9999px;top:0';
-  const cv = document.createElement('canvas');
-  cv.width = ancho*dpr; cv.height = alto*dpr;
-  cont.appendChild(cv);
-  document.body.appendChild(cont);
-  const ctx = cv.getContext('2d');
-  ctx.scale(dpr, dpr);
-  ctx.fillStyle = '#ffffff'; ctx.fillRect(0,0,ancho,alto);
-
-  const zonaDeMunicipio = id => resp.municipios[id];
-  features.forEach(f => {
-    const zona = zonaDeMunicipio(mapaZonasIdMunicipio(f));
-    ctx.fillStyle = zona ? colorParaZona(zona) : '#cccccc';
-    ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1;
-    paraCadaAnillo(f, anillo => {
-      ctx.beginPath();
-      anillo.forEach(([lon,lat], i) => {
-        const [x,y] = proyectar([lon,lat]);
-        if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
-      });
-      ctx.closePath(); ctx.fill(); ctx.stroke();
-    });
-  });
-
-  const fmt = v => v==null ? '--' : Math.round(v).toLocaleString('es-CO');
-  zonasConDatos.forEach(zona => {
-    const datos = datosPorZona[zona];
-    const color = colorParaZona(zona);
-    const tip = proyectar([centros[zona].lng, centros[zona].lat]);
-    const box = proyectar([cajaPos[zona].lng, cajaPos[zona].lat]);
-
-    // Línea + punta de flecha desde la tarjeta hasta su territorio --
-    // misma idea que mapaZonasDibujarFlecha, en canvas.
-    ctx.strokeStyle = '#2c3e50'; ctx.lineWidth = 1.25; ctx.globalAlpha = 0.7;
-    ctx.beginPath(); ctx.moveTo(box[0], box[1]); ctx.lineTo(tip[0], tip[1]); ctx.stroke();
-    const dx = tip[0]-box[0], dy = tip[1]-box[1], len = Math.hypot(dx,dy) || 1;
-    const ux = dx/len, uy = dy/len, largoFlecha = Math.min(len*0.15, 10), perpx = -uy, perpy = ux;
-    ctx.beginPath();
-    ctx.moveTo(tip[0]-largoFlecha*ux+largoFlecha*0.5*perpx, tip[1]-largoFlecha*uy+largoFlecha*0.5*perpy);
-    ctx.lineTo(tip[0], tip[1]);
-    ctx.lineTo(tip[0]-largoFlecha*ux-largoFlecha*0.5*perpx, tip[1]-largoFlecha*uy-largoFlecha*0.5*perpy);
-    ctx.stroke();
-    ctx.globalAlpha = 1;
-
-    // Tarjeta -- mismo contenido que la tarjeta EN VIVO (Zona / % / Entrada / Salida / Pérdida).
-    const cajaAncho = 152;
-    const lineas = [
-      {t:`ZONA ${zona}`, f:'bold 12px Arial', c:'#111111'},
-      {t:`${datos.pct.toFixed(2)}%`, f:'bold 19px Arial', c:color},
-      {t:`Entrada: ${fmt(datos.entrada)}`, f:'10px Arial', c:'#444444'},
-      {t:`Salida: ${fmt(datos.salida)}`, f:'10px Arial', c:'#444444'},
-      {t:`Pérdida: ${fmt(datos.perdida)}`, f:'10px Arial', c:'#444444'},
-    ];
-    const lineaAlto = 17, padV = 10;
-    const cajaAlto = padV*2 + lineas.length*lineaAlto;
-    const bx = Math.max(4, Math.min(ancho-cajaAncho-4, box[0]-cajaAncho/2));
-    const by = Math.max(4, Math.min(alto-cajaAlto-4, box[1]-cajaAlto/2));
-    ctx.fillStyle = 'rgba(255,255,255,.97)';
-    ctx.strokeStyle = '#d0d0d0'; ctx.lineWidth = 1;
-    ctx.beginPath();
-    if(ctx.roundRect) ctx.roundRect(bx, by, cajaAncho, cajaAlto, 6); else ctx.rect(bx, by, cajaAncho, cajaAlto);
-    ctx.fill(); ctx.stroke();
-    ctx.fillStyle = color; ctx.fillRect(bx, by, cajaAncho, 4);
-    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-    lineas.forEach((linea, i) => {
-      ctx.fillStyle = linea.c; ctx.font = linea.f;
-      ctx.fillText(linea.t, bx+cajaAncho/2, by+padV+4+i*lineaAlto);
-    });
-  });
-
-  const dataUrl = cv.toDataURL('image/jpeg', 0.9);
-  document.body.removeChild(cont);
-  return {bytes: _informesDataUrlAUint8(dataUrl), width: ancho, height: alto, tipo:'jpg'};
-}
 
 // Análisis del Total N2-1: variación mensual + POR QUÉ (qué zona explica
 // más el cambio) + tendencia reciente -- pedido explícito ("el informe
@@ -23114,8 +22985,10 @@ async function informesSeccionIndicadorN21Total(mesClave){
     return children;
   }
   informesTextoN21Total(serie, idx).forEach(p => children.push(p));
-  const mapa = await informesFiguraMapaZonas(mesClave);
-  if(mapa){ children.push(_informesParrafoImagen(mapa)); children.push(_informesCaption('Figura', 'Indicador N2-1 por zona')); }
+  // El mapa NO va acá -- confirmado contra la plantilla real: después de
+  // la narrativa del Total viene directo la Figura 9 (el gráfico), sin
+  // mapa, pedido explícito ("la figura 12 que colocas como un mapa no
+  // debe ir").
   const fig = await informesFiguraN21(serie, idx, 'Total');
   if(fig){ children.push(_informesParrafoImagen(fig)); children.push(_informesCaption('Figura', 'Indicador Total N2-1 -- pérdida mensual (kWh y %)')); }
 
@@ -24274,8 +24147,7 @@ async function _informesPdfCuerpo(doc, sel, mesIpReg, mesN21, toc, mesComercial,
     if(idxTotal>=0){
       const parrafosTotal = _informesTextosPlanos(_informesConTextoPlano(() => informesTextoN21Total(serieTotal, idxTotal)));
       for(const p of parrafosTotal) y = _informesPdfParrafo(doc, p, y);
-      const mapa = await informesFiguraMapaZonas(mesN21);
-      y = await _informesPdfImagen(doc, mapa, y, 'Indicador N2-1 por zona');
+      // El mapa NO va acá -- mismo criterio que el .docx.
       const figTotal = await informesFiguraN21(serieTotal, idxTotal, 'Total');
       y = await _informesPdfImagen(doc, figTotal, y, 'Indicador Total N2-1 -- pérdida mensual (kWh y %)');
     }else{
