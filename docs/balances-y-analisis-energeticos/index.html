@@ -21418,12 +21418,23 @@ async function _informesGraficoAImagen({labels, datasets, scales, titulo, ancho=
 // exportar PNG de cada gráfica) -- pedido explícito ("así se ve cuando
 // la inserto en Word, se ve cuadrada... yo necesito que se vea así como
 // marco en rojo", marcando que la gráfica debe llegar hasta el margen).
-function _informesParrafoImagen(imgResultado, anchoDoc=665){
+// altoMaxDoc (opcional) -- para figuras que deben llenar la hoja SÍ O SÍ
+// (pedido explícito) aunque su proporción natural sea más alta que ancha:
+// sin esto, limitar solo por ancho podía dejar una imagen más chica de lo
+// necesario si el contenido capturado es angosto/alto. Se elige el ancho
+// final más grande que quepa respetando AMBOS límites (ancho Y alto) sin
+// deformar la proporción original.
+function _informesParrafoImagen(imgResultado, anchoDoc=665, altoMaxDoc=null){
   if(!imgResultado) return null;
-  const alto = Math.round(anchoDoc * imgResultado.height / imgResultado.width);
+  let ancho = anchoDoc;
+  let alto = Math.round(ancho * imgResultado.height / imgResultado.width);
+  if(altoMaxDoc && alto > altoMaxDoc){
+    alto = altoMaxDoc;
+    ancho = Math.round(alto * imgResultado.width / imgResultado.height);
+  }
   return new docx.Paragraph({
     alignment: docx.AlignmentType.CENTER,
-    children: [new docx.ImageRun({data: imgResultado.bytes, transformation:{width:anchoDoc, height:alto}, type: imgResultado.tipo || 'png'})],
+    children: [new docx.ImageRun({data: imgResultado.bytes, transformation:{width:ancho, height:alto}, type: imgResultado.tipo || 'png'})],
   });
 }
 
@@ -22797,11 +22808,14 @@ async function informesSeccionDistribucionFlujo(mesClave){
   const children = [_informesHeading1('Distribución del Flujo por cada Nivel de Tensión e Impactos')];
   const fig = await informesFiguraResumenNiveles(mesClave);
   if(fig){
-    // 490pt -- ancho útil real de la página con márgenes de 2cm (498.6pt),
-    // antes 650pt se salía de la hoja y quedaba cortada/apenas visible --
-    // pedido explícito ("no dse alcanza a ver en el word... que quede en
-    // una hoja tamaño carta con margenes 2 cm a cada lado").
-    children.push(_informesParrafoImagen(fig, 490));
+    // 490pt de ancho -- ancho útil real de la página con márgenes de 2cm
+    // (498.6pt); 620pt de alto máximo -- pedido explícito ("la figura...
+    // debe ocupar SI O SI toda la hoja"): sin el límite de alto, esta
+    // figura (ahora solo la columna de tarjetas, más angosta que la
+    // tarjeta completa de antes) podía salir más chica de lo necesario si
+    // su proporción es más alta que ancha -- con altoMaxDoc se agranda
+    // hasta llenar la hoja en la dimensión que corresponda.
+    children.push(_informesParrafoImagen(fig, 490, 620));
     children.push(_informesCaption('Figura', 'Resumen por Nivel de Tensión -- distribución del flujo e impactos'));
   }else{
     children.push(new docx.Paragraph({children:[new docx.TextRun({text:'No se pudo generar la figura de Resumen por Nivel de Tensión (revisa que el módulo tenga datos cargados).', italics:true})]}));
@@ -22996,7 +23010,23 @@ async function informesFiguraHistoricoZonasN21(mesClave){
   return resultado;
 }
 
+// ALIM_N21_ZONAS (lista de zonas únicas) solo se calculaba dentro de
+// alimN21Cargar() -- si el usuario nunca visitó el módulo Indicador N2-1
+// en esta sesión, quedaba vacía y todo lo que dependía de ella
+// (_informesFilasN21PorZona para las tablas de zona, alimN21RenderHeatmapZonas
+// para el histórico) salía vacío o en blanco -- misma clase de problema
+// que ya se encontró con la Tarifa G+T+R y la Pérdida Técnica por zona de
+// Nivel 3. Se recalcula acá de forma independiente (misma fórmula que
+// alimN21Cargar) si hace falta. Pedido explícito: "no esta saliendo la
+// figura 13" (el histórico de zonas salía con el bloque en blanco).
+function _informesAsegurarN21Zonas(){
+  if(!ALIM_N21_ZONAS.length && ALIM_FILAS.length){
+    ALIM_N21_ZONAS = [...new Set(ALIM_FILAS.map(f => f.zona).filter(Boolean))].sort();
+  }
+}
+
 async function informesSeccionIndicadorN21Total(mesClave){
+  _informesAsegurarN21Zonas();
   const children = [_informesHeading1('Indicador Total N2-1')];
   const serie = alimN21AgregarMensual(new Set());
   const idx = serie.findIndex(f => f.clave === mesClave);
@@ -23231,17 +23261,18 @@ function _informesTablaHtmlAlimentadores(filas){
 // zonas sin ninguna fila (misma lógica que la tabla en vivo: "Ninguna...
 // creció más de 5%"). `tablaHtmlFn` arma el HTML tal cual la tabla en
 // vivo, se captura como imagen -- ver _informesCapturarHtml.
+// Sin encabezado "Zona X" arriba de cada tabla -- confirmado contra la
+// plantilla real: solo apila las imágenes de cada zona una tras otra, sin
+// texto entre ellas (la tabla ya trae su propia columna "Zona" con
+// color). Pedido explícito ("no debe decir las zonas encima de la
+// tabla").
 async function _informesBloquesCrecimientoPorZona(filas, tablaHtmlFn){
   const bloques = [];
   for(const zona of ALIM_N21_ORDEN_TABLA){
     const filasZona = filas.filter(f => f.zona === zona);
     if(!filasZona.length) continue;
-    bloques.push(_informesParrafo([
-      new docx.TextRun({text:`Zona ${zona} (${INFORMES_ZONA_NOMBRE[zona]||zona})`, bold:true}),
-    ]));
     const img = await _informesCapturarHtml(tablaHtmlFn(filasZona));
     if(img) bloques.push(_informesParrafoImagen(img, 620));
-    bloques.push(new docx.Paragraph({text:''}));
   }
   return bloques;
 }
@@ -24161,6 +24192,7 @@ async function _informesPdfCuerpo(doc, sel, mesIpReg, mesN21, toc, mesComercial,
   }
 
   if(sel.n21){
+    _informesAsegurarN21Zonas();
     y = _informesPdfHeading(doc, contador, 0, 'Indicador Total N2-1', y, toc);
     const serieTotal = alimN21AgregarMensual(new Set());
     const idxTotal = serieTotal.findIndex(f=>f.clave===mesN21);
@@ -24201,12 +24233,13 @@ async function _informesPdfCuerpo(doc, sel, mesIpReg, mesN21, toc, mesComercial,
     const filasSubPdf = _informesFilasSubestacionesCrecimiento(mesN21);
     if(filasSubPdf.length){
       y = _informesPdfParrafo(doc, `A continuación, se muestran las subestaciones con mayor crecimiento de pérdida total de cada zona (variación superior al ${umbralCrecInformePdf}% frente al mes anterior):`, y);
+      // Sin encabezado "Zona X" arriba de cada tabla -- mismo criterio
+      // que el .docx, confirmado contra la plantilla real (solo apila las
+      // imágenes, la tabla ya trae su propia columna "Zona"). Pedido
+      // explícito ("no debe decir las zonas encima de la tabla").
       for(const zona of ALIM_N21_ORDEN_TABLA){
         const filasZona = filasSubPdf.filter(f => f.zona === zona);
         if(!filasZona.length) continue;
-        y = _informesPdfAsegurarEspacio(doc, y, 18);
-        doc.setFont('helvetica','bold'); doc.setFontSize(9.5); doc.setTextColor(30);
-        doc.text(`Zona ${zona} (${INFORMES_ZONA_NOMBRE[zona]||zona})`, INFORMES_PDF_MARGEN, y); y += 14;
         const img = await _informesCapturarHtml(_informesTablaHtmlSubestaciones(filasZona));
         y = await _informesPdfImagen(doc, img, y, null, 0.85);
       }
@@ -24217,9 +24250,6 @@ async function _informesPdfCuerpo(doc, sel, mesIpReg, mesN21, toc, mesComercial,
       for(const zona of ALIM_N21_ORDEN_TABLA){
         const filasZona = filasAlimPdf.filter(f => f.zona === zona);
         if(!filasZona.length) continue;
-        y = _informesPdfAsegurarEspacio(doc, y, 18);
-        doc.setFont('helvetica','bold'); doc.setFontSize(9.5); doc.setTextColor(30);
-        doc.text(`Zona ${zona} (${INFORMES_ZONA_NOMBRE[zona]||zona})`, INFORMES_PDF_MARGEN, y); y += 14;
         const img = await _informesCapturarHtml(_informesTablaHtmlAlimentadores(filasZona));
         y = await _informesPdfImagen(doc, img, y, null, 0.9);
       }
@@ -24230,7 +24260,11 @@ async function _informesPdfCuerpo(doc, sel, mesIpReg, mesN21, toc, mesComercial,
     y = _informesPdfHeading(doc, contador, 0, 'Distribución del Flujo por cada Nivel de Tensión e Impactos', y, toc);
     const figDistribucion = await informesFiguraResumenNiveles(mesDistribucion);
     if(figDistribucion){
-      y = await _informesPdfImagen(doc, figDistribucion, y, 'Resumen por Nivel de Tensión -- distribución del flujo e impactos', 0.75);
+      // 0.95 (antes 0.75) -- pedido explícito ("debe ocupar SI O SI toda
+      // la hoja"): ahora solo captura la columna de tarjetas (más angosta
+      // que la tarjeta completa de antes), así que ya no hace falta
+      // reducirla tanto para que quepa.
+      y = await _informesPdfImagen(doc, figDistribucion, y, 'Resumen por Nivel de Tensión -- distribución del flujo e impactos', 0.95);
     }else{
       y = _informesPdfParrafo(doc, 'No se pudo generar la figura de Resumen por Nivel de Tensión (revisa que el módulo tenga datos cargados).', y, {italica:true});
     }
