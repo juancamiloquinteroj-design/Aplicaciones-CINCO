@@ -1022,7 +1022,7 @@ tfoot td:first-child{text-align:left}
     <button class="sidebar-sublink" data-vista="be-ver" onclick="mostrarVista('be-ver')">📊 Ver Balance</button>
     <button class="sidebar-sublink" data-vista="be-alertas" onclick="mostrarVista('be-alertas')">🔔 Alertas de Balance</button>
     <!-- Diagrama Unifilar oculto a pedido del usuario (dibujo lento/difícil de usar) -- código y tablas se dejan intactos por si se retoma más adelante. -->
-    <button class="sidebar-sublink" data-vista="be-puntos-medida" onclick="mostrarVista('be-puntos-medida')">🛠️ Puntos de Medida</button>
+    <button class="sidebar-sublink" data-vista="be-puntos-medida" onclick="mostrarVista('be-puntos-medida')">🛠️ Control de Mantenimiento en Puntos de Medida</button>
   </div>
   <button class="sidebar-link" data-vista="informes" onclick="mostrarVista('informes')">📄 Informes</button>
   <button class="sidebar-link" data-vista="programa-facturacion" onclick="mostrarVista('programa-facturacion')">🧾 Programa de Facturación</button>
@@ -3789,23 +3789,40 @@ tfoot td:first-child{text-align:left}
 
 <!-- ---------------- BALANCES POR ESTRUCTURA · PUNTOS DE MEDIDA ----------------
      Aplicación externa (React/Vite/Firebase, "Gestión de Puntos de Medida",
-     hecha en Google AI Studio) embebida TAL CUAL -- pedido explícito: "quiero
-     que la implementes... no cambiar nada debe ser igual". Se integra vía
-     iframe apuntando a su propio build estático (gestion-puntos-medida/),
-     sin tocar ni una línea de su código fuente (el fuente completo queda
-     además en gestion-puntos-medida-src/ por si hay que reconstruirla). Es
+     hecha en Google AI Studio) embebida vía iframe apuntando a su propio
+     build estático (gestion-puntos-medida/); el fuente completo queda
+     además en gestion-puntos-medida-src/ por si hay que reconstruirla. Es
      una app 100% independiente (su propio Firebase/Firestore ya
      configurado adentro) -- no comparte datos ni backend con el resto de
-     esta app, por eso no tiene lógica de carga en mostrarVista() más allá
-     de mostrar/ocultar la vista. -->
+     esta app.
+     Ajustes pedidos explícitamente sobre la integración (la app en sí
+     sigue intacta, solo se le sincroniza tema y alto desde afuera, algo
+     que sí es propio de esta app y no de "gestion-puntos-medida"):
+       1) "se coloque de fondo claro... el oscuro quiero que se coloque
+          cuando doy click en el cambio de fondo" -- la app ahora sí tiene
+          modo claro/oscuro (agregado con Tailwind class-strategy,
+          conservando los MISMOS colores oscuros que ya tenía como modo
+          oscuro) y _pmSincronizarTema() replica el data-theme de esta
+          página (misma clase .dark) en el <html> del iframe -- mismo
+          origen, así que se puede tocar su documento directo sin
+          postMessage.
+       2) "Ese modulo... se debe llamar 'Control de Mantenimiento en
+          Puntos de Medida'".
+       3) "Ese barra de bajar y subir... tiene que desaparecer, solo debe
+          existir el de mi pagina principal" -- _pmAjustarAltura() mide el
+          scrollHeight real del documento del iframe y lo iguala como
+          altura del iframe (más un ResizeObserver para cuando el
+          contenido cambia de tamaño al navegar dentro de la app), así el
+          iframe nunca tiene su propio scroll -- solo scrollea la página
+          principal. -->
 <div id="vista-be-puntos-medida" class="vista-modulo hidden">
   <div class="sec-hdr">
-    <div class="sec-title">Puntos de Medida</div>
+    <div class="sec-title">Control de Mantenimiento en Puntos de Medida</div>
     <div class="sec-sub">Gestión de intervenciones y fallas en puntos de medida -- aplicación independiente.</div>
   </div>
   <div class="card" style="padding:0;overflow:hidden">
-    <iframe src="gestion-puntos-medida/index.html" title="Gestión de Puntos de Medida"
-      style="width:100%;height:calc(100vh - 210px);min-height:600px;border:none;display:block"></iframe>
+    <iframe id="pm-iframe" src="gestion-puntos-medida/index.html" title="Control de Mantenimiento en Puntos de Medida"
+      onload="_pmIframeListo()" style="width:100%;height:600px;min-height:400px;border:none;display:block"></iframe>
   </div>
 </div>
 <!-- fin vista-be-puntos-medida -->
@@ -4482,6 +4499,35 @@ function toggleTheme(){
   html.setAttribute('data-theme', next);
   localStorage.setItem('pt_theme', next);
   _actualizarTemaCharts();
+  _pmSincronizarTema();
+}
+
+// ---- Sincronización del iframe "Puntos de Medida" (mismo origen, se
+// puede tocar su documento directo) -- pedido explícito: fondo claro por
+// defecto, oscuro solo cuando se activa el cambio de fondo de ESTA página,
+// y sin scroll propio (que el único scroll sea el de la página principal). ----
+let _pmResizeObserver = null;
+function _pmSincronizarTema(){
+  const ifr = document.getElementById('pm-iframe');
+  if(!ifr || !ifr.contentDocument) return;
+  const dark = document.documentElement.getAttribute('data-theme')==='dark';
+  ifr.contentDocument.documentElement.classList.toggle('dark', dark);
+  _pmAjustarAltura();
+}
+function _pmAjustarAltura(){
+  const ifr = document.getElementById('pm-iframe');
+  if(!ifr || !ifr.contentDocument) return;
+  const doc = ifr.contentDocument;
+  const alto = Math.max(doc.documentElement.scrollHeight, doc.body ? doc.body.scrollHeight : 0);
+  if(alto) ifr.style.height = alto + 'px';
+}
+function _pmIframeListo(){
+  _pmSincronizarTema();
+  const ifr = document.getElementById('pm-iframe');
+  if(ifr && ifr.contentDocument && ifr.contentDocument.body && window.ResizeObserver && !_pmResizeObserver){
+    _pmResizeObserver = new ResizeObserver(() => _pmAjustarAltura());
+    _pmResizeObserver.observe(ifr.contentDocument.body);
+  }
 }
 
 // Cada gráfico calcula sus colores (ejes/cuadrícula) UNA vez, al crearse,
@@ -5665,6 +5711,10 @@ async function mostrarVista(nombre){
   const esBalancesEstructura = nombre==='be-crear' || nombre==='be-ver' || nombre==='be-alertas' || nombre==='be-diagramas' || nombre==='be-diagrama-editor' || nombre==='be-puntos-medida';
   document.getElementById('sidebar-be-padre').classList.toggle('activa', esBalancesEstructura);
   if(esBalancesEstructura) abrirSubmenuBE();
+  // El iframe pudo cargar (onload) mientras esta vista seguía oculta --
+  // display:none hace que su documento mida alto 0, así que se reintenta
+  // la sincronización de tema/alto justo al hacerse visible.
+  if(nombre==='be-puntos-medida') _pmSincronizarTema();
 
   const esIndicadorPerdidas = nombre==='ip-reg' || nombre==='ip-comercial' || nombre==='ip-nivel1' || nombre==='reportes-sspd' || nombre==='tridevanados';
   document.getElementById('sidebar-ip-padre').classList.toggle('activa', esIndicadorPerdidas);

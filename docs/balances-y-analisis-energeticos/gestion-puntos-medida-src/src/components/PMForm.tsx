@@ -347,8 +347,8 @@ export default function PMForm({
   };
 
   return (
-    <div className="bg-zinc-900/50 backdrop-blur-md rounded-xl border border-zinc-800 shadow-xl overflow-hidden p-6">
-      <h3 className="text-lg font-extrabold text-zinc-100 mb-6 flex items-center gap-2">
+    <div className="bg-slate-50 dark:bg-zinc-900/50 backdrop-blur-md rounded-xl border border-slate-200 dark:border-zinc-800 shadow-xl overflow-hidden p-6">
+      <h3 className="text-lg font-extrabold text-slate-900 dark:text-zinc-100 mb-6 flex items-center gap-2">
         <Activity className="w-5 h-5 text-amber-500" />
         Registrar Acción o Actualizar Punto de Medida (PM)
       </h3>
@@ -360,7 +360,7 @@ export default function PMForm({
           <div className="space-y-4">
             
             <div className="form-group relative">
-              <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+              <label className="block text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
                 Código de Punto de Medida (PM)
               </label>
               <div className="relative">
@@ -370,10 +370,10 @@ export default function PMForm({
                   value={codigoPM}
                   onChange={(e) => setCodigoPM(e.target.value.toUpperCase())}
                   placeholder="Escriba el código del PM..."
-                  className="w-full pl-10 pr-4 py-2.5 text-sm bg-zinc-950 border border-zinc-800 rounded-lg focus:outline-none focus:border-amber-500 text-zinc-100 placeholder:text-zinc-500 font-mono font-bold"
+                  className="w-full pl-10 pr-4 py-2.5 text-sm bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:border-amber-500 text-slate-900 dark:text-zinc-100 placeholder:text-slate-500 dark:placeholder:text-zinc-500 font-mono font-bold"
                   required
                 />
-                <Search className="absolute left-3.5 top-3.5 w-4.5 h-4.5 text-zinc-500" />
+                <Search className="absolute left-3.5 top-3.5 w-4.5 h-4.5 text-slate-500 dark:text-zinc-500" />
               </div>
               <datalist id="listaPMsForm">
                 {Object.keys(pmsDict).map(pm => (
@@ -383,7 +383,7 @@ export default function PMForm({
             </div>
 
             <div className="form-group space-y-2">
-              <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider">
+              <label className="block text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider">
                 Estado Operativo Principal
               </label>
               <select
@@ -392,7 +392,7 @@ export default function PMForm({
                   const val = e.target.value as "En falla" | "Instalación" | "Ok";
                   setEstadoGral(val);
                 }}
-                className="w-full px-3 py-2.5 text-sm bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:border-amber-500 font-semibold"
+                className="w-full px-3 py-2.5 text-sm bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-lg text-slate-900 dark:text-zinc-100 focus:outline-none focus:border-amber-500 font-semibold"
               >
                 <option value="En falla" className="text-zinc-900 bg-white font-medium">En falla</option>
                 <option value="Instalación" className="text-zinc-900 bg-white font-medium">Instalación</option>
@@ -405,9 +405,9 @@ export default function PMForm({
                   id="chkRevisadoForm"
                   checked={revisado}
                   onChange={(e) => setRevisado(e.target.checked)}
-                  className="rounded border-zinc-800 bg-zinc-950 text-purple-500 focus:ring-0 cursor-pointer w-4 h-4"
+                  className="rounded border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-purple-500 focus:ring-0 cursor-pointer w-4 h-4"
                 />
-                <label htmlFor="chkRevisadoForm" className="text-xs font-bold text-purple-300 cursor-pointer select-none">
+                <label htmlFor="chkRevisadoForm" className="text-xs font-bold text-purple-700 dark:text-purple-300 cursor-pointer select-none">
                   Estado Secundario: Marcar como &ldquo;Revisado&rdquo;
                 </label>
               </div>
@@ -416,18 +416,18 @@ export default function PMForm({
             {/* SECCIÓN DINÁMICA A: MULTI-FALLAS SIMULTÁNEAS */}
             {estadoGral === "En falla" && (
               <div className="p-4 bg-amber-500/5 border border-amber-500/10 rounded-xl space-y-4">
-                <h4 className="text-xs font-extrabold text-amber-400 uppercase tracking-wider border-b border-zinc-800/80 pb-2 flex items-center gap-1.5">
+                <h4 className="text-xs font-extrabold text-amber-600 dark:text-amber-400 uppercase tracking-wider border-b border-slate-200 dark:border-zinc-800/80 pb-2 flex items-center gap-1.5">
                   <AlertTriangle className="w-4 h-4 text-amber-500" />
                   Agregar Nueva Falla al Punto de Medida
                 </h4>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-[11px] font-extrabold text-zinc-400 mb-1.5 uppercase">Componente</label>
+                    <label className="block text-[11px] font-extrabold text-slate-500 dark:text-zinc-400 mb-1.5 uppercase">Componente</label>
                     <select
                       value={selComponente}
                       onChange={handleComponentChange}
-                      className="w-full px-2.5 py-2 text-xs bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:border-amber-500 font-semibold"
+                      className="w-full px-2.5 py-2 text-xs bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-lg text-slate-900 dark:text-zinc-100 focus:outline-none focus:border-amber-500 font-semibold"
                     >
                       <option value="" className="text-zinc-900 bg-white font-medium">Seleccione...</option>
                       <option value="CTs" className="text-zinc-900 bg-white font-medium">CTs</option>
@@ -440,12 +440,12 @@ export default function PMForm({
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-extrabold text-zinc-400 mb-1.5 uppercase">Detalle del Daño</label>
+                    <label className="block text-[11px] font-extrabold text-slate-500 dark:text-zinc-400 mb-1.5 uppercase">Detalle del Daño</label>
                     <select
                       value={selDetalle}
                       onChange={(e) => setSelDetalle(e.target.value)}
                       disabled={!selComponente}
-                      className="w-full px-2.5 py-2 text-xs bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:border-amber-500 disabled:bg-zinc-900/40 disabled:text-zinc-600 disabled:cursor-not-allowed font-semibold"
+                      className="w-full px-2.5 py-2 text-xs bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-lg text-slate-900 dark:text-zinc-100 focus:outline-none focus:border-amber-500 disabled:bg-slate-50 dark:disabled:bg-zinc-900/40 disabled:text-slate-600 dark:disabled:text-zinc-600 disabled:cursor-not-allowed font-semibold"
                     >
                       <option value="" className="text-zinc-900 bg-white font-medium">Seleccione...</option>
                       {selComponente && diccFallas[selComponente].map(f => (
@@ -457,31 +457,31 @@ export default function PMForm({
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
-                    <label className="block text-[11px] font-extrabold text-zinc-400 mb-1.5 uppercase">Fecha Reporte</label>
+                    <label className="block text-[11px] font-extrabold text-slate-500 dark:text-zinc-400 mb-1.5 uppercase">Fecha Reporte</label>
                     <input
                       type="date"
                       value={fechaReporte}
                       onChange={(e) => setFechaReporte(e.target.value)}
-                      className="w-full px-2.5 py-2 text-xs bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:border-amber-500 font-mono"
+                      className="w-full px-2.5 py-2 text-xs bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-lg text-slate-900 dark:text-zinc-100 focus:outline-none focus:border-amber-500 font-mono"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-extrabold text-zinc-400 mb-1.5 uppercase">Programación Reparación</label>
+                    <label className="block text-[11px] font-extrabold text-slate-500 dark:text-zinc-400 mb-1.5 uppercase">Programación Reparación</label>
                     <div className="flex gap-2 items-center">
                       <input
                         type="date"
                         value={fechaReparacion}
                         onChange={(e) => setFechaReparacion(e.target.value)}
                         disabled={chkSinDefinir}
-                        className="flex-1 px-2.5 py-2 text-xs bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:border-amber-500 disabled:bg-zinc-900/40 disabled:text-zinc-600 disabled:cursor-not-allowed font-mono"
+                        className="flex-1 px-2.5 py-2 text-xs bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-lg text-slate-900 dark:text-zinc-100 focus:outline-none focus:border-amber-500 disabled:bg-slate-50 dark:disabled:bg-zinc-900/40 disabled:text-slate-600 dark:disabled:text-zinc-600 disabled:cursor-not-allowed font-mono"
                       />
-                      <label className="flex items-center gap-1.5 text-[11px] text-zinc-400 select-none whitespace-nowrap cursor-pointer">
+                      <label className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-zinc-400 select-none whitespace-nowrap cursor-pointer">
                         <input
                           type="checkbox"
                           checked={chkSinDefinir}
                           onChange={(e) => setChkSinDefinir(e.target.checked)}
-                          className="rounded border-zinc-800 bg-zinc-950 text-amber-500 focus:ring-0"
+                          className="rounded border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-amber-500 focus:ring-0"
                         />
                         Sin definir
                       </label>
@@ -489,14 +489,14 @@ export default function PMForm({
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-extrabold text-zinc-400 mb-1.5 uppercase">Prioridad de Atenci&oacute;n</label>
+                    <label className="block text-[11px] font-extrabold text-slate-500 dark:text-zinc-400 mb-1.5 uppercase">Prioridad de Atenci&oacute;n</label>
                     <select
                       value={prioridadFalla}
                       onChange={(e) => setPrioridadFalla(e.target.value as "Normal" | "Alta")}
-                      className={`w-full px-2.5 py-2 text-xs bg-zinc-950 border rounded-lg focus:outline-none font-bold ${
+                      className={`w-full px-2.5 py-2 text-xs bg-white dark:bg-zinc-950 border rounded-lg focus:outline-none font-bold ${
                         prioridadFalla === "Alta"
-                          ? "border-red-500/80 text-red-400 bg-red-950/20"
-                          : "border-zinc-800 text-zinc-100"
+                          ? "border-red-500/80 text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-950/20"
+                          : "border-slate-200 dark:border-zinc-800 text-slate-900 dark:text-zinc-100"
                       }`}
                     >
                       <option value="Normal" className="text-zinc-900 bg-white font-medium">Prioridad Normal</option>
@@ -506,13 +506,13 @@ export default function PMForm({
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-extrabold text-zinc-400 mb-1.5 uppercase">Observaciones de la Falla</label>
+                  <label className="block text-[11px] font-extrabold text-slate-500 dark:text-zinc-400 mb-1.5 uppercase">Observaciones de la Falla</label>
                   <textarea
                     rows={2}
                     value={observacionesFalla}
                     onChange={(e) => setObservacionesFalla(e.target.value)}
                     placeholder="Descripción del daño particular..."
-                    className="w-full p-2.5 text-xs bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-amber-500"
+                    className="w-full p-2.5 text-xs bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-lg text-slate-900 dark:text-zinc-100 placeholder:text-slate-600 dark:placeholder:text-zinc-600 focus:outline-none focus:border-amber-500"
                   />
                 </div>
 
@@ -529,7 +529,7 @@ export default function PMForm({
                     <button
                       type="button"
                       onClick={handleCancelEditFalla}
-                      className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg text-xs font-bold flex items-center justify-center gap-1 cursor-pointer transition-colors"
+                      className="px-3 py-2 bg-slate-100 dark:bg-zinc-800 hover:bg-slate-200 dark:hover:bg-zinc-700 text-slate-700 dark:text-zinc-300 rounded-lg text-xs font-bold flex items-center justify-center gap-1 cursor-pointer transition-colors"
                       title="Cancelar edición"
                     >
                       <X className="w-4 h-4" />
@@ -543,27 +543,27 @@ export default function PMForm({
             {/* SECCIÓN DINÁMICA B: INSTALACIÓN */}
             {estadoGral === "Instalación" && (
               <div className="p-4 rounded-xl space-y-4 border bg-blue-500/5 border-blue-500/10">
-                <h4 className="text-xs font-extrabold uppercase tracking-wider border-b border-zinc-800/80 pb-2 text-blue-400">
+                <h4 className="text-xs font-extrabold uppercase tracking-wider border-b border-slate-200 dark:border-zinc-800/80 pb-2 text-blue-600 dark:text-blue-400">
                   Programación de Instalación
                 </h4>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-[11px] font-extrabold text-zinc-400 mb-1.5 uppercase">Fecha Programada</label>
+                    <label className="block text-[11px] font-extrabold text-slate-500 dark:text-zinc-400 mb-1.5 uppercase">Fecha Programada</label>
                     <div className="flex gap-2 items-center">
                       <input
                         type="date"
                         value={accionFecha}
                         onChange={(e) => setAccionFecha(e.target.value)}
                         disabled={accionSinDefinir}
-                        className="flex-1 px-2.5 py-2 text-xs bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 focus:outline-none focus:border-blue-500 font-mono disabled:bg-zinc-900/40 disabled:text-zinc-600"
+                        className="flex-1 px-2.5 py-2 text-xs bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-lg text-slate-900 dark:text-zinc-100 focus:outline-none focus:border-blue-500 font-mono disabled:bg-slate-50 dark:disabled:bg-zinc-900/40 disabled:text-slate-600 dark:disabled:text-zinc-600"
                       />
-                      <label className="flex items-center gap-1.5 text-[11px] text-zinc-400 select-none whitespace-nowrap cursor-pointer">
+                      <label className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-zinc-400 select-none whitespace-nowrap cursor-pointer">
                         <input
                           type="checkbox"
                           checked={accionSinDefinir}
                           onChange={(e) => setAccionSinDefinir(e.target.checked)}
-                          className="rounded border-zinc-800 bg-zinc-950 text-blue-500 focus:ring-0"
+                          className="rounded border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-blue-500 focus:ring-0"
                         />
                         Sin definir
                       </label>
@@ -571,14 +571,14 @@ export default function PMForm({
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-extrabold text-zinc-400 mb-1.5 uppercase">Prioridad de Atención</label>
+                    <label className="block text-[11px] font-extrabold text-slate-500 dark:text-zinc-400 mb-1.5 uppercase">Prioridad de Atención</label>
                     <select
                       value={accionPrioridad}
                       onChange={(e) => setAccionPrioridad(e.target.value as "Normal" | "Alta")}
-                      className={`w-full px-2.5 py-2 text-xs bg-zinc-950 border rounded-lg focus:outline-none font-bold ${
+                      className={`w-full px-2.5 py-2 text-xs bg-white dark:bg-zinc-950 border rounded-lg focus:outline-none font-bold ${
                         accionPrioridad === "Alta"
-                          ? "border-red-500/80 text-red-400 bg-red-950/20"
-                          : "border-zinc-800 text-zinc-100"
+                          ? "border-red-500/80 text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-950/20"
+                          : "border-slate-200 dark:border-zinc-800 text-slate-900 dark:text-zinc-100"
                       }`}
                     >
                       <option value="Normal" className="text-zinc-900 bg-white font-medium">Prioridad Normal</option>
@@ -588,13 +588,13 @@ export default function PMForm({
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-extrabold text-zinc-400 mb-1.5 uppercase">Detalles / Instrucciones</label>
+                  <label className="block text-[11px] font-extrabold text-slate-500 dark:text-zinc-400 mb-1.5 uppercase">Detalles / Instrucciones</label>
                   <textarea
                     rows={2}
                     value={accionObservaciones}
                     onChange={(e) => setAccionObservaciones(e.target.value)}
                     placeholder="Instrucciones específicas, técnico asignado, etc."
-                    className="w-full p-2.5 text-xs bg-zinc-950 border border-zinc-800 rounded-lg text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-blue-500"
+                    className="w-full p-2.5 text-xs bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-lg text-slate-900 dark:text-zinc-100 placeholder:text-slate-600 dark:placeholder:text-zinc-600 focus:outline-none focus:border-blue-500"
                   />
                 </div>
               </div>
@@ -605,25 +605,25 @@ export default function PMForm({
           <div className="space-y-4">
             
             {/* CUADRO DE IMPACTO DE RED */}
-            <div className="p-4 bg-zinc-950/40 border border-zinc-800 rounded-xl">
-              <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+            <div className="p-4 bg-white dark:bg-zinc-950/40 border border-slate-200 dark:border-zinc-800 rounded-xl">
+              <h4 className="text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
                 <MapPin className="w-4 h-4 text-emerald-500" />
                 Impacto Operativo en la Red
               </h4>
 
               {codigoPM ? (
                 <div className="space-y-3">
-                  <div className="flex justify-between items-start border-b border-zinc-800 pb-2.5">
+                  <div className="flex justify-between items-start border-b border-slate-200 dark:border-zinc-800 pb-2.5">
                     <div>
-                      <p className="font-mono text-sm font-bold text-zinc-200">{codigoPM}</p>
-                      <p className="text-xs text-zinc-500">{nombrePM}</p>
+                      <p className="font-mono text-sm font-bold text-slate-800 dark:text-zinc-200">{codigoPM}</p>
+                      <p className="text-xs text-slate-500 dark:text-zinc-500">{nombrePM}</p>
                     </div>
                     {esPMRonocido ? (
-                      <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase">
+                      <span className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase">
                         Base de Red
                       </span>
                     ) : (
-                      <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase">
+                      <span className="bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase">
                         Manual (Sin Base)
                       </span>
                     )}
@@ -631,16 +631,16 @@ export default function PMForm({
 
                   {estructurasAfectadas.length > 0 ? (
                     <div>
-                      <p className="text-[11px] font-semibold text-zinc-400 mb-2">
-                        Afecta a <span className="font-extrabold text-amber-400">{estructurasAfectadas.length}</span> estructura(s):
+                      <p className="text-[11px] font-semibold text-slate-500 dark:text-zinc-400 mb-2">
+                        Afecta a <span className="font-extrabold text-amber-600 dark:text-amber-400">{estructurasAfectadas.length}</span> estructura(s):
                       </p>
-                      <div className="max-h-28 overflow-y-auto space-y-1 pr-1 border border-zinc-800 bg-zinc-950/40 rounded p-2">
+                      <div className="max-h-28 overflow-y-auto space-y-1 pr-1 border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-950/40 rounded p-2">
                         {estructurasAfectadas.map(est => {
                           const detail = estructurasDict[est];
                           return (
-                            <div key={est} className="flex justify-between items-center text-[10px] font-mono p-1 bg-zinc-900/60 rounded border border-zinc-800/30">
-                              <span className="font-bold text-zinc-300">{est}</span>
-                              <span className="text-zinc-500">
+                            <div key={est} className="flex justify-between items-center text-[10px] font-mono p-1 bg-slate-50 dark:bg-zinc-900/60 rounded border border-slate-200 dark:border-zinc-800/30">
+                              <span className="font-bold text-slate-700 dark:text-zinc-300">{est}</span>
+                              <span className="text-slate-500 dark:text-zinc-500">
                                 {detail ? `${detail.tipo} | ${detail.zona} | ${detail.nivel}` : "No mapeada"}
                               </span>
                             </div>
@@ -649,11 +649,11 @@ export default function PMForm({
                       </div>
                     </div>
                   ) : (
-                    <p className="text-xs text-zinc-500 italic">No hay estructuras asignadas a este punto de medida en la base de datos.</p>
+                    <p className="text-xs text-slate-500 dark:text-zinc-500 italic">No hay estructuras asignadas a este punto de medida en la base de datos.</p>
                   )}
                 </div>
               ) : (
-                <p className="text-xs text-zinc-500 italic py-2 text-center">
+                <p className="text-xs text-slate-500 dark:text-zinc-500 italic py-2 text-center">
                   Cargue los archivos de red en configuración e ingrese un PM para analizar su impacto.
                 </p>
               )}
@@ -661,8 +661,8 @@ export default function PMForm({
 
             {/* LISTA DE FALLAS SIMULTÁNEAS QUE SE REGISTRARÁN */}
             {estadoGral === "En falla" && (
-              <div className="p-4 bg-zinc-950/40 border border-zinc-800 rounded-xl">
-                <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-wider mb-3 flex items-center justify-between">
+              <div className="p-4 bg-white dark:bg-zinc-950/40 border border-slate-200 dark:border-zinc-800 rounded-xl">
+                <h4 className="text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-3 flex items-center justify-between">
                   <span>Fallas Simultáneas por Registrar ({tempFallas.length})</span>
                   {tempFallas.length > 0 && (
                     <span className="text-[10px] bg-amber-500 text-zinc-950 font-bold px-2 py-0.5 rounded animate-pulse">
@@ -672,33 +672,33 @@ export default function PMForm({
                 </h4>
 
                 {tempFallas.length === 0 ? (
-                  <div className="text-center py-8 border border-dashed border-zinc-800 rounded-lg bg-zinc-950/20">
+                  <div className="text-center py-8 border border-dashed border-slate-200 dark:border-zinc-800 rounded-lg bg-white dark:bg-zinc-950/20">
                     <Wrench className="w-6 h-6 text-zinc-700 mx-auto mb-2 animate-bounce" />
-                    <p className="text-xs text-zinc-500 italic">Lista vacía. Use el módulo superior para agregar daños.</p>
+                    <p className="text-xs text-slate-500 dark:text-zinc-500 italic">Lista vacía. Use el módulo superior para agregar daños.</p>
                   </div>
                 ) : (
                   <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
                     {tempFallas.map((f) => (
-                      <div key={f.id} className="bg-zinc-900/60 p-3 rounded-lg border border-zinc-800 shadow-sm relative flex justify-between items-start">
+                      <div key={f.id} className="bg-slate-50 dark:bg-zinc-900/60 p-3 rounded-lg border border-slate-200 dark:border-zinc-800 shadow-sm relative flex justify-between items-start">
                         <div className="space-y-1 pr-6">
-                          <p className="text-xs font-bold text-zinc-200 flex items-center gap-1.5 flex-wrap">
+                          <p className="text-xs font-bold text-slate-800 dark:text-zinc-200 flex items-center gap-1.5 flex-wrap">
                             <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-                            <span>{f.componente} - <span className="text-amber-400">{f.detalle}</span></span>
+                            <span>{f.componente} - <span className="text-amber-600 dark:text-amber-400">{f.detalle}</span></span>
                             {f.prioridad === "Alta" ? (
-                              <span className="text-[10px] bg-red-500/20 text-red-400 border border-red-500/30 px-1.5 py-0.25 rounded font-extrabold uppercase">
+                              <span className="text-[10px] bg-red-500/20 text-red-600 dark:text-red-400 border border-red-500/30 px-1.5 py-0.25 rounded font-extrabold uppercase">
                                 Alta
                               </span>
                             ) : (
-                              <span className="text-[10px] bg-zinc-800 text-zinc-400 border border-zinc-700 px-1.5 py-0.25 rounded font-medium uppercase">
+                              <span className="text-[10px] bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400 border border-slate-300 dark:border-zinc-700 px-1.5 py-0.25 rounded font-medium uppercase">
                                 Normal
                               </span>
                             )}
                           </p>
-                          <p className="text-[10px] text-zinc-400">
+                          <p className="text-[10px] text-slate-500 dark:text-zinc-400">
                             <strong>Reparación:</strong> {f.fechaReparacion}
                           </p>
                           {f.observaciones && (
-                            <p className="text-[10px] text-zinc-500 italic font-medium leading-tight">
+                            <p className="text-[10px] text-slate-500 dark:text-zinc-500 italic font-medium leading-tight">
                               &ldquo;{f.observaciones}&rdquo;
                             </p>
                           )}
@@ -708,7 +708,7 @@ export default function PMForm({
                             type="button"
                             onClick={() => handleEditStagedFalla(f)}
                             className={`focus:outline-none cursor-pointer p-1 rounded transition-colors ${
-                              editingFallaId === f.id ? "text-amber-400 bg-amber-500/20" : "text-zinc-500 hover:text-amber-400"
+                              editingFallaId === f.id ? "text-amber-600 dark:text-amber-400 bg-amber-500/20" : "text-slate-500 dark:text-zinc-500 hover:text-amber-600 dark:hover:text-amber-400"
                             }`}
                             title="Editar parámetros de esta falla"
                           >
@@ -717,7 +717,7 @@ export default function PMForm({
                           <button
                             type="button"
                             onClick={() => handleRemoveStagedFalla(f.id)}
-                            className="text-zinc-500 hover:text-red-400 focus:outline-none cursor-pointer p-1"
+                            className="text-slate-500 dark:text-zinc-500 hover:text-red-600 dark:hover:text-red-400 focus:outline-none cursor-pointer p-1"
                             title="Remover falla"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -735,24 +735,24 @@ export default function PMForm({
 
         {/* FEEDBACK BANNERS */}
         {errorBanner && (
-          <div className="p-3.5 bg-red-500/10 border border-red-500/25 text-red-400 text-sm rounded-lg flex items-start gap-2 animate-pulse">
+          <div className="p-3.5 bg-red-500/10 border border-red-500/25 text-red-600 dark:text-red-400 text-sm rounded-lg flex items-start gap-2 animate-pulse">
             <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" />
             <span>{errorBanner}</span>
           </div>
         )}
 
         {successBanner && (
-          <div className="p-3.5 bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 text-sm rounded-lg">
+          <div className="p-3.5 bg-emerald-500/10 border border-emerald-500/25 text-emerald-600 dark:text-emerald-400 text-sm rounded-lg">
             {successBanner}
           </div>
         )}
 
         {/* BOTON DE ACCION */}
-        <div className="flex justify-end gap-3 pt-4 border-t border-zinc-800/80">
+        <div className="flex justify-end gap-3 pt-4 border-t border-slate-200 dark:border-zinc-800/80">
           <button
             type="button"
             onClick={handleResetForm}
-            className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-bold text-xs rounded-lg transition-colors cursor-pointer uppercase"
+            className="px-4 py-2 bg-slate-100 dark:bg-zinc-800 hover:bg-slate-200 dark:hover:bg-zinc-700 text-slate-700 dark:text-zinc-300 font-bold text-xs rounded-lg transition-colors cursor-pointer uppercase"
           >
             Limpiar Formulario
           </button>

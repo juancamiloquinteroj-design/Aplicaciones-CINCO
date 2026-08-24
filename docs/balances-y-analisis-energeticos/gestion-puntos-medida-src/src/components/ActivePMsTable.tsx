@@ -199,21 +199,21 @@ export default function ActivePMsTable({
     switch (estado) {
       case "En falla":
       case "Para Revisión":
-        return "bg-red-500/10 text-red-400 border border-red-500/20";
+        return "bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20";
       case "Instalación":
-        return "bg-blue-500/10 text-blue-400 border border-blue-500/20";
+        return "bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20";
       case "Revisado":
-        return "bg-purple-500/10 text-purple-400 border border-purple-500/20";
+        return "bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20";
       default:
-        return "bg-zinc-800 text-zinc-300 border border-zinc-700";
+        return "bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300 border border-slate-300 dark:border-zinc-700";
     }
   };
 
   return (
-    <div className="bg-zinc-900/50 backdrop-blur-md rounded-xl border border-zinc-800 shadow-xl overflow-hidden animate-fade-in">
+    <div className="bg-slate-50 dark:bg-zinc-900/50 backdrop-blur-md rounded-xl border border-slate-200 dark:border-zinc-800 shadow-xl overflow-hidden animate-fade-in">
       
       {/* FILTER & SEARCH BAR */}
-      <div className="p-5 border-b border-zinc-800 bg-zinc-900/40 space-y-4">
+      <div className="p-5 border-b border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-900/40 space-y-4">
         <div className="flex flex-col md:flex-row gap-3">
           
           <div className="flex-1 relative">
@@ -222,16 +222,16 @@ export default function ActivePMsTable({
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder="Buscar por código de PM o nombre..."
-              className="w-full pl-10 pr-4 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-sm focus:outline-none focus:border-amber-500 text-zinc-100 placeholder:text-zinc-500 font-medium"
+              className="w-full pl-10 pr-4 py-2 bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-lg text-sm focus:outline-none focus:border-amber-500 text-slate-900 dark:text-zinc-100 placeholder:text-slate-500 dark:placeholder:text-zinc-500 font-medium"
             />
-            <Search className="absolute left-3.5 top-2.5 w-4.5 h-4.5 text-zinc-500" />
+            <Search className="absolute left-3.5 top-2.5 w-4.5 h-4.5 text-slate-500 dark:text-zinc-500" />
           </div>
 
           <div className="flex flex-wrap gap-2 items-center">
             <select
               value={selectedEstado}
               onChange={(e) => setSelectedEstado(e.target.value)}
-              className="px-3 py-2 bg-zinc-950 border border-zinc-800 text-zinc-300 rounded-lg text-xs focus:outline-none focus:border-amber-500 font-bold"
+              className="px-3 py-2 bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 text-slate-700 dark:text-zinc-300 rounded-lg text-xs focus:outline-none focus:border-amber-500 font-bold"
             >
               <option value="" className="text-zinc-900 bg-white font-medium">Todos los Estados</option>
               <option value="En falla" className="text-zinc-900 bg-white font-medium">En Falla</option>
@@ -242,7 +242,7 @@ export default function ActivePMsTable({
             <select
               value={selectedPrioridad}
               onChange={(e) => setSelectedPrioridad(e.target.value)}
-              className="px-3 py-2 bg-zinc-950 border border-zinc-800 text-zinc-300 rounded-lg text-xs focus:outline-none focus:border-amber-500 font-bold"
+              className="px-3 py-2 bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 text-slate-700 dark:text-zinc-300 rounded-lg text-xs focus:outline-none focus:border-amber-500 font-bold"
             >
               <option value="" className="text-zinc-900 bg-white font-medium">Todas las Prioridades</option>
               <option value="Alta" className="text-zinc-900 bg-white font-bold">Prioridad Alta 🔥</option>
@@ -252,7 +252,7 @@ export default function ActivePMsTable({
             <select
               value={sortTiempoFalla}
               onChange={(e) => setSortTiempoFalla(e.target.value as "none" | "desc" | "asc")}
-              className="px-3 py-2 bg-zinc-950 border border-zinc-800 text-amber-400 rounded-lg text-xs focus:outline-none focus:border-amber-500 font-bold cursor-pointer"
+              className="px-3 py-2 bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 text-amber-600 dark:text-amber-400 rounded-lg text-xs focus:outline-none focus:border-amber-500 font-bold cursor-pointer"
             >
               <option value="none" className="text-zinc-900 bg-white font-medium">Ordenar Tiempo: Sin Orden</option>
               <option value="desc" className="text-zinc-900 bg-white font-medium">Tiempo en Falla: Mayor a Menor (↓)</option>
@@ -272,8 +272,8 @@ export default function ActivePMsTable({
         </div>
 
         {/* NESTED GEOGRAPHIC FILTERS */}
-        <div className="flex flex-wrap gap-3 items-center pt-2 border-t border-zinc-800/60 text-xs">
-          <span className="font-extrabold text-zinc-400 uppercase tracking-wider flex items-center gap-1">
+        <div className="flex flex-wrap gap-3 items-center pt-2 border-t border-slate-200 dark:border-zinc-800/60 text-xs">
+          <span className="font-extrabold text-slate-500 dark:text-zinc-400 uppercase tracking-wider flex items-center gap-1">
             <Filter className="w-3.5 h-3.5 text-amber-500" />
             Ubicación:
           </span>
@@ -281,7 +281,7 @@ export default function ActivePMsTable({
           <select
             value={selectedZona}
             onChange={(e) => setSelectedZona(e.target.value)}
-            className="px-2.5 py-1.5 bg-zinc-950 border border-zinc-800 text-zinc-300 rounded-md focus:outline-none focus:border-amber-500 font-medium"
+            className="px-2.5 py-1.5 bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 text-slate-700 dark:text-zinc-300 rounded-md focus:outline-none focus:border-amber-500 font-medium"
           >
             <option value="" className="text-zinc-900 bg-white font-medium">Todas las Zonas</option>
             {zonas.map(z => (
@@ -292,7 +292,7 @@ export default function ActivePMsTable({
           <select
             value={selectedNivel}
             onChange={(e) => setSelectedNivel(e.target.value)}
-            className="px-2.5 py-1.5 bg-zinc-950 border border-zinc-800 text-zinc-300 rounded-md focus:outline-none focus:border-amber-500 font-medium"
+            className="px-2.5 py-1.5 bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 text-slate-700 dark:text-zinc-300 rounded-md focus:outline-none focus:border-amber-500 font-medium"
           >
             <option value="" className="text-zinc-900 bg-white font-medium">Todos los Niveles</option>
             {niveles.map(n => (
@@ -303,7 +303,7 @@ export default function ActivePMsTable({
           <select
             value={selectedTipo}
             onChange={(e) => setSelectedTipo(e.target.value)}
-            className="px-2.5 py-1.5 bg-zinc-950 border border-zinc-800 text-zinc-300 rounded-md focus:outline-none focus:border-amber-500 font-medium"
+            className="px-2.5 py-1.5 bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 text-slate-700 dark:text-zinc-300 rounded-md focus:outline-none focus:border-amber-500 font-medium"
           >
             <option value="" className="text-zinc-900 bg-white font-medium">Todos los Tipos</option>
             {tipos.map(t => (
@@ -322,7 +322,7 @@ export default function ActivePMsTable({
                 setSearchTerm("");
                 setSortTiempoFalla("none");
               }}
-              className="text-[11px] font-extrabold text-red-400 hover:text-red-300 cursor-pointer ml-auto uppercase"
+              className="text-[11px] font-extrabold text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 cursor-pointer ml-auto uppercase"
             >
               Limpiar Filtros
             </button>
@@ -331,42 +331,42 @@ export default function ActivePMsTable({
       </div>
 
       {/* TABLE WITH STICKY HEADER */}
-      <div className="overflow-x-auto overflow-y-auto max-h-[650px] relative rounded-b-xl border-t border-zinc-800">
+      <div className="overflow-x-auto overflow-y-auto max-h-[650px] relative rounded-b-xl border-t border-slate-200 dark:border-zinc-800">
         {sortedPMs.length === 0 ? (
           <div className="text-center py-12 px-4 animate-pulse">
             <Clock className="w-10 h-10 text-zinc-700 mx-auto mb-3" />
-            <p className="text-sm text-zinc-400 font-medium">No se encontraron puntos de medida con acciones pendientes.</p>
-            <p className="text-xs text-zinc-500 mt-1">Configure o registre un nuevo PM en la pestaña de registro.</p>
+            <p className="text-sm text-slate-500 dark:text-zinc-400 font-medium">No se encontraron puntos de medida con acciones pendientes.</p>
+            <p className="text-xs text-slate-500 dark:text-zinc-500 mt-1">Configure o registre un nuevo PM en la pestaña de registro.</p>
           </div>
         ) : (
           <table className="w-full border-collapse text-left">
-            <thead className="sticky top-0 z-20 bg-zinc-950 shadow-md">
-              <tr className="bg-zinc-950 border-b border-zinc-800 text-zinc-400 text-xs uppercase font-extrabold tracking-wider">
-                <th className="py-4.5 px-5 bg-zinc-950">Punto de Medida</th>
-                <th className="py-4.5 px-5 bg-zinc-950">Estructuras / Impacto</th>
-                <th className="py-4.5 px-5 bg-zinc-950">Estado</th>
+            <thead className="sticky top-0 z-20 bg-white dark:bg-zinc-950 shadow-md">
+              <tr className="bg-white dark:bg-zinc-950 border-b border-slate-200 dark:border-zinc-800 text-slate-500 dark:text-zinc-400 text-xs uppercase font-extrabold tracking-wider">
+                <th className="py-4.5 px-5 bg-white dark:bg-zinc-950">Punto de Medida</th>
+                <th className="py-4.5 px-5 bg-white dark:bg-zinc-950">Estructuras / Impacto</th>
+                <th className="py-4.5 px-5 bg-white dark:bg-zinc-950">Estado</th>
                 <th 
                   onClick={() => {
                     if (sortTiempoFalla === "none") setSortTiempoFalla("desc");
                     else if (sortTiempoFalla === "desc") setSortTiempoFalla("asc");
                     else setSortTiempoFalla("none");
                   }}
-                  className="py-4.5 px-5 bg-zinc-950 cursor-pointer select-none hover:text-amber-400 transition-colors"
+                  className="py-4.5 px-5 bg-white dark:bg-zinc-950 cursor-pointer select-none hover:text-amber-600 dark:hover:text-amber-400 transition-colors"
                   title="Haga clic para ordenar por Tiempo en Falla"
                 >
                   <div className="flex items-center gap-1.5">
                     <span>Tiempo en Falla</span>
                     {sortTiempoFalla === "desc" && <ArrowDown className="w-3.5 h-3.5 text-amber-500" />}
                     {sortTiempoFalla === "asc" && <ArrowUp className="w-3.5 h-3.5 text-amber-500" />}
-                    {sortTiempoFalla === "none" && <ArrowUpDown className="w-3.5 h-3.5 text-zinc-600 hover:text-zinc-400" />}
+                    {sortTiempoFalla === "none" && <ArrowUpDown className="w-3.5 h-3.5 text-slate-600 dark:text-zinc-600 hover:text-slate-500 dark:hover:text-zinc-400" />}
                   </div>
                 </th>
-                <th className="py-4.5 px-5 bg-zinc-950 w-1/4">Observaciones</th>
-                <th className="py-4.5 px-5 bg-zinc-950">Fechas Programadas</th>
-                <th className="py-4.5 px-5 bg-zinc-950 text-right">Acciones</th>
+                <th className="py-4.5 px-5 bg-white dark:bg-zinc-950 w-1/4">Observaciones</th>
+                <th className="py-4.5 px-5 bg-white dark:bg-zinc-950">Fechas Programadas</th>
+                <th className="py-4.5 px-5 bg-white dark:bg-zinc-950 text-right">Acciones</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-zinc-800/60 text-sm">
+            <tbody className="divide-y divide-slate-200 dark:divide-zinc-800/60 text-sm">
               {sortedPMs.map((pm) => {
                 const isExpanded = expandedPMId === pm.id;
                 const isTechExpanded = expandedTechPMId === pm.id;
@@ -375,18 +375,18 @@ export default function ActivePMsTable({
                 
                 return (
                   <React.Fragment key={pm.id}>
-                    <tr className="hover:bg-zinc-800/20 transition-colors">
+                    <tr className="hover:bg-slate-100 dark:hover:bg-zinc-800/20 transition-colors">
                       
                       {/* PM CODE & NAME */}
                       <td className="py-4 px-5">
-                        <div className="font-sans font-bold text-zinc-100 font-mono tracking-wide">{pm.codigoPM}</div>
-                        <div className="text-xs text-zinc-400 leading-normal">{pm.nombrePM}</div>
+                        <div className="font-sans font-bold text-slate-900 dark:text-zinc-100 font-mono tracking-wide">{pm.codigoPM}</div>
+                        <div className="text-xs text-slate-500 dark:text-zinc-400 leading-normal">{pm.nombrePM}</div>
                         <button
                           onClick={() => setExpandedTechPMId(prev => prev === pm.id ? null : pm.id)}
-                          className="mt-2 inline-flex items-center gap-1 text-[10px] font-bold text-amber-400 hover:text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 px-2 py-0.5 rounded cursor-pointer transition-all"
+                          className="mt-2 inline-flex items-center gap-1 text-[10px] font-bold text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 px-2 py-0.5 rounded cursor-pointer transition-all"
                           title="Ver datos técnicos de transformación y medidor"
                         >
-                          <Cpu className="w-3 h-3 text-amber-400" />
+                          <Cpu className="w-3 h-3 text-amber-600 dark:text-amber-400" />
                           <span>Datos Técnicos</span>
                           {isTechExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
                         </button>
@@ -396,7 +396,7 @@ export default function ActivePMsTable({
                       <td className="py-4 px-5">
                         <button
                           onClick={() => toggleExpand(pm.id)}
-                          className="flex items-center gap-1.5 text-xs font-bold text-amber-400 hover:text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/15 px-2.5 py-1 rounded-full cursor-pointer focus:outline-none transition-all"
+                          className="flex items-center gap-1.5 text-xs font-bold text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/15 px-2.5 py-1 rounded-full cursor-pointer focus:outline-none transition-all"
                         >
                           <MapPin className="w-3.5 h-3.5 flex-shrink-0" />
                           <span>{pm.estructuras.length} Estructuras</span>
@@ -411,18 +411,18 @@ export default function ActivePMsTable({
                             {(pm.estadoGral as string) === "Para Revisión" ? "En falla" : pm.estadoGral}
                           </span>
                           {(pm.revisado || pm.estadoGral === "Revisado") && (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-purple-500/15 text-purple-300 border border-purple-500/30">
-                              <CheckCircle className="w-3 h-3 text-purple-400" />
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-purple-500/15 text-purple-700 dark:text-purple-300 border border-purple-500/30">
+                              <CheckCircle className="w-3 h-3 text-purple-600 dark:text-purple-400" />
                               Revisado
                             </span>
                           )}
                           {pm.prioridad === "Alta" || pm.activeFailures?.some(f => f.prioridad === "Alta") ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-red-500/20 text-red-400 border border-red-500/30">
-                              <AlertTriangle className="w-3 h-3 text-red-400" />
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-red-500/20 text-red-600 dark:text-red-400 border border-red-500/30">
+                              <AlertTriangle className="w-3 h-3 text-red-600 dark:text-red-400" />
                               Prioridad Alta
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-zinc-800/80 text-zinc-400 border border-zinc-700/60">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 dark:bg-zinc-800/80 text-slate-500 dark:text-zinc-400 border border-slate-300 dark:border-zinc-700/60">
                               Prioridad Normal
                             </span>
                           )}
@@ -432,12 +432,12 @@ export default function ActivePMsTable({
                       {/* TIME IN FAILURE */}
                       <td className="py-4 px-5">
                         <div className="space-y-1">
-                          <span className={`font-mono text-xs font-bold block ${pm.estadoGral === "En falla" ? "text-amber-400" : "text-zinc-500"}`}>
+                          <span className={`font-mono text-xs font-bold block ${pm.estadoGral === "En falla" ? "text-amber-600 dark:text-amber-400" : "text-slate-500 dark:text-zinc-500"}`}>
                             {getDaysInFailure(pm)}
                           </span>
                           {pm.activeFailures && pm.activeFailures.length > 0 && (
-                            <div className="text-[10px] text-zinc-400 font-mono flex items-center gap-1">
-                              <Calendar className="w-3 h-3 text-zinc-500 flex-shrink-0" />
+                            <div className="text-[10px] text-slate-500 dark:text-zinc-400 font-mono flex items-center gap-1">
+                              <Calendar className="w-3 h-3 text-slate-500 dark:text-zinc-500 flex-shrink-0" />
                               <span>
                                 {Array.from(new Set(pm.activeFailures.map(f => f.fechaReporte).filter(Boolean))).join(", ") || "Sin fecha"}
                               </span>
@@ -450,7 +450,7 @@ export default function ActivePMsTable({
                       <td className="py-4 px-5">
                         <div className="space-y-1.5 max-h-36 overflow-y-auto">
                           {pm.activeFailures.length === 0 ? (
-                            <span className="text-xs text-zinc-500 italic">Ninguna falla reportada</span>
+                            <span className="text-xs text-slate-500 dark:text-zinc-500 italic">Ninguna falla reportada</span>
                           ) : (
                             pm.activeFailures.map((f) => {
                               const isInstalacion = f.componente === "Instalación" || (f.componente === "Medidor" && f.detalle === "Instalación");
@@ -460,20 +460,20 @@ export default function ActivePMsTable({
                               return (
                                 <div key={f.id} className="text-xs">
                                   <div className="flex items-center gap-1 flex-wrap">
-                                    <span className="font-bold text-zinc-300">{displayComponente}</span>
+                                    <span className="font-bold text-slate-700 dark:text-zinc-300">{displayComponente}</span>
                                     {showDetalle && (
-                                      <span className="text-[10px] bg-zinc-800 border border-zinc-700 text-zinc-300 px-1.5 py-0.25 rounded font-medium">
+                                      <span className="text-[10px] bg-slate-100 dark:bg-zinc-800 border border-slate-300 dark:border-zinc-700 text-slate-700 dark:text-zinc-300 px-1.5 py-0.25 rounded font-medium">
                                         {f.detalle}
                                       </span>
                                     )}
                                     {f.prioridad === "Alta" && (
-                                      <span className="text-[10px] bg-red-500/20 text-red-400 border border-red-500/30 px-1.5 py-0.25 rounded font-extrabold uppercase">
+                                      <span className="text-[10px] bg-red-500/20 text-red-600 dark:text-red-400 border border-red-500/30 px-1.5 py-0.25 rounded font-extrabold uppercase">
                                         Alta
                                       </span>
                                     )}
                                   </div>
                                   {f.observaciones && (
-                                    <p className="text-[10px] text-zinc-500 italic pl-1 leading-normal">
+                                    <p className="text-[10px] text-slate-500 dark:text-zinc-500 italic pl-1 leading-normal">
                                       &ldquo;{f.observaciones}&rdquo;
                                     </p>
                                   )}
@@ -488,9 +488,9 @@ export default function ActivePMsTable({
                       <td className="py-4 px-5">
                         <div className="space-y-1.5">
                           {pm.activeFailures.map((f) => (
-                            <div key={f.id} className="text-[11px] border-b border-zinc-800/40 pb-1 last:border-0 last:pb-0">
-                              <div className="font-semibold text-zinc-300 flex items-center gap-1 font-mono">
-                                <Calendar className="w-3 h-3 text-zinc-500" />
+                            <div key={f.id} className="text-[11px] border-b border-slate-200 dark:border-zinc-800/40 pb-1 last:border-0 last:pb-0">
+                              <div className="font-semibold text-slate-700 dark:text-zinc-300 flex items-center gap-1 font-mono">
+                                <Calendar className="w-3 h-3 text-slate-500 dark:text-zinc-500" />
                                 {f.fechaReparacion}
                               </div>
                               {f.vecesReprogramada > 0 && (
@@ -517,7 +517,7 @@ export default function ActivePMsTable({
                           
                           <button
                             onClick={() => onEditPM(pm.codigoPM)}
-                            className="p-2 text-zinc-300 hover:text-amber-400 border border-zinc-800 hover:border-amber-500/50 bg-zinc-950 rounded-lg transition-colors cursor-pointer"
+                            className="p-2 text-slate-700 dark:text-zinc-300 hover:text-amber-600 dark:hover:text-amber-400 border border-slate-200 dark:border-zinc-800 hover:border-amber-500/50 bg-white dark:bg-zinc-950 rounded-lg transition-colors cursor-pointer"
                             title="Editar"
                           >
                             <Pencil className="w-4 h-4" />
@@ -543,7 +543,7 @@ export default function ActivePMsTable({
                                 // Clear confirm after 4 seconds automatically
                                 setTimeout(() => setDeleteConfirmId(prev => prev === pm.id ? null : prev), 4000);
                               }}
-                              className="text-zinc-500 hover:text-red-400 border border-transparent hover:border-red-950/20 hover:bg-red-950/20 p-1.5 rounded-lg transition-colors cursor-pointer"
+                              className="text-slate-500 dark:text-zinc-500 hover:text-red-600 dark:hover:text-red-400 border border-transparent hover:border-red-950/20 hover:bg-red-100 dark:hover:bg-red-950/20 p-1.5 rounded-lg transition-colors cursor-pointer"
                               title="Borrar registro de falla"
                             >
                               <Trash2 className="w-4 h-4 mx-auto" />
@@ -556,23 +556,23 @@ export default function ActivePMsTable({
 
                     {/* EXPANDED ROW: STRUCTURE DETAILS */}
                     {isExpanded && (
-                      <tr className="bg-zinc-950/40">
-                        <td colSpan={7} className="py-3 px-8 border-b border-zinc-800">
-                          <div className="bg-zinc-950 p-4 rounded-xl border border-zinc-800 shadow-inner shadow-black/50">
-                            <h5 className="text-xs font-bold text-zinc-300 mb-2.5 flex items-center gap-1.5">
+                      <tr className="bg-white dark:bg-zinc-950/40">
+                        <td colSpan={7} className="py-3 px-8 border-b border-slate-200 dark:border-zinc-800">
+                          <div className="bg-white dark:bg-zinc-950 p-4 rounded-xl border border-slate-200 dark:border-zinc-800 shadow-inner shadow-black/50">
+                            <h5 className="text-xs font-bold text-slate-700 dark:text-zinc-300 mb-2.5 flex items-center gap-1.5">
                               <MapPin className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
                               Mapa de Estructuras Afectadas ({pm.estructuras.length})
                             </h5>
                             {pm.estructuras.length === 0 ? (
-                              <p className="text-xs text-zinc-500 italic">No hay estructuras asignadas a este punto de medida en la base de datos de red.</p>
+                              <p className="text-xs text-slate-500 dark:text-zinc-500 italic">No hay estructuras asignadas a este punto de medida en la base de datos de red.</p>
                             ) : (
                               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                                 {pm.estructuras.map((estName) => {
                                   const detail = estructurasDict[estName];
                                   return (
-                                    <div key={estName} className="p-2.5 bg-zinc-900 border border-zinc-800/60 rounded-lg text-xs flex justify-between items-center">
-                                      <span className="font-mono font-bold text-zinc-300">{estName}</span>
-                                      <span className="text-[10px] text-zinc-500 font-medium">
+                                    <div key={estName} className="p-2.5 bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800/60 rounded-lg text-xs flex justify-between items-center">
+                                      <span className="font-mono font-bold text-slate-700 dark:text-zinc-300">{estName}</span>
+                                      <span className="text-[10px] text-slate-500 dark:text-zinc-500 font-medium">
                                         {detail ? `${detail.tipo} | ${detail.zona} | ${detail.nivel}` : "No mapeado"}
                                       </span>
                                     </div>
@@ -586,15 +586,15 @@ export default function ActivePMsTable({
                     )}
                     {/* EXPANDED ROW: TECHNICAL SPECS & TRANSFORMERS */}
                     {isTechExpanded && (
-                      <tr className="bg-zinc-950/80">
-                        <td colSpan={7} className="py-3 px-8 border-b border-zinc-800">
-                          <div className="bg-zinc-950 p-4 rounded-xl border border-amber-500/30 shadow-xl shadow-black/80">
-                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3 border-b border-zinc-800 pb-2.5">
-                              <h5 className="text-xs font-extrabold text-amber-400 flex items-center gap-2 uppercase tracking-wider">
+                      <tr className="bg-white dark:bg-zinc-950/80">
+                        <td colSpan={7} className="py-3 px-8 border-b border-slate-200 dark:border-zinc-800">
+                          <div className="bg-white dark:bg-zinc-950 p-4 rounded-xl border border-amber-500/30 shadow-xl shadow-black/80">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3 border-b border-slate-200 dark:border-zinc-800 pb-2.5">
+                              <h5 className="text-xs font-extrabold text-amber-600 dark:text-amber-400 flex items-center gap-2 uppercase tracking-wider">
                                 <Cpu className="w-4 h-4 text-amber-500" />
                                 Especificaciones Técnicas y Relación de Transformación — {pm.codigoPM} ({pm.nombrePM})
                               </h5>
-                              <span className="text-[10px] font-mono text-zinc-400 bg-zinc-900 border border-zinc-800 px-2 py-0.5 rounded">
+                              <span className="text-[10px] font-mono text-slate-500 dark:text-zinc-400 bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 px-2 py-0.5 rounded">
                                 {relData?.cuenta ? `Cuenta: ${relData.cuenta}` : "Punto de Medida: " + pm.codigoPM}
                               </span>
                             </div>
@@ -602,87 +602,87 @@ export default function ActivePMsTable({
                             {relData ? (
                               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                                 {/* CARD 1: TRANSFORMADORES CT/PT */}
-                                <div className="p-3 bg-zinc-900/90 rounded-lg border border-zinc-800 space-y-1.5">
-                                  <div className="text-[11px] font-bold text-zinc-200 uppercase tracking-wide border-b border-zinc-800 pb-1 flex items-center justify-between">
+                                <div className="p-3 bg-slate-50 dark:bg-zinc-900/90 rounded-lg border border-slate-200 dark:border-zinc-800 space-y-1.5">
+                                  <div className="text-[11px] font-bold text-slate-800 dark:text-zinc-200 uppercase tracking-wide border-b border-slate-200 dark:border-zinc-800 pb-1 flex items-center justify-between">
                                     <span>Transformadores</span>
-                                    <span className="text-[9px] text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20 font-mono">CT / PT</span>
+                                    <span className="text-[9px] text-amber-600 dark:text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20 font-mono">CT / PT</span>
                                   </div>
-                                  <div className="text-xs font-mono space-y-1 text-zinc-300 pt-0.5">
+                                  <div className="text-xs font-mono space-y-1 text-slate-700 dark:text-zinc-300 pt-0.5">
                                     <div className="flex justify-between">
-                                      <span className="text-zinc-500">Relación CT:</span>
-                                      <span className="font-bold text-zinc-100">{relData.ct || "N/A"}</span>
+                                      <span className="text-slate-500 dark:text-zinc-500">Relación CT:</span>
+                                      <span className="font-bold text-slate-900 dark:text-zinc-100">{relData.ct || "N/A"}</span>
                                     </div>
                                     <div className="flex justify-between">
-                                      <span className="text-zinc-500">Factor CT (F. CT):</span>
-                                      <span className="font-bold text-amber-400">{relData.fCt || "N/A"}</span>
+                                      <span className="text-slate-500 dark:text-zinc-500">Factor CT (F. CT):</span>
+                                      <span className="font-bold text-amber-600 dark:text-amber-400">{relData.fCt || "N/A"}</span>
                                     </div>
                                     <div className="flex justify-between">
-                                      <span className="text-zinc-500">Relación PT:</span>
-                                      <span className="font-bold text-zinc-100">{relData.pt || "N/A"}</span>
+                                      <span className="text-slate-500 dark:text-zinc-500">Relación PT:</span>
+                                      <span className="font-bold text-slate-900 dark:text-zinc-100">{relData.pt || "N/A"}</span>
                                     </div>
                                     <div className="flex justify-between">
-                                      <span className="text-zinc-500">Factor PT (F. PT):</span>
-                                      <span className="font-bold text-amber-400">{relData.fPt || "N/A"}</span>
+                                      <span className="text-slate-500 dark:text-zinc-500">Factor PT (F. PT):</span>
+                                      <span className="font-bold text-amber-600 dark:text-amber-400">{relData.fPt || "N/A"}</span>
                                     </div>
-                                    <div className="flex justify-between pt-1 border-t border-zinc-800/80">
-                                      <span className="text-zinc-500">Factor Sistema:</span>
-                                      <span className="font-bold text-emerald-400">{relData.factorSistema || "N/A"}</span>
+                                    <div className="flex justify-between pt-1 border-t border-slate-200 dark:border-zinc-800/80">
+                                      <span className="text-slate-500 dark:text-zinc-500">Factor Sistema:</span>
+                                      <span className="font-bold text-emerald-600 dark:text-emerald-400">{relData.factorSistema || "N/A"}</span>
                                     </div>
                                   </div>
                                 </div>
 
                                 {/* CARD 2: MEDIDOR */}
-                                <div className="p-3 bg-zinc-900/90 rounded-lg border border-zinc-800 space-y-1.5">
-                                  <div className="text-[11px] font-bold text-zinc-200 uppercase tracking-wide border-b border-zinc-800 pb-1 flex items-center justify-between">
+                                <div className="p-3 bg-slate-50 dark:bg-zinc-900/90 rounded-lg border border-slate-200 dark:border-zinc-800 space-y-1.5">
+                                  <div className="text-[11px] font-bold text-slate-800 dark:text-zinc-200 uppercase tracking-wide border-b border-slate-200 dark:border-zinc-800 pb-1 flex items-center justify-between">
                                     <span>Equipo de Medida</span>
-                                    <span className="text-[9px] text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20 font-mono">Medidor</span>
+                                    <span className="text-[9px] text-amber-600 dark:text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20 font-mono">Medidor</span>
                                   </div>
-                                  <div className="text-xs font-mono space-y-1 text-zinc-300 pt-0.5">
+                                  <div className="text-xs font-mono space-y-1 text-slate-700 dark:text-zinc-300 pt-0.5">
                                     <div className="flex justify-between">
-                                      <span className="text-zinc-500">Nº Medidor:</span>
-                                      <span className="font-bold text-zinc-100">{relData.medidor || "N/A"}</span>
+                                      <span className="text-slate-500 dark:text-zinc-500">Nº Medidor:</span>
+                                      <span className="font-bold text-slate-900 dark:text-zinc-100">{relData.medidor || "N/A"}</span>
                                     </div>
                                     <div className="flex justify-between">
-                                      <span className="text-zinc-500">Marca:</span>
-                                      <span className="font-bold text-zinc-100">{relData.marcaMedidor || "N/A"}</span>
+                                      <span className="text-slate-500 dark:text-zinc-500">Marca:</span>
+                                      <span className="font-bold text-slate-900 dark:text-zinc-100">{relData.marcaMedidor || "N/A"}</span>
                                     </div>
                                     <div className="flex justify-between">
-                                      <span className="text-zinc-500">Tipo Medidor:</span>
-                                      <span className="font-bold text-zinc-100">{relData.tipoMedidor || "N/A"}</span>
+                                      <span className="text-slate-500 dark:text-zinc-500">Tipo Medidor:</span>
+                                      <span className="font-bold text-slate-900 dark:text-zinc-100">{relData.tipoMedidor || "N/A"}</span>
                                     </div>
                                     <div className="flex justify-between">
-                                      <span className="text-zinc-500">Clase Precisión:</span>
-                                      <span className="font-bold text-zinc-100">{relData.clase || "N/A"}</span>
+                                      <span className="text-slate-500 dark:text-zinc-500">Clase Precisión:</span>
+                                      <span className="font-bold text-slate-900 dark:text-zinc-100">{relData.clase || "N/A"}</span>
                                     </div>
                                   </div>
                                 </div>
 
                                 {/* CARD 3: COMUNICACIÓN Y CUENTA */}
-                                <div className="p-3 bg-zinc-900/90 rounded-lg border border-zinc-800 space-y-1.5">
-                                  <div className="text-[11px] font-bold text-zinc-200 uppercase tracking-wide border-b border-zinc-800 pb-1 flex items-center justify-between">
+                                <div className="p-3 bg-slate-50 dark:bg-zinc-900/90 rounded-lg border border-slate-200 dark:border-zinc-800 space-y-1.5">
+                                  <div className="text-[11px] font-bold text-slate-800 dark:text-zinc-200 uppercase tracking-wide border-b border-slate-200 dark:border-zinc-800 pb-1 flex items-center justify-between">
                                     <span>Comunicaciones y Cuenta</span>
-                                    <span className="text-[9px] text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20 font-mono">Telemedida</span>
+                                    <span className="text-[9px] text-amber-600 dark:text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20 font-mono">Telemedida</span>
                                   </div>
-                                  <div className="text-xs font-mono space-y-1 text-zinc-300 pt-0.5">
+                                  <div className="text-xs font-mono space-y-1 text-slate-700 dark:text-zinc-300 pt-0.5">
                                     <div className="flex justify-between">
-                                      <span className="text-zinc-500">Nº de Cuenta:</span>
-                                      <span className="font-bold text-zinc-100">{relData.cuenta || "N/A"}</span>
+                                      <span className="text-slate-500 dark:text-zinc-500">Nº de Cuenta:</span>
+                                      <span className="font-bold text-slate-900 dark:text-zinc-100">{relData.cuenta || "N/A"}</span>
                                     </div>
                                     <div className="flex justify-between">
-                                      <span className="text-zinc-500">Tipo Comunicación:</span>
-                                      <span className="font-bold text-zinc-100">{relData.comunicacion || "N/A"}</span>
+                                      <span className="text-slate-500 dark:text-zinc-500">Tipo Comunicación:</span>
+                                      <span className="font-bold text-slate-900 dark:text-zinc-100">{relData.comunicacion || "N/A"}</span>
                                     </div>
                                     <div className="flex justify-between">
-                                      <span className="text-zinc-500">Dirección IP:</span>
-                                      <span className="font-bold text-amber-400">{relData.dirIp || "N/A"}</span>
+                                      <span className="text-slate-500 dark:text-zinc-500">Dirección IP:</span>
+                                      <span className="font-bold text-amber-600 dark:text-amber-400">{relData.dirIp || "N/A"}</span>
                                     </div>
                                   </div>
                                 </div>
                               </div>
                             ) : (
-                              <div className="p-3 text-xs text-zinc-400 bg-zinc-900/60 rounded-lg border border-zinc-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                              <div className="p-3 text-xs text-slate-500 dark:text-zinc-400 bg-slate-50 dark:bg-zinc-900/60 rounded-lg border border-slate-200 dark:border-zinc-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
                                 <span>No se encontraron especificaciones técnicas registradas para el nemonico <strong>{pm.codigoPM}</strong>.</span>
-                                <span className="text-[10px] text-zinc-500">Cargue el archivo 'Relaciones Transformacion.csv' en Configuración.</span>
+                                <span className="text-[10px] text-slate-500 dark:text-zinc-500">Cargue el archivo 'Relaciones Transformacion.csv' en Configuración.</span>
                               </div>
                             )}
                           </div>

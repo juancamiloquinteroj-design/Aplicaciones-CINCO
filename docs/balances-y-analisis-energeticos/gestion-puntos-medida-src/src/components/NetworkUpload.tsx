@@ -267,20 +267,20 @@ export default function NetworkUpload({
   };
 
   return (
-    <div id="section_network_upload" className="bg-zinc-900/50 backdrop-blur-md p-6 rounded-xl border border-zinc-800 shadow-xl">
-      <h3 className="text-sm font-extrabold text-zinc-200 uppercase tracking-wider mb-2 flex items-center gap-2">
+    <div id="section_network_upload" className="bg-slate-50 dark:bg-zinc-900/50 backdrop-blur-md p-6 rounded-xl border border-slate-200 dark:border-zinc-800 shadow-xl">
+      <h3 className="text-sm font-extrabold text-slate-800 dark:text-zinc-200 uppercase tracking-wider mb-2 flex items-center gap-2">
         <Upload className="w-5 h-5 text-amber-500" />
         Base de Datos de Red y Especificaciones (CSV)
       </h3>
-      <p className="text-xs text-zinc-400 mb-4 font-medium leading-normal">
+      <p className="text-xs text-slate-500 dark:text-zinc-400 mb-4 font-medium leading-normal">
         Cargue los archivos CSV delimitados para actualizar el mapa de estructuras, puntos de medida y la tabla técnica de relaciones de transformación/medidores.
       </p>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
         
         {/* CARD A */}
-        <div className="p-4 bg-zinc-950 rounded-lg border border-zinc-850/80">
-          <label className="block text-[11px] font-extrabold text-zinc-400 uppercase tracking-wider mb-2">
+        <div className="p-4 bg-white dark:bg-zinc-950 rounded-lg border border-slate-200 dark:border-zinc-850/80">
+          <label className="block text-[11px] font-extrabold text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-2">
             A. Estructuras.csv
           </label>
           <input
@@ -288,14 +288,14 @@ export default function NetworkUpload({
             type="file"
             accept=".csv"
             onChange={(e) => setEstructurasFile(e.target.files?.[0] || null)}
-            className="block w-full text-xs text-zinc-400 file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:font-bold file:bg-zinc-800 file:text-zinc-100 hover:file:bg-zinc-700 cursor-pointer"
+            className="block w-full text-xs text-slate-500 dark:text-zinc-400 file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:font-bold file:bg-slate-100 dark:file:bg-zinc-800 file:text-slate-900 dark:file:text-zinc-100 hover:file:bg-slate-200 dark:hover:file:bg-zinc-700 cursor-pointer"
           />
-          <p className="mt-1.5 text-[10px] text-zinc-500 font-mono">Columnas: ESTRUCTURA, TIPO, ZONA, NIVEL</p>
+          <p className="mt-1.5 text-[10px] text-slate-500 dark:text-zinc-500 font-mono">Columnas: ESTRUCTURA, TIPO, ZONA, NIVEL</p>
         </div>
 
         {/* CARD B */}
-        <div className="p-4 bg-zinc-950 rounded-lg border border-zinc-850/80">
-          <label className="block text-[11px] font-extrabold text-zinc-400 uppercase tracking-wider mb-2">
+        <div className="p-4 bg-white dark:bg-zinc-950 rounded-lg border border-slate-200 dark:border-zinc-850/80">
+          <label className="block text-[11px] font-extrabold text-slate-500 dark:text-zinc-400 uppercase tracking-wider mb-2">
             B. Puntos de Medida.csv
           </label>
           <input
@@ -303,15 +303,15 @@ export default function NetworkUpload({
             type="file"
             accept=".csv"
             onChange={(e) => setPmsFile(e.target.files?.[0] || null)}
-            className="block w-full text-xs text-zinc-400 file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:font-bold file:bg-zinc-800 file:text-zinc-100 hover:file:bg-zinc-700 cursor-pointer"
+            className="block w-full text-xs text-slate-500 dark:text-zinc-400 file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:font-bold file:bg-slate-100 dark:file:bg-zinc-800 file:text-slate-900 dark:file:text-zinc-100 hover:file:bg-slate-200 dark:hover:file:bg-zinc-700 cursor-pointer"
           />
-          <p className="mt-1.5 text-[10px] text-zinc-500 font-mono">Columnas: PM, ESTRUCTURA, NOMBRE</p>
+          <p className="mt-1.5 text-[10px] text-slate-500 dark:text-zinc-500 font-mono">Columnas: PM, ESTRUCTURA, NOMBRE</p>
         </div>
 
         {/* CARD C */}
-        <div className="p-4 bg-zinc-950 rounded-lg border border-amber-500/30">
-          <label className="block text-[11px] font-extrabold text-amber-400 uppercase tracking-wider mb-2 flex items-center gap-1">
-            <Cpu className="w-3.5 h-3.5 text-amber-400" />
+        <div className="p-4 bg-white dark:bg-zinc-950 rounded-lg border border-amber-500/30">
+          <label className="block text-[11px] font-extrabold text-amber-600 dark:text-amber-400 uppercase tracking-wider mb-2 flex items-center gap-1">
+            <Cpu className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
             C. Relaciones Transformacion.csv
           </label>
           <input
@@ -319,9 +319,9 @@ export default function NetworkUpload({
             type="file"
             accept=".csv"
             onChange={(e) => setRelacionesFile(e.target.files?.[0] || null)}
-            className="block w-full text-xs text-zinc-400 file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:font-bold file:bg-zinc-800 file:text-amber-300 hover:file:bg-zinc-700 cursor-pointer"
+            className="block w-full text-xs text-slate-500 dark:text-zinc-400 file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:font-bold file:bg-slate-100 dark:file:bg-zinc-800 file:text-amber-700 dark:file:text-amber-300 hover:file:bg-slate-200 dark:hover:file:bg-zinc-700 cursor-pointer"
           />
-          <p className="mt-1.5 text-[10px] text-zinc-500 font-mono">
+          <p className="mt-1.5 text-[10px] text-slate-500 dark:text-zinc-500 font-mono">
             Columnas: NEMONICO, CUENTA, CT, F. CT, PT, F. PT, MEDIDOR, MARCA, TIPO, CLASE, FACTOR, COMUNICACION, IP
           </p>
         </div>
@@ -329,28 +329,28 @@ export default function NetworkUpload({
       </div>
 
       {errorMsg && (
-        <div className="p-3.5 mb-4 bg-red-500/10 border border-red-500/20 text-red-400 text-xs rounded-lg flex items-start gap-2">
+        <div className="p-3.5 mb-4 bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 text-xs rounded-lg flex items-start gap-2">
           <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5 animate-pulse" />
           <span>{errorMsg}</span>
         </div>
       )}
 
       {successMsg && (
-        <div className="p-3.5 mb-4 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs rounded-lg flex items-start gap-2">
+        <div className="p-3.5 mb-4 bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs rounded-lg flex items-start gap-2">
           <CheckCircle2 className="w-5 h-5 flex-shrink-0 mt-0.5" />
           <span>{successMsg}</span>
         </div>
       )}
 
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-3.5 border-t border-zinc-800/80">
-        <div className="text-xs text-zinc-400 flex flex-wrap gap-2 items-center">
-          <span className="font-bold text-zinc-500 uppercase tracking-wide">Estado actual:</span>{" "}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-3.5 border-t border-slate-200 dark:border-zinc-800/80">
+        <div className="text-xs text-slate-500 dark:text-zinc-400 flex flex-wrap gap-2 items-center">
+          <span className="font-bold text-slate-500 dark:text-zinc-500 uppercase tracking-wide">Estado actual:</span>{" "}
           {estructurasCount > 0 || relacionesCount > 0 ? (
-            <span className="text-emerald-400 font-mono font-bold bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded">
+            <span className="text-emerald-600 dark:text-emerald-400 font-mono font-bold bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded">
               Activo ({estructurasCount} Estructuras, {pmsCount} PMs, {relacionesCount} Relaciones)
             </span>
           ) : (
-            <span className="text-amber-400 font-bold bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded">
+            <span className="text-amber-600 dark:text-amber-400 font-bold bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded">
               Sin datos de red cargados
             </span>
           )}
@@ -361,7 +361,7 @@ export default function NetworkUpload({
           disabled={loading || (!estructurasFile && !pmsFile && !relacionesFile)}
           className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-bold text-xs transition-all duration-150 uppercase tracking-wide ${
             loading || (!estructurasFile && !pmsFile && !relacionesFile)
-              ? "bg-zinc-800 text-zinc-600 cursor-not-allowed border border-zinc-800/50"
+              ? "bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-600 cursor-not-allowed border border-slate-200 dark:border-zinc-800/50"
               : "bg-amber-500 hover:bg-amber-400 text-zinc-950 shadow-lg shadow-amber-500/5 cursor-pointer"
           }`}
         >
