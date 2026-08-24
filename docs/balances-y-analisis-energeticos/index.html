@@ -21240,24 +21240,22 @@ async function _informesGraficoAImagen({labels, datasets, scales, titulo, ancho=
   // Chart.defaults global -- eso afectaría también los gráficos EN VIVO
   // de la app) -- pedido explícito ("no se alcanzan a ver los valores del
   // eje x y y"). Cada eje que no traiga su propio ticks.font se completa acá.
-  // Cuadrícula PUNTEADA -- pedido explícito ("quiero que sea una línea
-  // punteada de fondo"). Chart.js v4 no tiene un `grid.borderDash` nativo
-  // (confirmado: Chart.defaults.scale.grid no trae esa propiedad y no
-  // tenía efecto) -- se apaga el grid nativo de TODOS los ejes
-  // (grid:{display:false}) y se dibuja a mano en el plugin de abajo,
-  // salvo en los ejes que el llamador marcó drawOnChartArea:false
-  // (esos ya comparten el área de otro eje, no deben pintar nada).
-  const ejesSinGrid = new Set();
-  // offset:true en el eje X -- deja un margen a los lados del primer y
-  // último punto, para que la etiqueta resaltada del último mes (más
-  // grande, ver _informesResaltarUltimo) no quede pegada/cortada contra
-  // el borde derecho del gráfico -- pedido explícito ("todas las
-  // gráficas están saliendo cortadas al lado derecho, no se alcanza a
-  // ver bien el %").
-  const scalesConFuente = {x:{offset:true, ticks:{font:{size:13}, color:'#333333'}, grid:{display:false}}};
+  // Grilla SÓLIDA gris clara (no punteada) y ticks en negro fuerte --
+  // mismo criterio "estilo Excel" que ya usa TODA la app (gridC/tickXFuerte
+  // en las gráficas en vivo) -- pedido explícito ("que cuando se exporten
+  // las graficas salgan estilo excel que sean iguales a las de excel"): el
+  // punteado de un pedido anterior quedaba MÁS lejos del estilo Excel real
+  // que la grilla sólida que ya se usa en el resto de la app, así que se
+  // reemplaza por consistencia. offset:true en el eje X -- deja un margen
+  // a los lados del primer y último punto, para que la etiqueta resaltada
+  // del último mes (más grande, ver _informesResaltarUltimo) no quede
+  // pegada/cortada contra el borde derecho del gráfico -- pedido explícito
+  // ("todas las gráficas están saliendo cortadas al lado derecho").
+  const scalesConFuente = {x:{offset:true, ticks:{font:{size:13}, color:'#000000'}, grid:{display:false}}};
   Object.entries(scales||{}).forEach(([eje, cfg]) => {
-    if(cfg.grid && cfg.grid.drawOnChartArea === false) ejesSinGrid.add(eje);
-    scalesConFuente[eje] = {...cfg, ticks:{font:{size:14}, color:'#333333', ...(cfg.ticks||{})}, grid:{display:false}};
+    const sinGrid = cfg.grid && cfg.grid.drawOnChartArea === false;
+    scalesConFuente[eje] = {...cfg, ticks:{font:{size:14}, color:'#000000', ...(cfg.ticks||{})},
+      grid:{display:!sinGrid, drawOnChartArea:!sinGrid, color:'rgba(0,0,0,.08)'}};
   });
   const chart = new Chart(cv, {
     data:{labels: labels||[], datasets},
@@ -21266,35 +21264,59 @@ async function _informesGraficoAImagen({labels, datasets, scales, titulo, ancho=
       font:{size:13},
       layout:{padding:{top: titulo?30:18, right:60, bottom:10, left:10}},
       plugins:{
-        legend:{display:true, position:'bottom', labels:{boxWidth:14, font:{size:13}}},
+        legend:{display:true, position:'bottom', labels:{boxWidth:14, font:{size:13}, usePointStyle:true, pointStyle:'line'}},
         title: titulo ? {display:true, text:titulo.toUpperCase(), align:'center', font:{size:16, weight:'700'}, color:'#1a2a4a', padding:{bottom:16}} : {display:false},
       },
       scales: scalesConFuente,
     },
     plugins: [
-      // Fondo blanco -- necesario para exportar a JPEG (sin canal alfa, lo
+      // Fondo -- degradado blanco -> gris muy claro, MISMO que
+      // tmPluginFondoExcel (versión clara, un informe siempre se ve/imprime
+      // en claro) en vez del blanco plano de antes -- pedido explícito de
+      // que se vea "estilo excel" -- y de paso sigue siendo opaco en TODO
+      // el canvas (necesario para exportar a JPEG: sin canal alfa, lo
       // transparente sale NEGRO al hacer toDataURL, confirmado con una
-      // prueba real). Chart.js limpia el canvas (queda transparente) antes
-      // de dibujar, así que un fillRect ANTES de crear el Chart no sirve --
-      // tiene que ser un plugin beforeDraw, que corre después de ese clear.
-      {id:'informesFondoBlanco', beforeDraw(c){
-        c.ctx.save(); c.ctx.fillStyle = '#ffffff'; c.ctx.fillRect(0, 0, c.width, c.height); c.ctx.restore();
-      }},
-      // Cuadrícula punteada a mano -- ver nota de ejesSinGrid arriba.
-      {id:'informesGridPunteado', beforeDatasetsDraw(chart){
-        const {ctx, chartArea} = chart;
+      // prueba real). Se pinta a mano acá (no se reusa el plugin global
+      // tmPluginFondoExcel) para no depender del orden de ejecución entre
+      // plugins globales y locales de esta gráfica puntual.
+      {id:'informesFondoExcel', beforeDraw(c){
+        const {ctx, chartArea} = c;
         ctx.save();
-        ctx.strokeStyle = '#dcdcdc'; ctx.lineWidth = 1; ctx.setLineDash([4,4]);
-        Object.entries(chart.scales).forEach(([id, scale]) => {
-          if(ejesSinGrid.has(id) || !scale.ticks) return;
-          scale.ticks.forEach((tick, i) => {
-            const pos = scale.getPixelForTick(i);
-            ctx.beginPath();
-            if(scale.axis === 'x'){ ctx.moveTo(pos, chartArea.top); ctx.lineTo(pos, chartArea.bottom); }
-            else{ ctx.moveTo(chartArea.left, pos); ctx.lineTo(chartArea.right, pos); }
-            ctx.stroke();
-          });
-        });
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, c.width, c.height);
+        if(chartArea){
+          const grad = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+          grad.addColorStop(0, '#ffffff'); grad.addColorStop(1, '#f2f2f2');
+          ctx.fillStyle = grad;
+          ctx.fillRect(chartArea.left, chartArea.top, chartArea.right-chartArea.left, chartArea.bottom-chartArea.top);
+        }
+        ctx.restore();
+      }},
+      // Líneas guía verticales desde cada punto hasta el eje X ("drop
+      // lines") -- mismo look que tmPluginLineasGuiaExcel en las gráficas
+      // en vivo, reimplementado acá en claro para no depender de ese
+      // plugin global (que también dibuja en modo oscuro, que un informe
+      // impreso no usa).
+      {id:'informesLineasGuiaExcel', afterDatasetsDraw(c){
+        if(!c.scales || !c.scales.x) return;
+        const {ctx, chartArea, scales:{x}} = c;
+        const metas = c.data.datasets.map((ds,i) => c.getDatasetMeta(i)).filter(m => !m.hidden && m.type === 'line');
+        if(!metas.length) return;
+        const nPuntos = metas[0].data ? metas[0].data.length : 0;
+        ctx.save();
+        ctx.setLineDash([3,3]);
+        ctx.strokeStyle = 'rgba(0,0,0,.18)';
+        ctx.lineWidth = 1;
+        for(let i=0;i<nPuntos;i++){
+          const ys = metas.map(m => m.data[i] && m.data[i].y).filter(v => v!=null && Number.isFinite(v));
+          if(!ys.length) continue;
+          const px = metas[0].data[i].x;
+          const yTop = Math.min(...ys);
+          ctx.beginPath();
+          ctx.moveTo(px, yTop);
+          ctx.lineTo(px, chartArea.bottom);
+          ctx.stroke();
+        }
         ctx.restore();
       }},
     ],
