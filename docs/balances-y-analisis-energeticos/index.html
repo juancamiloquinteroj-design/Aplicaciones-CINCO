@@ -21291,21 +21291,26 @@ async function _informesGraficoAImagen({labels, datasets, scales, titulo, ancho=
   // del último mes (más grande, ver _informesResaltarUltimo) no quede
   // pegada/cortada contra el borde derecho del gráfico -- pedido explícito
   // ("todas las gráficas están saliendo cortadas al lado derecho").
-  const scalesConFuente = {x:{offset:true, ticks:{font:{size:13}, color:'#000000'}, grid:{display:false}}};
+  // Tamaños subidos (13/14->15/16, etc.) -- pedido explícito ("los datos
+  // de las graficas no se ven grandes asi como cuando las descargo en
+  // png"): _expImagenChart (el botón de exportar PNG en vivo) además
+  // escala los datalabels con un factor extra (ver _expEscalarDatalabels
+  // más abajo) -- esta gráfica offscreen no tenía ningún boost equivalente.
+  const scalesConFuente = {x:{offset:true, ticks:{font:{size:15}, color:'#000000'}, grid:{display:false}}};
   Object.entries(scales||{}).forEach(([eje, cfg]) => {
     const sinGrid = cfg.grid && cfg.grid.drawOnChartArea === false;
-    scalesConFuente[eje] = {...cfg, ticks:{font:{size:14}, color:'#000000', ...(cfg.ticks||{})},
+    scalesConFuente[eje] = {...cfg, ticks:{font:{size:16}, color:'#000000', ...(cfg.ticks||{})},
       grid:{display:!sinGrid, drawOnChartArea:!sinGrid, color:'rgba(0,0,0,.08)'}};
   });
   const chart = new Chart(cv, {
     data:{labels: labels||[], datasets},
     options:{
       responsive:false, animation:false, devicePixelRatio:escala,
-      font:{size:13},
+      font:{size:15},
       layout:{padding:{top: titulo?30:18, right:60, bottom:10, left:10}},
       plugins:{
-        legend:{display:true, position:'bottom', labels:{boxWidth:14, font:{size:13}, usePointStyle:true, pointStyle:'line'}},
-        title: titulo ? {display:true, text:titulo.toUpperCase(), align:'center', font:{size:16, weight:'700'}, color:'#1a2a4a', padding:{bottom:16}} : {display:false},
+        legend:{display:true, position:'bottom', labels:{boxWidth:14, font:{size:15}, usePointStyle:true, pointStyle:'line'}},
+        title: titulo ? {display:true, text:titulo.toUpperCase(), align:'center', font:{size:18, weight:'700'}, color:'#1a2a4a', padding:{bottom:16}} : {display:false},
       },
       scales: scalesConFuente,
     },
@@ -21361,6 +21366,12 @@ async function _informesGraficoAImagen({labels, datasets, scales, titulo, ancho=
       }},
     ],
   });
+  // Mismo boost que usa el botón "Exportar PNG" en vivo (_expImagenChart)
+  // para que los datalabels no se vean chicos al reducirlos a 665px en
+  // Word -- cada dataset define su propio datalabels.font.size, no hay
+  // un único valor central que subir arriba.
+  _expEscalarDatalabels(chart, 1.3);
+  chart.update('none');
   // JPEG en vez de PNG -- pedido explícito ("el archivo pesa 24MB, debe
   // ser más liviano"): un gráfico con relleno degradado pesa ~20x menos
   // en JPEG que en PNG sin pérdida visible a calidad 0.9 (verificado).
@@ -22601,13 +22612,6 @@ async function informesFiguraNivelSerie(serie, idx, etiqueta, sufijoTitulo, sinR
   });
 }
 
-// Misma figura pero sobre la serie 12M móvil (Anual) -- adapta los campos
-// *12 al formato plano que espera informesFiguraNivelSerie.
-async function informesFiguraNivelAnual(mensual12Visibles, idx, etiqueta, sinRelleno){
-  const serieAdaptada = mensual12Visibles.map(f => ({clave:f.clave, entrada:f.entrada12, salida:f.salida12, perdida:f.perdida12, pct:f.pct12}));
-  return informesFiguraNivelSerie(serieAdaptada, idx, etiqueta, 'Anuales (12 meses)', sinRelleno);
-}
-
 // Figura Pérdida Total vs Pérdida Técnica -- MISMOS datalabels de
 // valor+Δ ("tarjetita") que _alimNivelConstruirChartTecnica en vivo.
 async function informesFiguraNivelTecnica(mensual, tecnicaPorMes, etiqueta){
@@ -22730,12 +22734,12 @@ async function informesSeccionIndicadorNivel4(mesClave){
   }
   children.push(informesTextoNivel('Nivel 4', mensual[idx], idx>0?mensual[idx-1]:null));
 
-  const anualVisibles = alimN21Con12Meses(mensual).filter(f => f.pct12 != null);
-  const idxAnual = anualVisibles.findIndex(f => f.clave === mesClave);
-  const figMensual = await informesFiguraNivelSerie(mensual, idx, 'Nivel 4', 'Mensuales', ALIM_NIVEL4_SIN_RELLENO);
-  const figAnual = idxAnual>=0 ? await informesFiguraNivelAnual(anualVisibles, idxAnual, 'Nivel 4', ALIM_NIVEL4_SIN_RELLENO) : null;
+  // Solo la figura Mensual -- confirmado contra la plantilla real: Nivel 4
+  // no trae una figura Anual (12 meses) aparte (a diferencia de IP_Reg,
+  // que sí la trae), pedido explícito ("el ejemplo que te pase en la ruta
+  // no tiene datos anuales... sin cambiar estructura").
+  const figMensual = await informesFiguraNivelSerie(mensual, idx, 'Nivel 4', 'Mensuales', true);
   if(figMensual){ children.push(_informesParrafoImagen(figMensual)); children.push(_informesCaption('Figura', 'Índice de Pérdidas Nivel 4 -- Mensual')); }
-  if(figAnual){ children.push(_informesParrafoImagen(figAnual)); children.push(_informesCaption('Figura', 'Índice de Pérdidas Nivel 4 -- Anual (12 meses)')); }
 
   // Tabla Entrada/Salida mes contra mes -- misma _narrativaTablaHtml que
   // IP_Reg, pero solo la variante "mensual" (confirmado en la plantilla
@@ -22826,12 +22830,11 @@ async function informesSeccionIndicadorNivel3(mesClave){
   }
   children.push(informesTextoNivel('Nivel 3', mensual[idx], idx>0?mensual[idx-1]:null));
 
-  const anualVisibles = alimN21Con12Meses(mensual).filter(f => f.pct12 != null);
-  const idxAnual = anualVisibles.findIndex(f => f.clave === mesClave);
-  const figMensual = await informesFiguraNivelSerie(mensual, idx, 'Nivel 3', 'Mensuales', ALIM_NIVEL3_SIN_RELLENO);
-  const figAnual = idxAnual>=0 ? await informesFiguraNivelAnual(anualVisibles, idxAnual, 'Nivel 3', ALIM_NIVEL3_SIN_RELLENO) : null;
+  // Solo la figura Mensual -- confirmado contra la plantilla real: Nivel 3
+  // tampoco trae una figura Anual (12 meses) aparte, mismo criterio que
+  // Nivel 4.
+  const figMensual = await informesFiguraNivelSerie(mensual, idx, 'Nivel 3', 'Mensuales', true);
   if(figMensual){ children.push(_informesParrafoImagen(figMensual)); children.push(_informesCaption('Figura', 'Índice de Pérdidas Nivel 3 -- Mensual')); }
-  if(figAnual){ children.push(_informesParrafoImagen(figAnual)); children.push(_informesCaption('Figura', 'Índice de Pérdidas Nivel 3 -- Anual (12 meses)')); }
 
   const {porZona} = _alimNivel34MensualPorZona(filas);
   const figZonas = await informesFiguraNivel3ZonasComparativo(porZona, mesClave);
@@ -24231,14 +24234,10 @@ async function _informesPdfCuerpo(doc, sel, mesIpReg, mesN21, toc, mesComercial,
       }else{
         const parrafosN4 = _informesTextosPlanos(_informesConTextoPlano(() => [informesTextoNivel('Nivel 4', mensualN4[idxN4], idxN4>0?mensualN4[idxN4-1]:null)]));
         for(const p of parrafosN4) y = _informesPdfParrafo(doc, p, y);
-        const anualN4 = alimN21Con12Meses(mensualN4).filter(f => f.pct12 != null);
-        const idxAnualN4 = anualN4.findIndex(f => f.clave === mesNivel4);
-        const figMensualN4 = await informesFiguraNivelSerie(mensualN4, idxN4, 'Nivel 4', 'Mensuales', ALIM_NIVEL4_SIN_RELLENO);
+        // Solo Mensual -- Nivel 4 no trae figura Anual (12 meses) en la
+        // plantilla real, mismo criterio que el .docx.
+        const figMensualN4 = await informesFiguraNivelSerie(mensualN4, idxN4, 'Nivel 4', 'Mensuales', true);
         y = await _informesPdfImagen(doc, figMensualN4, y, 'Índice de Pérdidas Nivel 4 -- Mensual');
-        if(idxAnualN4>=0){
-          const figAnualN4 = await informesFiguraNivelAnual(anualN4, idxAnualN4, 'Nivel 4', ALIM_NIVEL4_SIN_RELLENO);
-          y = await _informesPdfImagen(doc, figAnualN4, y, 'Índice de Pérdidas Nivel 4 -- Anual (12 meses)');
-        }
         const datosVarN4 = _narrativaEntradaSalidaDatos(mensualN4, mesNivel4, 'mensual');
         if(datosVarN4){
           const figVarN4 = await _informesCapturarHtml(_narrativaTablaHtml(datosVarN4, 'Mensual (mes contra mes)'));
@@ -24269,14 +24268,10 @@ async function _informesPdfCuerpo(doc, sel, mesIpReg, mesN21, toc, mesComercial,
       }else{
         const parrafosN3 = _informesTextosPlanos(_informesConTextoPlano(() => [informesTextoNivel('Nivel 3', mensualN3[idxN3], idxN3>0?mensualN3[idxN3-1]:null)]));
         for(const p of parrafosN3) y = _informesPdfParrafo(doc, p, y);
-        const anualN3 = alimN21Con12Meses(mensualN3).filter(f => f.pct12 != null);
-        const idxAnualN3 = anualN3.findIndex(f => f.clave === mesNivel3);
-        const figMensualN3 = await informesFiguraNivelSerie(mensualN3, idxN3, 'Nivel 3', 'Mensuales', ALIM_NIVEL3_SIN_RELLENO);
+        // Solo Mensual -- Nivel 3 tampoco trae figura Anual (12 meses) en
+        // la plantilla real.
+        const figMensualN3 = await informesFiguraNivelSerie(mensualN3, idxN3, 'Nivel 3', 'Mensuales', true);
         y = await _informesPdfImagen(doc, figMensualN3, y, 'Índice de Pérdidas Nivel 3 -- Mensual');
-        if(idxAnualN3>=0){
-          const figAnualN3 = await informesFiguraNivelAnual(anualN3, idxAnualN3, 'Nivel 3', ALIM_NIVEL3_SIN_RELLENO);
-          y = await _informesPdfImagen(doc, figAnualN3, y, 'Índice de Pérdidas Nivel 3 -- Anual (12 meses)');
-        }
         const {porZona} = _alimNivel34MensualPorZona(filasN3);
         const figZonasN3 = await informesFiguraNivel3ZonasComparativo(porZona, mesNivel3);
         y = await _informesPdfImagen(doc, figZonasN3, y, 'Comparativo de Índice de Pérdidas por Zona -- Nivel 3');
