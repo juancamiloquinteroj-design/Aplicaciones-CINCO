@@ -23002,6 +23002,40 @@ function _informesTablaHtmlN21ZonasTecnica(filas, mesActual, mesAnterior){
   </div>`;
 }
 
+// Captura la tabla "Histórico de Pérdida Total por Zona" (heatmap por
+// zona/mes) que ya existe en pantalla -- confirmado en la plantilla real
+// (Figura 15: "Comportamiento histórico de las zonas Indicador N2-1").
+// A diferencia de las tablas de arriba (que se RECALCULAN aparte, sin
+// tocar el DOM), esta sí ajusta temporalmente los inputs de Rango propios
+// de esa tabla (misma técnica que informesFiguraResumenNiveles) porque
+// alimN21RenderHeatmapZonas ya trae toda la lógica de ventana/pintado
+// hecha -- reimplementarla aparte solo para no tocar 2 <input> sería
+// duplicar código sin necesidad. El rango se calcula para que TERMINE en
+// el mes del informe (mismo ancla/ventana de 8 meses que
+// _alimNivelPoblarRangoDefecto, pero anclada a `mesClave` en vez de "hoy")
+// -- si no, con datos más nuevos ya cargados en la app, se vería más allá
+// del mes que pidió el informe.
+async function informesFiguraHistoricoZonasN21(mesClave){
+  const inDesde = document.getElementById('alim-n21-heatmap-desde');
+  const inHasta = document.getElementById('alim-n21-heatmap-hasta');
+  const cont = document.getElementById('alim-n21-heatmap-zonas');
+  if(!inDesde || !inHasta || !cont || typeof alimN21RenderHeatmapZonas !== 'function') return null;
+  const valorDesdeOriginal = inDesde.value, valorHastaOriginal = inHasta.value;
+  const [aH, mH] = mesClave.split('-').map(Number);
+  const idx = aH*12 + (mH-1) - 7;
+  const aD = Math.floor(idx/12), mD = (idx%12)+1;
+  const claveVentana = alimN21Clave(aD, mD);
+  const claveDesde = claveVentana > ALIM_RANGO_ANCLA ? claveVentana : ALIM_RANGO_ANCLA;
+  inDesde.value = claveDesde + '-01';
+  inHasta.value = mesClave + '-01';
+  alimN21RenderHeatmapZonas();
+  await new Promise(r => setTimeout(r, 60));
+  const resultado = await _informesCapturarBloque('alim-n21-heatmap-zonas');
+  inDesde.value = valorDesdeOriginal; inHasta.value = valorHastaOriginal;
+  alimN21RenderHeatmapZonas();
+  return resultado;
+}
+
 async function informesSeccionIndicadorN21Total(mesClave){
   const children = [_informesHeading1('Indicador Total N2-1')];
   const serie = alimN21AgregarMensual(new Set());
@@ -23026,6 +23060,9 @@ async function informesSeccionIndicadorN21Total(mesClave){
     const figZonasTec = await _informesCapturarHtml(_informesTablaHtmlN21ZonasTecnica(filasZonasN21, mesClave, mesAnteriorN21));
     if(figZonasTec){ children.push(_informesParrafoImagen(figZonasTec, 620)); children.push(_informesCaption('Figura', 'Variación de pérdidas e índices por zona de forma anualizada en el nivel 21')); }
   }
+
+  const figHistorico = await informesFiguraHistoricoZonasN21(mesClave);
+  if(figHistorico){ children.push(_informesParrafoImagen(figHistorico, 620)); children.push(_informesCaption('Figura', 'Comportamiento histórico de las zonas Indicador N2-1')); }
 
   children.push(new docx.Paragraph({text:''}));
 
