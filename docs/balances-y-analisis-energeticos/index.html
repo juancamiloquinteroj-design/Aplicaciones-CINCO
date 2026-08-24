@@ -3241,7 +3241,7 @@ tfoot td:first-child{text-align:left}
         <label style="margin-left:10px">Mes Comercial</label>
         <select id="informes-mes-comercial" style="min-width:150px"></select>
         <label style="margin-left:10px">Mes Distribución del Flujo</label>
-        <select id="informes-mes-distribucion" style="min-width:150px"></select>
+        <select id="informes-mes-distribucion" style="min-width:150px" onchange="informesActualizarTarifaPrecarga()"></select>
       </div>
 
       <div class="fbar" style="margin-bottom:6px;align-items:flex-start">
@@ -3273,6 +3273,17 @@ tfoot td:first-child{text-align:left}
           </label>
           <label style="display:flex;align-items:center;gap:6px;font-size:12.5px">
             <input type="checkbox" id="informes-chk-distribucion" checked> Distribución del Flujo por Nivel de Tensión e Impactos
+          </label>
+          <!-- Tarifa G+T+R para la Valorización ($) de esa figura -- se
+               guarda por mes/operador (mismo localStorage que el campo en
+               vivo de "Resumen por Nivel de Tensión"), así que si ya la
+               digitaste ahí queda precargada acá. Pedido explícito
+               ("Debería preguntarme la tarifa para colocarla ahí"), porque
+               si nunca se visitó esa pantalla para ese mes el campo queda
+               vacío y la figura del informe sale sin Valorización. -->
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2);margin-left:22px">
+            Tarifa G+T+R ($/kWh) para Valorización
+            <input type="number" min="0" step="0.01" placeholder="--" id="informes-tarifa" style="width:90px">
           </label>
           <!-- Sección nueva -- pedido explícito ("Aplica automáticamente la
                metodología de selección de circuitos a intervenir... Excluir
@@ -21024,6 +21035,18 @@ async function informesPoblarSelectorMesDistribucion(){
   const claves = [...new Set([...claves4, ...claves3, ...clavesN21])].sort();
   sel.innerHTML = [...claves].reverse().map(c => `<option value="${c}">${labelMes(c)}</option>`).join('');
   sel.value = (anterior && [...sel.options].some(o=>o.value===anterior)) ? anterior : (claves.length ? claves[claves.length-1] : '');
+  informesActualizarTarifaPrecarga();
+}
+
+// Precarga el campo "Tarifa G+T+R" del panel de Informes con lo que ya
+// esté guardado (localStorage, por mes/operador) para el mes elegido de
+// Distribución del Flujo -- así el usuario ve de un vistazo si falta
+// digitarla para ese mes en particular.
+function informesActualizarTarifaPrecarga(){
+  const selMes = document.getElementById('informes-mes-distribucion');
+  const input = document.getElementById('informes-tarifa');
+  if(!selMes || !input || !selMes.value) return;
+  input.value = _alimResumenLeerTarifa(selMes.value);
 }
 
 // N2-1 corre en su PROPIO calendario (fecha real de cada mes), distinto
@@ -21163,6 +21186,15 @@ async function _informesCapturarBloque(elId){
   temporal.style.setProperty('--text3', '#334155');
   const clonEl = el.cloneNode(true);
   clonEl.querySelectorAll('.exp-wrap, .no-exportar').forEach(b => b.remove());
+  // Mapas Leaflet: las teselas base (calles/satélite) son imágenes de
+  // servidores externos (OSM/CARTO/Esri) sin CORS habilitado -- html2canvas
+  // no logra rasterizarlas (quedan en blanco) aunque el clon las tenga en
+  // el DOM, dejando el panel del mapa vacío salvo los controles. Se
+  // esconden ANTES de capturar -- los polígonos de zona (SVG vectorial
+  // propio de Leaflet) no dependen de estas teselas y sí se capturan bien.
+  // Pedido explícito: "no se ve el mapa lo que yo puse no esta el mapa
+  // solo la tabla".
+  clonEl.querySelectorAll('.leaflet-tile-pane, .leaflet-control-zoom, .leaflet-control-layers, .leaflet-control-attribution').forEach(n => n.remove());
 
   const origInputs = [...el.querySelectorAll('select,input')];
   const clonInputs = clonEl.querySelectorAll('select,input');
@@ -22522,21 +22554,39 @@ function informesTextoNivel(etiquetaNivel, actual, anterior){
 // Figura Entrada/Salida/Pérdida (kWh) + Pérdida % -- MISMO patrón visual
 // que informesFiguraN21 (área + línea con datalabel), reusada tal cual
 // para que Nivel 4/Nivel 3 se vean igual que N2-1 en el informe.
-async function informesFiguraNivelSerie(serie, idx, etiqueta, sufijoTitulo){
-  const fin = idx>=0 ? idx+1 : serie.length;
-  const visibles = serie.slice(Math.max(0, fin-15), fin);
+// Ventana igual a la que usa la app en vivo para estos mismos gráficos
+// (_alimNivelPoblarRangoDefecto: 8 meses móviles, sin bajar de
+// ALIM_RANGO_ANCLA) -- antes usaba un slice fijo de 15 meses que se iba
+// mucho más atrás que enero-2026, pedido explícito ("porque esta
+// mostrando datos anteriores de enero-2026... no se parece al que yo
+// te pase").
+function _informesVentanaNivelDesde(claveHasta){
+  const [aH, mH] = claveHasta.split('-').map(Number);
+  const idx = aH*12 + (mH-1) - 7;
+  const aD = Math.floor(idx/12), mD = (idx%12)+1;
+  const claveVentana = alimN21Clave(aD, mD);
+  return claveVentana > ALIM_RANGO_ANCLA ? claveVentana : ALIM_RANGO_ANCLA;
+}
+
+async function informesFiguraNivelSerie(serie, idx, etiqueta, sufijoTitulo, sinRelleno){
+  const finIdx = idx>=0 ? idx : serie.length-1;
+  if(finIdx < 0) return null;
+  const claveHasta = serie[finIdx].clave;
+  const claveDesde = _informesVentanaNivelDesde(claveHasta);
+  const visibles = serie.filter(f => f.clave >= claveDesde && f.clave <= claveHasta);
   if(!visibles.length) return null;
+  const fillES = sinRelleno ? false : 'origin';
   return _informesGraficoAImagen({
     titulo: `Pérdidas ${sufijoTitulo} -- ${etiqueta}`,
     labels: visibles.map(f => labelMes(f.clave)),
     datasets: [
-      {type:'line', label:'Entrada kWh', yAxisID:'y', order:4, fill:'origin',
+      {type:'line', label:'Entrada kWh', yAxisID:'y', order:4, fill:fillES,
         data: visibles.map(f=>f.entrada), borderColor:'#00B050', backgroundColor:'rgba(0,176,80,.20)',
         borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0, datalabels:{display:false}},
-      {type:'line', label:'Salida kWh', yAxisID:'y', order:3, fill:'origin',
+      {type:'line', label:'Salida kWh', yAxisID:'y', order:3, fill:fillES,
         data: visibles.map(f=>f.salida), borderColor:'#C00000', backgroundColor:'rgba(192,0,0,.20)',
         borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0, datalabels:{display:false}},
-      {type:'line', label:'Pérdida kWh', yAxisID:'y', order:2, fill:'origin',
+      {type:'line', label:'Pérdida kWh', yAxisID:'y', order:2, fill:fillES,
         data: visibles.map(f=>f.perdida), borderColor:'#4472C4', backgroundColor:'rgba(68,114,196,.35)',
         borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0, datalabels:{display:false}},
       {type:'line', label:`Pérdida % ${etiqueta}`, yAxisID:'yPct', order:1,
@@ -22553,9 +22603,9 @@ async function informesFiguraNivelSerie(serie, idx, etiqueta, sufijoTitulo){
 
 // Misma figura pero sobre la serie 12M móvil (Anual) -- adapta los campos
 // *12 al formato plano que espera informesFiguraNivelSerie.
-async function informesFiguraNivelAnual(mensual12Visibles, idx, etiqueta){
+async function informesFiguraNivelAnual(mensual12Visibles, idx, etiqueta, sinRelleno){
   const serieAdaptada = mensual12Visibles.map(f => ({clave:f.clave, entrada:f.entrada12, salida:f.salida12, perdida:f.perdida12, pct:f.pct12}));
-  return informesFiguraNivelSerie(serieAdaptada, idx, etiqueta, 'Anuales (12 meses)');
+  return informesFiguraNivelSerie(serieAdaptada, idx, etiqueta, 'Anuales (12 meses)', sinRelleno);
 }
 
 // Figura Pérdida Total vs Pérdida Técnica -- MISMOS datalabels de
@@ -22682,8 +22732,8 @@ async function informesSeccionIndicadorNivel4(mesClave){
 
   const anualVisibles = alimN21Con12Meses(mensual).filter(f => f.pct12 != null);
   const idxAnual = anualVisibles.findIndex(f => f.clave === mesClave);
-  const figMensual = await informesFiguraNivelSerie(mensual, idx, 'Nivel 4', 'Mensuales');
-  const figAnual = idxAnual>=0 ? await informesFiguraNivelAnual(anualVisibles, idxAnual, 'Nivel 4') : null;
+  const figMensual = await informesFiguraNivelSerie(mensual, idx, 'Nivel 4', 'Mensuales', ALIM_NIVEL4_SIN_RELLENO);
+  const figAnual = idxAnual>=0 ? await informesFiguraNivelAnual(anualVisibles, idxAnual, 'Nivel 4', ALIM_NIVEL4_SIN_RELLENO) : null;
   if(figMensual){ children.push(_informesParrafoImagen(figMensual)); children.push(_informesCaption('Figura', 'Índice de Pérdidas Nivel 4 -- Mensual')); }
   if(figAnual){ children.push(_informesParrafoImagen(figAnual)); children.push(_informesCaption('Figura', 'Índice de Pérdidas Nivel 4 -- Anual (12 meses)')); }
 
@@ -22716,12 +22766,13 @@ async function informesSeccionIndicadorNivel4(mesClave){
 async function informesFiguraNivel3ZonasComparativo(porZona, mesClave){
   const zonasDisponibles = ALIM_N21_ORDEN_TABLA.filter(z => porZona[z]);
   if(!zonasDisponibles.length) return null;
+  const claveDesde = _informesVentanaNivelDesde(mesClave);
   let claves = null;
   zonasDisponibles.forEach(z => {
     const serie = porZona[z];
     const idx = serie.findIndex(f => f.clave === mesClave);
     if(idx < 0) return;
-    const visibles = serie.slice(Math.max(0, idx-14), idx+1).map(f=>f.clave);
+    const visibles = serie.filter(f => f.clave >= claveDesde && f.clave <= mesClave).map(f=>f.clave);
     if(!claves || visibles.length > claves.length) claves = visibles;
   });
   if(!claves || !claves.length) return null;
@@ -22777,8 +22828,8 @@ async function informesSeccionIndicadorNivel3(mesClave){
 
   const anualVisibles = alimN21Con12Meses(mensual).filter(f => f.pct12 != null);
   const idxAnual = anualVisibles.findIndex(f => f.clave === mesClave);
-  const figMensual = await informesFiguraNivelSerie(mensual, idx, 'Nivel 3', 'Mensuales');
-  const figAnual = idxAnual>=0 ? await informesFiguraNivelAnual(anualVisibles, idxAnual, 'Nivel 3') : null;
+  const figMensual = await informesFiguraNivelSerie(mensual, idx, 'Nivel 3', 'Mensuales', ALIM_NIVEL3_SIN_RELLENO);
+  const figAnual = idxAnual>=0 ? await informesFiguraNivelAnual(anualVisibles, idxAnual, 'Nivel 3', ALIM_NIVEL3_SIN_RELLENO) : null;
   if(figMensual){ children.push(_informesParrafoImagen(figMensual)); children.push(_informesCaption('Figura', 'Índice de Pérdidas Nivel 3 -- Mensual')); }
   if(figAnual){ children.push(_informesParrafoImagen(figAnual)); children.push(_informesCaption('Figura', 'Índice de Pérdidas Nivel 3 -- Anual (12 meses)')); }
 
@@ -22827,7 +22878,13 @@ async function informesFiguraResumenNiveles(mesClave){
   const valorOriginal = sel.value;
   const tieneMes = [...sel.options].some(o => o.value === mesClave);
   if(tieneMes && sel.value !== mesClave){ sel.value = mesClave; alimResumenRenderNiveles(); }
-  await new Promise(r => setTimeout(r, 60));  // deja pintar el DOM (tarjetas/mapa) antes de capturar
+  // El mapa Leaflet (polígonos SVG de zona) puede seguir asentando su
+  // layout (ResizeObserver + fitBounds) más allá de un frame -- 60ms no
+  // alcanzaba y el mapa salía vacío en la captura. Se fuerza
+  // invalidateSize() y se espera más antes de capturar.
+  const mapaResumen = (typeof MAPA_ZONAS_INSTANCIAS !== 'undefined') ? MAPA_ZONAS_INSTANCIAS['alim-resumen-mapa-leaflet'] : null;
+  if(mapaResumen){ try{ mapaResumen.invalidateSize(); }catch(e){} }
+  await new Promise(r => setTimeout(r, 300));  // deja pintar el DOM (tarjetas/mapa) antes de capturar
   const resultado = await _informesCapturarBloque('alim-resumen-card');
   if(sel.value !== valorOriginal){ sel.value = valorOriginal; alimResumenRenderNiveles(); }
   return resultado;
@@ -23734,6 +23791,22 @@ function _informesValidarSelMesYContenido(msg){
   if(!sel.subestacion && !sel.ipReg && !sel.nivel4 && !sel.nivel3 && !sel.n21 && !sel.distribucion && !sel.recomendacion && !sel.comercial && !sel.temperatura && !sel.conclusiones){
     msg.textContent = 'Elige al menos un contenido para el informe.'; return null;
   }
+  // Tarifa G+T+R para la Valorización ($) de "Distribución del Flujo" --
+  // pedido explícito ("Debería preguntarme la tarifa para colocarla ahí").
+  // Se guarda por mes/operador (mismo localStorage que el campo en vivo),
+  // así que si ya estaba digitada para ese mes no hace falta repetirla acá.
+  if(sel.distribucion && meses.distribucion){
+    const inputTarifa = document.getElementById('informes-tarifa');
+    const yaGuardada = _alimResumenLeerTarifa(meses.distribucion);
+    const enPanel = inputTarifa ? inputTarifa.value : '';
+    if(enPanel !== ''){
+      _alimResumenGuardarTarifa(meses.distribucion, enPanel);
+    }else if(yaGuardada === ''){
+      msg.textContent = `Ingresa la Tarifa G+T+R ($/kWh) de ${labelMes(meses.distribucion)} para generar "Distribución del Flujo" (o desactiva esa sección).`;
+      if(inputTarifa) inputTarifa.focus();
+      return null;
+    }
+  }
   return {meses, sel};
 }
 
@@ -24186,10 +24259,10 @@ async function _informesPdfCuerpo(doc, sel, mesIpReg, mesN21, toc, mesComercial,
         for(const p of parrafosN4) y = _informesPdfParrafo(doc, p, y);
         const anualN4 = alimN21Con12Meses(mensualN4).filter(f => f.pct12 != null);
         const idxAnualN4 = anualN4.findIndex(f => f.clave === mesNivel4);
-        const figMensualN4 = await informesFiguraNivelSerie(mensualN4, idxN4, 'Nivel 4', 'Mensuales');
+        const figMensualN4 = await informesFiguraNivelSerie(mensualN4, idxN4, 'Nivel 4', 'Mensuales', ALIM_NIVEL4_SIN_RELLENO);
         y = await _informesPdfImagen(doc, figMensualN4, y, 'Índice de Pérdidas Nivel 4 -- Mensual');
         if(idxAnualN4>=0){
-          const figAnualN4 = await informesFiguraNivelAnual(anualN4, idxAnualN4, 'Nivel 4');
+          const figAnualN4 = await informesFiguraNivelAnual(anualN4, idxAnualN4, 'Nivel 4', ALIM_NIVEL4_SIN_RELLENO);
           y = await _informesPdfImagen(doc, figAnualN4, y, 'Índice de Pérdidas Nivel 4 -- Anual (12 meses)');
         }
         const datosVarN4 = _narrativaEntradaSalidaDatos(mensualN4, mesNivel4, 'mensual');
@@ -24224,10 +24297,10 @@ async function _informesPdfCuerpo(doc, sel, mesIpReg, mesN21, toc, mesComercial,
         for(const p of parrafosN3) y = _informesPdfParrafo(doc, p, y);
         const anualN3 = alimN21Con12Meses(mensualN3).filter(f => f.pct12 != null);
         const idxAnualN3 = anualN3.findIndex(f => f.clave === mesNivel3);
-        const figMensualN3 = await informesFiguraNivelSerie(mensualN3, idxN3, 'Nivel 3', 'Mensuales');
+        const figMensualN3 = await informesFiguraNivelSerie(mensualN3, idxN3, 'Nivel 3', 'Mensuales', ALIM_NIVEL3_SIN_RELLENO);
         y = await _informesPdfImagen(doc, figMensualN3, y, 'Índice de Pérdidas Nivel 3 -- Mensual');
         if(idxAnualN3>=0){
-          const figAnualN3 = await informesFiguraNivelAnual(anualN3, idxAnualN3, 'Nivel 3');
+          const figAnualN3 = await informesFiguraNivelAnual(anualN3, idxAnualN3, 'Nivel 3', ALIM_NIVEL3_SIN_RELLENO);
           y = await _informesPdfImagen(doc, figAnualN3, y, 'Índice de Pérdidas Nivel 3 -- Anual (12 meses)');
         }
         const {porZona} = _alimNivel34MensualPorZona(filasN3);
