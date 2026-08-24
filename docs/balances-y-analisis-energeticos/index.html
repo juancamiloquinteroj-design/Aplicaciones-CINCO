@@ -2751,10 +2751,19 @@ tfoot td:first-child{text-align:left}
          heatmap historico en ves de esas graficas" -- se pega mucho mejor
          en un informe que 5 gráficas apiladas, y de paso usa el botón de
          exportar Imagen/Excel que ya se inyecta solo en toda .tbl-wrap).
-         Cada celda trae 3 líneas: % del mes, Pérdida en GWh, y el Δ pp vs.
+         Cada celda trae 3 líneas: % del mes, Pérdida en kWh, y el Δ pp vs.
          el mes anterior -- SOLO esa última línea lleva color (rojo =
          subió, verde = bajó, mismo criterio que el resto de la app),
-         pedido explícito: "solo quiero que tenga color lo ↓ -0,76 pp". -->
+         pedido explícito: "solo quiero que tenga color lo ↓ -0,76 pp".
+         Filtro Rango propio + fila Total -- pedido explícito: "necesito un
+         filtro de fecha para poder ver la fecha desde enero-2026 tambien
+         debe aparecer una fila total y este dato... lo quiero en kWh". -->
+    <div class="fbar" style="justify-content:center;margin-bottom:10px">
+      <label>Rango</label>
+      <input type="date" id="alim-n21-heatmap-desde" onchange="alimN21RenderHeatmapZonas()">
+      <span style="font-size:11px;color:var(--text3)">→</span>
+      <input type="date" id="alim-n21-heatmap-hasta" onchange="alimN21RenderHeatmapZonas()">
+    </div>
     <div class="card">
       <div style="text-align:center;margin-bottom:8px">
         <div style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Histórico de Pérdida Total por Zona</div>
@@ -16814,38 +16823,71 @@ function alimN21RenderHeatmapZonas(){
     porZona[z] = new Map(serie.map(f => [f.clave, f]));
     serie.forEach(f => clavesSet.add(f.clave));
   });
-  const claves = [...clavesSet].sort();
-  if(!claves.length){ cont.innerHTML = ''; return; }
+  // Fila Total -- suma real de TODAS las zonas (no promedio de %), mismo
+  // criterio que el resto de la app -- pedido explícito ("tambien debe
+  // aparecer una fila total").
+  const serieTotal = alimN21AgregarMensual(new Set()).filter(f => f.pct != null);
+  const porTotal = new Map(serieTotal.map(f => [f.clave, f]));
+  serieTotal.forEach(f => clavesSet.add(f.clave));
 
-  const celdaEstilo = 'text-align:center;padding:6px 8px;min-width:74px;border-right:1px solid var(--border);border-bottom:1px solid var(--border)';
+  const todasClaves = [...clavesSet].sort();
+  if(!todasClaves.length){ cont.innerHTML = ''; return; }
+
+  // Filtro Rango propio -- misma ventana deslizante de 8 meses anclada en
+  // enero-2026 que el resto de la app (ver _alimNivelPoblarRangoDefecto).
+  // Pedido explícito: "necesito un filtro de fecha para poder ver la
+  // fecha desde enero-2026".
+  _alimNivelPoblarRangoDefecto('alim-n21-heatmap', todasClaves);
+  const inDesde = document.getElementById('alim-n21-heatmap-desde');
+  const inHasta = document.getElementById('alim-n21-heatmap-hasta');
+  const desde = inDesde && inDesde.value ? inDesde.value.slice(0,7) : null;
+  const hasta = inHasta && inHasta.value ? inHasta.value.slice(0,7) : null;
+  const claves = todasClaves.filter(c => (!desde || c >= desde) && (!hasta || c <= hasta));
+  if(!claves.length){ cont.innerHTML = '<p style="text-align:center;color:var(--text3);font-size:12px;margin:10px 0">Sin datos en el rango elegido.</p>'; return; }
+
+  const fk = v => Math.round(v).toLocaleString('es-CO');
+  const celdaEstilo = 'text-align:center;padding:6px 8px;min-width:82px;border-right:1px solid var(--border);border-bottom:1px solid var(--border)';
   const encabezado = claves.map(c => `<th style="${celdaEstilo};color:var(--text);font-weight:800">${labelMes(c)}</th>`).join('');
+  const ultimoIdx = claves.length - 1;
+
+  // El Δ pp SIEMPRE compara contra el mes calendario anterior real (aunque
+  // ese mes haya quedado fuera del rango filtrado, ej. Ene-2026 contra
+  // Dic-2025) -- solo el ÚLTIMO mes VISIBLE en la tabla lleva color, el
+  // resto queda en gris neutro. Pedido explícito: "el color de la
+  // variación que sea solo para el ultimo mes calculado".
+  const celda = (mapaSerie, i) => {
+    const c = claves[i];
+    const actual = mapaSerie.get(c);
+    if(!actual) return `<td style="${celdaEstilo};color:var(--text3)">--</td>`;
+    const idxGlobal = todasClaves.indexOf(c);
+    const anterior = idxGlobal>0 ? mapaSerie.get(todasClaves[idxGlobal-1]) : null;
+    let deltaHtml = '<span style="color:var(--text3)">—</span>';
+    if(anterior){
+      const delta = actual.pct - anterior.pct;
+      const sube = delta>=0;
+      const colorDelta = (i===ultimoIdx) ? (sube?'#C00000':'#00B050') : 'var(--text3)';
+      deltaHtml = `<span style="color:${colorDelta};font-weight:700">${sube?'▲':'▼'} ${sube?'+':''}${delta.toFixed(2)} pp</span>`;
+    }
+    return `<td style="${celdaEstilo}">
+      <div style="font-weight:800;color:var(--text)">${actual.pct.toFixed(2)}%</div>
+      <div style="font-size:10px;color:var(--text3)">${fk(actual.perdida)} kWh</div>
+      <div style="font-size:10px;margin-top:1px">${deltaHtml}</div>
+    </td>`;
+  };
+
   const filasHtml = zonas.map(z => {
     const color = colorParaZona(z);
-    const celdas = claves.map((c, i) => {
-      const actual = porZona[z].get(c);
-      if(!actual) return `<td style="${celdaEstilo};color:var(--text3)">--</td>`;
-      const gwh = (actual.perdida||0)/1e6;
-      const anterior = i>0 ? porZona[z].get(claves[i-1]) : null;
-      let deltaHtml = '<span style="color:var(--text3)">—</span>';
-      if(anterior){
-        const delta = actual.pct - anterior.pct;
-        const sube = delta>=0;
-        deltaHtml = `<span style="color:${sube?'#C00000':'#00B050'};font-weight:700">${sube?'▲':'▼'} ${sube?'+':''}${delta.toFixed(2)} pp</span>`;
-      }
-      return `<td style="${celdaEstilo}">
-        <div style="font-weight:800;color:var(--text)">${actual.pct.toFixed(2)}%</div>
-        <div style="font-size:10px;color:var(--text3)">${gwh.toFixed(2)} GWh</div>
-        <div style="font-size:10px;margin-top:1px">${deltaHtml}</div>
-      </td>`;
-    }).join('');
+    const celdas = claves.map((c, i) => celda(porZona[z], i)).join('');
     return `<tr><td style="${celdaEstilo};text-align:left;font-weight:800;color:var(--text);position:sticky;left:0;background:var(--card-bg)"><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${color};margin-right:6px"></span>${z}</td>${celdas}</tr>`;
   }).join('');
+  const celdasTotal = claves.map((c, i) => celda(porTotal, i)).join('');
+  const filaTotalHtml = `<tr style="border-top:2px solid var(--border)"><td style="${celdaEstilo};text-align:left;font-weight:800;color:var(--text);position:sticky;left:0;background:var(--card-bg)">Total</td>${celdasTotal}</tr>`;
 
   cont.innerHTML = `
     <div class="tbl-wrap" style="max-height:520px;overflow:auto">
       <table class="be-tabla-creadas" style="width:auto;border:1px solid var(--border)">
         <thead><tr><th style="${celdaEstilo};text-align:left;color:var(--text);font-weight:800;position:sticky;left:0;top:0;background:var(--card-bg);z-index:3">Zona</th>${encabezado}</tr></thead>
-        <tbody>${filasHtml}</tbody>
+        <tbody>${filasHtml}${filaTotalHtml}</tbody>
       </table>
     </div>`;
 }
