@@ -2745,33 +2745,21 @@ tfoot td:first-child{text-align:left}
       </div>
     </div>
 
-    <!-- Pérdida Total vs Técnica por zona, UN gráfico de líneas por zona
-         apilados abajo (pedido explícito, captura de pantalla de 5
-         gráficos "Pérdida Nivel 21 (Anual) en % Nivel 2-1 Ajustada" por
-         zona) -- botón Mensual/Anual (12M) para cambiar el eje X. -->
+    <!-- Histórico de Pérdida Total por Zona -- reemplaza las 5 gráficas de
+         líneas apiladas (Pérdida Total vs Técnica por Zona) por una tabla
+         tipo heatmap histórico: pedido explícito ("hagamos mejor un
+         heatmap historico en ves de esas graficas" -- se pega mucho mejor
+         en un informe que 5 gráficas apiladas, y de paso usa el botón de
+         exportar Imagen/Excel que ya se inyecta solo en toda .tbl-wrap).
+         Cada celda trae 3 líneas: % del mes, Pérdida en GWh, y el Δ pp vs.
+         el mes anterior -- SOLO esa última línea lleva color (rojo =
+         subió, verde = bajó, mismo criterio que el resto de la app),
+         pedido explícito: "solo quiero que tenga color lo ↓ -0,76 pp". -->
     <div class="card">
-      <div class="fbar" style="justify-content:center;margin-bottom:12px">
-        <div style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Pérdida Total vs Técnica por Zona (%)</div>
-        <button type="button" class="be-modo-btn" id="alim-n21-porzona-btn-mensual" style="margin-left:12px" onclick="alimN21TogglePorZonaModo('mensual')">Mensual</button>
-        <button type="button" class="be-modo-btn activo" id="alim-n21-porzona-btn-anual" onclick="alimN21TogglePorZonaModo('anual')">Anual (12M)</button>
-        <!-- Eje único (default) o doble -- pedido explícito ("no ambas
-             tienen que ser un mismo eje o que dé la opción para cambiar
-             de eje"). -->
-        <button type="button" class="be-modo-btn activo" id="alim-n21-porzona-btn-eje-unico" style="margin-left:10px" onclick="alimN21TogglePorZonaEje('unico')">Eje único</button>
-        <button type="button" class="be-modo-btn" id="alim-n21-porzona-btn-eje-doble" onclick="alimN21TogglePorZonaEje('doble')">Eje doble</button>
-        <!-- Filtro de fechas PROPIO de esta sección -- pedido explícito
-             ("filtro de eje X... desde enero-2026 hasta actual"), arranca
-             ahí y hasta el último mes real disponible. -->
-        <label style="margin-left:16px">Desde</label>
-        <input type="date" id="alim-n21-porzona-desde" onchange="alimN21RenderPorZonaCharts()">
-        <span style="font-size:11px;color:var(--text3)">→</span>
-        <input type="date" id="alim-n21-porzona-hasta" onchange="alimN21RenderPorZonaCharts()">
-        <!-- Descarga las 5 gráficas (una por zona) apiladas en UN solo PNG
-             -- pedido explícito ("boton para descargar todas las graficas
-             en una solo PNG"). -->
-        <button type="button" class="be-modo-btn" style="margin-left:16px" onclick="alimN21ExportarPorZonaPNG()">⬇ Exportar todo (PNG)</button>
+      <div style="text-align:center;margin-bottom:8px">
+        <div style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Histórico de Pérdida Total por Zona</div>
       </div>
-      <div id="alim-n21-porzona-charts"></div>
+      <div id="alim-n21-heatmap-zonas"></div>
     </div>
 
   </div>
@@ -16743,7 +16731,7 @@ function alimN21RenderTodo(){
   alimN21RenderChartZonas();
   alimN21RenderTablaZonas();
   alimN21RenderResumen(datos12);
-  alimN21RenderPorZonaCharts();
+  alimN21RenderHeatmapZonas();
 
   const contNarrativa = document.getElementById('alim-n21-narrativa');
   if(contNarrativa) contNarrativa.innerHTML = _narrativaEntradaSalidaHtml(alimN21AgregarMensual(ALIM_N21_ZONAS_SEL), 'Por qué crece el indicador -- N2-1 (Total)');
@@ -16799,231 +16787,67 @@ function alimN21RenderNarrativaZonas(){
   </table></div>`;
 }
 
-// "Pérdida Total vs Técnica por Zona" -- un gráfico de líneas POR ZONA,
-// apilados (pedido explícito, captura de pantalla de 5 gráficos "Pérdida
-// Nivel 21 (Anual)... por zona"), SIEMPRE las 5 zonas completas (ignora
-// filtro de chips, igual criterio que el resto de esta vista) y TODO el
-// histórico cargado (ignora el filtro Rango -- es una vista de tendencia
-// larga, no de un rango puntual). Botón Mensual/Anual (12M) cambia qué
-// serie se grafica en el eje X -- pedido explícito ("cambiar la gráfica
-// en el eje X").
-let ALIM_N21_PORZONA_MODO = 'anual';
-let ALIM_N21_PORZONA_CHARTS = {};
-// 'unico' (default, pedido explícito) o 'doble' -- Total y Técnica son
-// magnitudes muy distintas, con un solo eje la Técnica queda casi plana
-// abajo, pero con doble eje las dos líneas se cruzan sin que eso
-// signifique nada (cada una en su propia escala) -- botón para elegir.
-let ALIM_N21_PORZONA_EJE = 'unico';
-
-function alimN21TogglePorZonaModo(modo){
-  ALIM_N21_PORZONA_MODO = modo;
-  document.getElementById('alim-n21-porzona-btn-mensual').classList.toggle('activo', modo==='mensual');
-  document.getElementById('alim-n21-porzona-btn-anual').classList.toggle('activo', modo==='anual');
-  alimN21RenderPorZonaCharts();
-}
-
-function alimN21TogglePorZonaEje(eje){
-  ALIM_N21_PORZONA_EJE = eje;
-  document.getElementById('alim-n21-porzona-btn-eje-unico').classList.toggle('activo', eje==='unico');
-  document.getElementById('alim-n21-porzona-btn-eje-doble').classList.toggle('activo', eje==='doble');
-  alimN21RenderPorZonaCharts();
-}
-
-// Serie mensual COMPLETA de una zona (Total real + Técnica), más la
-// versión Anual (12M móvil) de cada una -- para Técnica 12M solo se
-// calcula si los 12 meses de la ventana tienen dato (si falta uno, null:
-// mejor un hueco visible que una ventana con meses "faltantes" invisibles).
-function _alimN21SerieZonaConTecnica(zona){
-  const serie = alimN21AgregarMensual(new Set([zona]));
-  const tecZona = ALIM_N21_TECNICA_POR_ZONA[zona] || {};
-  return serie.map((f,i) => {
-    const tecPct = tecZona[f.clave] ? tecZona[f.clave].pct : null;
-    let pct12 = null, tecPct12 = null;
-    if(i >= 11){
-      const ventana = serie.slice(i-11, i+1);
-      const entrada12 = ventana.reduce((s,x)=>s+x.entrada, 0);
-      const perdida12 = ventana.reduce((s,x)=>s+x.perdida, 0);
-      pct12 = entrada12 ? perdida12/entrada12*100 : null;
-      const tecCompleta = ventana.every(x => tecZona[x.clave] && tecZona[x.clave].perdida != null);
-      if(tecCompleta && entrada12){
-        const tecPerdida12 = ventana.reduce((s,x)=>s+tecZona[x.clave].perdida, 0);
-        tecPct12 = tecPerdida12/entrada12*100;
-      }
-    }
-    return {clave: f.clave, pct: f.pct, tecPct, pct12, tecPct12};
-  });
-}
-
-// Versión oscurecida de un color hex -- la línea de Pérdida Técnica usa
-// el mismo tono de la zona pero más oscuro (mismo criterio visual que la
-// plantilla de referencia: cada zona con su color + una variante oscura).
-function _colorOscurecer(hex, factor=0.55){
-  hex = String(hex||'#888888').replace('#','');
-  if(hex.length===3) hex = hex.split('').map(c=>c+c).join('');
-  const r = parseInt(hex.slice(0,2),16)||0, g = parseInt(hex.slice(2,4),16)||0, b = parseInt(hex.slice(4,6),16)||0;
-  const f = c => Math.round(c*factor).toString(16).padStart(2,'0');
-  return `#${f(r)}${f(g)}${f(b)}`;
-}
-
-// Filtro Desde/Hasta PROPIO de esta sección (pedido explícito) -- se
-// aplica DESPUÉS de calcular pct12/tecPct12 (la ventana móvil de 12
-// meses necesita el histórico completo de atrás, no solo lo visible).
-function _alimN21PorZonaVisibles(serie){
-  const inDesde = document.getElementById('alim-n21-porzona-desde');
-  const inHasta = document.getElementById('alim-n21-porzona-hasta');
-  const desde = inDesde && inDesde.value ? inDesde.value.slice(0,7) : null;
-  const hasta = inHasta && inHasta.value ? inHasta.value.slice(0,7) : null;
-  return serie.filter(f => (!desde || f.clave >= desde) && (!hasta || f.clave <= hasta));
-}
-
-function _alimN21ConstruirChartPorZona(cv, zona, modo){
-  if(!cv) return null;
-  const dark = document.documentElement.getAttribute('data-theme')==='dark';
-  const tickC = dark ? '#ffffff' : '#000000';
-  const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
-  const serie = _alimN21PorZonaVisibles(_alimN21SerieZonaConTecnica(zona));
-  const campoTotal = modo==='anual' ? 'pct12' : 'pct';
-  const campoTec = modo==='anual' ? 'tecPct12' : 'tecPct';
-  const visibles = modo==='anual' ? serie.filter(f => f[campoTotal] != null) : serie;
-  if(!visibles.length) return null;
-  const etiquetas = visibles.map(f => labelMes(f.clave));
-  const colorTotal = colorParaZona(zona);
-  const colorTecnica = _colorOscurecer(colorTotal);
-  const valoresTotal = visibles.map(f => f[campoTotal]);
-  const valoresTec = visibles.map(f => f[campoTec]);
-  const fp = v => v==null ? '' : v.toFixed(2)+'%';
-  // Fondo de la etiqueta -- mismo criterio que otras gráficas de la app
-  // (ipComercialRenderChartMensual) -- pedido explícito ("casi no se ven
-  // los números"), antes iban sin fondo, tamaño 8, se perdían contra la
-  // grilla y las otras líneas.
-  const fondoEtiqueta = dark ? 'rgba(20,24,34,.88)' : 'rgba(255,255,255,.88)';
-  const estiloEtiqueta = color => ({
-    display:true, formatter:fp, font:{size:9.5, weight:'700'}, color,
-  });
-
-  // Eje único (default, pedido explícito -- "ambas tienen que ser un
-  // mismo eje") o doble (botón "Eje doble", para cuando Total y Técnica
-  // son magnitudes muy distintas y la Técnica queda casi plana abajo).
-  const ejeDoble = ALIM_N21_PORZONA_EJE === 'doble';
-  const idEjeTec = ejeDoble ? 'yTec' : 'yTotal';
-  const escalas = ejeDoble
-    ? {
-        yTotal:{position:'left', grid:{color:gridC}, ticks:{color:colorTotal, font:{size:9}, callback:v=>v.toFixed(1)+'%'}},
-        yTec:{position:'right', grid:{display:false}, ticks:{color:colorTecnica, font:{size:9}, callback:v=>v.toFixed(1)+'%'}},
-      }
-    : { yTotal:{position:'left', grid:{color:gridC}, ticks:{color:tickC, font:{size:9}, callback:v=>v.toFixed(1)+'%'}} };
-
-  return new Chart(cv, {
-    data:{
-      labels: etiquetas,
-      datasets:[
-        {type:'line', label:`Pérdida Total ${zona}`, yAxisID:'yTotal', data: valoresTotal, borderColor: colorTotal, backgroundColor:'transparent',
-          borderWidth:2.5, pointRadius:2.5, pointBackgroundColor:colorTotal, spanGaps:true, tension:0,
-          datalabels:{...estiloEtiqueta(colorTotal), anchor:'end', align:'top', offset:10}},
-        {type:'line', label:`Pérdida Técnica ${zona}`, yAxisID:idEjeTec, data: valoresTec, borderColor: colorTecnica, backgroundColor:'transparent',
-          borderWidth:2, pointRadius:2.5, pointBackgroundColor:colorTecnica, spanGaps:true, tension:0,
-          datalabels:{...estiloEtiqueta(colorTecnica), anchor:'end', align:'bottom', offset:10}},
-      ],
-    },
-    options:{
-      responsive:true, maintainAspectRatio:false,
-      layout:{padding:{top:22, right:14, bottom:10, left:4}},
-      interaction:{mode:'index', intersect:false},
-      plugins:{
-        legend:{display:true, position:'bottom', labels:{boxWidth:10, font:{size:9}, color:tickC}},
-        tooltip:{callbacks:{label:c => c.raw==null ? null : `${c.dataset.label}: ${c.raw.toFixed(2)}%`}},
-        zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:3}}},
-      },
-      scales:{
-        x:{grid:{display:false}, ticks:{color:tickC, font:{size:8}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
-        ...escalas,
-      },
-    },
-  });
-}
-
-function alimN21RenderPorZonaCharts(){
-  const cont = document.getElementById('alim-n21-porzona-charts');
+// Histórico de Pérdida Total por Zona -- tabla tipo heatmap, reemplaza las
+// 5 gráficas de líneas apiladas que había antes (Pérdida Total vs Técnica
+// por Zona). Pedido explícito: "hagamos mejor un heatmap historico en ves
+// de esas graficas". SIEMPRE las 5 zonas completas (ignora filtro de
+// chips, igual criterio que el resto de esta vista) y TODO el histórico
+// cargado (ignora el filtro Rango -- es una vista de tendencia larga, no
+// de un rango puntual, mismo criterio que tenían las gráficas que
+// reemplaza). Cada celda: % del mes, Pérdida en GWh, y el Δ pp vs. el mes
+// anterior -- SOLO esa última línea lleva color (rojo = subió, verde =
+// bajó, mismo criterio que el resto de la app) -- pedido explícito: "solo
+// quiero que tenga color lo ↓ -0,76 pp" (no la celda completa, a
+// diferencia del Heatmap Mensual de Subestaciones que sí colorea toda la
+// celda). Vive en su propio <table> (no .hm-tabla/.hm-celda, pensadas para
+// una sola línea por celda) para no afectar ese otro heatmap.
+function alimN21RenderHeatmapZonas(){
+  const cont = document.getElementById('alim-n21-heatmap-zonas');
   if(!cont) return;
   const zonas = _alimN21OrdenarZonasTabla(ALIM_N21_ZONAS);
+  if(!zonas.length){ cont.innerHTML = ''; return; }
 
-  // Rango por defecto Enero-2026 -> último mes real -- pedido explícito.
-  const inDesde = document.getElementById('alim-n21-porzona-desde');
-  const inHasta = document.getElementById('alim-n21-porzona-hasta');
-  if(inDesde && inHasta && !inDesde.value && !inHasta.value){
-    const claves = alimN21AgregarMensual(new Set()).map(f => f.clave);
-    if(claves.length){
-      inHasta.value = claves[claves.length-1] + '-01';
-      inDesde.value = (claves.includes('2026-01') ? '2026-01' : claves[0]) + '-01';
-    }
-  }
-
-  // Más compactas/cuadradas -- pedido explícito: menos alto y ancho
-  // acotado (centradas) en vez de estirarse todo el ancho de la card.
-  cont.innerHTML = zonas.map(z => `
-    <div style="max-width:640px;margin:0 auto 20px">
-      <div style="text-align:center;font-size:12.5px;font-weight:700;color:var(--text2);margin-bottom:4px">Zona ${z}</div>
-      <div class="chart-wrap" style="height:170px"><canvas id="ch-alim-n21-porzona-${z}"></canvas></div>
-    </div>`).join('');
-
-  Object.values(ALIM_N21_PORZONA_CHARTS).forEach(ch => ch && ch.destroy());
-  ALIM_N21_PORZONA_CHARTS = {};
+  const porZona = {};
+  const clavesSet = new Set();
   zonas.forEach(z => {
-    ALIM_N21_PORZONA_CHARTS[z] = _alimN21ConstruirChartPorZona(document.getElementById(`ch-alim-n21-porzona-${z}`), z, ALIM_N21_PORZONA_MODO);
+    const serie = alimN21AgregarMensual(new Set([z])).filter(f => f.pct != null);
+    porZona[z] = new Map(serie.map(f => [f.clave, f]));
+    serie.forEach(f => clavesSet.add(f.clave));
   });
-}
+  const claves = [...clavesSet].sort();
+  if(!claves.length){ cont.innerHTML = ''; return; }
 
-// Descarga las 5 gráficas (una por zona) APILADAS en un solo PNG -- pedido
-// explícito. Mismo criterio que _expImagenChart (chart.toBase64Image en
-// vez de html2canvas, nítido en su resolución real): cada gráfica se
-// redimensiona a un ancho fijo, se captura, y se pega en un canvas grande
-// junto con su título "Zona X" -- todo en un tramo síncrono por gráfica
-// (sin await entre resize/captura/resize-back) para que no parpadee.
-async function alimN21ExportarPorZonaPNG(){
-  const zonas = _alimN21OrdenarZonasTabla(ALIM_N21_ZONAS).filter(z => ALIM_N21_PORZONA_CHARTS[z]);
-  if(!zonas.length) return;
-  const dark = document.documentElement.getAttribute('data-theme')==='dark';
-  const colorTexto = dark ? '#e2e8f0' : '#111827';
-  const colorFondo = dark ? '#161b27' : '#ffffff';
-  const ANCHO = 900, ALTO = 300;
+  const celdaEstilo = 'text-align:center;padding:6px 8px;min-width:74px;border-right:1px solid var(--border);border-bottom:1px solid var(--border)';
+  const encabezado = claves.map(c => `<th style="${celdaEstilo};color:var(--text);font-weight:800">${labelMes(c)}</th>`).join('');
+  const filasHtml = zonas.map(z => {
+    const color = colorParaZona(z);
+    const celdas = claves.map((c, i) => {
+      const actual = porZona[z].get(c);
+      if(!actual) return `<td style="${celdaEstilo};color:var(--text3)">--</td>`;
+      const gwh = (actual.perdida||0)/1e6;
+      const anterior = i>0 ? porZona[z].get(claves[i-1]) : null;
+      let deltaHtml = '<span style="color:var(--text3)">—</span>';
+      if(anterior){
+        const delta = actual.pct - anterior.pct;
+        const sube = delta>=0;
+        deltaHtml = `<span style="color:${sube?'#C00000':'#00B050'};font-weight:700">${sube?'▲':'▼'} ${sube?'+':''}${delta.toFixed(2)} pp</span>`;
+      }
+      return `<td style="${celdaEstilo}">
+        <div style="font-weight:800;color:var(--text)">${actual.pct.toFixed(2)}%</div>
+        <div style="font-size:10px;color:var(--text3)">${gwh.toFixed(2)} GWh</div>
+        <div style="font-size:10px;margin-top:1px">${deltaHtml}</div>
+      </td>`;
+    }).join('');
+    return `<tr><td style="${celdaEstilo};text-align:left;font-weight:800;color:var(--text);position:sticky;left:0;background:var(--card-bg)"><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${color};margin-right:6px"></span>${z}</td>${celdas}</tr>`;
+  }).join('');
 
-  const imagenes = [];
-  for(const z of zonas){
-    const chart = ALIM_N21_PORZONA_CHARTS[z];
-    chart.resize(ANCHO, ALTO);
-    const dataUrl = chart.toBase64Image('image/png', 1);
-    chart.resize();
-    const img = new Image();
-    await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = dataUrl; });
-    imagenes.push({zona: z, img});
-  }
-
-  const margenLat = 24, tituloGeneral = 30, tituloZona = 26, espacioEntre = 10;
-  const anchoFinal = imagenes[0].img.width + margenLat*2;
-  const altoFinal = tituloGeneral + imagenes.reduce((s,x) => s + tituloZona + x.img.height + espacioEntre, 0) + 10;
-
-  const cv = document.createElement('canvas');
-  cv.width = anchoFinal; cv.height = altoFinal;
-  const ctx = cv.getContext('2d');
-  ctx.fillStyle = colorFondo;
-  ctx.fillRect(0, 0, cv.width, cv.height);
-
-  ctx.fillStyle = colorTexto;
-  ctx.textAlign = 'center';
-  ctx.font = 'bold 20px "Segoe UI", sans-serif';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('Pérdida Total vs Técnica por Zona', cv.width/2, tituloGeneral/2 + 6);
-
-  let y = tituloGeneral;
-  imagenes.forEach(({zona, img}) => {
-    ctx.font = 'bold 14px "Segoe UI", sans-serif';
-    ctx.fillText(`Zona ${zona}`, cv.width/2, y + tituloZona/2);
-    y += tituloZona;
-    ctx.drawImage(img, margenLat, y);
-    y += img.height + espacioEntre;
-  });
-
-  cv.toBlob(blob => { if(blob) _expDescargarBlob(blob, `${_expNombreArchivo('n21_perdida_total_vs_tecnica_por_zona')}.png`); });
+  cont.innerHTML = `
+    <div class="tbl-wrap" style="max-height:520px;overflow:auto">
+      <table class="be-tabla-creadas" style="width:auto;border:1px solid var(--border)">
+        <thead><tr><th style="${celdaEstilo};text-align:left;color:var(--text);font-weight:800;position:sticky;left:0;top:0;background:var(--card-bg);z-index:3">Zona</th>${encabezado}</tr></thead>
+        <tbody>${filasHtml}</tbody>
+      </table>
+    </div>`;
 }
 
 // Orden fijo pedido para la tabla comparativa (no alfabético) -- cualquier
