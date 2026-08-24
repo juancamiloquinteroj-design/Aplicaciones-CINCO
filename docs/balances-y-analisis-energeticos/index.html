@@ -2264,7 +2264,7 @@ tfoot td:first-child{text-align:left}
              se queda FIJA en 900px (el mínimo que necesitan las cajas de
              nivel para no envolver "Índices" a una segunda fila) y el
              mapa (flex-grow:1) se lleva todo el espacio que sobra. -->
-        <div style="flex:0 0 900px">
+        <div style="flex:0 0 900px" id="alim-resumen-tabla-col">
           <div style="text-align:center;font-size:18px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase;margin-bottom:16px">Resumen por Nivel de Tensión</div>
           <div style="display:flex;gap:16px;margin-bottom:20px">
             <div class="resnivel-campo" style="min-width:170px">
@@ -21264,22 +21264,25 @@ async function _informesCapturarBloque(elId){
 // ---- Gráficos offscreen -> imagen PNG (Uint8Array) para embeber en el .docx.
 // animation:false es necesario para que toDataURL() capture el chart ya
 // pintado sin esperar un frame de animación. ----
-async function _informesGraficoAImagen({labels, datasets, scales, titulo, ancho=760, alto=400}){
+async function _informesGraficoAImagen({labels, datasets, scales, titulo, ancho=1048, alto=400}){
   const cont = document.createElement('div');
   cont.style.cssText = 'position:fixed;left:-9999px;top:0';
   const cv = document.createElement('canvas');
-  // x2 para que se vea nítido en Word (se muestra más chico de lo que
-  // mide el canvas -- ver _informesParrafoImagen) -- mismo criterio que
-  // exportChartPNG (única exportación a imagen que ya existía en la app).
-  const escala = 2;
+  // x3 (antes x2) -- pedido explícito ("las imagenes estan muy borrosas
+  // quiero que sea alta calidad"): más resolución real detrás del mismo
+  // tamaño mostrado, sin cambiar proporciones de nada.
+  const escala = 3;
   cv.width = ancho*escala; cv.height = alto*escala;
   cv.style.width = ancho+'px'; cv.style.height = alto+'px';
   cont.appendChild(cv);
   document.body.appendChild(cont);
-  // Tamaño de fuente más grande en los ejes por defecto (sin tocar
-  // Chart.defaults global -- eso afectaría también los gráficos EN VIVO
-  // de la app) -- pedido explícito ("no se alcanzan a ver los valores del
-  // eje x y y"). Cada eje que no traiga su propio ticks.font se completa acá.
+  // Ancho por defecto 1048x400 -- pedido explícito ("el tamaño de la
+  // gráfica del informe... esta en formato 1048x400 (Eso para todas)"),
+  // mismo formato que ya usa _expImagenChart (botón "Exportar PNG" en
+  // vivo). Tamaños de fuente NORMALES (13/14, no agrandados) -- a este
+  // ancho ya se ven bien, coincide con el tamaño real de la plantilla de
+  // referencia; solo el DATO (datalabels) se agranda aparte más abajo
+  // con _expEscalarDatalabels, pedido explícito ("Solo el dato").
   // Grilla SÓLIDA gris clara (no punteada) y ticks en negro fuerte --
   // mismo criterio "estilo Excel" que ya usa TODA la app (gridC/tickXFuerte
   // en las gráficas en vivo) -- pedido explícito ("que cuando se exporten
@@ -21291,26 +21294,21 @@ async function _informesGraficoAImagen({labels, datasets, scales, titulo, ancho=
   // del último mes (más grande, ver _informesResaltarUltimo) no quede
   // pegada/cortada contra el borde derecho del gráfico -- pedido explícito
   // ("todas las gráficas están saliendo cortadas al lado derecho").
-  // Tamaños subidos (13/14->15/16, etc.) -- pedido explícito ("los datos
-  // de las graficas no se ven grandes asi como cuando las descargo en
-  // png"): _expImagenChart (el botón de exportar PNG en vivo) además
-  // escala los datalabels con un factor extra (ver _expEscalarDatalabels
-  // más abajo) -- esta gráfica offscreen no tenía ningún boost equivalente.
-  const scalesConFuente = {x:{offset:true, ticks:{font:{size:15}, color:'#000000'}, grid:{display:false}}};
+  const scalesConFuente = {x:{offset:true, ticks:{font:{size:13}, color:'#000000'}, grid:{display:false}}};
   Object.entries(scales||{}).forEach(([eje, cfg]) => {
     const sinGrid = cfg.grid && cfg.grid.drawOnChartArea === false;
-    scalesConFuente[eje] = {...cfg, ticks:{font:{size:16}, color:'#000000', ...(cfg.ticks||{})},
+    scalesConFuente[eje] = {...cfg, ticks:{font:{size:14}, color:'#000000', ...(cfg.ticks||{})},
       grid:{display:!sinGrid, drawOnChartArea:!sinGrid, color:'rgba(0,0,0,.08)'}};
   });
   const chart = new Chart(cv, {
     data:{labels: labels||[], datasets},
     options:{
       responsive:false, animation:false, devicePixelRatio:escala,
-      font:{size:15},
+      font:{size:13},
       layout:{padding:{top: titulo?30:18, right:60, bottom:10, left:10}},
       plugins:{
-        legend:{display:true, position:'bottom', labels:{boxWidth:14, font:{size:15}, usePointStyle:true, pointStyle:'line'}},
-        title: titulo ? {display:true, text:titulo.toUpperCase(), align:'center', font:{size:18, weight:'700'}, color:'#1a2a4a', padding:{bottom:16}} : {display:false},
+        legend:{display:true, position:'bottom', labels:{boxWidth:14, font:{size:13}, usePointStyle:true, pointStyle:'line'}},
+        title: titulo ? {display:true, text:titulo.toUpperCase(), align:'center', font:{size:16, weight:'700'}, color:'#1a2a4a', padding:{bottom:16}} : {display:false},
       },
       scales: scalesConFuente,
     },
@@ -21374,8 +21372,11 @@ async function _informesGraficoAImagen({labels, datasets, scales, titulo, ancho=
   chart.update('none');
   // JPEG en vez de PNG -- pedido explícito ("el archivo pesa 24MB, debe
   // ser más liviano"): un gráfico con relleno degradado pesa ~20x menos
-  // en JPEG que en PNG sin pérdida visible a calidad 0.9 (verificado).
-  const dataUrl = cv.toDataURL('image/jpeg', 0.9);
+  // en JPEG que en PNG. Calidad subida 0.9->0.97 (antes se veía borroso,
+  // pedido explícito "las imagenes estan muy borrosas quiero que sea alta
+  // calidad") -- junto con escala x3 de arriba, el peso sigue siendo una
+  // fracción de lo que pesaría en PNG.
+  const dataUrl = cv.toDataURL('image/jpeg', 0.97);
   chart.destroy();
   document.body.removeChild(cont);
   return {bytes: _informesDataUrlAUint8(dataUrl), width: ancho, height: alto, tipo:'jpg'};
@@ -21479,9 +21480,10 @@ function _informesParrafo(childrenOTexto, opts){
 // informes debe aprender de lo que genera" -> "variar la redacción", para
 // no repetir literalmente la misma construcción de oraciones mes a mes).
 // Solo se aplica a frases SIN un pedido explícito de "que salga tal cual
-// la plantilla" (ej. NO toca informesTextoZonaNivel3, que sí tiene ese
-// pedido) -- son frases "de conector" donde variar el texto no cambia
-// ningún dato ni la estructura del informe. Se guarda en localStorage
+// la plantilla" (ej. NO toca informesTextoZonaNivel3, que sí tenía ese
+// pedido -- ver historial, esa sección se quitó del flujo automático) --
+// son frases "de conector" donde variar el texto no cambia ningún dato ni
+// la estructura del informe. Se guarda en localStorage
 // (esta app no tiene backend de historial de informes) bajo una clave por
 // `slot` (una por cada frase distinta) para que cada una rote de forma
 // independiente. Si algo falla leyendo/escribiendo localStorage (modo
@@ -22664,46 +22666,6 @@ function informesTextoNivelSubregistro(mensual, tecnicaPorMes, mesClave, etiquet
   return _informesParrafo(runs);
 }
 
-// Tabla ANCHA Mes | Pérdida Técnica Calculada (kWh) | Pérdida Total Real
-// (kWh) | Diferencia/Subregistro (kWh), Enero del año de mesClave hasta
-// mesClave + fila TOTAL -- pedido explícito ("mismas tablas"), tamaño 8pt
-// (misma familia que las demás tablas anchas del informe).
-function _informesTablaNivelTecnica(mensual, tecnicaPorMes, mesClave){
-  const [anio, mesNum] = mesClave.split('-').map(Number);
-  const meses = [];
-  for(let m=1; m<=mesNum; m++) meses.push(`${anio}-${String(m).padStart(2,'0')}`);
-  const celdaEnc = t => new docx.TableCell({shading:{fill:'D9D9D9'}, borders:{bottom:INFORMES_BORDE},
-    children:[new docx.Paragraph({alignment:docx.AlignmentType.CENTER, children:[new docx.TextRun({text:t, bold:true, size:16})]})]});
-  const celda = (t, alinear=docx.AlignmentType.CENTER) => new docx.TableCell({children:[new docx.Paragraph({alignment:alinear, children:[new docx.TextRun({text:t, size:16})]})]});
-  const encabezado = new docx.TableRow({tableHeader:true, cantSplit:true, children:[
-    celdaEnc('Mes'), celdaEnc('Pérdida Técnica Calculada (kWh)'), celdaEnc('Pérdida Total Real (kWh)'), celdaEnc('Diferencia/Subregistro (kWh)'),
-  ]});
-  let sumaTec=0, sumaReal=0, tieneTotal=false;
-  const filas = meses.map(m => {
-    const f = mensual.find(x=>x.clave===m);
-    const t = tecnicaPorMes[m];
-    const real = f ? f.perdida : null;
-    const tec = t ? t.perdida : null;
-    const dif = (real!=null && tec!=null) ? real-tec : null;
-    if(real!=null && tec!=null){ sumaTec+=tec; sumaReal+=real; tieneTotal=true; }
-    return new docx.TableRow({cantSplit:true, children:[
-      celda(labelMesLargo(m), docx.AlignmentType.LEFT),
-      celda(tec==null?'--':_informesFKwh(tec)),
-      celda(real==null?'--':_informesFKwh(real)),
-      celda(dif==null?'--':`${dif>=0?'+':''}${_informesFKwh(dif)}`),
-    ]});
-  });
-  const celdaTotal = (t, alinear=docx.AlignmentType.CENTER) => new docx.TableCell({shading:{fill:'EDEDED'}, borders:{top:INFORMES_BORDE},
-    children:[new docx.Paragraph({alignment:alinear, children:[new docx.TextRun({text:t, bold:true, size:16})]})]});
-  const totalRow = new docx.TableRow({cantSplit:true, children:[
-    celdaTotal('TOTAL', docx.AlignmentType.LEFT),
-    celdaTotal(tieneTotal?_informesFKwh(sumaTec):'--'),
-    celdaTotal(tieneTotal?_informesFKwh(sumaReal):'--'),
-    celdaTotal(tieneTotal?`${(sumaReal-sumaTec)>=0?'+':''}${_informesFKwh(sumaReal-sumaTec)}`:'--'),
-  ]});
-  return new docx.Table({width:{size:100, type:docx.WidthType.PERCENTAGE}, borders: INFORMES_TABLA_BORDES, rows:[encabezado, ...filas, totalRow]});
-}
-
 // Se asegura de tener las filas diarias de Nivel 4/Nivel 3 y su Pérdida
 // Técnica cargadas -- mismo patrón que informesAsegurarIpComercial
 // (funciona tanto si el usuario ya abrió esos módulos en esta sesión como
@@ -22717,6 +22679,25 @@ async function _informesAsegurarNivel34(nivel){
     if(nivel===4) ALIM_NIVEL4_TECNICA = tecnicaResp; else ALIM_NIVEL3_TECNICA = tecnicaResp;
   }
   return {filas, tecnicaPorMes: _alimNivelTecnicaPorMes(tecnicaResp)};
+}
+
+// Pérdida Técnica POR ZONA de Nivel 3 (ALIM_NIVEL3_TECNICA_POR_ZONA) --
+// mismo endpoint/patrón que alimNivel3Cargar (una consulta por zona), pero
+// independiente de la carga en vivo -- funciona aunque el usuario nunca
+// haya visitado el módulo Nivel 3 en esta sesión, mismo criterio que
+// _informesAsegurarNivel34. La necesitan las Figuras 10/11 (Variación por
+// Zonas / Pérdida gestionable con técnica proyectada).
+async function _informesAsegurarNivel3TecnicaPorZona(zonas){
+  const faltantes = zonas.filter(z => !ALIM_NIVEL3_TECNICA_POR_ZONA[z]);
+  if(!faltantes.length || DEMO) return;
+  await Promise.all(faltantes.map(async z => {
+    try{
+      const resp = await apiGet(`/api/resumen?nivel=3&zona=${encodeURIComponent(z)}`, AUTH_TIMEOUT_MS);
+      ALIM_NIVEL3_TECNICA_POR_ZONA[z] = _alimNivelTecnicaPorMes(resp);
+    }catch(e){
+      ALIM_NIVEL3_TECNICA_POR_ZONA[z] = {};
+    }
+  }));
 }
 
 async function informesSeccionIndicadorNivel4(mesClave){
@@ -22752,12 +22733,16 @@ async function informesSeccionIndicadorNivel4(mesClave){
 
   const figTecnica = await informesFiguraNivelTecnica(mensual, tecnicaPorMes, 'Nivel 4');
   if(figTecnica){
+    // Frase de transición fija (sin datos de mes, no requiere análisis
+    // manual) -- faltaba, confirmado contra la plantilla real ("falta un
+    // texto en nivel de tension 4").
+    children.push(_informesParrafo('Por tal razón, para validar la precisión de estas cifras y determinar el comportamiento real del sistema, se procederá a revisar la pérdida técnica simulada mediante flujos de carga de manera horaria.'));
     children.push(_informesParrafoImagen(figTecnica));
     children.push(_informesCaption('Figura', 'Pérdida Total vs Pérdida Técnica -- Nivel 4'));
     const nota = informesTextoNivelSubregistro(mensual, tecnicaPorMes, mesClave, 'Nivel 4');
     if(nota) children.push(nota);
-    children.push(_informesCaption('Tabla', 'Pérdida Técnica Calculada vs Pérdida Total Real -- Nivel 4'));
-    children.push(_informesTablaNivelTecnica(mensual, tecnicaPorMes, mesClave));
+    // La tabla mes-a-mes de Pérdida Técnica vs Total NO va acá -- confirmado
+    // contra la plantilla real ("esta tabla... no existe en mi informe base").
   }
   children.push(new docx.Paragraph({text:''}));
   return children;
@@ -22784,8 +22769,13 @@ async function informesFiguraNivel3ZonasComparativo(porZona, mesClave){
     const serie = porZona[z];
     const color = colorParaZona(z);
     const data = claves.map(c => { const f = serie.find(x=>x.clave===c); return f ? f.pct : null; });
+    // Datalabels en % por punto -- confirmado contra la plantilla real
+    // (Figura 9: cada punto trae su % encima), pedido explícito ("la
+    // figura 9 debio haber salido con los datos en % en la grafica").
     return {type:'line', label:`Zona ${z}`, data, borderColor:color, backgroundColor:'transparent',
-      borderWidth:2, spanGaps:true, tension:0, pointRadius:1.5, datalabels:{display:false}};
+      borderWidth:2, spanGaps:true, tension:0, pointRadius:1.5,
+      datalabels:{display:true, anchor:'end', align:'top', offset:4, formatter:v=>v==null?'':v.toFixed(1)+'%',
+        color, font:{size:10, weight:'700'}}};
   });
   return _informesGraficoAImagen({
     titulo: 'Comparativo de Índice de Pérdidas por Zona -- Nivel 3',
@@ -22795,29 +22785,55 @@ async function informesFiguraNivel3ZonasComparativo(porZona, mesClave){
   });
 }
 
-// "Zona ZE (Neiva): DISMINUYE del 1,30% en junio al 0,95% en julio (-0,35
-// pp), registrando un total de pérdidas de 0,479 GWh/mes (479.xxx kWh)." --
-// misma frase EXACTA de la plantilla de referencia, pedido explícito
-// ("quiero que salga tal cual").
-function informesTextoZonaNivel3(zona, actual, anterior){
-  const nombre = INFORMES_ZONA_NOMBRE[zona] || zona;
-  const runs = [new docx.TextRun({text:`Zona ${zona} (${nombre}): `, bold:true})];
-  if(anterior && anterior.pct!=null && actual.pct!=null){
-    const delta = actual.pct - anterior.pct;
-    runs.push(new docx.TextRun({text: delta<0 ? 'DISMINUYE' : delta>0 ? 'AUMENTA' : 'SE MANTIENE', bold:true}));
-    runs.push(new docx.TextRun(` del ${anterior.pct.toFixed(2)}% en ${labelMes(anterior.clave)} al ${actual.pct.toFixed(2)}% en ${labelMes(actual.clave)} (${delta>=0?'+':''}${delta.toFixed(2)} pp)`));
-  }else{
-    runs.push(new docx.TextRun(`registra ${actual.pct!=null?actual.pct.toFixed(2):'--'}% en ${labelMes(actual.clave)}`));
-  }
-  runs.push(new docx.TextRun(`, registrando un total de pérdidas de `));
-  runs.push(new docx.TextRun({text:`${(actual.perdida/1e6).toLocaleString('es-CO',{maximumFractionDigits:3})} GWh/mes`, bold:true}));
-  runs.push(new docx.TextRun(` (${_informesFKwh(actual.perdida)} kWh).`));
-  return _informesParrafo(runs);
+// Mismos 2 cuadros que la tabla en vivo alimNivel3RenderTablaZonas
+// (Cuadro1: Zona/Entrada/Salida/P.Total: Cuadro2: P.Técnica/P.Gestionable/
+// Índice %), recalculados de forma INDEPENDIENTE para un mesClave puntual
+// -- mismo criterio que _informesFilasN21PorZona. La P.Técnica se
+// PROYECTA (promedio de los últimos meses con dato, igual que
+// _alimNivel3TecnicaProyectada) cuando el mes del informe todavía no
+// tiene Pérdida Técnica calculada -- confirmado con la plantilla real
+// (Figura 10/11: "≈ P.Técnica proyectada"). P.Gestionable = P.Total -
+// P.Técnica (Nivel 3 no trae esa columna en su CSV).
+function _informesFilasNivel3PorZona(filasN3, mesClave){
+  const {porZona} = _alimNivel34MensualPorZona(filasN3);
+  let mesAnterior = null;
+  const filas = _alimN21OrdenarZonasTabla(Object.keys(porZona)).map(z => {
+    const serie = (porZona[z]||[]).filter(f => f.pct != null);
+    const idx = serie.findIndex(f => f.clave === mesClave);
+    if(idx < 0) return null;
+    const actual = serie[idx];
+    const anterior = idx >= 1 ? serie[idx-1] : null;
+    if(anterior && !mesAnterior) mesAnterior = anterior.clave;
+
+    const tecZona = ALIM_NIVEL3_TECNICA_POR_ZONA[z] || {};
+    let tecActual = tecZona[actual.clave] ? tecZona[actual.clave].perdida : null;
+    const tecAnterior = (anterior && tecZona[anterior.clave]) ? tecZona[anterior.clave].perdida : null;
+    let tecActualProyectada = false;
+    if(tecActual == null){
+      const proy = _alimNivel3TecnicaProyectada(z, actual.clave, actual.entrada);
+      if(proy){ tecActual = proy.perdida; tecActualProyectada = true; }
+    }
+    const gesActual = tecActual!=null ? actual.perdida - tecActual : null;
+    const gesAnterior = (anterior && tecAnterior!=null) ? anterior.perdida - tecAnterior : null;
+
+    return {
+      zona: z,
+      entrada: actual.entrada, deltaEntrada: anterior ? actual.entrada-anterior.entrada : null,
+      salida: actual.salida, deltaSalida: anterior ? actual.salida-anterior.salida : null,
+      total: _alimN21DeltaGrupo(actual.perdida, anterior ? anterior.perdida : null),
+      tecnica: _alimN21DeltaGrupo(tecActual, tecAnterior),
+      gestionable: _alimN21DeltaGrupo(gesActual, gesAnterior),
+      tecnicaProyectada: tecActualProyectada,
+      pctActual: actual.pct, pctAnterior: anterior ? anterior.pct : null,
+      deltaPct: anterior ? actual.pct - anterior.pct : null,
+    };
+  }).filter(Boolean);
+  return {filas, mesAnterior};
 }
 
 async function informesSeccionIndicadorNivel3(mesClave){
   const children = [_informesHeading1('Índice de Pérdida Nivel 3')];
-  const {filas, tecnicaPorMes} = await _informesAsegurarNivel34(3);
+  const {filas} = await _informesAsegurarNivel34(3);
   if(!filas.length){
     children.push(new docx.Paragraph({children:[new docx.TextRun({text:'No hay datos de Nivel 3 cargados.', italics:true})]}));
     return children;
@@ -22836,28 +22852,22 @@ async function informesSeccionIndicadorNivel3(mesClave){
   const figMensual = await informesFiguraNivelSerie(mensual, idx, 'Nivel 3', 'Mensuales', true);
   if(figMensual){ children.push(_informesParrafoImagen(figMensual)); children.push(_informesCaption('Figura', 'Índice de Pérdidas Nivel 3 -- Mensual')); }
 
-  const {porZona} = _alimNivel34MensualPorZona(filas);
+  const {zonas: zonasN3, porZona} = _alimNivel34MensualPorZona(filas);
   const figZonas = await informesFiguraNivel3ZonasComparativo(porZona, mesClave);
   if(figZonas){ children.push(_informesParrafoImagen(figZonas)); children.push(_informesCaption('Figura', 'Comparativo de Índice de Pérdidas por Zona -- Nivel 3')); }
 
-  ALIM_N21_ORDEN_TABLA.forEach(zona => {
-    const serieZona = porZona[zona];
-    if(!serieZona) return;
-    const idxZona = serieZona.findIndex(f => f.clave === mesClave);
-    if(idxZona < 0) return;
-    const actualZ = serieZona[idxZona];
-    if(actualZ.pct == null) return;
-    children.push(informesTextoZonaNivel3(zona, actualZ, idxZona>0?serieZona[idxZona-1]:null));
-  });
-
-  const figTecnica = await informesFiguraNivelTecnica(mensual, tecnicaPorMes, 'Nivel 3');
-  if(figTecnica){
-    children.push(_informesParrafoImagen(figTecnica));
-    children.push(_informesCaption('Figura', 'Pérdida Total vs Pérdida Técnica -- Nivel 3'));
-    const nota = informesTextoNivelSubregistro(mensual, tecnicaPorMes, mesClave, 'Nivel 3');
-    if(nota) children.push(nota);
-    children.push(_informesCaption('Tabla', 'Pérdida Técnica Calculada vs Pérdida Total Real -- Nivel 3'));
-    children.push(_informesTablaNivelTecnica(mensual, tecnicaPorMes, mesClave));
+  // Debajo de la Figura 9 van 2 cuadros (Figura 10/11), NO el texto por
+  // zona ni la comparación Total vs Técnica -- confirmado contra la
+  // plantilla real ("el texto que esta debajo de la figura 9 no, ahi van
+  // unas tablas... esta tabla Tabla 2: Pérdida Técnica Calculada vs
+  // Pérdida Total Real -- Nivel 3 no tiene que ir").
+  await _informesAsegurarNivel3TecnicaPorZona(zonasN3);
+  const {filas: filasZonasN3, mesAnterior: mesAnteriorN3} = _informesFilasNivel3PorZona(filas, mesClave);
+  if(filasZonasN3.length){
+    const figZonasN3 = await _informesCapturarHtml(_informesTablaHtmlN21Zonas(filasZonasN3));
+    if(figZonasN3){ children.push(_informesParrafoImagen(figZonasN3, 620)); children.push(_informesCaption('Figura', 'Índice de pérdidas totales Nivel de Tensión 3 variación por Zonas')); }
+    const figZonasTecN3 = await _informesCapturarHtml(_informesTablaHtmlN21ZonasTecnica(filasZonasN3, mesClave, mesAnteriorN3));
+    if(figZonasTecN3){ children.push(_informesParrafoImagen(figZonasTecN3, 620)); children.push(_informesCaption('Figura', 'Perdida gestionable por zonas, con perdida técnica proyectada')); }
   }
   children.push(new docx.Paragraph({text:''}));
   return children;
@@ -22881,14 +22891,13 @@ async function informesFiguraResumenNiveles(mesClave){
   const valorOriginal = sel.value;
   const tieneMes = [...sel.options].some(o => o.value === mesClave);
   if(tieneMes && sel.value !== mesClave){ sel.value = mesClave; alimResumenRenderNiveles(); }
-  // El mapa Leaflet (polígonos SVG de zona) puede seguir asentando su
-  // layout (ResizeObserver + fitBounds) más allá de un frame -- 60ms no
-  // alcanzaba y el mapa salía vacío en la captura. Se fuerza
-  // invalidateSize() y se espera más antes de capturar.
-  const mapaResumen = (typeof MAPA_ZONAS_INSTANCIAS !== 'undefined') ? MAPA_ZONAS_INSTANCIAS['alim-resumen-mapa-leaflet'] : null;
-  if(mapaResumen){ try{ mapaResumen.invalidateSize(); }catch(e){} }
-  await new Promise(r => setTimeout(r, 300));  // deja pintar el DOM (tarjetas/mapa) antes de capturar
-  const resultado = await _informesCapturarBloque('alim-resumen-card');
+  await new Promise(r => setTimeout(r, 60));  // deja pintar el DOM (tarjetas) antes de capturar
+  // Solo la columna de tarjetas (id="alim-resumen-tabla-col"), NO el mapa
+  // -- pedido explícito ("solo debe sacar la tabla en tamaño de una
+  // hoja"): el mapa (teselas externas, ver _informesCapturarBloque) no se
+  // captura bien y además la plantilla real solo trae esta tabla, no un
+  // mapa aparte en esta figura.
+  const resultado = await _informesCapturarBloque('alim-resumen-tabla-col');
   if(sel.value !== valorOriginal){ sel.value = valorOriginal; alimResumenRenderNiveles(); }
   return resultado;
 }
@@ -23015,8 +23024,8 @@ function _informesTablaHtmlN21ZonasTecnica(filas, mesActual, mesAnterior){
     const colorIndice = f.deltaPct==null ? 'var(--text3)' : (f.deltaPct>=0 ? '#C00000' : '#00B050');
     return `<tr>
       <td style="text-align:left"><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${color};margin-right:6px"></span>Zona ${f.zona}</td>
-      ${_alimN21CeldaGrupo(f.tecnica.actual, f.tecnica.deltaKwh, f.tecnica.deltaPct, fmt)}
-      ${_alimN21CeldaGrupo(f.gestionable.actual, f.gestionable.deltaKwh, f.gestionable.deltaPct, fmt)}
+      ${_alimN21CeldaGrupo(f.tecnica.actual, f.tecnica.deltaKwh, f.tecnica.deltaPct, fmt, f.tecnicaProyectada)}
+      ${_alimN21CeldaGrupo(f.gestionable.actual, f.gestionable.deltaKwh, f.gestionable.deltaPct, fmt, f.tecnicaProyectada)}
       <td>${fmtPct(f.pctAnterior)}</td>
       <td style="font-weight:700">${fmtPct(f.pctActual)}</td>
       <td style="color:${colorIndice};font-weight:700">${f.deltaPct==null?'--':`${f.deltaPct>=0?'▲':'▼'} ${Math.abs(f.deltaPct).toFixed(2)} pp`}</td>
@@ -23368,7 +23377,10 @@ function _informesFilasAlimentadoresRecomendacion(mesClave){
       gestPct: f.perdida_kwh ? f.gestionable_kwh/f.perdida_kwh*100 : null,
       longitud: f.longitud_total,
     }))
-    .filter(f => f.leyenda !== 'Asociación' && f.leyenda !== 'Subnormalidad');
+    // Pedido explícito ("en las tablas de alimentadores a intervenir solo
+    // debe sacar la categoria ok"): antes solo excluía Asociación/
+    // Subnormalidad y dejaba pasar Orden Público -- ahora solo entra 'ok'.
+    .filter(f => f.leyenda === 'ok');
   const porZona = {};
   filas.forEach(f => (porZona[f.zona] = porZona[f.zona]||[]).push(f));
   Object.keys(porZona).forEach(z => {
@@ -24067,42 +24079,6 @@ function _informesPdfTablaAlimentadores(doc, filasPorNem, mesClave, campo, y){
   return doc.lastAutoTable.finalY + 14;
 }
 
-// Misma tabla ANCHA (Mes | Pérdida Técnica Calculada | Pérdida Total Real |
-// Diferencia/Subregistro) que _informesTablaNivelTecnica del .docx, pero
-// con doc.autoTable en vez de docx.Table -- faltaba esta tabla en el PDF
-// (Nivel 4/Nivel 3), pedido explícito ("mira como lo esta genenerando no
-// es como yo te lo pedi", el PDF no traía las secciones de Nivel 4/Nivel 3
-// que sí tiene el .docx).
-function _informesPdfTablaNivelTecnica(doc, mensual, tecnicaPorMes, mesClave, y){
-  const [anio, mesNum] = mesClave.split('-').map(Number);
-  const meses = []; for(let m=1;m<=mesNum;m++) meses.push(`${anio}-${String(m).padStart(2,'0')}`);
-  let sumaTec=0, sumaReal=0, tieneTotal=false;
-  const body = meses.map(m => {
-    const f = mensual.find(x=>x.clave===m);
-    const t = tecnicaPorMes[m];
-    const real = f ? f.perdida : null;
-    const tec = t ? t.perdida : null;
-    const dif = (real!=null && tec!=null) ? real-tec : null;
-    if(real!=null && tec!=null){ sumaTec+=tec; sumaReal+=real; tieneTotal=true; }
-    return [labelMesLargo(m), tec==null?'--':_informesFKwh(tec), real==null?'--':_informesFKwh(real), dif==null?'--':`${dif>=0?'+':''}${_informesFKwh(dif)}`];
-  });
-  const filaTotal = ['TOTAL', tieneTotal?_informesFKwh(sumaTec):'--', tieneTotal?_informesFKwh(sumaReal):'--', tieneTotal?`${(sumaReal-sumaTec)>=0?'+':''}${_informesFKwh(sumaReal-sumaTec)}`:'--'];
-  y = _informesPdfAsegurarEspacio(doc, y, 40);
-  doc.autoTable({
-    startY: y,
-    head: [['Mes','Pérdida Técnica Calculada (kWh)','Pérdida Total Real (kWh)','Diferencia/Subregistro (kWh)']],
-    body, foot: [filaTotal],
-    margin:{left:INFORMES_PDF_MARGEN, right:INFORMES_PDF_MARGEN},
-    theme: 'plain',
-    styles:{fontSize:8, cellPadding:3, lineColor:[210,210,210], lineWidth:{bottom:0.5}, textColor:30},
-    headStyles:{fillColor:[217,217,217], textColor:20, fontStyle:'bold', lineWidth:{bottom:1}, lineColor:[0,0,0]},
-    footStyles:{fillColor:[237,237,237], textColor:20, fontStyle:'bold', lineWidth:{top:1}, lineColor:[0,0,0]},
-    columnStyles:{0:{halign:'left'}},
-    bodyStyles:{halign:'center'},
-  });
-  return doc.lastAutoTable.finalY + 14;
-}
-
 // ---- Portada (página 1, sin encabezado de página) ----
 function _informesPdfPortada(doc, mesClave, logoOperador){
   let y = 150;
@@ -24245,11 +24221,12 @@ async function _informesPdfCuerpo(doc, sel, mesIpReg, mesN21, toc, mesComercial,
         }
         const figTecnicaN4 = await informesFiguraNivelTecnica(mensualN4, tecN4, 'Nivel 4');
         if(figTecnicaN4){
+          y = _informesPdfParrafo(doc, 'Por tal razón, para validar la precisión de estas cifras y determinar el comportamiento real del sistema, se procederá a revisar la pérdida técnica simulada mediante flujos de carga de manera horaria.', y);
           y = await _informesPdfImagen(doc, figTecnicaN4, y, 'Pérdida Total vs Pérdida Técnica -- Nivel 4');
           const notaN4 = _informesTextosPlanos(_informesConTextoPlano(() => [informesTextoNivelSubregistro(mensualN4, tecN4, mesNivel4, 'Nivel 4')]));
           for(const p of notaN4) y = _informesPdfParrafo(doc, p, y);
-          y = _informesPdfCaptionTabla(doc, 'Pérdida Técnica Calculada vs Pérdida Total Real -- Nivel 4', y);
-          y = _informesPdfTablaNivelTecnica(doc, mensualN4, tecN4, mesNivel4, y);
+          // La tabla mes-a-mes de Pérdida Técnica vs Total NO va acá --
+          // mismo criterio que el .docx.
         }
       }
     }
@@ -24257,7 +24234,7 @@ async function _informesPdfCuerpo(doc, sel, mesIpReg, mesN21, toc, mesComercial,
 
   if(sel.nivel3){
     y = _informesPdfHeading(doc, contador, 0, 'Índice de Pérdida Nivel 3', y, toc);
-    const {filas: filasN3, tecnicaPorMes: tecN3} = await _informesAsegurarNivel34(3);
+    const {filas: filasN3} = await _informesAsegurarNivel34(3);
     if(!filasN3.length){
       y = _informesPdfParrafo(doc, 'No hay datos de Nivel 3 cargados.', y, {italica:true});
     }else{
@@ -24272,28 +24249,19 @@ async function _informesPdfCuerpo(doc, sel, mesIpReg, mesN21, toc, mesComercial,
         // la plantilla real.
         const figMensualN3 = await informesFiguraNivelSerie(mensualN3, idxN3, 'Nivel 3', 'Mensuales', true);
         y = await _informesPdfImagen(doc, figMensualN3, y, 'Índice de Pérdidas Nivel 3 -- Mensual');
-        const {porZona} = _alimNivel34MensualPorZona(filasN3);
+        const {zonas: zonasN3Pdf, porZona} = _alimNivel34MensualPorZona(filasN3);
         const figZonasN3 = await informesFiguraNivel3ZonasComparativo(porZona, mesNivel3);
         y = await _informesPdfImagen(doc, figZonasN3, y, 'Comparativo de Índice de Pérdidas por Zona -- Nivel 3');
 
-        ALIM_N21_ORDEN_TABLA.forEach(zona => {
-          const serieZona = porZona[zona];
-          if(!serieZona) return;
-          const idxZona = serieZona.findIndex(f => f.clave === mesNivel3);
-          if(idxZona < 0) return;
-          const actualZ = serieZona[idxZona];
-          if(actualZ.pct == null) return;
-          const parrafoZ = _informesTextosPlanos(_informesConTextoPlano(() => [informesTextoZonaNivel3(zona, actualZ, idxZona>0?serieZona[idxZona-1]:null)]));
-          for(const p of parrafoZ) y = _informesPdfParrafo(doc, p, y, {align:'left'});
-        });
-
-        const figTecnicaN3 = await informesFiguraNivelTecnica(mensualN3, tecN3, 'Nivel 3');
-        if(figTecnicaN3){
-          y = await _informesPdfImagen(doc, figTecnicaN3, y, 'Pérdida Total vs Pérdida Técnica -- Nivel 3');
-          const notaN3 = _informesTextosPlanos(_informesConTextoPlano(() => [informesTextoNivelSubregistro(mensualN3, tecN3, mesNivel3, 'Nivel 3')]));
-          for(const p of notaN3) y = _informesPdfParrafo(doc, p, y);
-          y = _informesPdfCaptionTabla(doc, 'Pérdida Técnica Calculada vs Pérdida Total Real -- Nivel 3', y);
-          y = _informesPdfTablaNivelTecnica(doc, mensualN3, tecN3, mesNivel3, y);
+        // Debajo de la Figura 9 van 2 cuadros, NO el texto por zona ni la
+        // comparación Total vs Técnica -- mismo criterio que el .docx.
+        await _informesAsegurarNivel3TecnicaPorZona(zonasN3Pdf);
+        const {filas: filasZonasN3Pdf, mesAnterior: mesAnteriorN3Pdf} = _informesFilasNivel3PorZona(filasN3, mesNivel3);
+        if(filasZonasN3Pdf.length){
+          const figZonasN3Pdf = await _informesCapturarHtml(_informesTablaHtmlN21Zonas(filasZonasN3Pdf));
+          y = await _informesPdfImagen(doc, figZonasN3Pdf, y, 'Índice de pérdidas totales Nivel de Tensión 3 variación por Zonas', 0.75);
+          const figZonasTecN3Pdf = await _informesCapturarHtml(_informesTablaHtmlN21ZonasTecnica(filasZonasN3Pdf, mesNivel3, mesAnteriorN3Pdf));
+          y = await _informesPdfImagen(doc, figZonasTecN3Pdf, y, 'Perdida gestionable por zonas, con perdida técnica proyectada');
         }
       }
     }
