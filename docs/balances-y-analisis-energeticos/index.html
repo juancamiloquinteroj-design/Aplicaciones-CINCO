@@ -21781,6 +21781,25 @@ async function informesSeccionIndicadorIPT(mesClave){
   parrafos.slice(1).forEach(p => children.push(p));
   const fig2 = await informesFiguraIptMensual(mesClave);
   if(fig2){ children.push(_informesParrafoImagen(fig2)); children.push(_informesCaption('Figura', 'Índice de pérdidas totales mensuales')); }
+
+  // Tabla "Interanual"/"Mensual" (Entrada/Salida/Δ Crecimiento) -- misma
+  // tabla que ya arma _narrativaTablaHtml para "Por qué crece el
+  // indicador" en la app en vivo, capturada como 2 imágenes separadas
+  // (confirmado abriendo la plantilla real: Figura 3 = interanual, Figura
+  // 4 = mensual, cada una en su propia imagen, no lado a lado como en
+  // pantalla).
+  const mensualIpReg = _narrativaIpRegMensual();
+  const datosInteranual = _narrativaEntradaSalidaDatos(mensualIpReg, mesClave, 'interanual');
+  if(datosInteranual){
+    const figInter = await _informesCapturarHtml(_narrativaTablaHtml(datosInteranual, 'Interanual (año contra año)'));
+    if(figInter){ children.push(_informesParrafoImagen(figInter, 420)); children.push(_informesCaption('Figura', 'Índice de pérdidas -- variación de pérdidas anual')); }
+  }
+  const datosMensualVar = _narrativaEntradaSalidaDatos(mensualIpReg, mesClave, 'mensual');
+  if(datosMensualVar){
+    const figMensualVar = await _informesCapturarHtml(_narrativaTablaHtml(datosMensualVar, 'Mensual (mes contra mes)'));
+    if(figMensualVar){ children.push(_informesParrafoImagen(figMensualVar, 420)); children.push(_informesCaption('Figura', 'Índice de pérdidas -- variación de pérdidas mensual')); }
+  }
+
   children.push(new docx.Paragraph({spacing:{before:200, after:100}, children:[new docx.TextRun({text:'Información del balance energético', bold:true})]}));
   const caja = informesCajaBalanceIpt(mesClave);
   if(caja) children.push(caja);
@@ -22668,6 +22687,15 @@ async function informesSeccionIndicadorNivel4(mesClave){
   if(figMensual){ children.push(_informesParrafoImagen(figMensual)); children.push(_informesCaption('Figura', 'Índice de Pérdidas Nivel 4 -- Mensual')); }
   if(figAnual){ children.push(_informesParrafoImagen(figAnual)); children.push(_informesCaption('Figura', 'Índice de Pérdidas Nivel 4 -- Anual (12 meses)')); }
 
+  // Tabla Entrada/Salida mes contra mes -- misma _narrativaTablaHtml que
+  // IP_Reg, pero solo la variante "mensual" (confirmado en la plantilla
+  // real: acá solo trae 1 imagen, no interanual+mensual como IP_Reg).
+  const datosMensualNivel4 = _narrativaEntradaSalidaDatos(mensual, mesClave, 'mensual');
+  if(datosMensualNivel4){
+    const figMensualVar = await _informesCapturarHtml(_narrativaTablaHtml(datosMensualNivel4, 'Mensual (mes contra mes)'));
+    if(figMensualVar){ children.push(_informesParrafoImagen(figMensualVar, 420)); children.push(_informesCaption('Figura', 'Comportamiento de entrada y salida respecto mes anterior -- Nivel 4')); }
+  }
+
   const figTecnica = await informesFiguraNivelTecnica(mensual, tecnicaPorMes, 'Nivel 4');
   if(figTecnica){
     children.push(_informesParrafoImagen(figTecnica));
@@ -22822,6 +22850,98 @@ async function informesSeccionDistribucionFlujo(mesClave){
   return children;
 }
 
+// Cuadro 1 ("Comparativo Mensual por Zona": Zona/Entrada/Salida/P.Total)
+// de la tabla en vivo alimN21RenderTablaZonas, recalculado de forma
+// INDEPENDIENTE para un `mesClave` puntual -- la versión en vivo usa el
+// último mes VISIBLE según el filtro Rango de pantalla (alimN21Visibles),
+// que no necesariamente es el mes que el informe pidió, mismo criterio de
+// independencia que ya usan _informesFilasSubestacionesCrecimiento/
+// _informesFilasAlimentadoresCrecimiento (recalculan aparte de los
+// filtros en vivo). Confirmado con la plantilla real (Figura 10:
+// "Variación de entrada y salida en el nivel 21") que esta es la tabla
+// que le corresponde, no la de "Por qué crece el indicador".
+function _informesFilasN21PorZona(mesClave){
+  let mesAnterior = null;
+  const filas = _alimN21OrdenarZonasTabla(ALIM_N21_ZONAS).map(z => {
+    const serie = alimN21AgregarMensual(new Set([z])).filter(f => f.pct != null);
+    const idx = serie.findIndex(f => f.clave === mesClave);
+    if(idx < 0) return null;
+    const actual = serie[idx];
+    const anterior = idx >= 1 ? serie[idx-1] : null;
+    if(anterior && !mesAnterior) mesAnterior = anterior.clave;
+
+    const tecZona = ALIM_N21_TECNICA_POR_ZONA[z] || {};
+    const tecActual = tecZona[actual.clave] ? tecZona[actual.clave].perdida : null;
+    const tecAnterior = (anterior && tecZona[anterior.clave]) ? tecZona[anterior.clave].perdida : null;
+    const gesActual = tecActual!=null ? actual.perdida - tecActual : null;
+    const gesAnterior = (anterior && tecAnterior!=null) ? anterior.perdida - tecAnterior : null;
+
+    return {
+      zona: z,
+      entrada: actual.entrada, deltaEntrada: anterior ? actual.entrada-anterior.entrada : null,
+      salida: actual.salida, deltaSalida: anterior ? actual.salida-anterior.salida : null,
+      total: _alimN21DeltaGrupo(actual.perdida, anterior ? anterior.perdida : null),
+      tecnica: _alimN21DeltaGrupo(tecActual, tecAnterior),
+      gestionable: _alimN21DeltaGrupo(gesActual, gesAnterior),
+      pctActual: actual.pct, pctAnterior: anterior ? anterior.pct : null,
+      deltaPct: anterior ? actual.pct - anterior.pct : null,
+    };
+  }).filter(Boolean);
+  return {filas, mesAnterior};
+}
+
+// Mismo HTML/clases (.n21tab-col-es, n21tab-mostrar-es para forzar
+// Entrada/Salida visibles -- ocultas por defecto en pantalla, ver CSS) que
+// la tabla en vivo, para heredar el estilo real -- capturada con
+// html2canvas igual que el resto de tablas del informe.
+function _informesTablaHtmlN21Zonas(filas){
+  const fmt = v => v==null ? '--' : v.toLocaleString('es-CO',{maximumFractionDigits:0});
+  const fmtDelta = v => v==null ? '--' : `${v>=0?'+':''}${v.toLocaleString('es-CO',{maximumFractionDigits:0})}`;
+  const filasHtml = filas.map(f => {
+    const color = colorParaZona(f.zona);
+    return `<tr>
+      <td style="text-align:left"><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${color};margin-right:6px"></span>Zona ${f.zona}</td>
+      <td class="n21tab-col-es">${fmt(f.entrada)}</td>
+      <td class="n21tab-col-es" style="color:var(--text3)">${fmtDelta(f.deltaEntrada)}</td>
+      <td class="n21tab-col-es">${fmt(f.salida)}</td>
+      <td class="n21tab-col-es" style="color:var(--text3)">${fmtDelta(f.deltaSalida)}</td>
+      ${_alimN21CeldaGrupo(f.total.actual, f.total.deltaKwh, f.total.deltaPct, fmt)}
+    </tr>`;
+  }).join('');
+  const sum = campo => filas.reduce((s,f)=>s+f[campo], 0);
+  const todasConDelta = filas.every(f => f.deltaEntrada!=null && f.deltaSalida!=null);
+  const totEntrada = sum('entrada'), totSalida = sum('salida');
+  const totDeltaEntrada = todasConDelta ? sum('deltaEntrada') : null;
+  const totDeltaSalida = todasConDelta ? sum('deltaSalida') : null;
+  const totTotal = _alimN21TotalGrupo(filas, 'total');
+  const totalHtml = `<tr>
+    <td style="text-align:left">Total</td>
+    <td class="n21tab-col-es">${fmt(totEntrada)}</td>
+    <td class="n21tab-col-es">${fmtDelta(totDeltaEntrada)}</td>
+    <td class="n21tab-col-es">${fmt(totSalida)}</td>
+    <td class="n21tab-col-es">${fmtDelta(totDeltaSalida)}</td>
+    ${_alimN21CeldaGrupo(totTotal.actual, totTotal.deltaKwh, totTotal.deltaPct, fmt)}
+  </tr>`;
+  return `<div class="tbl-wrap tbl-compacta n21tab-mostrar-es" style="display:inline-block">
+    <table>
+      <thead>
+        <tr>
+          <th rowspan="2" style="text-align:left">Zona</th>
+          <th colspan="2" class="n21tab-col-es" style="text-align:center">Entrada</th>
+          <th colspan="2" class="n21tab-col-es" style="text-align:center">Salida</th>
+          <th colspan="4" style="text-align:center">P. Total</th>
+        </tr>
+        <tr>
+          <th class="n21tab-col-es">kWh</th><th class="n21tab-col-es">Δ</th>
+          <th class="n21tab-col-es">kWh</th><th class="n21tab-col-es">Δ</th>
+          <th>kWh</th><th>Δ kWh</th><th>Δ %</th><th>Impacto</th>
+        </tr>
+      </thead>
+      <tbody>${filasHtml}${totalHtml}</tbody>
+    </table>
+  </div>`;
+}
+
 async function informesSeccionIndicadorN21Total(mesClave){
   const children = [_informesHeading1('Indicador Total N2-1')];
   const serie = alimN21AgregarMensual(new Set());
@@ -22835,6 +22955,16 @@ async function informesSeccionIndicadorN21Total(mesClave){
   if(mapa){ children.push(_informesParrafoImagen(mapa)); children.push(_informesCaption('Figura', 'Indicador N2-1 por zona')); }
   const fig = await informesFiguraN21(serie, idx, 'Total');
   if(fig){ children.push(_informesParrafoImagen(fig)); children.push(_informesCaption('Figura', 'Indicador Total N2-1 -- pérdida mensual (kWh y %)')); }
+
+  // Comparativo Mensual por Zona (Entrada/Salida/P.Total + fila Total) --
+  // confirmado con la plantilla real: "Figura 10: Variación de entrada y
+  // salida en el nivel 21".
+  const { filas: filasZonasN21 } = _informesFilasN21PorZona(mesClave);
+  if(filasZonasN21.length){
+    const figZonas = await _informesCapturarHtml(_informesTablaHtmlN21Zonas(filasZonasN21));
+    if(figZonas){ children.push(_informesParrafoImagen(figZonas, 500)); children.push(_informesCaption('Figura', 'Variación de entrada y salida en el nivel 21')); }
+  }
+
   children.push(new docx.Paragraph({text:''}));
 
   // Subestaciones/Alimentadores con mayor crecimiento de pérdida, uno por
