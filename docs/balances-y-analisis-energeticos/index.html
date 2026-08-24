@@ -22843,11 +22843,11 @@ async function informesSeccionIndicadorN21Total(mesClave){
     children.push(...(await _informesBloquesCrecimientoPorZona(filasSub, _informesTablaHtmlSubestaciones)));
     children.push(_informesCaption('Figura', 'Subestaciones con mayor crecimiento de pérdidas'));
   }
-  const { intervenibles: alimIntervenibles, excluidos: alimExcluidos } = _informesFilasAlimentadoresCrecimiento(mesClave);
-  if(alimIntervenibles.length || alimExcluidos.length){
-    children.push(_informesParrafo(`A continuación, se muestran los circuitos candidatos a intervención por zona (variación de pérdida superior al ${umbralCrecInforme}% frente al mes anterior), excluyendo automáticamente los que tengan una condición que impida intervenirlos (asociación, orden público o subnormalidad) y clasificados por prioridad -- Alta (variación ≥ ${(umbralCrecInforme*3).toFixed(0)}%), Media (≥ ${(umbralCrecInforme*1.5).toFixed(0)}%) o Baja (por encima del umbral):`));
-    children.push(...(await _informesBloquesCrecimientoAlimentadoresPorZona(alimIntervenibles, alimExcluidos)));
-    children.push(_informesCaption('Figura', 'Circuitos candidatos a intervención por crecimiento de pérdidas'));
+  const filasAlim = _informesFilasAlimentadoresCrecimiento(mesClave);
+  if(filasAlim.length){
+    children.push(_informesParrafo(`A continuación, se muestran los alimentadores con mayor crecimiento de pérdida total de cada zona (variación superior al ${umbralCrecInforme}% frente al mes anterior):`));
+    children.push(...(await _informesBloquesCrecimientoPorZona(filasAlim, _informesTablaHtmlAlimentadores)));
+    children.push(_informesCaption('Figura', 'Alimentadores con mayor crecimiento de pérdidas'));
   }
   return children;
 }
@@ -22907,21 +22907,6 @@ function _informesFilasSubestacionesCrecimiento(mesClave){
     .sort((a,b) => b.deltaPerdidaCrec - a.deltaPerdidaCrec);
 }
 
-// Devuelve {intervenibles, excluidos} en vez de una lista plana -- pedido
-// explícito: "Excluir automáticamente los circuitos que tengan
-// condiciones que impidan su intervención, como problemas de asociación,
-// restricciones de orden público u otras condiciones... Clasificar/
-// priorizar los circuitos que sí cumplen los criterios de intervención".
-// `leyenda` ya distinguía 4 valores en toda la app (ver ALIM3_COLOR_LEYENDA):
-// 'ok', 'Asociación', 'Orden Público', 'Subnormalidad' -- las 3 últimas ya
-// eran, antes de este cambio, las mismas que informesConclusionesAlimentadores
-// trataba aparte de los "candidatos" (un circuito con problema de
-// asociación no se puede intervenir físicamente porque la medida no es
-// confiable; uno en zona de orden público o subnormalidad no se puede
-// intervenir por seguridad/acceso) -- acá se aplica ese MISMO criterio a
-// la tabla de "mayor crecimiento" por zona. Prioridad (Alta/Media/Baja) es
-// relativa al propio umbral que digitó el usuario, no un número fijo --
-// así escala igual sin importar qué umbral haya elegido.
 function _informesFilasAlimentadoresCrecimiento(mesClave){
   const claveAnterior = _alim3ClaveAnterior(mesClave);
   const anteriorPorNem = new Map();
@@ -22933,11 +22918,7 @@ function _informesFilasAlimentadoresCrecimiento(mesClave){
       gestPct: f.perdida_kwh ? f.gestionable_kwh/f.perdida_kwh*100 : null, perdida:f.perdida_kwh, deltaPerdidaCrec, longitud:f.longitud_total};
   });
   const umbral = _alimUmbralCrecimiento('informes-umbral-crecimiento');
-  const filtradas = filas.filter(f => f.deltaPerdidaCrec!=null && f.deltaPerdidaCrec>umbral).sort((a,b)=>b.deltaPerdidaCrec-a.deltaPerdidaCrec);
-  const prioridadDe = f => f.deltaPerdidaCrec >= umbral*3 ? 'Alta' : (f.deltaPerdidaCrec >= umbral*1.5 ? 'Media' : 'Baja');
-  const intervenibles = filtradas.filter(f => f.leyenda==='ok').map(f => ({...f, prioridad: prioridadDe(f)}));
-  const excluidos = filtradas.filter(f => f.leyenda!=='ok');
-  return {intervenibles, excluidos, umbral};
+  return filas.filter(f => f.deltaPerdidaCrec!=null && f.deltaPerdidaCrec>umbral).sort((a,b)=>b.deltaPerdidaCrec-a.deltaPerdidaCrec);
 }
 
 // La plantilla de referencia trae estas tablas como IMÁGENES a color
@@ -23015,24 +22996,19 @@ function _informesTablaHtmlSubestaciones(filas){
 }
 
 // Mismo <thead>/fila que alim3-tabla-sticky (ver el HTML de "Top
-// Alimentadores"), con la columna "Categoría" reemplazada por "Prioridad"
-// -- pedido explícito ("clasificar/priorizar los circuitos que sí cumplen
-// los criterios de intervención"). Ya no hace falta la Categoría acá
-// porque esta tabla solo trae circuitos con leyenda='ok' (los demás se
-// excluyen antes, ver _informesFilasAlimentadoresCrecimiento).
-const INFORMES_COLOR_PRIORIDAD = {Alta:'#C00000', Media:'#ED7D31', Baja:'#BF9000'};
+// Alimentadores").
 function _informesTablaHtmlAlimentadores(filas){
   const fmt0 = v => v==null ? '--' : v.toLocaleString('es-CO',{maximumFractionDigits:0});
   const fmt2 = v => v==null ? '--' : v.toLocaleString('es-CO',{maximumFractionDigits:2});
   const fmtPct = v => v==null ? '--' : `${v.toFixed(2)}%`;
   const filasHtml = filas.map(f => {
     const color = colorParaZona(f.zona);
-    const colorPrio = INFORMES_COLOR_PRIORIDAD[f.prioridad] || 'var(--text3)';
+    const colorLey = alim3ColorLeyenda(f.leyenda);
     const colorCrec = f.deltaPerdidaCrec==null ? 'var(--text3)' : (f.deltaPerdidaCrec>=0 ? '#C00000' : '#00B050');
     return `<tr>
       <td style="text-align:left;font-weight:700">${f.nombre}</td>
       <td><span class="zb" style="background:${color}22;color:var(--text)">${f.zona}</span></td>
-      <td><span class="zb" style="background:${colorPrio}22;color:var(--text)">${f.prioridad}</span></td>
+      <td><span class="zb" style="background:${colorLey}22;color:var(--text)">${f.leyenda}</span></td>
       <td>${fmt0(f.gestLongitud)}</td>
       <td>${fmt0(f.gestionable)}</td>
       <td>${fmtPct(f.gestPct)}</td>
@@ -23044,7 +23020,7 @@ function _informesTablaHtmlAlimentadores(filas){
   return `<div class="tbl-wrap tbl-compacta" style="display:inline-block">
     <table>
       <thead><tr>
-        <th style="text-align:left">Nombre Spard</th><th>Zona</th><th>Prioridad</th><th>Gest x Longitud</th><th>Gestionable (kWh)</th><th>Gestionable % Top</th><th>Pérdida (kWh)</th><th>Var. Pérdida %</th><th>Longitud (Km)</th>
+        <th style="text-align:left">Nombre Spard</th><th>Zona</th><th>Categoría</th><th>Gest x Longitud</th><th>Gestionable (kWh)</th><th>Gestionable % Top</th><th>Pérdida (kWh)</th><th>Var. Pérdida %</th><th>Longitud (Km)</th>
       </tr></thead>
       <tbody>${filasHtml}</tbody>
     </table>
@@ -23066,40 +23042,6 @@ async function _informesBloquesCrecimientoPorZona(filas, tablaHtmlFn){
     ]));
     const img = await _informesCapturarHtml(tablaHtmlFn(filasZona));
     if(img) bloques.push(_informesParrafoImagen(img, 620));
-    bloques.push(new docx.Paragraph({text:''}));
-  }
-  return bloques;
-}
-
-// Misma idea que _informesBloquesCrecimientoPorZona, pero para
-// Alimentadores: además de la tabla de intervenibles (leyenda='ok'),
-// explica por zona qué circuitos quedaron EXCLUIDOS de la selección de
-// intervención y por qué -- pedido explícito ("Excluir automáticamente
-// los circuitos que tengan condiciones que impidan su intervención...
-// Clasificar/priorizar los circuitos que sí cumplen"). Mismo criterio
-// (leyenda) que ya usaba informesConclusionesAlimentadores para separar
-// "candidatos" de "asociación"/"asentamientos", aplicado acá.
-async function _informesBloquesCrecimientoAlimentadoresPorZona(intervenibles, excluidos){
-  const bloques = [];
-  for(const zona of ALIM_N21_ORDEN_TABLA){
-    const filasZona = intervenibles.filter(f => f.zona === zona);
-    const excluidosZona = excluidos.filter(f => f.zona === zona);
-    if(!filasZona.length && !excluidosZona.length) continue;
-    bloques.push(_informesParrafo([
-      new docx.TextRun({text:`Zona ${zona} (${INFORMES_ZONA_NOMBRE[zona]||zona})`, bold:true}),
-    ]));
-    if(filasZona.length){
-      const img = await _informesCapturarHtml(_informesTablaHtmlAlimentadores(filasZona));
-      if(img) bloques.push(_informesParrafoImagen(img, 620));
-    }else{
-      bloques.push(_informesParrafo('Ningún circuito de esta zona cumple los criterios de intervención este mes.'));
-    }
-    if(excluidosZona.length){
-      const porMotivo = {};
-      excluidosZona.forEach(f => (porMotivo[f.leyenda] = porMotivo[f.leyenda]||[]).push(f.nombre));
-      const detalle = Object.keys(porMotivo).map(m => `${m} (${porMotivo[m].join(', ')})`).join('; ');
-      bloques.push(_informesParrafo(`Quedan excluidos de la selección de intervención ${excluidosZona.length} circuito${excluidosZona.length===1?'':'s'} con crecimiento de pérdida por encima del umbral, pero con una condición que impide actuar sobre ellos -- ${detalle}.`));
-    }
     bloques.push(new docx.Paragraph({text:''}));
   }
   return bloques;
