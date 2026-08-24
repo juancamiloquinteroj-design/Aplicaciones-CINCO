@@ -23731,7 +23731,7 @@ function _informesValidarSelMesYContenido(msg){
   const meses = _informesLeerMeses();
   if(!Object.values(meses).some(Boolean)){ msg.textContent = 'Elige al menos un mes.'; return null; }
   const sel = _informesSeleccionContenido();
-  if(!sel.subestacion && !sel.ipReg && !sel.nivel4 && !sel.nivel3 && !sel.n21 && !sel.distribucion && !sel.comercial && !sel.temperatura && !sel.conclusiones){
+  if(!sel.subestacion && !sel.ipReg && !sel.nivel4 && !sel.nivel3 && !sel.n21 && !sel.distribucion && !sel.recomendacion && !sel.comercial && !sel.temperatura && !sel.conclusiones){
     msg.textContent = 'Elige al menos un contenido para el informe.'; return null;
   }
   return {meses, sel};
@@ -24017,6 +24017,42 @@ function _informesPdfTablaAlimentadores(doc, filasPorNem, mesClave, campo, y){
   return doc.lastAutoTable.finalY + 14;
 }
 
+// Misma tabla ANCHA (Mes | Pérdida Técnica Calculada | Pérdida Total Real |
+// Diferencia/Subregistro) que _informesTablaNivelTecnica del .docx, pero
+// con doc.autoTable en vez de docx.Table -- faltaba esta tabla en el PDF
+// (Nivel 4/Nivel 3), pedido explícito ("mira como lo esta genenerando no
+// es como yo te lo pedi", el PDF no traía las secciones de Nivel 4/Nivel 3
+// que sí tiene el .docx).
+function _informesPdfTablaNivelTecnica(doc, mensual, tecnicaPorMes, mesClave, y){
+  const [anio, mesNum] = mesClave.split('-').map(Number);
+  const meses = []; for(let m=1;m<=mesNum;m++) meses.push(`${anio}-${String(m).padStart(2,'0')}`);
+  let sumaTec=0, sumaReal=0, tieneTotal=false;
+  const body = meses.map(m => {
+    const f = mensual.find(x=>x.clave===m);
+    const t = tecnicaPorMes[m];
+    const real = f ? f.perdida : null;
+    const tec = t ? t.perdida : null;
+    const dif = (real!=null && tec!=null) ? real-tec : null;
+    if(real!=null && tec!=null){ sumaTec+=tec; sumaReal+=real; tieneTotal=true; }
+    return [labelMesLargo(m), tec==null?'--':_informesFKwh(tec), real==null?'--':_informesFKwh(real), dif==null?'--':`${dif>=0?'+':''}${_informesFKwh(dif)}`];
+  });
+  const filaTotal = ['TOTAL', tieneTotal?_informesFKwh(sumaTec):'--', tieneTotal?_informesFKwh(sumaReal):'--', tieneTotal?`${(sumaReal-sumaTec)>=0?'+':''}${_informesFKwh(sumaReal-sumaTec)}`:'--'];
+  y = _informesPdfAsegurarEspacio(doc, y, 40);
+  doc.autoTable({
+    startY: y,
+    head: [['Mes','Pérdida Técnica Calculada (kWh)','Pérdida Total Real (kWh)','Diferencia/Subregistro (kWh)']],
+    body, foot: [filaTotal],
+    margin:{left:INFORMES_PDF_MARGEN, right:INFORMES_PDF_MARGEN},
+    theme: 'plain',
+    styles:{fontSize:8, cellPadding:3, lineColor:[210,210,210], lineWidth:{bottom:0.5}, textColor:30},
+    headStyles:{fillColor:[217,217,217], textColor:20, fontStyle:'bold', lineWidth:{bottom:1}, lineColor:[0,0,0]},
+    footStyles:{fillColor:[237,237,237], textColor:20, fontStyle:'bold', lineWidth:{top:1}, lineColor:[0,0,0]},
+    columnStyles:{0:{halign:'left'}},
+    bodyStyles:{halign:'center'},
+  });
+  return doc.lastAutoTable.finalY + 14;
+}
+
 // ---- Portada (página 1, sin encabezado de página) ----
 function _informesPdfPortada(doc, mesClave, logoOperador){
   let y = 150;
@@ -24096,7 +24132,7 @@ async function _informesPdfAplicarEncabezados(doc, mesClave, desdePagina){
 // contar cuántas páginas necesita la tabla de contenido, y otra real
 // después de reservar esas páginas. Determinista: mismos datos de
 // entrada, mismo resultado siempre. ----
-async function _informesPdfCuerpo(doc, sel, mesIpReg, mesN21, toc, mesComercial){
+async function _informesPdfCuerpo(doc, sel, mesIpReg, mesN21, toc, mesComercial, mesNivel4, mesNivel3, mesDistribucion){
   const contador = [0,0,0,0];
   let y = INFORMES_PDF_MARGEN;
 
@@ -24129,6 +24165,98 @@ async function _informesPdfCuerpo(doc, sel, mesIpReg, mesN21, toc, mesComercial)
     }
   }
 
+  // Nivel 4 y Nivel 3 -- faltaban por completo en el PDF (solo estaban en
+  // el .docx), pedido explícito ("no es como yo te lo pedi" comparando
+  // contra la plantilla real). Mismo patrón que informesSeccionIndicadorNivel4/
+  // informesSeccionIndicadorNivel3 del .docx, reusando las MISMAS funciones
+  // de datos/texto -- _informesConTextoPlano intercepta docx.Paragraph/
+  // TextRun para reusar la redacción tal cual sin reescribirla dos veces.
+  if(sel.nivel4){
+    y = _informesPdfHeading(doc, contador, 0, 'Índice de Pérdida Nivel 4', y, toc);
+    const {filas: filasN4, tecnicaPorMes: tecN4} = await _informesAsegurarNivel34(4);
+    if(!filasN4.length){
+      y = _informesPdfParrafo(doc, 'No hay datos de Nivel 4 cargados.', y, {italica:true});
+    }else{
+      const mensualN4 = _alimNivel34MensualTotal(filasN4);
+      const idxN4 = mensualN4.findIndex(f => f.clave === mesNivel4);
+      if(idxN4 < 0){
+        y = _informesPdfParrafo(doc, 'No hay datos de Nivel 4 para el mes seleccionado.', y, {italica:true});
+      }else{
+        const parrafosN4 = _informesTextosPlanos(_informesConTextoPlano(() => [informesTextoNivel('Nivel 4', mensualN4[idxN4], idxN4>0?mensualN4[idxN4-1]:null)]));
+        for(const p of parrafosN4) y = _informesPdfParrafo(doc, p, y);
+        const anualN4 = alimN21Con12Meses(mensualN4).filter(f => f.pct12 != null);
+        const idxAnualN4 = anualN4.findIndex(f => f.clave === mesNivel4);
+        const figMensualN4 = await informesFiguraNivelSerie(mensualN4, idxN4, 'Nivel 4', 'Mensuales');
+        y = await _informesPdfImagen(doc, figMensualN4, y, 'Índice de Pérdidas Nivel 4 -- Mensual');
+        if(idxAnualN4>=0){
+          const figAnualN4 = await informesFiguraNivelAnual(anualN4, idxAnualN4, 'Nivel 4');
+          y = await _informesPdfImagen(doc, figAnualN4, y, 'Índice de Pérdidas Nivel 4 -- Anual (12 meses)');
+        }
+        const datosVarN4 = _narrativaEntradaSalidaDatos(mensualN4, mesNivel4, 'mensual');
+        if(datosVarN4){
+          const figVarN4 = await _informesCapturarHtml(_narrativaTablaHtml(datosVarN4, 'Mensual (mes contra mes)'));
+          y = await _informesPdfImagen(doc, figVarN4, y, 'Comportamiento de entrada y salida respecto mes anterior -- Nivel 4', 0.55);
+        }
+        const figTecnicaN4 = await informesFiguraNivelTecnica(mensualN4, tecN4, 'Nivel 4');
+        if(figTecnicaN4){
+          y = await _informesPdfImagen(doc, figTecnicaN4, y, 'Pérdida Total vs Pérdida Técnica -- Nivel 4');
+          const notaN4 = _informesTextosPlanos(_informesConTextoPlano(() => [informesTextoNivelSubregistro(mensualN4, tecN4, mesNivel4, 'Nivel 4')]));
+          for(const p of notaN4) y = _informesPdfParrafo(doc, p, y);
+          y = _informesPdfCaptionTabla(doc, 'Pérdida Técnica Calculada vs Pérdida Total Real -- Nivel 4', y);
+          y = _informesPdfTablaNivelTecnica(doc, mensualN4, tecN4, mesNivel4, y);
+        }
+      }
+    }
+  }
+
+  if(sel.nivel3){
+    y = _informesPdfHeading(doc, contador, 0, 'Índice de Pérdida Nivel 3', y, toc);
+    const {filas: filasN3, tecnicaPorMes: tecN3} = await _informesAsegurarNivel34(3);
+    if(!filasN3.length){
+      y = _informesPdfParrafo(doc, 'No hay datos de Nivel 3 cargados.', y, {italica:true});
+    }else{
+      const mensualN3 = _alimNivel34MensualTotal(filasN3);
+      const idxN3 = mensualN3.findIndex(f => f.clave === mesNivel3);
+      if(idxN3 < 0){
+        y = _informesPdfParrafo(doc, 'No hay datos de Nivel 3 para el mes seleccionado.', y, {italica:true});
+      }else{
+        const parrafosN3 = _informesTextosPlanos(_informesConTextoPlano(() => [informesTextoNivel('Nivel 3', mensualN3[idxN3], idxN3>0?mensualN3[idxN3-1]:null)]));
+        for(const p of parrafosN3) y = _informesPdfParrafo(doc, p, y);
+        const anualN3 = alimN21Con12Meses(mensualN3).filter(f => f.pct12 != null);
+        const idxAnualN3 = anualN3.findIndex(f => f.clave === mesNivel3);
+        const figMensualN3 = await informesFiguraNivelSerie(mensualN3, idxN3, 'Nivel 3', 'Mensuales');
+        y = await _informesPdfImagen(doc, figMensualN3, y, 'Índice de Pérdidas Nivel 3 -- Mensual');
+        if(idxAnualN3>=0){
+          const figAnualN3 = await informesFiguraNivelAnual(anualN3, idxAnualN3, 'Nivel 3');
+          y = await _informesPdfImagen(doc, figAnualN3, y, 'Índice de Pérdidas Nivel 3 -- Anual (12 meses)');
+        }
+        const {porZona} = _alimNivel34MensualPorZona(filasN3);
+        const figZonasN3 = await informesFiguraNivel3ZonasComparativo(porZona, mesNivel3);
+        y = await _informesPdfImagen(doc, figZonasN3, y, 'Comparativo de Índice de Pérdidas por Zona -- Nivel 3');
+
+        ALIM_N21_ORDEN_TABLA.forEach(zona => {
+          const serieZona = porZona[zona];
+          if(!serieZona) return;
+          const idxZona = serieZona.findIndex(f => f.clave === mesNivel3);
+          if(idxZona < 0) return;
+          const actualZ = serieZona[idxZona];
+          if(actualZ.pct == null) return;
+          const parrafoZ = _informesTextosPlanos(_informesConTextoPlano(() => [informesTextoZonaNivel3(zona, actualZ, idxZona>0?serieZona[idxZona-1]:null)]));
+          for(const p of parrafoZ) y = _informesPdfParrafo(doc, p, y, {align:'left'});
+        });
+
+        const figTecnicaN3 = await informesFiguraNivelTecnica(mensualN3, tecN3, 'Nivel 3');
+        if(figTecnicaN3){
+          y = await _informesPdfImagen(doc, figTecnicaN3, y, 'Pérdida Total vs Pérdida Técnica -- Nivel 3');
+          const notaN3 = _informesTextosPlanos(_informesConTextoPlano(() => [informesTextoNivelSubregistro(mensualN3, tecN3, mesNivel3, 'Nivel 3')]));
+          for(const p of notaN3) y = _informesPdfParrafo(doc, p, y);
+          y = _informesPdfCaptionTabla(doc, 'Pérdida Técnica Calculada vs Pérdida Total Real -- Nivel 3', y);
+          y = _informesPdfTablaNivelTecnica(doc, mensualN3, tecN3, mesNivel3, y);
+        }
+      }
+    }
+  }
+
   if(sel.n21){
     y = _informesPdfHeading(doc, contador, 0, 'Indicador Total N2-1', y, toc);
     const serieTotal = alimN21AgregarMensual(new Set());
@@ -24158,6 +24286,71 @@ async function _informesPdfCuerpo(doc, sel, mesIpReg, mesN21, toc, mesComercial)
       // El detalle completo por Subestación se quitó del flujo automático --
       // mismo criterio que el .docx (informesSeccionZonaN21): la plantilla
       // de referencia no lo trae.
+    }
+
+    // Comparativo Mensual por Zona (2 cuadros) + histórico por zona +
+    // Subestaciones/Alimentadores con mayor crecimiento -- faltaban por
+    // completo en el PDF, mismo contenido que informesSeccionIndicadorN21Total
+    // del .docx, reusando las mismas funciones/imágenes ya construidas ahí.
+    const { filas: filasZonasN21Pdf, mesAnterior: mesAnteriorN21Pdf } = _informesFilasN21PorZona(mesN21);
+    if(filasZonasN21Pdf.length){
+      const figZonasPdf = await _informesCapturarHtml(_informesTablaHtmlN21Zonas(filasZonasN21Pdf));
+      y = await _informesPdfImagen(doc, figZonasPdf, y, 'Variación de entrada y salida en el nivel 21', 0.75);
+      const figZonasTecPdf = await _informesCapturarHtml(_informesTablaHtmlN21ZonasTecnica(filasZonasN21Pdf, mesN21, mesAnteriorN21Pdf));
+      y = await _informesPdfImagen(doc, figZonasTecPdf, y, 'Variación de pérdidas e índices por zona de forma anualizada en el nivel 21');
+    }
+    const figHistoricoPdf = await informesFiguraHistoricoZonasN21(mesN21);
+    if(figHistoricoPdf){ y = await _informesPdfImagen(doc, figHistoricoPdf, y, 'Comportamiento histórico de las zonas Indicador N2-1'); }
+
+    const umbralCrecInformePdf = _alimUmbralCrecimiento('informes-umbral-crecimiento');
+    const filasSubPdf = _informesFilasSubestacionesCrecimiento(mesN21);
+    if(filasSubPdf.length){
+      y = _informesPdfParrafo(doc, `A continuación, se muestran las subestaciones con mayor crecimiento de pérdida total de cada zona (variación superior al ${umbralCrecInformePdf}% frente al mes anterior):`, y);
+      for(const zona of ALIM_N21_ORDEN_TABLA){
+        const filasZona = filasSubPdf.filter(f => f.zona === zona);
+        if(!filasZona.length) continue;
+        y = _informesPdfAsegurarEspacio(doc, y, 18);
+        doc.setFont('helvetica','bold'); doc.setFontSize(9.5); doc.setTextColor(30);
+        doc.text(`Zona ${zona} (${INFORMES_ZONA_NOMBRE[zona]||zona})`, INFORMES_PDF_MARGEN, y); y += 14;
+        const img = await _informesCapturarHtml(_informesTablaHtmlSubestaciones(filasZona));
+        y = await _informesPdfImagen(doc, img, y, null, 0.85);
+      }
+    }
+    const filasAlimPdf = _informesFilasAlimentadoresCrecimiento(mesN21);
+    if(filasAlimPdf.length){
+      y = _informesPdfParrafo(doc, `A continuación, se muestran los alimentadores con mayor crecimiento de pérdida total de cada zona (variación superior al ${umbralCrecInformePdf}% frente al mes anterior):`, y);
+      for(const zona of ALIM_N21_ORDEN_TABLA){
+        const filasZona = filasAlimPdf.filter(f => f.zona === zona);
+        if(!filasZona.length) continue;
+        y = _informesPdfAsegurarEspacio(doc, y, 18);
+        doc.setFont('helvetica','bold'); doc.setFontSize(9.5); doc.setTextColor(30);
+        doc.text(`Zona ${zona} (${INFORMES_ZONA_NOMBRE[zona]||zona})`, INFORMES_PDF_MARGEN, y); y += 14;
+        const img = await _informesCapturarHtml(_informesTablaHtmlAlimentadores(filasZona));
+        y = await _informesPdfImagen(doc, img, y, null, 0.9);
+      }
+    }
+  }
+
+  if(sel.distribucion){
+    y = _informesPdfHeading(doc, contador, 0, 'Distribución del Flujo por cada Nivel de Tensión e Impactos', y, toc);
+    const figDistribucion = await informesFiguraResumenNiveles(mesDistribucion);
+    if(figDistribucion){
+      y = await _informesPdfImagen(doc, figDistribucion, y, 'Resumen por Nivel de Tensión -- distribución del flujo e impactos', 0.75);
+    }else{
+      y = _informesPdfParrafo(doc, 'No se pudo generar la figura de Resumen por Nivel de Tensión (revisa que el módulo tenga datos cargados).', y, {italica:true});
+    }
+  }
+
+  if(sel.recomendacion){
+    y = _informesPdfHeading(doc, contador, 0, 'Recomendación de Alimentadores a Intervenir', y, toc);
+    y = _informesPdfParrafo(doc, 'Para priorizar las intervenciones se cruza la relación Gestión x Longitud (eficiencia por kilómetro de red), la Energía Gestionable (kWh) y descartar temporalmente los circuitos con problemas de asociación o subnormalidades.', y);
+    const porZonaRecom = _informesFilasAlimentadoresRecomendacion(mesN21);
+    for(const zona of ALIM_N21_ORDEN_TABLA){
+      const circuitos = porZonaRecom[zona];
+      if(!circuitos || !circuitos.length) continue;
+      y = _informesPdfHeading(doc, contador, 1, `Zona ${INFORMES_ZONA_NOMBRE[zona]||zona} (${zona})`, y, toc);
+      const bullets = _informesTextosPlanos(_informesConTextoPlano(() => _informesBulletsRecomendacion(circuitos)));
+      for(const b of bullets) y = _informesPdfParrafo(doc, `•  ${b}`, y, {align:'left'});
     }
   }
 
@@ -24291,7 +24484,7 @@ async function informesGenerarPDF(){
   const entrada = _informesValidarSelMesYContenido(msg);
   if(!entrada) return;
   const {meses, sel} = entrada;
-  const {ipReg: mesIpReg, n21: mesN21, comercial: mesComercial} = meses;
+  const {ipReg: mesIpReg, n21: mesN21, comercial: mesComercial, nivel4: mesNivel4, nivel3: mesNivel3, distribucion: mesDistribucion} = meses;
   btn.disabled = true; msg.textContent = 'Generando PDF…';
   _informesPdfContadorFigura = 0; _informesPdfContadorTabla = 0;
   try{
@@ -24305,7 +24498,7 @@ async function informesGenerarPDF(){
     sonda.addPage();
     const tocSonda = [];
     _informesPdfContadorFigura = 0; _informesPdfContadorTabla = 0;
-    await _informesPdfCuerpo(sonda, sel, mesIpReg, mesN21, tocSonda, mesComercial);
+    await _informesPdfCuerpo(sonda, sel, mesIpReg, mesN21, tocSonda, mesComercial, mesNivel4, mesNivel3, mesDistribucion);
     const lineasPorPaginaToc = Math.floor((INFORMES_PDF_ALTO_PAGINA - 2*INFORMES_PDF_MARGEN - 30)/15.5);
     const paginasToc = Math.max(1, Math.ceil(tocSonda.length/lineasPorPaginaToc));
 
@@ -24321,7 +24514,7 @@ async function informesGenerarPDF(){
     doc.addPage();
     _informesPdfContadorFigura = 0; _informesPdfContadorTabla = 0;
     const tocReal = [];
-    await _informesPdfCuerpo(doc, sel, mesIpReg, mesN21, tocReal, mesComercial);
+    await _informesPdfCuerpo(doc, sel, mesIpReg, mesN21, tocReal, mesComercial, mesNivel4, mesNivel3, mesDistribucion);
 
     _informesPdfDibujarTOC(doc, tocReal, primeraPaginaToc);
     await _informesPdfAplicarEncabezados(doc, mesPortada, primeraPaginaToc);
