@@ -22942,6 +22942,66 @@ function _informesTablaHtmlN21Zonas(filas){
   </div>`;
 }
 
+// Cuadro 2 de la misma tabla en vivo (P.Técnica/P.Gestionable/Índice %/Δ
+// Índice) -- confirmado en la plantilla real: "Figura 11: Variación de
+// pérdidas e índices por zona de forma anualizada en el nivel 21" (pese
+// al nombre, son los mismos datos MES A MES de `filas`, no una ventana de
+// 12 meses -- mismo criterio que ya tenía la tabla en vivo).
+function _informesTablaHtmlN21ZonasTecnica(filas, mesActual, mesAnterior){
+  const fmt = v => v==null ? '--' : v.toLocaleString('es-CO',{maximumFractionDigits:0});
+  const fmtPct = v => v==null ? '--' : `${v.toFixed(2)}%`;
+  const filasHtml = filas.map(f => {
+    const color = colorParaZona(f.zona);
+    const colorIndice = f.deltaPct==null ? 'var(--text3)' : (f.deltaPct>=0 ? '#C00000' : '#00B050');
+    return `<tr>
+      <td style="text-align:left"><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${color};margin-right:6px"></span>Zona ${f.zona}</td>
+      ${_alimN21CeldaGrupo(f.tecnica.actual, f.tecnica.deltaKwh, f.tecnica.deltaPct, fmt)}
+      ${_alimN21CeldaGrupo(f.gestionable.actual, f.gestionable.deltaKwh, f.gestionable.deltaPct, fmt)}
+      <td>${fmtPct(f.pctAnterior)}</td>
+      <td style="font-weight:700">${fmtPct(f.pctActual)}</td>
+      <td style="color:${colorIndice};font-weight:700">${f.deltaPct==null?'--':`${f.deltaPct>=0?'▲':'▼'} ${Math.abs(f.deltaPct).toFixed(2)} pp`}</td>
+    </tr>`;
+  }).join('');
+  const totTecnica = _alimN21TotalGrupo(filas, 'tecnica');
+  const totGestionable = _alimN21TotalGrupo(filas, 'gestionable');
+  const totEntrada = filas.reduce((s,f)=>s+f.entrada, 0);
+  const totPerdidaActual = filas.reduce((s,f)=>s+(f.total.actual||0), 0);
+  const totPct = totEntrada ? totPerdidaActual/totEntrada*100 : null;
+  const todasConDelta = filas.every(f => f.deltaEntrada!=null);
+  const totEntradaAnterior = todasConDelta ? filas.reduce((s,f)=>s+(f.entrada-f.deltaEntrada), 0) : null;
+  const totPerdidaAnterior = filas.reduce((s,f)=>s+(f.total.anterior||0), 0);
+  const totPctAnterior = totEntradaAnterior ? totPerdidaAnterior/totEntradaAnterior*100 : null;
+  const totDeltaPct = (totPct!=null && totPctAnterior!=null) ? totPct-totPctAnterior : null;
+  const colorTotIndice = totDeltaPct==null ? 'var(--text3)' : (totDeltaPct>=0 ? '#C00000' : '#00B050');
+  const totalHtml = `<tr>
+    <td style="text-align:left">Total</td>
+    ${_alimN21CeldaGrupo(totTecnica.actual, totTecnica.deltaKwh, totTecnica.deltaPct, fmt)}
+    ${_alimN21CeldaGrupo(totGestionable.actual, totGestionable.deltaKwh, totGestionable.deltaPct, fmt)}
+    <td>${fmtPct(totPctAnterior)}</td>
+    <td style="font-weight:800">${fmtPct(totPct)}</td>
+    <td style="color:${colorTotIndice};font-weight:700">${totDeltaPct==null?'--':`${totDeltaPct>=0?'▲':'▼'} ${Math.abs(totDeltaPct).toFixed(2)} pp`}</td>
+  </tr>`;
+  return `<div class="tbl-wrap tbl-compacta" style="display:inline-block">
+    <table>
+      <thead>
+        <tr>
+          <th rowspan="2" style="text-align:left">Zona</th>
+          <th colspan="4" style="text-align:center">P. Técnica</th>
+          <th colspan="4" style="text-align:center">P. Gestionable</th>
+          <th colspan="2" style="text-align:center">Índice (%)</th>
+          <th rowspan="2">Δ Índice</th>
+        </tr>
+        <tr>
+          <th>kWh</th><th>Δ kWh</th><th>Δ %</th><th>Impacto</th>
+          <th>kWh</th><th>Δ kWh</th><th>Δ %</th><th>Impacto</th>
+          <th>${mesAnterior ? labelMes(mesAnterior) : 'Mes ant.'}</th><th>${mesActual ? labelMes(mesActual) : 'Mes act.'}</th>
+        </tr>
+      </thead>
+      <tbody>${filasHtml}${totalHtml}</tbody>
+    </table>
+  </div>`;
+}
+
 async function informesSeccionIndicadorN21Total(mesClave){
   const children = [_informesHeading1('Indicador Total N2-1')];
   const serie = alimN21AgregarMensual(new Set());
@@ -22959,10 +23019,12 @@ async function informesSeccionIndicadorN21Total(mesClave){
   // Comparativo Mensual por Zona (Entrada/Salida/P.Total + fila Total) --
   // confirmado con la plantilla real: "Figura 10: Variación de entrada y
   // salida en el nivel 21".
-  const { filas: filasZonasN21 } = _informesFilasN21PorZona(mesClave);
+  const { filas: filasZonasN21, mesAnterior: mesAnteriorN21 } = _informesFilasN21PorZona(mesClave);
   if(filasZonasN21.length){
     const figZonas = await _informesCapturarHtml(_informesTablaHtmlN21Zonas(filasZonasN21));
     if(figZonas){ children.push(_informesParrafoImagen(figZonas, 500)); children.push(_informesCaption('Figura', 'Variación de entrada y salida en el nivel 21')); }
+    const figZonasTec = await _informesCapturarHtml(_informesTablaHtmlN21ZonasTecnica(filasZonasN21, mesClave, mesAnteriorN21));
+    if(figZonasTec){ children.push(_informesParrafoImagen(figZonasTec, 620)); children.push(_informesCaption('Figura', 'Variación de pérdidas e índices por zona de forma anualizada en el nivel 21')); }
   }
 
   children.push(new docx.Paragraph({text:''}));
