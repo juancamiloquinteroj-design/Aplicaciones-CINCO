@@ -3274,6 +3274,14 @@ tfoot td:first-child{text-align:left}
           <label style="display:flex;align-items:center;gap:6px;font-size:12.5px">
             <input type="checkbox" id="informes-chk-distribucion" checked> Distribución del Flujo por Nivel de Tensión e Impactos
           </label>
+          <!-- Sección nueva -- pedido explícito ("Aplica automáticamente la
+               metodología de selección de circuitos a intervenir... Excluir
+               automáticamente los circuitos que tengan condiciones que
+               impidan su intervención... Clasificar/priorizar"), confirmado
+               con el usuario "Top 5 por Gest x Longitud". -->
+          <label style="display:flex;align-items:center;gap:6px;font-size:12.5px">
+            <input type="checkbox" id="informes-chk-recomendacion" checked> Recomendación de Alimentadores a Intervenir
+          </label>
           <label style="display:flex;align-items:center;gap:6px;font-size:12.5px">
             <input type="checkbox" id="informes-chk-comercial" checked> Indicador de Pérdidas Comercial
           </label>
@@ -21075,7 +21083,7 @@ function informesPoblarChecklistZonas(){
 }
 
 function informesMarcarTodo(valor){
-  ['informes-chk-introduccion','informes-chk-ipreg','informes-chk-nivel4','informes-chk-nivel3','informes-chk-n21','informes-chk-distribucion','informes-chk-comercial','informes-chk-temperatura','informes-chk-conclusiones']
+  ['informes-chk-introduccion','informes-chk-ipreg','informes-chk-nivel4','informes-chk-nivel3','informes-chk-n21','informes-chk-distribucion','informes-chk-recomendacion','informes-chk-comercial','informes-chk-temperatura','informes-chk-conclusiones']
     .forEach(id => { const el = document.getElementById(id); if(el) el.checked = valor; });
   document.querySelectorAll('#informes-chk-zonas input[type=checkbox]').forEach(el => el.checked = valor);
   document.getElementById('informes-chk-zonas').classList.toggle('hidden', !valor);
@@ -23047,6 +23055,122 @@ async function _informesBloquesCrecimientoPorZona(filas, tablaHtmlFn){
   return bloques;
 }
 
+// "RECOMENDACIÓN DE ALIMENTADORES A INTERVENIR" -- sección nueva, pedido
+// explícito ("Aplica automáticamente la metodología de selección de
+// circuitos a intervenir... Excluir automáticamente los circuitos que
+// tengan condiciones que impidan su intervención, como problemas de
+// asociación, restricciones de orden público u otras condiciones...
+// Clasificar/priorizar los circuitos que sí cumplen"). A diferencia de
+// "Alimentadores con mayor crecimiento" (que ordena por Var. Pérdida % y
+// NO excluye nada, ver _informesFilasAlimentadoresCrecimiento -- esa
+// sección sigue igual), acá el ranking es por Gest x Longitud
+// (eficiencia por km de red) descendente, tope de 5 circuitos por zona
+// (confirmado con el usuario: "Top 5 por Gest x Longitud"). Se excluyen
+// SOLO 'Asociación' y 'Subnormalidad' -- son los 2 motivos que nombra
+// textualmente la plantilla real ("descartar temporalmente los circuitos
+// con problemas de asociación o subnormalidades"); 'Orden Público' NO se
+// excluye acá (si se excluyera, se estaría dejando ese motivo sin usar
+// aunque la propia plantilla no lo mencione).
+function _informesFilasAlimentadoresRecomendacion(mesClave){
+  const filas = ALIM_FILAS.filter(f => alimN21Clave(f.anio,f.mes)===mesClave && f.longitud_total>0 && f.gestionable_kwh!=null && f.zona)
+    .map(f => ({
+      nombre: f.nombre_spard || f.nemonico, zona: f.zona, leyenda: f.leyenda || 'ok',
+      gestLongitud: f.gestionable_kwh/f.longitud_total, gestionable: f.gestionable_kwh,
+      gestPct: f.perdida_kwh ? f.gestionable_kwh/f.perdida_kwh*100 : null,
+      longitud: f.longitud_total,
+    }))
+    .filter(f => f.leyenda !== 'Asociación' && f.leyenda !== 'Subnormalidad');
+  const porZona = {};
+  filas.forEach(f => (porZona[f.zona] = porZona[f.zona]||[]).push(f));
+  Object.keys(porZona).forEach(z => {
+    porZona[z] = porZona[z].sort((a,b) => b.gestLongitud - a.gestLongitud).slice(0, 5);
+  });
+  return porZona;
+}
+
+// Arma los bullets de una zona a partir de su top 5 (ya ordenado desc por
+// Gest x Longitud): #1 y #2 en frase individual, el resto agrupado de a
+// pares (con un último bullet individual si sobra uno) -- mismo patrón
+// que la plantilla real (ver ZONA NEIVA/NORTE/SUR/CENTRO/OCCIDENTE).
+function _informesBulletsRecomendacion(circuitos){
+  const fk0 = v => v==null ? '--' : Math.round(v).toLocaleString('es-CO');
+  const fLong = v => v==null ? '--' : v.toLocaleString('es-CO',{maximumFractionDigits:2});
+  const bullets = [];
+  let idx = 0;
+  if(circuitos[idx]){
+    const f = circuitos[idx];
+    bullets.push(new docx.Paragraph({bullet:{level:0}, children:[
+      new docx.TextRun({text:`${f.nombre}: `, bold:true}),
+      new docx.TextRun(`Se posiciona como la prioridad #1. Acumula `),
+      new docx.TextRun({text:`${fk0(f.gestionable)} kWh`, bold:true}),
+      new docx.TextRun(` gestionables con la mayor densidad de pérdida del sistema confiable (`),
+      new docx.TextRun({text:`${fk0(f.gestLongitud)} kWh/km`, bold:true}),
+      new docx.TextRun(`) en una red de solo `),
+      new docx.TextRun({text:`${fLong(f.longitud)} km`, bold:true}),
+      new docx.TextRun(`.`),
+    ]}));
+    idx++;
+  }
+  if(circuitos[idx]){
+    const f = circuitos[idx];
+    bullets.push(new docx.Paragraph({bullet:{level:0}, children:[
+      new docx.TextRun({text:`${f.nombre}: `, bold:true}),
+      new docx.TextRun(`Registra `),
+      new docx.TextRun({text:`${fk0(f.gestionable)} kWh`, bold:true}),
+      new docx.TextRun(` gestionables y una densidad alta (`),
+      new docx.TextRun({text:`${fk0(f.gestLongitud)} kWh/km`, bold:true}),
+      new docx.TextRun(`) en `),
+      new docx.TextRun({text:`${fLong(f.longitud)} km`, bold:true}),
+      new docx.TextRun(` de red${f.gestPct!=null ? ` (${f.gestPct.toFixed(2)}% TOP)` : ''}.`),
+    ]}));
+    idx++;
+  }
+  while(idx < circuitos.length){
+    const par = circuitos.slice(idx, idx+2);
+    if(par.length === 2){
+      const [a, b] = par;
+      const suma = a.gestionable + b.gestionable;
+      const minDensidad = Math.min(a.gestLongitud, b.gestLongitud);
+      bullets.push(new docx.Paragraph({bullet:{level:0}, children:[
+        new docx.TextRun({text:`${a.nombre} y ${b.nombre}: `, bold:true}),
+        new docx.TextRun(`Aportan de manera conjunta `),
+        new docx.TextRun({text:`${fk0(suma)} kWh`, bold:true}),
+        new docx.TextRun(` gestionables, manteniendo indicadores de rendimiento por longitud superiores a los `),
+        new docx.TextRun({text:`${fk0(minDensidad)} kWh/km`, bold:true}),
+        new docx.TextRun(`.`),
+      ]}));
+    }else{
+      const f = par[0];
+      bullets.push(new docx.Paragraph({bullet:{level:0}, children:[
+        new docx.TextRun({text:`${f.nombre}: `, bold:true}),
+        new docx.TextRun(`Aporta `),
+        new docx.TextRun({text:`${fk0(f.gestionable)} kWh`, bold:true}),
+        new docx.TextRun(` gestionables con un rendimiento de `),
+        new docx.TextRun({text:`${fk0(f.gestLongitud)} kWh/km`, bold:true}),
+        new docx.TextRun(` en `),
+        new docx.TextRun({text:`${fLong(f.longitud)} km`, bold:true}),
+        new docx.TextRun(` de red.`),
+      ]}));
+    }
+    idx += 2;
+  }
+  return bullets;
+}
+
+function informesSeccionRecomendacionAlimentadores(mesClave){
+  const children = [_informesHeading1('Recomendación de Alimentadores a Intervenir')];
+  children.push(_informesParrafo('Para priorizar las intervenciones se cruza la relación Gestión x Longitud (eficiencia por kilómetro de red), la Energía Gestionable (kWh) y descartar temporalmente los circuitos con problemas de asociación o subnormalidades.'));
+  const porZona = _informesFilasAlimentadoresRecomendacion(mesClave);
+  for(const zona of ALIM_N21_ORDEN_TABLA){
+    const circuitos = porZona[zona];
+    if(!circuitos || !circuitos.length) continue;
+    children.push(_informesHeading1(`Zona ${INFORMES_ZONA_NOMBRE[zona]||zona} (${zona}):`));
+    _informesBulletsRecomendacion(circuitos).forEach(b => children.push(b));
+    children.push(new docx.Paragraph({text:''}));
+  }
+  return children;
+}
+
 async function informesSeccionZonaN21(zona, mesClave){
   const children = [_informesHeading2(`Indicador N2-1 ZONA ${zona}`)];
   const serie = alimN21AgregarMensual(new Set([zona]));
@@ -23234,6 +23358,7 @@ function _informesSeleccionContenido(){
     n21: chk('informes-chk-n21') && zonas.length>0,
     zonas,
     distribucion: chk('informes-chk-distribucion'),
+    recomendacion: chk('informes-chk-recomendacion'),
     comercial: chk('informes-chk-comercial'),
     temperatura: chk('informes-chk-temperatura'),
     conclusiones: chk('informes-chk-conclusiones'),
@@ -23290,6 +23415,7 @@ async function _informesConstruirDocumento(meses, sel){
       for(const zona of sel.zonas){ children.push(...await informesSeccionZonaN21(zona, mesN21)); }
     }
     if(sel.distribucion) children.push(...await informesSeccionDistribucionFlujo(mesDistribucion));
+    if(sel.recomendacion) children.push(...informesSeccionRecomendacionAlimentadores(mesN21));
     if(sel.comercial) children.push(...await informesSeccionIPComercial(mesComercial));
     if(sel.temperatura) children.push(...await informesSeccionTemperaturaEntrada());
     if(sel.conclusiones) children.push(...informesSeccionConclusiones(mesIpReg, mesN21));
