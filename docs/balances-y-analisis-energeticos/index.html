@@ -107,6 +107,28 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(
 .sidebar-sublink:hover{background:var(--bg3);color:var(--text)}
 .sidebar-badge-soon{font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;background:var(--bg3);color:var(--text3);padding:2px 6px;border-radius:10px;white-space:nowrap}
 .ip-tabla-compacta-titulo{color:var(--text)}
+/* Tablas "Por qué crece el indicador" (Interanual/Mensual) de Nivel 4 y
+   Nivel 3 -- mismo criterio que .ip-tabla-compacta (achica letra/padding
+   vía CSS, SIN tocar _narrativaTablaHtml/_narrativaEntradaSalidaHtml,
+   compartidas con IP_Reg, que debe seguir viéndose igual) -- pedido
+   explícito ("más pequeña esas tablas") al liberar espacio para meter
+   "Pérdida Total vs Pérdida Técnica" al lado. */
+.alim-nivel-narrativa-compacta table.be-tabla-creadas{font-size:10px}
+.alim-nivel-narrativa-compacta .be-tabla-creadas th{padding:4px 6px;font-size:9px}
+.alim-nivel-narrativa-compacta .be-tabla-creadas td{padding:4px 6px}
+/* Las 2 tablas (Interanual/Mensual) de _narrativaEntradaSalidaHtml vienen
+   con flex-wrap:nowrap fijo inline (para que en IP_Reg, con ancho de
+   sobra, se vean lado a lado) -- acá se fuerza a apilarlas UNA DEBAJO DE
+   LA OTRA en vez de lado a lado. No es solo estético: con las 2 lado a
+   lado en esta columna angosta, se confirmó un bug real de Chromium
+   (overflow-x:auto anidado dos veces -- la fila + el .be-tabla-scroll de
+   cada tabla -- deja de recortar correctamente al contenedor ancestro,
+   ni overflow:hidden ni clip-path lo evitan) que hacía que la tabla
+   "Mensual" se dibujara ENCIMA de la gráfica de al lado. Apilando NO
+   hace falta que ninguna tabla se recorte -- cada una sola ya entra
+   sobrada en el ancho de la columna.  !important porque el estilo
+   inline (flex-wrap:nowrap) pesa más que una clase normal. */
+.alim-nivel-narrativa-compacta > div:nth-child(2){flex-direction:column!important;flex-wrap:nowrap!important;overflow-x:visible!important}
 .ip-tabla-compacta table.be-tabla-creadas{font-size:10px;white-space:nowrap}
 .ip-tabla-compacta .be-tabla-creadas th{padding:4px 7px;font-size:9px;text-align:center}
 .ip-tabla-compacta .be-tabla-creadas th.ip-th-mes{background:#20242f;color:#ffffff;position:sticky;left:0;z-index:1}
@@ -2415,20 +2437,40 @@ tfoot td:first-child{text-align:left}
       <div id="alim-nivel4-tarjetas" class="tarjetas-fila-unica"></div>
     </div>
 
+    <!-- Narrativa (Por qué crece) + Pérdida Total vs Pérdida Técnica en UNA
+         sola tarjeta, lado a lado -- antes eran 2 tarjetas separadas y la de
+         la narrativa dejaba un espacio en blanco enorme a la derecha de sus
+         2 tablas angostas. Pedido explícito ("ese espacio ahí podrías
+         colocar Pérdida Total vs Pérdida Técnica y más pequeña esas
+         tablas"). -->
     <div class="card">
-      <div id="alim-nivel4-narrativa"></div>
-    </div>
-
-    <div class="card">
-      <div style="text-align:center;margin-bottom:8px">
-        <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Pérdida Total vs Pérdida Técnica</div>
+      <!-- grid con minmax(0,1fr), NO flex -- así el ancho de esta columna
+           queda realmente acotado (con flex, aunque con min-width:0, el
+           ancho seguía sin fijarse bien acá). El apilado vertical de las
+           2 tablas (Interanual/Mensual) es el que evita por completo el
+           problema real: con las 2 lado a lado, el overflow-x:auto
+           DOBLEMENTE anidado que ya trae _narrativaEntradaSalidaHtml
+           (fila) + _narrativaTablaHtml (cada tabla, su propio
+           .be-tabla-scroll) rompía el recorte del contenedor padre --
+           overflow:hidden, clip-path e incluso contain:layout no lo
+           evitaban (confirmado con pruebas aisladas, reproducible fuera
+           de esta app -- rareza real de Chromium). Ver la regla CSS
+           ".alim-nivel-narrativa-compacta > div:nth-child(2)" que fuerza
+           el apilado. -->
+      <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:28px;align-items:start">
+        <div id="alim-nivel4-narrativa" class="alim-nivel-narrativa-compacta" style="overflow:hidden"></div>
+        <div>
+          <div style="text-align:center;margin-bottom:8px">
+            <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Pérdida Total vs Pérdida Técnica</div>
+          </div>
+          <div class="chart-wrap" style="height:280px"><canvas id="ch-alim-nivel4-tecnica"></canvas></div>
+          <div class="fbar" style="justify-content:center;margin:16px 0 10px">
+            <label>Mes a comparar</label>
+            <select id="alim-nivel4-analisis-mes" onchange="alimNivel4RenderTodo()"></select>
+          </div>
+          <div id="alim-nivel4-analisis" class="tarjetas-fila-unica"></div>
+        </div>
       </div>
-      <div class="chart-wrap" style="height:320px"><canvas id="ch-alim-nivel4-tecnica"></canvas></div>
-      <div class="fbar" style="justify-content:center;margin:16px 0 10px">
-        <label>Mes a comparar</label>
-        <select id="alim-nivel4-analisis-mes" onchange="alimNivel4RenderTodo()"></select>
-      </div>
-      <div id="alim-nivel4-analisis" class="tarjetas-fila-unica"></div>
     </div>
 
     <div class="card">
