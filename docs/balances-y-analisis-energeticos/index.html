@@ -459,6 +459,9 @@ canvas[id^="ch-tride-"]:active{cursor:grabbing}
 .tbl-compacta thead th,.tbl-compacta tbody td,.tbl-compacta tfoot td{padding:4px 6px;border-right:1px solid var(--border)}
 .tbl-compacta thead th:last-child,.tbl-compacta tbody td:last-child,.tbl-compacta tfoot td:last-child{border-right:none}
 .alim3-th-flecha{font-size:9px}
+.circvar-fila{cursor:pointer}
+.circvar-fila:hover td{background:var(--accent)14}
+.circvar-fila.activa td{background:var(--accent)22}
 /* Columnas "Mes Anterior" de Variación de Pérdida por Alimentador --
    ocultas por defecto, se muestran con el botón "Mes Anterior" (pedido
    explícito) y con un color de fondo propio para distinguirlas de las
@@ -1184,6 +1187,37 @@ tfoot td:first-child{text-align:left}
         <input type="range" id="rs" min="0" value="0" oninput="updateRange()">
         <input type="range" id="re" min="0" value="0" oninput="updateRange()">
       </div>
+    </div>
+  </div>
+
+  <!-- Variación de pérdida técnica por circuito, mes contra mes -- pedido
+       explícito ("una tabla de variación de pérdida técnica de los
+       circuitos de un mes a otro y si doy click en uno lo grafique en la
+       gráfica Pérdidas Técnicas"). El mes "actual" es el último mes visible
+       del Rango de arriba (así queda ligada a lo que ya se está mirando);
+       clic en una fila fija el filtro Alimentador a ese circuito -- mismo
+       mecanismo que ya usan las flechas ▲▼ de Usuarios Telemedidos
+       (mselSetSeleccion), así la gráfica principal se actualiza sola. -->
+  <div class="card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:8px">
+      <div class="card-title" style="margin-bottom:0">Variación de Pérdida Técnica por Circuito</div>
+      <div id="circvar-caption" style="font-size:11px;color:var(--text3);font-weight:700"></div>
+    </div>
+    <div class="tbl-wrap tbl-compacta alim3-tabla-sticky" id="circvar-tbl-wrap" style="max-height:420px;overflow-y:auto">
+      <table>
+        <thead><tr>
+          <th style="text-align:left;cursor:pointer" onclick="circVarOrdenar('nemonico')" title="Click para ordenar">Circuito <span id="circvar-th-nemonico" class="alim3-th-flecha"></span></th>
+          <th style="cursor:pointer" onclick="circVarOrdenar('zona')" title="Click para ordenar">Zona <span id="circvar-th-zona" class="alim3-th-flecha"></span></th>
+          <th style="cursor:pointer" onclick="circVarOrdenar('nivel_tension')" title="Click para ordenar">Nivel <span id="circvar-th-nivel_tension" class="alim3-th-flecha"></span></th>
+          <th style="cursor:pointer" onclick="circVarOrdenar('perdidaAnterior')" title="Click para ordenar">Pérdida Mes Anterior (kWh) <span id="circvar-th-perdidaAnterior" class="alim3-th-flecha"></span></th>
+          <th style="cursor:pointer" onclick="circVarOrdenar('perdidaActual')" title="Click para ordenar">Pérdida Mes Actual (kWh) <span id="circvar-th-perdidaActual" class="alim3-th-flecha"></span></th>
+          <th style="cursor:pointer" onclick="circVarOrdenar('deltaKwh')" title="Click para ordenar">Δ kWh <span id="circvar-th-deltaKwh" class="alim3-th-flecha"></span></th>
+          <th style="cursor:pointer" onclick="circVarOrdenar('deltaKwhPct')" title="Click para ordenar -- crecimiento real del kWh vs. el mes anterior">Var. Pérdida % <span id="circvar-th-deltaKwhPct" class="alim3-th-flecha"></span></th>
+          <th style="cursor:pointer" onclick="circVarOrdenar('pctActual')" title="Click para ordenar">Pérdida % Actual <span id="circvar-th-pctActual" class="alim3-th-flecha"></span></th>
+          <th style="cursor:pointer" onclick="circVarOrdenar('deltaPp')" title="Click para ordenar">Δ pp <span id="circvar-th-deltaPp" class="alim3-th-flecha"></span></th>
+        </tr></thead>
+        <tbody id="circvar-tbody"></tbody>
+      </table>
     </div>
   </div>
 
@@ -19805,11 +19839,11 @@ async function cargarMeta(){
   // Zona2/Nivel2 (los propios de las 2 gráficas apiladas independientes)
   // se quedan como <select> de una sola opción, sin cambios.
   mselInit('msel-zona', 'Zona', 'Todas', META.zonas.map(z=>({value:z, label:z})),
-    ()=>{ cargarAlimentadores(); aplicarFiltros(); });
+    ()=>{ cargarAlimentadores(); aplicarFiltros(); cargarCircuitosVariacion(); });
   mselInit('msel-nivel', 'Nivel', 'Todos', META.niveles.map(n=>({value:String(n), label:'Nivel '+n})),
-    ()=>{ cargarAlimentadores(); aplicarFiltros(); });
+    ()=>{ cargarAlimentadores(); aplicarFiltros(); cargarCircuitosVariacion(); });
   mselInit('msel-alimentador', 'Alimentador', 'Todos', [],
-    ()=>{ aplicarFiltrosDebounced(); });
+    ()=>{ aplicarFiltrosDebounced(); circVarRenderTabla(); });
 
   const opcionesZona = '<option value="">Todas</option>' + META.zonas.map(z=>`<option value="${z}">${z}</option>`).join('');
   const opcionesNivel = '<option value="">Todos</option>' + META.niveles.map(n=>`<option value="${n}">Nivel ${n}</option>`).join('');
@@ -19833,6 +19867,7 @@ async function cargarMeta(){
   await cargarAlimentadores();
   await cargarReconocimiento();
   await cargarGraficasApiladas();
+  await cargarCircuitosVariacion();
 }
 
 async function cargarAlimentadores(){
@@ -19908,6 +19943,7 @@ async function updateRange(){
   if(s>e){ const tmp=s; s=e; e=tmp; }
   _applyRange(s, e);
   await aplicarFiltros();
+  await cargarCircuitosVariacion();
 }
 
 async function syncRangeFromSel(){
@@ -19917,6 +19953,7 @@ async function syncRangeFromSel(){
   if(s>e){ const tmp=s; s=e; e=tmp; }
   _applyRange(s, e);
   await aplicarFiltros();
+  await cargarCircuitosVariacion();
 }
 
 /* ---- Rango independiente para "Pérdida por Nivel / Zona" ---- */
@@ -20011,6 +20048,7 @@ async function limpiarFiltros(){
   _applyRange(0, META.meses.length-1);
   await cargarAlimentadores();
   await aplicarFiltros();
+  await cargarCircuitosVariacion();
 }
 
 async function cargarZonas(){
@@ -20060,6 +20098,122 @@ async function descargarCSV(){
   }finally{
     btn.disabled = false; btn.textContent = textoOriginal;
   }
+}
+
+/* ---- Variación de Pérdida Técnica por Circuito (mes contra mes) --
+   pedido explícito ("una tabla de variación de pérdida técnica de los
+   circuitos de un mes a otro y si doy click en uno lo grafique en la
+   gráfica Pérdidas Técnicas... y se pueda organizar las columnas"). El
+   "mes actual" es el último mes visible del Rango de arriba (RANGO.end) --
+   así la tabla siempre corresponde al mismo período que se está mirando
+   en las demás gráficas de este módulo. Trae TODOS los circuitos que
+   cumplan Zona/Nivel en una sola consulta al backend (nuevo endpoint
+   /api/circuitos-variacion) -- pedir uno por uno por Alimentador hubiera
+   sido demasiado lento con muchos circuitos. ---- */
+let CIRCVAR = {datos: [], mesActual: null, mesAnterior: null, ordenCol: 'deltaKwh', ordenDir: 'desc'};
+
+async function cargarCircuitosVariacion(){
+  if(DEMO || !META.meses || !META.meses.length) { CIRCVAR.datos = []; circVarRenderTabla(); return; }
+  const idxActual = (RANGO && RANGO.end != null) ? RANGO.end : META.meses.length - 1;
+  const claveActual = META.meses[idxActual];
+  const claveAnterior = idxActual > 0 ? META.meses[idxActual - 1] : null;
+  CIRCVAR.mesActual = claveActual;
+  CIRCVAR.mesAnterior = claveAnterior;
+
+  const qs = new URLSearchParams();
+  qs.set('mes_actual', claveActual + '-01');
+  if(claveAnterior) qs.set('mes_anterior', claveAnterior + '-01');
+  mselValores('msel-zona').forEach(z => qs.append('zona', z));
+  mselValores('msel-nivel').forEach(n => qs.append('nivel', n));
+
+  try{
+    const resp = await apiGet(`/api/circuitos-variacion?${qs.toString()}`);
+    CIRCVAR.datos = (resp.circuitos || []).map(c => {
+      const perdidaAnterior = c.anterior ? c.anterior.perdida_kwh : null;
+      return {
+        nemonico: c.nemonico, nombre: c.nombre, zona: c.zona, nivel_tension: c.nivel_tension,
+        perdidaAnterior, perdidaActual: c.actual ? c.actual.perdida_kwh : null,
+        pctActual: c.actual ? c.actual.perdida_pct : null,
+        deltaKwh: c.delta_perdida_kwh,
+        deltaKwhPct: (perdidaAnterior) ? (c.delta_perdida_kwh / perdidaAnterior * 100) : null,
+        deltaPp: c.delta_perdida_pct,
+      };
+    });
+  }catch(e){
+    CIRCVAR.datos = [];
+  }
+  circVarRenderTabla();
+}
+
+function circVarOrdenar(col){
+  if(CIRCVAR.ordenCol === col){
+    CIRCVAR.ordenDir = CIRCVAR.ordenDir === 'desc' ? 'asc' : 'desc';
+  }else{
+    CIRCVAR.ordenCol = col;
+    CIRCVAR.ordenDir = 'desc';
+  }
+  circVarRenderTabla();
+}
+
+// Clic en una fila = fija el filtro Alimentador (arriba) a ese circuito
+// puntual -- mismo mecanismo que ya usan las flechas ▲▼ de Usuarios
+// Telemedidos (mselSetSeleccion), dispara solo el onChange del msel, que
+// ya se encarga de refrescar la gráfica "Pérdidas Técnicas". Un segundo
+// clic sobre la misma fila la des-selecciona (vuelve al Total).
+function circVarSeleccionar(nemonico){
+  const yaElegido = mselValores('msel-alimentador').includes(nemonico);
+  mselSetSeleccion('msel-alimentador', yaElegido ? [] : [nemonico]);
+  circVarRenderTabla();
+}
+
+function circVarRenderTabla(){
+  const cont = document.getElementById('circvar-tbody');
+  const caption = document.getElementById('circvar-caption');
+  if(!cont) return;
+  if(caption) caption.textContent = CIRCVAR.mesActual
+    ? (CIRCVAR.mesAnterior ? `${labelMes(CIRCVAR.mesAnterior)} → ${labelMes(CIRCVAR.mesActual)}` : labelMes(CIRCVAR.mesActual))
+    : '';
+
+  const filas = [...CIRCVAR.datos].sort((a, b) => {
+    const va = a[CIRCVAR.ordenCol], vb = b[CIRCVAR.ordenCol];
+    if(va == null && vb == null) return 0;
+    if(va == null) return 1;
+    if(vb == null) return -1;
+    const cmp = typeof va === 'string' ? va.localeCompare(vb) : va - vb;
+    return CIRCVAR.ordenDir === 'asc' ? cmp : -cmp;
+  });
+
+  if(!filas.length){
+    cont.innerHTML = `<tr><td colspan="9" style="text-align:center;color:var(--text3)">Sin datos.</td></tr>`;
+  }else{
+    const seleccionActual = new Set(mselValores('msel-alimentador'));
+    const fmt = v => v == null ? '--' : v.toLocaleString('es-CO', {maximumFractionDigits: 0});
+    const fmtDelta = v => v == null ? '--' : `${v >= 0 ? '+' : ''}${v.toLocaleString('es-CO', {maximumFractionDigits: 0})}`;
+    const fmtPct = v => v == null ? '--' : `${v.toFixed(2)}%`;
+    cont.innerHTML = filas.map(f => {
+      const color = colorParaZona(f.zona);
+      const colorDelta = f.deltaKwh == null ? 'var(--text3)' : (f.deltaKwh >= 0 ? '#C00000' : '#00B050');
+      const colorPp = f.deltaPp == null ? 'var(--text3)' : (f.deltaPp >= 0 ? '#C00000' : '#00B050');
+      const activa = seleccionActual.has(f.nemonico);
+      const nemEsc = f.nemonico.replace(/'/g, "\\'");
+      return `<tr class="circvar-fila${activa ? ' activa' : ''}" onclick="circVarSeleccionar('${nemEsc}')" title="Click para graficar este circuito en Pérdidas Técnicas">
+        <td style="text-align:left;font-weight:700">${f.nemonico}</td>
+        <td><span class="zb" style="background:${color}22;color:var(--text)">${f.zona || '--'}</span></td>
+        <td>${f.nivel_tension != null ? f.nivel_tension : '--'}</td>
+        <td style="color:var(--text3)">${fmt(f.perdidaAnterior)}</td>
+        <td>${fmt(f.perdidaActual)}</td>
+        <td style="color:${colorDelta}">${fmtDelta(f.deltaKwh)}</td>
+        <td style="color:${colorDelta};font-weight:700">${f.deltaKwhPct == null ? '--' : `${f.deltaKwhPct >= 0 ? '+' : ''}${f.deltaKwhPct.toFixed(2)}%`}</td>
+        <td style="font-weight:700">${fmtPct(f.pctActual)}</td>
+        <td style="color:${colorPp}">${f.deltaPp == null ? '--' : `${f.deltaPp >= 0 ? '▲' : '▼'} ${Math.abs(f.deltaPp).toFixed(2)} pp`}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  ['nemonico', 'zona', 'nivel_tension', 'perdidaAnterior', 'perdidaActual', 'deltaKwh', 'deltaKwhPct', 'pctActual', 'deltaPp'].forEach(col => {
+    const el = document.getElementById(`circvar-th-${col}`);
+    if(el) el.textContent = col === CIRCVAR.ordenCol ? (CIRCVAR.ordenDir === 'asc' ? '▲' : '▼') : '';
+  });
 }
 
 /* ---- Regresiones para la Proyección ---- */
