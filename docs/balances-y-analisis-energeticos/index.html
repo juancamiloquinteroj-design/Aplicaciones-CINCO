@@ -756,6 +756,14 @@ tfoot td:first-child{text-align:left}
 .be-tabla-creadas tfoot td.suma{color:var(--text)}
 /* Fila chica de Entrada/Salida (1ra del thead): sin color, solo texto. */
 .be-tabla-creadas thead tr:first-child td{padding:1px 6px 0;border:none;background:transparent !important;font-size:8.5px;font-weight:600;text-transform:uppercase;letter-spacing:.3px;color:var(--text3);text-align:center;white-space:nowrap}
+/* Puntos "Es cliente" en ESA misma fila chica -- el fondo transparent!important
+   de arriba tapaba el violeta de cliente ahí (sí se veía en la fila 2, de
+   abajo, pero no en esta), dejando la columna cliente con un corte
+   transparente arriba -- pedido explícito ("cuando son clientes en la
+   primera fila aparece transparente, no debe ser así"). Más específica
+   (3 clases vs 2) que la de arriba, gana sin depender del orden. */
+.be-tabla-creadas thead tr:first-child td.cliente{background:rgba(112,48,160,.14) !important}
+[data-theme="dark"] .be-tabla-creadas thead tr:first-child td.cliente{background:rgba(112,48,160,.24) !important}
 /* Fila 2 (títulos): th.suma/th.pto (2 clases) le ganaban por especificidad
    al fondo sólido del sticky de arriba (1 clase+tipo) y dejaban ver las
    filas de abajo a través del encabezado al hacer scroll. */
@@ -10475,16 +10483,29 @@ function renderTablaDetalleBalance(datos){
   // igual que el Excel de referencia de Electrohuila (ej. en una línea,
   // el extremo de origen, los clientes tapados en el medio, y el extremo
   // de destino). Un medidor de red normalmente aparece en AMBAS listas
-  // (entrada Y salida, canales opuestos, ver "inversión de canales") --
-  // cuál de las dos es su rol "principal" se decide por en cuál de las
-  // dos tiene el orden MÁS CHICO (ej. si es orden 0 como entrada pero
-  // orden 3 como salida, es "de entrada"; si fuera al revés, "de salida").
+  // (entrada Y salida, canales opuestos, ver "inversión de canales").
+  //
+  // Bug real encontrado (pedido explícito: "los clientes siempre quedan
+  // la mitad de las líneas y al lado derecho una medida y al lado
+  // izquierdo la otra medida"): el criterio anterior decidía el rol
+  // "principal" de un medidor bidireccional por "cuál de sus 2 roles
+  // tiene el orden MÁS CHICO" -- eso funciona para el extremo de ORIGEN
+  // (que siempre es orden 0 en ambos), pero rompía el extremo de DESTINO
+  // de una línea: ese medidor también mide algo de flujo inverso (su
+  // propio rol de "entrada", con un orden bajo nada más porque hay pocos
+  // puntos de entrada en la estructura) y terminaba cayendo en el mismo
+  // lado que el origen, en vez de después de los clientes. Ahora: el
+  // ORIGEN es el único punto no-cliente con orden:0 en cualquiera de sus
+  // 2 roles; cualquier OTRO punto bidireccional (aunque su rol de
+  // entrada tenga orden bajo) se trata como el extremo de SALIDA.
   const _beOrdenGrupo = grupo => {
     if(grupo.some(c=>c.es_cliente)) return {prioridad:1, orden: Math.min(...grupo.map(c=>c.orden))};
     const deEntrada = grupo.find(c=>c.tipo==='entrada');
     const deSalida = grupo.find(c=>c.tipo==='salida');
-    if(deEntrada && (!deSalida || deEntrada.orden <= deSalida.orden)) return {prioridad:0, orden: deEntrada.orden};
-    return {prioridad:2, orden: deSalida ? deSalida.orden : (deEntrada ? deEntrada.orden : 0)};
+    if(deEntrada && !deSalida) return {prioridad:0, orden: deEntrada.orden};
+    if(deSalida && !deEntrada) return {prioridad:2, orden: deSalida.orden};
+    if(deEntrada.orden === 0 || deSalida.orden === 0) return {prioridad:0, orden:0};
+    return {prioridad:2, orden: deSalida.orden};
   };
   gruposPorMedidor.sort((a,b)=>{
     const oa = _beOrdenGrupo(a), ob = _beOrdenGrupo(b);
