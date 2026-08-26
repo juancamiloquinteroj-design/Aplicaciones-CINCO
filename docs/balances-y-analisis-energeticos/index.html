@@ -18,6 +18,38 @@
 <!-- topojson-client decodifica geo/colombia-municipios.json (arcs cuantizados,
      ver la carpeta geo/) a GeoJSON en el navegador -- solo eso, ~5KB. -->
 <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
+<!-- Lectura en vivo (solo lectura) del Firestore de "Control de
+     Mantenimiento en Puntos de Medida" (gestion-puntos-medida/, app externa
+     React/Firebase embebida más abajo por iframe) -- MISMO proyecto/config
+     que gestion-puntos-medida-src/src/lib/firebase.ts, reglas públicas
+     (firestore.rules: allow read,write: if true), así que no hace falta
+     login. Pedido explícito: "que automáticamente me muestre en Ver Balance
+     una alerta... diciendo que medida está en falla". window.BE_PM_FALLAS
+     (Map codigoPM en minúscula -> doc PM) lo consume _beRefrescarAlertaFallas
+     en el script principal, más abajo. -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+  import { initializeFirestore, collection, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+  const _pmApp = initializeApp({
+    apiKey: "AIzaSyA_pB8r6LTwQyNrcvjYQEA1bWZ7DQRcPs4",
+    authDomain: "estado-pm.firebaseapp.com",
+    projectId: "estado-pm",
+    storageBucket: "estado-pm.firebasestorage.app",
+    messagingSenderId: "892829661834",
+    appId: "1:892829661834:web:c1c371235ff52131214b73"
+  });
+  const _pmDb = initializeFirestore(_pmApp, {}, "ai-studio-gestindepuntosde-41546656-8c88-45ea-8cac-3700245388c5");
+  window.BE_PM_FALLAS = new Map();
+  onSnapshot(collection(_pmDb, "pms"), snap => {
+    const mapa = new Map();
+    snap.forEach(docSnap => {
+      const d = docSnap.data();
+      if(d && d.estadoGral === 'En falla' && d.codigoPM) mapa.set(String(d.codigoPM).trim().toLowerCase(), d);
+    });
+    window.BE_PM_FALLAS = mapa;
+    if(typeof window._beRefrescarAlertaFallas === 'function') window._beRefrescarAlertaFallas();
+  }, err => console.error('PM fallas: error leyendo Firestore', err));
+</script>
 <!-- docx (dolanmiu) -- genera el .docx del módulo Informes en el navegador, sin
      backend. Build UMD confirmado en vivo (curl + prueba real con Node antes de
      agregarlo acá): expone el global `docx` con Document/Paragraph/TextRun/Heading
@@ -64,8 +96,8 @@
   --nav-bg:rgba(255,255,255,0.95);--card-bg:#ffffff;--shadow:0 4px 24px rgba(0,0,0,0.08);--shadow-sm:0 2px 8px rgba(0,0,0,0.05);
 }
 [data-theme="dark"]{
-  --bg:#0d1117;--bg2:#161b27;--bg3:#1c2333;--border:#2a3448;--text:#e2e8f0;--text2:#8899b5;--text3:#6d82a3;
-  --nav-bg:rgba(13,17,23,0.96);--card-bg:#161b27;--shadow:0 4px 24px rgba(0,0,0,0.35);--shadow-sm:0 2px 8px rgba(0,0,0,0.25);
+  --bg:#0a0a0a;--bg2:#000000;--bg3:#1c2333;--border:#2a3448;--text:#e2e8f0;--text2:#8899b5;--text3:#6d82a3;
+  --nav-bg:rgba(0,0,0,0.96);--card-bg:#000000;--shadow:0 4px 24px rgba(0,0,0,0.35);--shadow-sm:0 2px 8px rgba(0,0,0,0.25);
 }
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;transition:background .3s,color .3s}
@@ -2471,12 +2503,18 @@ tfoot td:first-child{text-align:left}
           <div style="text-align:center;margin-bottom:8px">
             <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Pérdida Total vs Pérdida Técnica</div>
           </div>
-          <div class="chart-wrap" style="height:280px"><canvas id="ch-alim-nivel4-tecnica"></canvas></div>
-          <div class="fbar" style="justify-content:center;margin:16px 0 10px">
+          <div class="chart-wrap" style="height:420px"><canvas id="ch-alim-nivel4-tecnica"></canvas></div>
+          <!-- Selector + tarjetas ocultos (pedido explícito: "quita esas
+               tarjetas... coloca la gráfica más grande ya que se desperdicia
+               mucho espacio") -- el <select> se deja en el DOM sin mostrar
+               porque _alimNivelPoblarSelectorAnalisis lo sigue usando para
+               fijar claveAnalisis (mes que colorea la narrativa de al lado);
+               quitarlo del todo dejaría esa narrativa sin mes de referencia. -->
+          <div class="fbar" style="justify-content:center;margin:16px 0 10px;display:none">
             <label>Mes a comparar</label>
             <select id="alim-nivel4-analisis-mes" onchange="alimNivel4RenderTodo()"></select>
           </div>
-          <div id="alim-nivel4-analisis" class="tarjetas-fila-unica"></div>
+          <div id="alim-nivel4-analisis" class="tarjetas-fila-unica" style="display:none"></div>
         </div>
       </div>
     </div>
@@ -2511,7 +2549,7 @@ tfoot td:first-child{text-align:left}
         <span style="font-size:11px;color:var(--text3)">→</span>
         <input type="date" id="alim-nivel3-hasta" onchange="alimNivel3RenderTodo()">
         <label style="margin-left:10px" title="Filtra el total y las 2 gráficas -- vacío = todas las zonas juntas, sin desglose. El comparativo por zona (chart y tabla de abajo) siempre muestra las 5.">Zona</label>
-        <div id="alim-nivel3-zonas" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+        <div id="alim-nivel3-zonas" class="alim-nivel3-zonas-chips" style="display:flex;gap:6px;flex-wrap:wrap"></div>
         <button type="button" class="btn-theme" style="width:auto;padding:0 14px;margin-left:auto" onclick="alimNivel3DescargarCsv()">⬇ Descargar CSV</button>
       </div>
       <div class="fbar" style="justify-content:center;margin-bottom:10px">
@@ -2535,28 +2573,34 @@ tfoot td:first-child{text-align:left}
       <div id="alim-nivel3-tarjetas" class="tarjetas-fila-unica"></div>
     </div>
 
+    <!-- Narrativa (Por qué crece) + Pérdida Total vs Pérdida Técnica en UNA
+         sola tarjeta, mismo tratamiento que Nivel 4 (pedido explícito: "en
+         nivel 3 tambien sube la grafica a esa posición"). La dona
+         "Distribución de Pérdida por Zona" se quitó (pedido explícito) --
+         en su lugar, un filtro de Zona debajo de la gráfica (mismos chips
+         y mismo estado ALIM_NIVEL3_ZONAS_SEL que el filtro de arriba,
+         ver alimNivel3RenderZonasChips) para poder acotar la línea de
+         Pérdida Total por zona sin tener que subir a la tarjeta de Rango. -->
     <div class="card">
-      <div id="alim-nivel3-narrativa"></div>
-    </div>
-
-    <div class="card">
-      <div class="fbar" style="justify-content:center;margin-bottom:10px">
-        <label>Mes a comparar</label>
-        <select id="alim-nivel3-analisis-mes" onchange="alimNivel3RenderTodo()"></select>
-      </div>
-      <div id="alim-nivel3-analisis" class="tarjetas-fila-unica" style="margin-bottom:18px"></div>
-
-      <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">
-        <div style="flex:1;min-width:360px">
+      <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:28px;align-items:start">
+        <div id="alim-nivel3-narrativa" class="alim-nivel-narrativa-compacta" style="overflow:hidden"></div>
+        <div>
           <div style="text-align:center;margin-bottom:8px">
             <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Pérdida Total vs Pérdida Técnica</div>
           </div>
-          <div class="chart-wrap" style="height:320px"><canvas id="ch-alim-nivel3-tecnica"></canvas></div>
-        </div>
-        <div style="flex:0 0 260px;max-width:260px">
-          <div style="font-size:13px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase;text-align:center;margin-bottom:8px">Distribución de Pérdida por Zona</div>
-          <div class="chart-wrap" style="height:190px"><canvas id="ch-alim-nivel3-dona-zonas"></canvas></div>
-          <div id="alim-nivel3-dona-leyenda" style="display:flex;flex-direction:column;gap:4px;margin-top:10px"></div>
+          <div class="chart-wrap" style="height:420px"><canvas id="ch-alim-nivel3-tecnica"></canvas></div>
+          <div class="fbar" style="justify-content:center;margin-top:14px">
+            <label>Zona</label>
+            <div id="alim-nivel3-zonas-2" class="alim-nivel3-zonas-chips" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+          </div>
+          <!-- Selector + tarjetas ocultos, mismo motivo que Nivel 4: el
+               <select> lo sigue usando _alimNivelPoblarSelectorAnalisis
+               para fijar el mes de la narrativa de al lado. -->
+          <div class="fbar" style="justify-content:center;margin:16px 0 10px;display:none">
+            <label>Mes a comparar</label>
+            <select id="alim-nivel3-analisis-mes" onchange="alimNivel3RenderTodo()"></select>
+          </div>
+          <div id="alim-nivel3-analisis" class="tarjetas-fila-unica" style="display:none"></div>
         </div>
       </div>
     </div>
@@ -3741,6 +3785,19 @@ tfoot td:first-child{text-align:left}
          con elegir de las medidas de ESTA estructura (lista corta) y ver a la
          derecha, sin desperdiciar el ancho de la tarjeta. -->
     <div id="be-medidor-afecta-dropdown" class="hidden" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);display:grid;grid-template-columns:minmax(220px,320px) 1fr;gap:18px;align-items:start">
+      <!-- Alerta de medidas EN FALLA (Control de Mantenimiento en Puntos de
+           Medida) para la estructura activa -- pedido explícito ("me
+           gustaria que automaticamente me mostrara en ver balance una
+           alerta pequeña... diciendo que medida esta en falla"). Cruza
+           _beMedidorAfectaOpciones() (medidas de esta estructura) contra
+           window.BE_PM_FALLAS (Map codigoPM->PM, "En falla", cargado en
+           vivo por onSnapshot de Firestore -- ver el bloque de tipo module
+           cerca del inicio del documento. El cruce es por texto (usuario_id
+           === codigoPM, sin distinguir mayúsculas/espacios) porque
+           "gestion-puntos-medida" es una app 100% independiente (su propio
+           Firebase) que no comparte ningún ID con esta -- si el código no
+           se escribió IGUAL en las 2 apps, no hay forma de emparejar. -->
+      <div id="be-medidas-fallas-alerta" class="hidden" style="grid-column:1/-1;padding:8px 12px;border-radius:8px;background:rgba(220,38,38,.12);border:1px solid rgba(220,38,38,.4);color:#dc2626;font-size:12px;font-weight:700;display:flex;align-items:center;gap:8px"></div>
       <div>
         <label style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text3);display:block;margin-bottom:5px">
           ¿A qué otra(s) estructura(s) afecta esta medida?
@@ -7825,6 +7882,31 @@ function _beActualizarWidgetMedidorAfecta(){
   sel.innerHTML = '<option value="">Elige una medida de esta estructura...</option>'
     + opciones.map(o=>`<option value="${_mselEsc(o.usuario_id)}|${_mselEsc(o.canal)}">${_mselEsc(o.usuario_id)} · ${_mselEsc(BE_NOMBRES_CANAL_CORTO[o.canal]||o.canal)} (${o.tipo})</option>`).join('');
   document.getElementById('be-medidor-afecta-resultado-dd').innerHTML = '';
+  _beRefrescarAlertaFallas();
+}
+
+// Cruza las medidas de la estructura activa contra las marcadas "En falla"
+// en Control de Mantenimiento en Puntos de Medida (window.BE_PM_FALLAS,
+// alimentado en vivo por Firestore -- ver el bloque de tipo module cerca
+// del inicio del documento. Se vuelve a llamar tanto al cambiar de estructura como cada vez
+// que llega una actualización en vivo de Firestore, para que la alerta
+// aparezca/desaparezca sola sin recargar la página.
+function _beRefrescarAlertaFallas(){
+  const cont = document.getElementById('be-medidas-fallas-alerta');
+  if(!cont) return;
+  const mapa = window.BE_PM_FALLAS;
+  if(BE_ACTIVA_ID == null || !mapa || !mapa.size){ cont.classList.add('hidden'); cont.innerHTML = ''; return; }
+  const vistos = new Set();
+  const enFalla = [];
+  _beMedidorAfectaOpciones().forEach(o => {
+    const clave = String(o.usuario_id).trim().toLowerCase();
+    if(vistos.has(clave) || !mapa.has(clave)) return;
+    vistos.add(clave);
+    enFalla.push(o.usuario_id);
+  });
+  if(!enFalla.length){ cont.classList.add('hidden'); cont.innerHTML = ''; return; }
+  cont.classList.remove('hidden');
+  cont.innerHTML = `🚩 En falla (Control de Mantenimiento): ${enFalla.map(_mselEsc).join(', ')}`;
 }
 
 function _beMedidorAfectaSeleccionar(valor){
@@ -12781,58 +12863,6 @@ function alimNivel3RenderTablaZonas(porZona, claveElegida){
 let ALIM_NIVEL3_ZONAS_CHART_TIPO = 'line';
 let chAlimNivel3ZonasComparativo = null;
 
-// Dona "Distribución de Pérdida por Zona" -- mismo patrón que la dona de
-// Indicador N2-1 (alimN21RenderDonutZonas: colorParaZona, leyenda con %),
-// del mes elegido en "Mes a comparar" (mismo selector que las tarjetas
-// Real vs Técnica de arriba, para que todo el card hable del mismo mes).
-let chAlimNivel3DonaZonas = null;
-function alimNivel3RenderDonutZonas(porZona, claveSeleccionada){
-  const cv = document.getElementById('ch-alim-nivel3-dona-zonas');
-  const leyenda = document.getElementById('alim-nivel3-dona-leyenda');
-  if(!cv) return;
-  if(chAlimNivel3DonaZonas){ chAlimNivel3DonaZonas.destroy(); chAlimNivel3DonaZonas = null; }
-
-  const zonas = porZona.zonas.filter(z => {
-    const fila = porZona.porZona[z].find(f => f.clave === claveSeleccionada);
-    return fila && fila.perdida != null;
-  });
-  if(!claveSeleccionada || !zonas.length){
-    if(leyenda) leyenda.innerHTML = '<div style="font-size:11px;color:var(--text3);text-align:center">Sin datos.</div>';
-    return;
-  }
-  const colores = zonas.map(z => colorParaZona(z));
-  const valores = zonas.map(z => Math.max(0, porZona.porZona[z].find(f => f.clave === claveSeleccionada).perdida || 0));
-  const total = valores.reduce((s,v)=>s+v, 0);
-  const dark = document.documentElement.getAttribute('data-theme')==='dark';
-
-  chAlimNivel3DonaZonas = new Chart(cv, {
-    type: 'doughnut',
-    data:{ labels: zonas, datasets:[{ data: valores, backgroundColor: colores, borderColor: dark?'#161b27':'#ffffff', borderWidth:2 }] },
-    options:{
-      responsive:true, maintainAspectRatio:false, cutout:'62%',
-      plugins:{
-        legend:{display:false},
-        tooltip:{callbacks:{label:c=>{
-          const pct = total ? (c.raw/total*100) : 0;
-          return `Zona ${c.label}: ${Math.round(c.raw).toLocaleString('es-CO')} kWh (${pct.toFixed(1)}%)`;
-        }}},
-        datalabels:{display:false},
-      },
-    },
-  });
-
-  if(leyenda){
-    leyenda.innerHTML = zonas.map((z,i) => {
-      const pct = total ? (valores[i]/total*100) : 0;
-      return `<div style="display:flex;align-items:center;gap:6px;font-size:11px">
-        <span style="width:10px;height:10px;border-radius:50%;background:${colores[i]};flex-shrink:0"></span>
-        <span style="flex:1;color:var(--text2)">Zona ${z}</span>
-        <b style="color:var(--text)">${pct.toFixed(1)}%</b>
-      </div>`;
-    }).join('');
-  }
-}
-
 function alimNivel3ToggleTipoGraficaZonas(tipo){
   ALIM_NIVEL3_ZONAS_CHART_TIPO = tipo;
   document.getElementById('alim-nivel3-zonas-chart-btn-line').classList.toggle('activo', tipo==='line');
@@ -13126,9 +13156,9 @@ async function alimNivel3Cargar(){
 // Chip por zona -- mismo patrón visual/color que alimN21RenderZonasChips
 // (colorParaZona parametrizado, relleno si está activa).
 function alimNivel3RenderZonasChips(){
-  const cont = document.getElementById('alim-nivel3-zonas');
-  if(!cont) return;
-  cont.innerHTML = ALIM_NIVEL3_ZONAS.map(z => {
+  const conts = document.querySelectorAll('.alim-nivel3-zonas-chips');
+  if(!conts.length) return;
+  const html = ALIM_NIVEL3_ZONAS.map(z => {
     const color = colorParaZona(z);
     const activa = ALIM_NIVEL3_ZONAS_SEL.has(z);
     const estilo = activa
@@ -13136,6 +13166,7 @@ function alimNivel3RenderZonasChips(){
       : `border-color:${color};color:${color};background:transparent`;
     return `<button type="button" class="be-modo-btn" style="${estilo}" onclick="alimNivel3ToggleZona('${z}')">${z}</button>`;
   }).join('');
+  conts.forEach(cont => cont.innerHTML = html);
 }
 
 function alimNivel3ToggleZona(zona){
@@ -13190,7 +13221,6 @@ function alimNivel3RenderTodo(){
 
   alimNivel3RenderTablaZonas(porZona, claveTabla);
   alimNivel3RenderChartZonasComparativo();
-  alimNivel3RenderDonutZonas(porZona, claveAnalisis);
 }
 
 function alimNivel3DescargarCsv(){
