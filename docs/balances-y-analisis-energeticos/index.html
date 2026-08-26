@@ -367,6 +367,11 @@ select{padding:6px 10px;border:1px solid var(--border);border-radius:7px;font-si
 .be-ver-filtro-grupo-fila{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .be-ver-filtro-caja{padding:6px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg)}
 #be-ver-filtros-card select{padding:4px 7px;font-size:11px}
+#be-ver-filtros-card input[type=date]{padding:4px 6px;font-size:11px;border:1px solid var(--border);border-radius:6px;color:var(--text);background:var(--bg);width:112px}
+#be-ver-filtros-card input[type=month]{padding:4px 6px;font-size:11px;border:1px solid var(--border);border-radius:6px;color:var(--text);background:var(--bg);width:130px}
+#be-ver-filtros-card .fbar{gap:4px;margin:0}
+#be-ver-filtros-card .be-editar-btn,
+#be-ver-filtros-card .be-modo-btn{padding:4px 8px;font-size:11px}
 .ip-config-compacta .fbar{margin-bottom:0;gap:8px}
 .ip-config-compacta label{font-size:9.5px}
 .ip-config-compacta select,
@@ -3787,6 +3792,43 @@ tfoot td:first-child{text-align:left}
         <button type="button" class="be-modo-btn" data-granularidad="anual" onclick="beSeleccionarGranularidad('anual')">Anual</button>
       </div>
     </div>
+    <!-- "Rango" (Mes anterior/Desde/Hasta/Graficar/zoom) y "Datos típicos"
+         se movieron acá desde la tarjeta de la estructura -- pedido
+         explícito ("movamos esos dos filtros de fecha a esa posición...
+         lo quiero mas ordenado"). Mismos IDs/onclick de siempre (solo
+         cambió dónde viven en el HTML); ocultos/mostrados junto con
+         "Período" en los mismos 4 puntos del script donde ya se
+         togglea be-granularidad-bar (buscar "be-ver-rango-grupo"). -->
+    <div id="be-ver-rango-grupo" class="be-ver-filtro-grupo hidden">
+      <div class="be-ver-filtro-grupo-titulo">Rango</div>
+      <div class="be-ver-filtro-grupo-fila">
+        <div id="be-filtro-diario" class="fbar" style="margin:0">
+          <button type="button" class="be-editar-btn" onclick="beMoverMes(-1)" title="Mes anterior">◄</button>
+          <input type="date" id="be-desde">
+          <input type="date" id="be-hasta">
+          <button type="button" class="be-editar-btn" onclick="beMoverMes(1)" title="Mes siguiente">►</button>
+          <button type="button" class="btn-theme" style="width:auto;padding:5px 10px" onclick="verBalanceEstructura(BE_ACTIVA_ID)" title="Aplicar el rango de fechas elegido">▶ Graficar</button>
+          <button type="button" class="be-editar-btn" onclick="if(chBalanceEstructura) chBalanceEstructura.resetZoom()" title="Volver al zoom original">⤢</button>
+        </div>
+        <div id="be-filtro-mensual" class="fbar hidden" style="margin:0">
+          <input type="month" id="be-comp-desde" onchange="this.dataset.manual='1'">
+          <input type="month" id="be-comp-hasta">
+          <button type="button" class="btn-theme" style="width:auto;padding:5px 10px" onclick="beRecargarFiltroMensual()" title="Aplicar el rango de fechas elegido">▶ Graficar</button>
+          <button type="button" class="be-modo-btn" id="be-btn-entrada-comp" onclick="beToggleEntradaComparacion()">⊕ Entrada</button>
+          <button type="button" class="be-modo-btn" id="be-btn-salida-comp" onclick="beToggleSalidaComparacion()">⊖ Salida</button>
+          <button type="button" class="be-editar-btn" onclick="if(chBalanceEstructura) chBalanceEstructura.resetZoom()" title="Volver al zoom original">⤢</button>
+        </div>
+      </div>
+    </div>
+    <div id="be-tipicos-calc-bar" class="be-ver-filtro-grupo hidden">
+      <div class="be-ver-filtro-grupo-titulo">Datos típicos</div>
+      <div class="be-ver-filtro-grupo-fila">
+        <input type="month" id="be-tipicos-desde">
+        <input type="month" id="be-tipicos-hasta">
+        <button type="button" class="be-editar-btn" onclick="calcularTipicosEstructuraActiva()">Calcular</button>
+        <span id="be-tipicos-msg"></span>
+      </div>
+    </div>
     <div id="be-filtro-cliente" class="be-ver-filtro-grupo hidden">
       <div class="be-ver-filtro-grupo-titulo">Sobreponer cliente(s)</div>
       <div class="be-ver-filtro-grupo-fila">
@@ -3847,41 +3889,15 @@ tfoot td:first-child{text-align:left}
     </div>
     <div id="be-chart-nota" class="tm-modal-msg" style="text-align:center"></div>
 
-    <div id="be-tipicos-calc-bar" style="display:flex;align-items:center;justify-content:flex-end;gap:6px;flex-wrap:wrap;font-size:11px;color:var(--text3);margin-bottom:8px">
-      <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px">Calcular datos típicos</span>
-      <label style="font-size:10px;color:var(--text3)">Desde</label>
-      <input type="month" id="be-tipicos-desde">
-      <label style="font-size:10px;color:var(--text3)">Hasta</label>
-      <input type="month" id="be-tipicos-hasta">
-      <button type="button" class="be-editar-btn" onclick="calcularTipicosEstructuraActiva()">Calcular</button>
-      <span id="be-tipicos-msg"></span>
-    </div>
-
-    <div class="fbar" style="justify-content:space-between;margin-bottom:6px">
-      <div id="be-filtro-diario" class="fbar" style="margin:0">
-        <button type="button" class="be-editar-btn" onclick="beMoverMes(-1)" title="Mes anterior">◄ Mes anterior</button>
-        <label>Desde</label>
-        <input type="date" id="be-desde">
-        <label>Hasta</label>
-        <input type="date" id="be-hasta">
-        <button type="button" class="be-editar-btn" onclick="beMoverMes(1)" title="Mes siguiente">Mes siguiente ►</button>
-        <button type="button" class="btn-theme" style="width:auto;padding:7px 14px;background:var(--accent);color:#fff;border-color:var(--accent)" onclick="verBalanceEstructura(BE_ACTIVA_ID)" title="Aplicar el rango de fechas elegido">▶ Graficar</button>
-        <button type="button" class="be-editar-btn" onclick="if(chBalanceEstructura) chBalanceEstructura.resetZoom()" title="Volver al zoom original">⤢ Restablecer zoom</button>
-      </div>
-      <div id="be-filtro-mensual" class="fbar hidden" style="margin:0">
-        <label>Desde</label>
-        <input type="month" id="be-comp-desde" onchange="this.dataset.manual='1'">
-        <label>Hasta</label>
-        <input type="month" id="be-comp-hasta">
-        <button type="button" class="btn-theme" style="width:auto;padding:7px 14px;background:var(--accent);color:#fff;border-color:var(--accent)" onclick="beRecargarFiltroMensual()" title="Aplicar el rango de fechas elegido">▶ Graficar</button>
-        <button type="button" class="be-modo-btn" id="be-btn-entrada-comp" onclick="beToggleEntradaComparacion()">⊕ Ver entrada</button>
-        <button type="button" class="be-modo-btn" id="be-btn-salida-comp" onclick="beToggleSalidaComparacion()">⊖ Ver salida</button>
-        <button type="button" class="be-editar-btn" onclick="if(chBalanceEstructura) chBalanceEstructura.resetZoom()" title="Volver al zoom original">⤢ Restablecer zoom</button>
-      </div>
-      <div class="fbar" style="margin:0">
-        <button type="button" class="be-modo-btn" data-tipo="perdida" onclick="beSeleccionarTipoGrafico('perdida')">📉 Pérdida vs. técnica</button>
-        <button type="button" class="be-modo-btn" data-tipo="entrada_salida" onclick="beSeleccionarTipoGrafico('entrada_salida')">🔀 Entrada / Salida</button>
-      </div>
+    <!-- "Calcular datos típicos" y el rango de fechas (Mes anterior/Desde/
+         Hasta/Graficar/zoom, y su variante Mensual/Anual) se movieron a la
+         tarjeta de filtros de arriba (#be-ver-rango-grupo y
+         #be-tipicos-calc-bar en #be-ver-filtros-card) -- pedido explícito
+         ("movamos esos dos filtros de fecha a esa posición"). Acá solo
+         queda el toggle Pérdida vs. técnica / Entrada-Salida. -->
+    <div class="fbar" style="justify-content:flex-end;margin-bottom:6px">
+      <button type="button" class="be-modo-btn" data-tipo="perdida" onclick="beSeleccionarTipoGrafico('perdida')">📉 Pérdida vs. técnica</button>
+      <button type="button" class="be-modo-btn" data-tipo="entrada_salida" onclick="beSeleccionarTipoGrafico('entrada_salida')">🔀 Entrada / Salida</button>
     </div>
     <div id="be-clientes-en-salida-wrap" style="text-align:right;margin:-4px 0 10px">
       <label style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--text3);cursor:pointer" title="La Salida de red (línea roja) no incluye los puntos marcados 'Es cliente' ni los clientes SIEC -- se muestran aparte en la tabla. Esta opción los suma a la línea del gráfico para ver la salida TOTAL.">
@@ -9023,6 +9039,8 @@ async function cargarListaEstructuras(reintentando){
     BE_ACTIVA_ID = null;
     document.getElementById('be-chart-card').classList.add('hidden');
     document.getElementById('be-granularidad-bar').classList.add('hidden');
+    document.getElementById('be-ver-rango-grupo').classList.add('hidden');
+    document.getElementById('be-tipicos-calc-bar').classList.add('hidden');
     _beActualizarWidgetMedidorAfecta();
   }
   document.getElementById('be-contador-estructuras').textContent = tipo
@@ -9051,6 +9069,8 @@ async function beBorrarFiltrosVer(){
   BE_ACTIVA_ID = null;
   document.getElementById('be-chart-card').classList.add('hidden');
   document.getElementById('be-granularidad-bar').classList.add('hidden');
+  document.getElementById('be-ver-rango-grupo').classList.add('hidden');
+  document.getElementById('be-tipicos-calc-bar').classList.add('hidden');
   _beActualizarWidgetMedidorAfecta();
   await cargarListaEstructuras();
 }
@@ -9409,6 +9429,8 @@ async function borrarEstructuraBalance(ev, id, nombre){
       BE_ACTIVA_ID = null;
       document.getElementById('be-chart-card').classList.add('hidden');
       document.getElementById('be-granularidad-bar').classList.add('hidden');
+      document.getElementById('be-ver-rango-grupo').classList.add('hidden');
+      document.getElementById('be-tipicos-calc-bar').classList.add('hidden');
     }
     if(BE_EDITAR_ID === id) cerrarModalEditarEstructura();
     await cargarListaEstructuras();
@@ -9425,6 +9447,8 @@ async function verBalanceEstructura(id){
   renderListaEstructuras();
   document.getElementById('be-chart-card').classList.remove('hidden');
   document.getElementById('be-granularidad-bar').classList.remove('hidden');
+  document.getElementById('be-ver-rango-grupo').classList.remove('hidden');
+  document.getElementById('be-tipicos-calc-bar').classList.remove('hidden');
   document.getElementById('be-chart-titulo').textContent = 'Cargando…';
   document.getElementById('be-chart-nota').textContent = '';
 
