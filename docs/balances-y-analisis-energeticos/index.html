@@ -13309,6 +13309,29 @@ function alimNivel3ToggleRelleno(){
   alimNivel3RenderTodo();
 }
 
+// Igual que ALIM_NIVEL3_TECNICA pero acotada a las zonas tildadas en los
+// chips de "Ubicación" (arriba) o los nuevos de debajo de la gráfica --
+// pedido explícito ("la grafica de Pérdida Total vs Pérdida Técnica de
+// nivel 3 cuando aplico algun filtro de zona no me trae la perdida
+// tecnica de la zona"). Antes SIEMPRE usaba el total global sin importar
+// el filtro -- ALIM_NIVEL3_TECNICA_POR_ZONA[z] ya se pedía al cargar
+// (Promise.all en cargarBalancesAlimNivel3/34) para la tabla por zona,
+// solo faltaba usarlo acá también. Sin zonas seleccionadas, se comporta
+// igual que antes (global). Solo suma "perdida" (kWh) -- es lo único que
+// consume _alimNivelConstruirChartTecnica, "pct" no se usa en ese gráfico.
+function _alimNivel3TecnicaPorMesFiltrada(zonasSel){
+  if(!zonasSel || !zonasSel.size) return _alimNivelTecnicaPorMes(ALIM_NIVEL3_TECNICA);
+  const mapa = {};
+  zonasSel.forEach(z => {
+    Object.entries(ALIM_NIVEL3_TECNICA_POR_ZONA[z] || {}).forEach(([clave, v]) => {
+      if(v.perdida == null) return;
+      if(!mapa[clave]) mapa[clave] = {perdida:0, pct:null};
+      mapa[clave].perdida += v.perdida;
+    });
+  });
+  return mapa;
+}
+
 function alimNivel3RenderTodo(){
   const filas = ALIM_NIVEL3_FILAS || [];
   if(!filas.length) return;
@@ -13317,7 +13340,7 @@ function alimNivel3RenderTodo(){
   const mensual = _alimNivelVisibles(mensualCompleto, 'alim-nivel3');
   const anual = _alimNivelVisibles(datos12Completo, 'alim-nivel3').filter(f => f.pct12 != null);
   const porZona = _alimNivel34MensualPorZona(filas);
-  const tecnicaPorMes = _alimNivelTecnicaPorMes(ALIM_NIVEL3_TECNICA);
+  const tecnicaPorMes = _alimNivel3TecnicaPorMesFiltrada(ALIM_NIVEL3_ZONAS_SEL);
   const claveAnalisis = _alimNivelPoblarSelectorAnalisis('alim-nivel3', mensualCompleto);
   const claveTabla = _alimNivelPoblarSelectorAnalisis('alim-nivel3-tabla', mensualCompleto);
   document.getElementById('alim-nivel3-btn-var').classList.toggle('activo', ALIM_NIVEL3_VAR);
