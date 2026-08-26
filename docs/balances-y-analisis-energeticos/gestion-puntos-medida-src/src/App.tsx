@@ -196,6 +196,20 @@ export default function App() {
     setActiveTab("registrar");
   };
 
+  // Hook para la app padre (balances-y-analisis-energeticos/index.html, que
+  // embebe esta app por iframe en el mismo origen) -- la alerta de "medida
+  // en falla" de Ver Balance llama a esto para abrir directo el formulario
+  // de esa medida acá, sin que el usuario tenga que buscarla manualmente.
+  useEffect(() => {
+    (window as any).pmAbrirPorCodigo = (codigoPM: string) => {
+      setEditPMCode(codigoPM);
+      setActiveTab("registrar");
+    };
+    return () => {
+      delete (window as any).pmAbrirPorCodigo;
+    };
+  }, []);
+
   const handleOpenReprogram = (pm: PM, failure: ActiveFailure) => {
     setReprogramTarget({ pm, failure });
     setReprogramDate(failure.fechaReparacion === "Sin definir" ? "" : failure.fechaReparacion);
