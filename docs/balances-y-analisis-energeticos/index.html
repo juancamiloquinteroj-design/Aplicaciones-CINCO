@@ -3874,7 +3874,7 @@ tfoot td:first-child{text-align:left}
   </div>
 
   <div id="be-chart-card" class="card hidden">
-    <div style="display:flex;align-items:center;justify-content:center;gap:10px;position:relative;margin-bottom:10px">
+    <div style="display:flex;align-items:center;justify-content:center;gap:10px;position:relative;margin-bottom:10px;padding:0 175px">
       <div id="be-chart-titulo" style="text-align:center;font-size:15px;font-weight:800;color:var(--text);text-transform:uppercase"></div>
       <!-- Alerta pequeña, pegada al botón Editar -- pedido explícito
            ("esa alerta esta muy grande... yo la quiero pequeña al lado
@@ -7952,6 +7952,23 @@ function _beActualizarWidgetMedidorAfecta(){
 // página. Chips pequeños y clicables (pedido explícito: "la quiero pequeña
 // al lado derecho" + "si se da click... me lleve al control de
 // mantenimiento y me muestre esa medida").
+// Tipo(s) de componente en falla + fecha del reporte más antiguo (para
+// mostrar "desde cuándo está así") de un doc PM de Firestore -- pedido
+// explícito ("me gustaria que dijera el tipo de falla y la fecha desde
+// cuando esta asi"). Un PM puede tener varias fallas activas a la vez
+// (activeFailures[]); se listan los componentes distintos y se toma la
+// fechaReporte MÁS ANTIGUA de todas (la que marca desde cuándo arrastra
+// el problema).
+function _beFallaResumen(pm){
+  const fallas = (pm && pm.activeFailures) || [];
+  if(!fallas.length) return '';
+  const tipos = [...new Set(fallas.map(f => f.componente).filter(Boolean))].join('/');
+  const fechas = fallas.map(f => f.fechaReporte).filter(Boolean).sort();
+  if(!fechas.length) return tipos;
+  const desde = new Date(fechas[0] + 'T00:00:00').toLocaleDateString('es-CO', {day:'2-digit', month:'2-digit', year:'numeric'});
+  return tipos ? `${tipos} · desde ${desde}` : `desde ${desde}`;
+}
+
 function _beRefrescarAlertaFallas(){
   const cont = document.getElementById('be-medidas-fallas-alerta');
   if(!cont) return;
@@ -7963,13 +7980,16 @@ function _beRefrescarAlertaFallas(){
     const clave = String(o.usuario_id).trim().toLowerCase();
     if(vistos.has(clave) || !mapa.has(clave)) return;
     vistos.add(clave);
-    enFalla.push(o.usuario_id);
+    enFalla.push({usuario_id: o.usuario_id, pm: mapa.get(clave)});
   });
   if(!enFalla.length){ cont.classList.add('hidden'); cont.innerHTML = ''; return; }
   cont.classList.remove('hidden');
-  cont.style.cssText = 'display:flex;align-items:center;gap:5px;padding:4px 9px;border-radius:20px;background:rgba(220,38,38,.12);border:1px solid rgba(220,38,38,.4);color:#dc2626;font-size:10.5px;font-weight:700;white-space:nowrap';
-  const chips = enFalla.map(u => `<span onclick="_beIrAControlMantenimiento('${_mselEsc(u).replace(/'/g,"\\'")}')" title="Abrir en Control de Mantenimiento" style="cursor:pointer;text-decoration:underline">${_mselEsc(u)}</span>`).join(', ');
-  cont.innerHTML = `🚩 En falla: ${chips}`;
+  cont.style.cssText = 'display:flex;flex-direction:column;align-items:flex-end;gap:2px;padding:4px 9px;border-radius:10px;background:rgba(220,38,38,.12);border:1px solid rgba(220,38,38,.4);color:#dc2626;font-size:10px;font-weight:700;max-width:230px;text-align:right';
+  const filas = enFalla.map(({usuario_id, pm}) => {
+    const resumen = _beFallaResumen(pm);
+    return `<div onclick="_beIrAControlMantenimiento('${_mselEsc(usuario_id).replace(/'/g,"\\'")}')" title="Abrir en Control de Mantenimiento" style="cursor:pointer;text-decoration:underline">🚩 ${_mselEsc(usuario_id)}${resumen ? ' -- ' + _mselEsc(resumen) : ''}</div>`;
+  }).join('');
+  cont.innerHTML = filas;
 }
 
 // Cambia a "Control de Mantenimiento en Puntos de Medida" y, dentro del
