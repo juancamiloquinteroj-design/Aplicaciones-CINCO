@@ -712,12 +712,18 @@ tfoot td:first-child{text-align:left}
 .be-tabla-creadas-titulo{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text3);margin-bottom:10px}
 .be-tabla-scroll{overflow-x:auto}
 .be-tabla-scroll-acotada{max-height:1120px;overflow-y:auto}
-.be-tabla-scroll-acotada thead th{position:sticky;top:0;background:var(--bg2);z-index:5}
+.be-tabla-scroll-acotada thead th{position:sticky;top:0;background:var(--bg2);z-index:5;contain:paint}
 /* Fila 1 del thead = la fila chica de Entrada/Salida -- no es sticky (usa
    td, no th), se va con el scroll; la fila 2 (títulos, th) queda sticky
    arriba de todo. Fila 3 = el viejo pie ("Total del rango") reubicado justo
-   debajo del encabezado -- queda siempre visible sin bajar hasta el final. */
-.be-tabla-scroll-acotada thead tr:nth-child(3) td{position:sticky;top:var(--be-fila2-top,34px);z-index:5}
+   debajo del encabezado -- queda siempre visible sin bajar hasta el final.
+   contain:paint en las 2 (pedido explícito, "veo numeros debajo del
+   nombre"): sin esto, aunque el fondo ya sea opaco (background sólido,
+   !important), Chromium a veces sigue pintando el contenido del body que
+   pasa por detrás durante el scroll -- un fondo opaco solo no alcanza
+   para estos elementos sticky, hace falta forzar que el navegador los
+   trate como su propia capa de pintado aislada. */
+.be-tabla-scroll-acotada thead tr:nth-child(3) td{position:sticky;top:var(--be-fila2-top,34px);z-index:5;contain:paint}
 .be-tabla-scroll-acotada tfoot td{position:sticky;bottom:0;z-index:5}
 .be-tabla-creadas.detalle-oculto .be-col-detalle{display:none}
 .be-tabla-detalle-resumen{margin-top:10px;padding-top:8px;border-top:1px solid var(--border);font-size:11px;color:var(--text3);display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px}
@@ -822,9 +828,16 @@ tfoot td:first-child{text-align:left}
 .be-tabla-creadas thead tr:nth-child(2) th,.be-tabla-creadas thead tr:nth-child(2) th.suma,.be-tabla-creadas thead tr:nth-child(2) th.pto{background:var(--bg3) !important}
 /* Puntos "Es cliente" -- va DESPUÉS de la regla de arriba (misma
    especificidad: thead tr:nth-child(2) th.pto) para ganar por orden en la
-   hoja; si va antes, el fondo violeta queda tapado por el gris de siempre. */
-.be-tabla-creadas thead tr:nth-child(2) th.pto.cliente{background:rgba(112,48,160,.18) !important}
-[data-theme="dark"] .be-tabla-creadas thead tr:nth-child(2) th.pto.cliente{background:rgba(112,48,160,.3) !important}
+   hoja; si va antes, el fondo violeta queda tapado por el gris de siempre.
+   OPACO (color-mix, no rgba) -- pedido explícito ("veo numeros debajo del
+   nombre"): esta fila es sticky (position:sticky en "thead th" más abajo)
+   y un fondo semitransparente deja pasar el contenido del body que se va
+   scrolleando por detrás -- se veían los números de las filas de la tabla
+   superpuestos con el nombre del punto. color-mix mezcla el mismo % de
+   violeta pero sobre var(--bg3) (que es lo que YA se ve ahí en reposo),
+   dando el mismo tono de siempre pero 100% opaco. */
+.be-tabla-creadas thead tr:nth-child(2) th.pto.cliente{background:color-mix(in srgb, #7030A0 18%, var(--bg3)) !important}
+[data-theme="dark"] .be-tabla-creadas thead tr:nth-child(2) th.pto.cliente{background:color-mix(in srgb, #7030A0 30%, var(--bg3)) !important}
 .be-tabla-creadas thead tr:nth-child(3) td,.be-tabla-creadas thead tr:nth-child(3) td.suma,.be-tabla-creadas thead tr:nth-child(3) td.pto,.be-tabla-creadas thead tr:nth-child(3) td.back,.be-tabla-creadas thead tr:nth-child(3) td.dif{padding:6px 10px;border-bottom:2px solid var(--text2);font-weight:700;color:var(--text3);background:var(--bg2) !important}
 .be-tabla-creadas thead tr:nth-child(3) td.suma{color:var(--text)}
 /* Columnas "SIEC" (clientes sin medidor propio, consumo mensual
@@ -843,10 +856,13 @@ tfoot td:first-child{text-align:left}
 [data-theme="dark"] .be-tabla-creadas th.pto.cliente,[data-theme="dark"] .be-tabla-creadas td.pto.cliente,
 [data-theme="dark"] .be-tabla-creadas td.be-fila-tipo-celda.cliente,
 [data-theme="dark"] .be-tabla-creadas th.suma.siec,[data-theme="dark"] .be-tabla-creadas td.suma.siec{color:var(--text) !important}
-.be-tabla-creadas thead tr:nth-child(2) th.suma.siec{background:rgba(237,125,49,.28) !important}
-.be-tabla-creadas thead tr:nth-child(3) td.suma.siec{background:rgba(237,125,49,.22) !important}
-[data-theme="dark"] .be-tabla-creadas thead tr:nth-child(2) th.suma.siec{background:rgba(237,125,49,.35) !important}
-[data-theme="dark"] .be-tabla-creadas thead tr:nth-child(3) td.suma.siec{background:rgba(237,125,49,.3) !important}
+/* Mismo motivo que ".cliente" arriba (color-mix en vez de rgba, opaco):
+   estas 2 filas son sticky y un fondo semitransparente dejaba pasar los
+   números del body por detrás al hacer scroll. */
+.be-tabla-creadas thead tr:nth-child(2) th.suma.siec{background:color-mix(in srgb, #ED7D31 28%, var(--bg3)) !important}
+.be-tabla-creadas thead tr:nth-child(3) td.suma.siec{background:color-mix(in srgb, #ED7D31 22%, var(--bg2)) !important}
+[data-theme="dark"] .be-tabla-creadas thead tr:nth-child(2) th.suma.siec{background:color-mix(in srgb, #ED7D31 35%, var(--bg3)) !important}
+[data-theme="dark"] .be-tabla-creadas thead tr:nth-child(3) td.suma.siec{background:color-mix(in srgb, #ED7D31 30%, var(--bg2)) !important}
 /* Balance diario: más compacta que la tabla de "Estructuras ya creadas" --
    con muchas columnas de detalle por medidor, el tamaño normal hacía que la
    tabla ocupara media pantalla de alto. Encabezado a 2 renglones (como en
@@ -10136,7 +10152,7 @@ async function renderChartBalanceEstructura(datos, modo){
       },
       scales:{
         x:{
-          grid:{display:false},
+          grid:{display:false}, offset:true,
           // OJO: la densidad de ticks se decide por lo VISIBLE (scale.min/
           // max, que cambia al hacer zoom/pan), no por fechas.length (el
           // total cargado) -- si se usa el total, al acercar el zoom sobre
@@ -10362,7 +10378,7 @@ function renderChartComparacionEstructura(datos){
         },
       },
       scales:{
-        x:{ grid:{display:false}, ticks:{color:tickXFuerte, font:{size:10}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false} },
+        x:{ grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false} },
         y:{ beginAtZero:true, grace:'15%', grid:{color:gridC},
           ticks:{color:tickC, font:{size:11}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
           title:{display:true, text:'Pérdida (kWh/mes)', color:tickC, font:{size:11}} },
@@ -10526,7 +10542,7 @@ function renderChartMovilAnual(datos){
         },
       },
       scales:{
-        x:{ grid:{display:false}, ticks:{color:tickXFuerte, font:{size:10}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false} },
+        x:{ grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false} },
         y:{ beginAtZero:true, grace:'15%', grid:{color:gridC},
           ticks:{color:tickC, font:{size:11}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
           title:{display:true, text:'Pérdida móvil anual (kWh/12 meses)', color:tickC, font:{size:11}} },
