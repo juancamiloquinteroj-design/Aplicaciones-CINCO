@@ -3493,6 +3493,17 @@ tfoot td:first-child{text-align:left}
         <span id="informes-msg" style="font-size:11.5px;color:var(--text3)"></span>
       </div>
     </div>
+
+    <div class="card">
+      <div class="sec-title" style="font-size:14px;margin-bottom:4px">Caracterización de Alimentador</div>
+      <div class="sec-sub" style="margin-bottom:10px">Descarga la caracterización de Pérdida Total N2-1 de un alimentador puntual (.xlsx, con las mismas gráficas, colores y celdas combinadas de la plantilla de referencia, y fórmulas vivas -- no valores fijos).</div>
+      <div class="fbar">
+        <label>Alimentador</label>
+        <select id="informes-caract-alimentador" style="min-width:280px"></select>
+        <button type="button" class="btn-theme" style="width:auto;padding:0 18px" id="informes-caract-btn" onclick="informesCaracterizacionAlimentador()">⬇ Descargar caracterización (.xlsx)</button>
+        <span id="informes-caract-msg" style="font-size:11.5px;color:var(--text3)"></span>
+      </div>
+    </div>
   </div>
 </div>
 <!-- fin vista-informes -->
@@ -21398,6 +21409,46 @@ async function informesCargar(){
   informesPoblarSubestaciones();
   informesPoblarChecklistZonas();
   await informesCargarLogoGuardado();
+  informesPoblarSelectorAlimentador();
+}
+
+// Selector del botón "Caracterización de Alimentador" -- se llena aparte del
+// resto de Informes (que corre por meses/checklist), es solo un Nemonico.
+async function informesPoblarSelectorAlimentador(){
+  const sel = document.getElementById('informes-caract-alimentador');
+  if(!sel) return;
+  try{
+    const r = await apiGet('/api/alimentadores/lista');
+    const lista = (r.alimentadores || []).slice().sort((a,b) => (a.nombre_spard||'').localeCompare(b.nombre_spard||''));
+    sel.innerHTML = lista.map(a => `<option value="${a.nemonico}">${a.nombre_spard || a.nemonico}${a.zona ? ' ('+a.zona+')' : ''}</option>`).join('');
+  }catch(e){
+    sel.innerHTML = '<option value="">(no se pudo cargar)</option>';
+  }
+}
+
+async function informesCaracterizacionAlimentador(){
+  if(DEMO){ alert('No disponible en modo demo.'); return; }
+  const sel = document.getElementById('informes-caract-alimentador');
+  const msg = document.getElementById('informes-caract-msg');
+  const nemonico = sel && sel.value;
+  if(!nemonico){ if(msg) msg.textContent = 'Elige un alimentador.'; return; }
+  if(msg) msg.textContent = 'Generando…';
+  try{
+    const res = await fetchConTimeout(`${API_BASE_URL}/api/alimentadores/informe/${encodeURIComponent(nemonico)}`, {headers: authHeaders()}, AUTH_TIMEOUT_MS);
+    if(!res.ok){
+      const detalle = await res.json().catch(() => null);
+      throw new Error((detalle && detalle.detail) || 'No se pudo generar la caracterización.');
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `Caracterizacion ${nemonico}.xlsx`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    if(msg) msg.textContent = '';
+  }catch(e){
+    if(msg) msg.textContent = e.message || 'Error al descargar.';
+  }
 }
 
 // Selector de mes propio de Nivel 4/Nivel 3 -- mismo patrón que
