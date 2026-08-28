@@ -3503,6 +3503,24 @@ tfoot td:first-child{text-align:left}
         <button type="button" class="btn-theme" style="width:auto;padding:0 18px" id="informes-caract-btn" onclick="informesCaracterizacionAlimentador()">⬇ Descargar caracterización (.xlsx)</button>
         <span id="informes-caract-msg" style="font-size:11.5px;color:var(--text3)"></span>
       </div>
+      <div id="informes-caract-carga" class="hidden" style="margin-top:12px;padding:12px;border:1px solid var(--border);border-radius:8px;background:var(--bg2)">
+        <div style="font-size:12.5px;font-weight:600;margin-bottom:4px">Faltan datos para generar la caracterización</div>
+        <div class="sec-sub" style="margin-bottom:10px">Las secciones de Transformadores y Macromedidores dependen de estos dos archivos, que pueden cambiar con el tiempo -- súbelos una vez y quedan guardados para los próximos informes (puedes volver a subirlos cuando se actualicen).</div>
+        <div class="fbar" style="margin-bottom:8px">
+          <label style="min-width:150px">Base Transformadores</label>
+          <input type="file" id="informes-caract-file-transf" accept=".xlsx">
+          <span id="informes-caract-transf-ok" style="font-size:11.5px;color:var(--ok,#2a9d5c)"></span>
+        </div>
+        <div class="fbar" style="margin-bottom:8px">
+          <label style="min-width:150px">Base Nodos (Macromedidas)</label>
+          <input type="file" id="informes-caract-file-nodos" accept=".xlsx">
+          <span id="informes-caract-nodos-ok" style="font-size:11.5px;color:var(--ok,#2a9d5c)"></span>
+        </div>
+        <div class="fbar">
+          <button type="button" class="btn-theme" style="width:auto;padding:0 18px" id="informes-caract-subir-btn" onclick="informesSubirDatosCaracterizacion()">Subir y generar</button>
+          <span id="informes-caract-carga-msg" style="font-size:11.5px;color:var(--text3)"></span>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -21426,12 +21444,99 @@ async function informesPoblarSelectorAlimentador(){
   }
 }
 
+const CARACT_UPLOAD_TIMEOUT_MS = 180000; // subir Base Nodos (~21k nodos x N meses) tarda ~80s en el backend
+
 async function informesCaracterizacionAlimentador(){
   if(DEMO){ alert('No disponible en modo demo.'); return; }
   const sel = document.getElementById('informes-caract-alimentador');
   const msg = document.getElementById('informes-caract-msg');
   const nemonico = sel && sel.value;
   if(!nemonico){ if(msg) msg.textContent = 'Elige un alimentador.'; return; }
+  document.getElementById('informes-caract-carga').classList.add('hidden');
+  if(msg) msg.textContent = 'Verificando datos…';
+  try{
+    const estado = await apiGet('/api/alimentadores/datos-informe/estado', AUTH_TIMEOUT_MS);
+    if(!estado.listo){
+      if(msg) msg.textContent = '';
+      informesMostrarCargaCaracterizacion(estado);
+      return;
+    }
+  }catch(e){
+    if(msg) msg.textContent = e.message || 'No se pudo verificar los datos.';
+    return;
+  }
+  await _informesDescargarCaracterizacion(nemonico);
+}
+
+// Muestra el bloque de carga de Base Transformadores/Base Nodos -- solo pide
+// el (los) archivo(s) que de verdad falten, no obliga a resubir el que ya
+// estaba cargado.
+function informesMostrarCargaCaracterizacion(estado){
+  const bloque = document.getElementById('informes-caract-carga');
+  bloque.classList.remove('hidden');
+  const filaTransf = document.getElementById('informes-caract-file-transf').closest('.fbar');
+  const filaNodos = document.getElementById('informes-caract-file-nodos').closest('.fbar');
+  filaTransf.style.display = estado.transformadores_cargados ? 'none' : '';
+  filaNodos.style.display = estado.nodos_cargados ? 'none' : '';
+  document.getElementById('informes-caract-transf-ok').textContent = estado.transformadores_cargados ? '✓ ya cargado' : '';
+  document.getElementById('informes-caract-nodos-ok').textContent = estado.nodos_cargados ? '✓ ya cargado' : '';
+}
+
+async function informesSubirDatosCaracterizacion(){
+  if(DEMO){ alert('No disponible en modo demo.'); return; }
+  const sel = document.getElementById('informes-caract-alimentador');
+  const nemonico = sel && sel.value;
+  const msg = document.getElementById('informes-caract-carga-msg');
+  const inputTransf = document.getElementById('informes-caract-file-transf');
+  const inputNodos = document.getElementById('informes-caract-file-nodos');
+  const archivoTransf = inputTransf.style.display !== 'none' ? inputTransf.files[0] : null;
+  const archivoNodos = inputNodos.style.display !== 'none' ? inputNodos.files[0] : null;
+  if(!archivoTransf && !archivoNodos){ msg.textContent = 'Elige al menos el archivo que falta.'; return; }
+
+  const btn = document.getElementById('informes-caract-subir-btn');
+  btn.disabled = true;
+  try{
+    if(archivoTransf){
+      msg.textContent = 'Subiendo Base Transformadores…';
+      await _informesSubirArchivoCaracterizacion('/api/alimentadores/datos-informe/transformadores', archivoTransf);
+      document.getElementById('informes-caract-transf-ok').textContent = '✓ cargado';
+    }
+    if(archivoNodos){
+      msg.textContent = 'Subiendo Base Nodos (puede tardar ~1-2 min)…';
+      await _informesSubirArchivoCaracterizacion('/api/alimentadores/datos-informe/nodos', archivoNodos);
+      document.getElementById('informes-caract-nodos-ok').textContent = '✓ cargado';
+    }
+    const estado = await apiGet('/api/alimentadores/datos-informe/estado', AUTH_TIMEOUT_MS);
+    if(!estado.listo){
+      msg.textContent = '';
+      informesMostrarCargaCaracterizacion(estado);
+      msg.textContent = 'Todavía falta el otro archivo.';
+      return;
+    }
+    document.getElementById('informes-caract-carga').classList.add('hidden');
+    msg.textContent = '';
+    if(!nemonico){ return; }
+    await _informesDescargarCaracterizacion(nemonico);
+  }catch(e){
+    msg.textContent = e.message || 'Error al subir el archivo.';
+  }finally{
+    btn.disabled = false;
+  }
+}
+
+async function _informesSubirArchivoCaracterizacion(path, archivo){
+  const formData = new FormData();
+  formData.append('archivo', archivo);
+  const res = await fetchConTimeout(`${API_BASE_URL}${path}`, {method: 'POST', headers: authHeaders(), body: formData}, CARACT_UPLOAD_TIMEOUT_MS);
+  if(!res.ok){
+    const detalle = await res.json().catch(() => null);
+    throw new Error((detalle && detalle.detail) || 'No se pudo subir el archivo.');
+  }
+  return res.json();
+}
+
+async function _informesDescargarCaracterizacion(nemonico){
+  const msg = document.getElementById('informes-caract-msg');
   if(msg) msg.textContent = 'Generando…';
   try{
     const res = await fetchConTimeout(`${API_BASE_URL}/api/alimentadores/informe/${encodeURIComponent(nemonico)}`, {headers: authHeaders()}, AUTH_TIMEOUT_MS);
