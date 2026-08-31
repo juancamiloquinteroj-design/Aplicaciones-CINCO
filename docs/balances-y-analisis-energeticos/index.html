@@ -4023,30 +4023,16 @@ tfoot td:first-child{text-align:left}
        TÉCNICA N2-1 de esa misma zona -- pedido explícito ("quiero ver la
        pérdida mensual de todos los transformadores o líneas de una zona
        en específico... para poder comparar la pérdida mensual por
-       balance y la pérdida técnica"). Card aparte de la de arriba (una
-       sola estructura) para no mezclar los dos modos de filtro. ---------------- -->
+       balance y la pérdida técnica"). Usa los MISMOS filtros de
+       Ubicación/Estructura de la tarjeta de arriba (be-filtro-zona/
+       be-filtro-tipo) en vez de duplicarlos -- pedido explícito ("por
+       que creaste dos filtros adicionales, debería funcionar con el
+       mismo que ya existe"); se refresca solo, desde
+       cargarListaEstructuras(). ---------------- -->
   <div class="card">
     <div class="sec-title" style="font-size:13px;margin-bottom:2px">Σ Agregado por Zona/Tipo -- Balance vs. Técnica</div>
-    <div class="sec-sub" style="margin-bottom:10px">Suma la pérdida de balance de todas las estructuras ya creadas de una zona (y opcionalmente un tipo puntual) contra la pérdida técnica N2-1 (Nivel 1+2) de esa misma zona.</div>
-    <div class="fbar" style="margin-bottom:10px">
-      <label>Zona</label>
-      <select id="be-agz-zona" onchange="beAgregadoZonaCargar()">
-        <option value="">Elige una zona...</option>
-      </select>
-      <label>Tipo</label>
-      <select id="be-agz-tipo" onchange="beAgregadoZonaCargar()">
-        <option value="">Todos (menos Z)</option>
-        <option value="PT">Transformador (PT)</option>
-        <option value="PT3">Transformador tridevanado (PT3)</option>
-        <option value="PB">Barra (PB)</option>
-        <option value="L">Línea (L)</option>
-        <option value="Z">Balance por Nivel de Tensión (Z)</option>
-        <option value="CARGA">Carga</option>
-        <option value="GEN">Generador</option>
-      </select>
-      <span id="be-agz-contador" style="font-size:11px;color:var(--text3)"></span>
-    </div>
-    <div id="be-agz-vacio" style="color:var(--text3);font-size:12px">Elige una zona para ver el agregado.</div>
+    <div class="sec-sub" style="margin-bottom:10px">Suma la pérdida de balance de todas las estructuras ya creadas de la zona y tipo elegidos arriba (filtro "Ubicación"/"Estructura") contra la pérdida técnica N2-1 (Nivel 1+2) de esa misma zona. <span id="be-agz-contador" style="color:var(--text3)"></span></div>
+    <div id="be-agz-vacio" style="color:var(--text3);font-size:12px">Elige una zona en el filtro de "Ubicación" de arriba para ver el agregado.</div>
     <div id="be-agz-contenido" class="hidden">
       <div class="chart-wrap" style="height:340px"><canvas id="ch-be-agz"></canvas></div>
     </div>
@@ -8135,8 +8121,6 @@ async function cargarBalancesEstructura(){
   if(filtroZonaCreadas) filtroZonaCreadas.innerHTML = '<option value="">Todas</option><option value="__sin_zona__">(Sin zona)</option>' + BE_ZONAS.map(z=>`<option value="${_mselEsc(z)}">${_mselEsc(z)}</option>`).join('');
   const filtroZonaVer = document.getElementById('be-filtro-zona');
   if(filtroZonaVer) filtroZonaVer.innerHTML = '<option value="">Todas</option><option value="__sin_zona__">(Sin zona)</option>' + BE_ZONAS.map(z=>`<option value="${_mselEsc(z)}">${_mselEsc(z)}</option>`).join('');
-  const filtroZonaAgz = document.getElementById('be-agz-zona');
-  if(filtroZonaAgz) filtroZonaAgz.innerHTML = '<option value="">Elige una zona...</option>' + BE_ZONAS.map(z=>`<option value="${_mselEsc(z)}">${_mselEsc(z)}</option>`).join('');
 
   try{
     const meta = DEMO ? {meses:[]} : await apiGet('/api/telemedida/meta');
@@ -8176,14 +8160,22 @@ let chBeAgz = null;
 // de una zona en específico... para poder comparar la pérdida mensual
 // por balance y la pérdida técnica"). Un solo GET, el backend hace la
 // suma (ver /api/balances-estructura/agregado-zona).
+let _beAgregadoZonaSeq = 0;
 async function beAgregadoZonaCargar(){
+  const miSeq = ++_beAgregadoZonaSeq;
   const vacio = document.getElementById('be-agz-vacio');
   const contenido = document.getElementById('be-agz-contenido');
   const contador = document.getElementById('be-agz-contador');
-  const zona = document.getElementById('be-agz-zona').value;
-  const tipo = document.getElementById('be-agz-tipo').value;
-  if(!zona){
-    vacio.classList.remove('hidden'); vacio.textContent = 'Elige una zona para ver el agregado.';
+  if(!vacio) return;  // la tarjeta no está en esta vista
+  // Mismos filtros de arriba (Ubicación->Zona, Estructura->Tipo) -- no hay
+  // selects propios. "" y "__sin_zona__" no son una zona real para poder
+  // buscar su Circuito técnico, así que en ambos casos se pide elegir una.
+  const zonaEl = document.getElementById('be-filtro-zona');
+  const tipoEl = document.getElementById('be-filtro-tipo');
+  const zona = zonaEl ? zonaEl.value : '';
+  const tipo = tipoEl ? tipoEl.value : '';
+  if(!zona || zona === '__sin_zona__'){
+    vacio.classList.remove('hidden'); vacio.textContent = 'Elige una zona en el filtro de "Ubicación" de arriba para ver el agregado.';
     contenido.classList.add('hidden'); contador.textContent = '';
     return;
   }
@@ -8192,6 +8184,7 @@ async function beAgregadoZonaCargar(){
   try{
     const url = `/api/balances-estructura/agregado-zona?zona=${encodeURIComponent(zona)}` + (tipo ? `&tipo=${encodeURIComponent(tipo)}` : '');
     const datos = DEMO ? {meses:[], perdida_balance_kwh:[], perdida_tecnica_kwh:[], n_estructuras:0, nombres_estructuras:[]} : await apiGet(url, AUTH_TIMEOUT_MS);
+    if(miSeq !== _beAgregadoZonaSeq) return;  // una llamada más nueva (otro filtro) ya está en vuelo/resuelta
     if(!datos.n_estructuras){
       vacio.textContent = tipo
         ? `No hay estructuras de tipo "${tipo}" con zona "${zona}" creadas todavía.`
@@ -8205,6 +8198,7 @@ async function beAgregadoZonaCargar(){
     contenido.classList.remove('hidden');
     beAgregadoZonaRenderChart(datos, zona, tipo);
   }catch(e){
+    if(miSeq !== _beAgregadoZonaSeq) return;
     vacio.textContent = e.message || 'No se pudo cargar el agregado.';
     vacio.classList.remove('hidden');
     contenido.classList.add('hidden');
@@ -9221,6 +9215,7 @@ async function cargarListaEstructuras(reintentando){
   const nivel = document.getElementById('be-filtro-nivel').value;
   const tipo = document.getElementById('be-filtro-tipo').value;
   const zona = document.getElementById('be-filtro-zona').value;
+  beAgregadoZonaCargar();  // mismo filtro Zona/Tipo -- se refresca solo (fire-and-forget, independiente de la lista de estructuras)
   const qs = new URLSearchParams();
   if(nivel) qs.set('nivel_tension', nivel);
   if(tipo) qs.set('tipo', tipo);
