@@ -4030,8 +4030,8 @@ tfoot td:first-child{text-align:left}
        mismo que ya existe"); se refresca solo, desde
        cargarListaEstructuras(). ---------------- -->
   <div class="card">
-    <div class="sec-title" style="font-size:13px;margin-bottom:2px">Σ Agregado por Zona/Tipo -- Balance vs. Técnica</div>
-    <div class="sec-sub" style="margin-bottom:10px">Suma la pérdida de balance de todas las estructuras ya creadas de la zona y tipo elegidos arriba (filtro "Ubicación"/"Estructura") contra la pérdida técnica N2-1 (Nivel 1+2) de esa misma zona. <span id="be-agz-contador" style="color:var(--text3)"></span></div>
+    <div class="sec-title" style="font-size:13px;margin-bottom:2px">Pérdida Total (Balance) Vs Pérdida Técnica -- por Zona/Tipo</div>
+    <div class="sec-sub" style="margin-bottom:10px">Suma la entrada/salida de todas las estructuras ya creadas de la zona y tipo elegidos arriba (filtro "Ubicación"/"Estructura") para obtener su pérdida de balance, y la compara contra la suma de la pérdida técnica de esas MISMAS estructuras (solo las que tienen un circuito de Pérdidas Técnicas vinculado). <span id="be-agz-contador" style="color:var(--text3)"></span></div>
     <div id="be-agz-vacio" style="color:var(--text3);font-size:12px">Elige una zona en el filtro de "Ubicación" de arriba para ver el agregado.</div>
     <div id="be-agz-contenido" class="hidden">
       <div class="chart-wrap" style="height:340px"><canvas id="ch-be-agz"></canvas></div>
@@ -8183,7 +8183,7 @@ async function beAgregadoZonaCargar(){
   contenido.classList.add('hidden'); contador.textContent = '';
   try{
     const url = `/api/balances-estructura/agregado-zona?zona=${encodeURIComponent(zona)}` + (tipo ? `&tipo=${encodeURIComponent(tipo)}` : '');
-    const datos = DEMO ? {meses:[], perdida_balance_kwh:[], perdida_tecnica_kwh:[], n_estructuras:0, nombres_estructuras:[]} : await apiGet(url, AUTH_TIMEOUT_MS);
+    const datos = DEMO ? {meses:[], perdida_balance_kwh:[], perdida_tecnica_kwh:[], n_estructuras:0, n_vinculadas:0, nombres_estructuras:[]} : await apiGet(url, AUTH_TIMEOUT_MS);
     if(miSeq !== _beAgregadoZonaSeq) return;  // una llamada más nueva (otro filtro) ya está en vuelo/resuelta
     if(!datos.n_estructuras){
       vacio.textContent = tipo
@@ -8192,7 +8192,7 @@ async function beAgregadoZonaCargar(){
       contenido.classList.add('hidden');
       return;
     }
-    contador.textContent = `${datos.n_estructuras} estructura${datos.n_estructuras===1?'':'s'} sumada${datos.n_estructuras===1?'':'s'}`;
+    contador.textContent = `${datos.n_estructuras} estructura${datos.n_estructuras===1?'':'s'} sumada${datos.n_estructuras===1?'':'s'} -- ${datos.n_vinculadas} con circuito técnico vinculado`;
     contador.title = datos.nombres_estructuras.join(', ');
     vacio.classList.add('hidden');
     contenido.classList.remove('hidden');
@@ -8219,19 +8219,30 @@ function beAgregadoZonaRenderChart(datos, zona, tipo){
     color, font:{size:10, weight:'700'},
   });
 
+  const etiquetaTipo = {PT:'transformadores', PT3:'transformadores tridevanados', PB:'barras', L:'líneas', Z:'balances por nivel', CARGA:'cargas', GEN:'generadores'}[tipo] || 'estructuras';
+
   if(chBeAgz) chBeAgz.destroy();
   chBeAgz = new Chart(cv, {
     data:{
       labels: etiquetas,
       datasets:[
-        {type:'line', label:'Pérdida Total (balance)', order:2,
+        {type:'line', label:`Pérdida de balance (${datos.n_estructuras} ${etiquetaTipo})`, order:2,
           data: datos.perdida_balance_kwh, borderColor:'#4472C4', backgroundColor:'rgba(68,114,196,.15)', fill:'origin',
-          borderWidth:2.5, pointRadius:2, spanGaps:true, tension:0,
+          borderWidth:2.5, pointRadius:2, spanGaps:true, tension:0, yAxisID:'y',
           datalabels: datalabelsSimple('#4472C4', 'top')},
-        {type:'line', label:'Pérdida Técnica N2-1 (calculada)', order:1,
+        {type:'line', label:`Pérdida técnica (${datos.n_vinculadas} vinculada${datos.n_vinculadas===1?'':'s'})`, order:1,
           data: datos.perdida_tecnica_kwh, borderColor:'#ED7D31', backgroundColor:'transparent',
-          borderWidth:2.5, pointRadius:2, spanGaps:true, tension:0, borderDash:[6,3],
+          borderWidth:2.5, pointRadius:2, spanGaps:true, tension:0, borderDash:[6,3], yAxisID:'y',
           datalabels: datalabelsSimple('#ED7D31', 'top')},
+        // Mismo patrón que el resto de la app (ej. gráfico de balance por
+        // estructura): una línea de % en un eje derecho aparte
+        // (drawOnChartArea:false, no compite visualmente con el eje de
+        // kWh) -- pedido explícito ("también mostrar el porcentaje").
+        {type:'line', label:'Pérdida % (balance)', order:3,
+          data: datos.perdida_balance_pct, borderColor:'#70AD47', backgroundColor:'transparent',
+          borderWidth:2, pointRadius:2, spanGaps:true, tension:0, borderDash:[2,2], yAxisID:'yPct',
+          datalabels:{display:true, anchor:'end', align:'bottom', offset:10,
+            formatter:v=>v==null?'':v.toFixed(2)+'%', font:{size:10, weight:'700'}, color:'#70AD47'}},
       ],
     },
     options:{
@@ -8239,10 +8250,10 @@ function beAgregadoZonaRenderChart(datos, zona, tipo){
       layout:{padding:{top:32, right:20, bottom:16}},
       interaction:{mode:'index', intersect:false},
       plugins:{
-        title:{display:true, text: `${zona}${tipo?' · '+tipo:''} -- ${datos.n_estructuras} estructura${datos.n_estructuras===1?'':'s'}`,
+        title:{display:true, text: `${zona}${tipo?' · '+tipo:' · Todos los tipos'}`,
           color:tickC, font:{size:12, weight:'700'}},
         legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:10}, color:tickC}},
-        tooltip:{callbacks:{label:c=> c.raw==null?null:`${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`}},
+        tooltip:{callbacks:{label:c=> c.raw==null?null:`${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:2})}${c.dataset.yAxisID==='yPct'?'%':' kWh'}`}},
         zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:3}}},
       },
       scales:{
@@ -8250,6 +8261,8 @@ function beAgregadoZonaRenderChart(datos, zona, tipo){
         y:{position:'left', grid:{color:gridC},
           ticks:{color:tickC, font:{size:10}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
           title:{display:true, text:'Energía (kWh)', color:tickC, font:{size:10}}},
+        yPct:{type:'linear', position:'right', grace:'20%', grid:{drawOnChartArea:false},
+          ticks:{color:tickC, font:{size:10}, callback:v=>v.toFixed(0)+'%'}},
       },
     },
   });
