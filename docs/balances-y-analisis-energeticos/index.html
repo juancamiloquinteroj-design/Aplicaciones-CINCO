@@ -8179,13 +8179,21 @@ async function beAgregadoZonaCargar(){
   const contenido = document.getElementById('be-agz-contenido');
   const contador = document.getElementById('be-agz-contador');
   if(!vacio) return;  // la tarjeta no está en esta vista
-  // Mismos filtros de arriba (Ubicación->Zona, Estructura->Tipo) -- no hay
-  // selects propios. "" y "__sin_zona__" no son una zona real para poder
-  // buscar su Circuito técnico, así que en ambos casos se pide elegir una.
+  // Mismos filtros de arriba (Ubicación->Zona/Nivel, Estructura->Tipo) --
+  // no hay selects propios. "" y "__sin_zona__" no son una zona real para
+  // poder buscar su Circuito técnico, así que en ambos casos se pide
+  // elegir una. El Nivel TAMBIÉN se manda -- aunque "zona" en teoría solo
+  // aplica a Nivel 2/3, en la práctica queda seteada en otros niveles
+  // también, y sin filtrar por nivel el agregado de una zona mezclaba
+  // estructuras de niveles distintos que comparten el mismo código de
+  // zona -- pedido explícito ("en nivel 4 no funciona, está trayendo
+  // otra energía de nivel 3 de pérdida").
   const zonaEl = document.getElementById('be-filtro-zona');
   const tipoEl = document.getElementById('be-filtro-tipo');
+  const nivelEl = document.getElementById('be-filtro-nivel');
   const zona = zonaEl ? zonaEl.value : '';
   const tipo = tipoEl ? tipoEl.value : '';
+  const nivel = nivelEl ? nivelEl.value : '';
   if(!zona || zona === '__sin_zona__'){
     vacio.classList.remove('hidden'); vacio.textContent = 'Elige una zona en el filtro de "Ubicación" de arriba para ver el agregado.';
     contenido.classList.add('hidden'); contador.textContent = '';
@@ -8198,14 +8206,16 @@ async function beAgregadoZonaCargar(){
     const hastaM = document.getElementById('be-agz-hasta').value;
     let url = `/api/balances-estructura/agregado-zona?zona=${encodeURIComponent(zona)}`;
     if(tipo) url += `&tipo=${encodeURIComponent(tipo)}`;
+    if(nivel) url += `&nivel=${encodeURIComponent(nivel)}`;
     if(desdeM) url += `&desde=${desdeM}-01`;
     if(hastaM) url += `&hasta=${hastaM}-01`;
     const datos = DEMO ? {meses:[], perdida_balance_kwh:[], perdida_tecnica_kwh:[], n_estructuras:0, n_vinculadas:0, nombres_estructuras:[]} : await apiGet(url, AUTH_TIMEOUT_MS);
     if(miSeq !== _beAgregadoZonaSeq) return;  // una llamada más nueva (otro filtro) ya está en vuelo/resuelta
+    const sufijoNivel = nivel ? ` en Nivel ${nivel}` : '';
     if(!datos.n_estructuras){
       vacio.textContent = tipo
-        ? `No hay estructuras de tipo "${tipo}" con zona "${zona}" creadas todavía.`
-        : `No hay estructuras con zona "${zona}" creadas todavía (aparte de "Z", que se excluye del agregado -- ver el selector de Tipo si querés verla sola).`;
+        ? `No hay estructuras de tipo "${tipo}" con zona "${zona}"${sufijoNivel} creadas todavía.`
+        : `No hay estructuras con zona "${zona}"${sufijoNivel} creadas todavía (aparte de "Z", que se excluye del agregado -- ver el selector de Tipo si querés verla sola).`;
       contenido.classList.add('hidden');
       return;
     }
@@ -8213,7 +8223,7 @@ async function beAgregadoZonaCargar(){
     contador.title = datos.nombres_estructuras.join(', ');
     vacio.classList.add('hidden');
     contenido.classList.remove('hidden');
-    beAgregadoZonaRenderChart(datos, zona, tipo);
+    beAgregadoZonaRenderChart(datos, zona, tipo, nivel);
   }catch(e){
     if(miSeq !== _beAgregadoZonaSeq) return;
     vacio.textContent = e.message || 'No se pudo cargar el agregado.';
@@ -8222,7 +8232,7 @@ async function beAgregadoZonaCargar(){
   }
 }
 
-function beAgregadoZonaRenderChart(datos, zona, tipo){
+function beAgregadoZonaRenderChart(datos, zona, tipo, nivel){
   const cv = document.getElementById('ch-be-agz');
   if(!cv) return;
   const dark = document.documentElement.getAttribute('data-theme')==='dark';
@@ -8268,7 +8278,7 @@ function beAgregadoZonaRenderChart(datos, zona, tipo){
       layout:{padding:{top:32, right:20, bottom:16}},
       interaction:{mode:'index', intersect:false},
       plugins:{
-        title:{display:true, text: `${zona} ${etiquetaTipo}`,
+        title:{display:true, text: `${zona} ${etiquetaTipo}${nivel?' · Nivel '+nivel:''}`,
           color:tickC, font:{size:12, weight:'700'}},
         legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:10}, color:tickC}},
         tooltip:{callbacks:{label:c=> c.raw==null?null:`${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:2})}${c.dataset.yAxisID==='yPct'?'%':' kWh'}`}},
