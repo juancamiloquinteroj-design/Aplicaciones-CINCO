@@ -4017,6 +4017,41 @@ tfoot td:first-child{text-align:left}
     </div>
   </div>
 
+  <!-- ---------------- Agregado por Zona/Tipo -- suma la pérdida de
+       BALANCE de TODAS las estructuras ya creadas de una zona (y
+       opcionalmente un tipo puntual), mes a mes, contra la pérdida
+       TÉCNICA N2-1 de esa misma zona -- pedido explícito ("quiero ver la
+       pérdida mensual de todos los transformadores o líneas de una zona
+       en específico... para poder comparar la pérdida mensual por
+       balance y la pérdida técnica"). Card aparte de la de arriba (una
+       sola estructura) para no mezclar los dos modos de filtro. ---------------- -->
+  <div class="card">
+    <div class="sec-title" style="font-size:13px;margin-bottom:2px">Σ Agregado por Zona/Tipo -- Balance vs. Técnica</div>
+    <div class="sec-sub" style="margin-bottom:10px">Suma la pérdida de balance de todas las estructuras ya creadas de una zona (y opcionalmente un tipo puntual) contra la pérdida técnica N2-1 (Nivel 1+2) de esa misma zona.</div>
+    <div class="fbar" style="margin-bottom:10px">
+      <label>Zona</label>
+      <select id="be-agz-zona" onchange="beAgregadoZonaCargar()">
+        <option value="">Elige una zona...</option>
+      </select>
+      <label>Tipo</label>
+      <select id="be-agz-tipo" onchange="beAgregadoZonaCargar()">
+        <option value="">Todos (menos Z)</option>
+        <option value="PT">Transformador (PT)</option>
+        <option value="PT3">Transformador tridevanado (PT3)</option>
+        <option value="PB">Barra (PB)</option>
+        <option value="L">Línea (L)</option>
+        <option value="Z">Balance por Nivel de Tensión (Z)</option>
+        <option value="CARGA">Carga</option>
+        <option value="GEN">Generador</option>
+      </select>
+      <span id="be-agz-contador" style="font-size:11px;color:var(--text3)"></span>
+    </div>
+    <div id="be-agz-vacio" style="color:var(--text3);font-size:12px">Elige una zona para ver el agregado.</div>
+    <div id="be-agz-contenido" class="hidden">
+      <div class="chart-wrap" style="height:340px"><canvas id="ch-be-agz"></canvas></div>
+    </div>
+  </div>
+
 </div>
 <!-- fin vista-be-ver -->
 
@@ -8100,6 +8135,8 @@ async function cargarBalancesEstructura(){
   if(filtroZonaCreadas) filtroZonaCreadas.innerHTML = '<option value="">Todas</option><option value="__sin_zona__">(Sin zona)</option>' + BE_ZONAS.map(z=>`<option value="${_mselEsc(z)}">${_mselEsc(z)}</option>`).join('');
   const filtroZonaVer = document.getElementById('be-filtro-zona');
   if(filtroZonaVer) filtroZonaVer.innerHTML = '<option value="">Todas</option><option value="__sin_zona__">(Sin zona)</option>' + BE_ZONAS.map(z=>`<option value="${_mselEsc(z)}">${_mselEsc(z)}</option>`).join('');
+  const filtroZonaAgz = document.getElementById('be-agz-zona');
+  if(filtroZonaAgz) filtroZonaAgz.innerHTML = '<option value="">Elige una zona...</option>' + BE_ZONAS.map(z=>`<option value="${_mselEsc(z)}">${_mselEsc(z)}</option>`).join('');
 
   try{
     const meta = DEMO ? {meses:[]} : await apiGet('/api/telemedida/meta');
@@ -8128,6 +8165,100 @@ async function cargarBalancesEstructura(){
   _beActualizarVisibilidadZona();
 
   await cargarListaEstructuras();
+}
+
+let chBeAgz = null;
+
+// Agregado por Zona/Tipo -- suma la pérdida de balance de TODAS las
+// estructuras ya creadas de una zona (y opcionalmente un tipo puntual)
+// contra la pérdida técnica N2-1 de esa misma zona -- pedido explícito
+// ("quiero ver la pérdida mensual de todos los transformadores o líneas
+// de una zona en específico... para poder comparar la pérdida mensual
+// por balance y la pérdida técnica"). Un solo GET, el backend hace la
+// suma (ver /api/balances-estructura/agregado-zona).
+async function beAgregadoZonaCargar(){
+  const vacio = document.getElementById('be-agz-vacio');
+  const contenido = document.getElementById('be-agz-contenido');
+  const contador = document.getElementById('be-agz-contador');
+  const zona = document.getElementById('be-agz-zona').value;
+  const tipo = document.getElementById('be-agz-tipo').value;
+  if(!zona){
+    vacio.classList.remove('hidden'); vacio.textContent = 'Elige una zona para ver el agregado.';
+    contenido.classList.add('hidden'); contador.textContent = '';
+    return;
+  }
+  vacio.classList.remove('hidden'); vacio.textContent = 'Cargando…';
+  contenido.classList.add('hidden'); contador.textContent = '';
+  try{
+    const url = `/api/balances-estructura/agregado-zona?zona=${encodeURIComponent(zona)}` + (tipo ? `&tipo=${encodeURIComponent(tipo)}` : '');
+    const datos = DEMO ? {meses:[], perdida_balance_kwh:[], perdida_tecnica_kwh:[], n_estructuras:0, nombres_estructuras:[]} : await apiGet(url, AUTH_TIMEOUT_MS);
+    if(!datos.n_estructuras){
+      vacio.textContent = tipo
+        ? `No hay estructuras de tipo "${tipo}" con zona "${zona}" creadas todavía.`
+        : `No hay estructuras con zona "${zona}" creadas todavía (aparte de "Z", que se excluye del agregado -- ver el selector de Tipo si querés verla sola).`;
+      contenido.classList.add('hidden');
+      return;
+    }
+    contador.textContent = `${datos.n_estructuras} estructura${datos.n_estructuras===1?'':'s'} sumada${datos.n_estructuras===1?'':'s'}`;
+    contador.title = datos.nombres_estructuras.join(', ');
+    vacio.classList.add('hidden');
+    contenido.classList.remove('hidden');
+    beAgregadoZonaRenderChart(datos, zona, tipo);
+  }catch(e){
+    vacio.textContent = e.message || 'No se pudo cargar el agregado.';
+    vacio.classList.remove('hidden');
+    contenido.classList.add('hidden');
+  }
+}
+
+function beAgregadoZonaRenderChart(datos, zona, tipo){
+  const cv = document.getElementById('ch-be-agz');
+  if(!cv) return;
+  const dark = document.documentElement.getAttribute('data-theme')==='dark';
+  const tickC = dark ? '#ffffff' : '#000000';
+  const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
+  const etiquetas = datos.meses.map(m => labelMes(m));
+
+  const fk = v => v==null ? '' : v.toLocaleString('es-CO', {maximumFractionDigits:0});
+  const datalabelsSimple = (color, align) => ({
+    display:true, anchor:'end', align, offset:10, formatter:fk,
+    color, font:{size:10, weight:'700'},
+  });
+
+  if(chBeAgz) chBeAgz.destroy();
+  chBeAgz = new Chart(cv, {
+    data:{
+      labels: etiquetas,
+      datasets:[
+        {type:'line', label:'Pérdida Total (balance)', order:2,
+          data: datos.perdida_balance_kwh, borderColor:'#4472C4', backgroundColor:'rgba(68,114,196,.15)', fill:'origin',
+          borderWidth:2.5, pointRadius:2, spanGaps:true, tension:0,
+          datalabels: datalabelsSimple('#4472C4', 'top')},
+        {type:'line', label:'Pérdida Técnica N2-1 (calculada)', order:1,
+          data: datos.perdida_tecnica_kwh, borderColor:'#ED7D31', backgroundColor:'transparent',
+          borderWidth:2.5, pointRadius:2, spanGaps:true, tension:0, borderDash:[6,3],
+          datalabels: datalabelsSimple('#ED7D31', 'top')},
+      ],
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      layout:{padding:{top:32, right:20, bottom:16}},
+      interaction:{mode:'index', intersect:false},
+      plugins:{
+        title:{display:true, text: `${zona}${tipo?' · '+tipo:''} -- ${datos.n_estructuras} estructura${datos.n_estructuras===1?'':'s'}`,
+          color:tickC, font:{size:12, weight:'700'}},
+        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:10}, color:tickC}},
+        tooltip:{callbacks:{label:c=> c.raw==null?null:`${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`}},
+        zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:3}}},
+      },
+      scales:{
+        x:{grid:{display:false}, offset:true, ticks:{color:tickC, font:{size:10, weight:'600'}, maxRotation:0, minRotation:0}},
+        y:{position:'left', grid:{color:gridC},
+          ticks:{color:tickC, font:{size:10}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
+          title:{display:true, text:'Energía (kWh)', color:tickC, font:{size:10}}},
+      },
+    },
+  });
 }
 
 // La zona solo aplica en Nivel 2 y 3 -- en Nivel 4 (y 1) no hay zonas, así
