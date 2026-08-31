@@ -11032,7 +11032,17 @@ function renderTablaDetalleBalance(datos){
     headTipo += filaTipoCelda(col, i===0);
   }));
 
-  const f2 = v => v==null ? '--' : v.toLocaleString('es-CO',{maximumFractionDigits:0});
+  // Con 0 decimales, un medidor chico (ej. un usuario puntual con 0.2-0.3
+  // kWh/día) se veía como "0" en la tabla -- indistinguible de un medidor
+  // realmente en cero, aunque SÍ tenía consumo real -- pedido explícito
+  // ("trae cero ese usuario si tiene consumo en el canal 1"). Bajo 10 kWh
+  // se muestran 2 decimales; por encima (líneas/totales, miles de kWh)
+  // sigue sin decimales para no saturar la tabla.
+  const f2 = v => {
+    if(v==null) return '--';
+    const dec = Math.abs(v) < 10 ? 2 : 0;
+    return v.toLocaleString('es-CO',{minimumFractionDigits:dec, maximumFractionDigits:dec});
+  };
   const tdPunto = (col, i, esInicioDeGrupo) => {
     const claseGrupo = (esInicioDeGrupo ? ' grupo-inicio' : '') + (col.es_cliente ? ' cliente' : '') + (col._siec ? ' siec' : '');
     const usoBack = col.fuentes && col.fuentes[i] === 'back';
