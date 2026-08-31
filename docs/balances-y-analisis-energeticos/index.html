@@ -4030,8 +4030,20 @@ tfoot td:first-child{text-align:left}
        mismo que ya existe"); se refresca solo, desde
        cargarListaEstructuras(). ---------------- -->
   <div class="card">
-    <div class="sec-title" style="font-size:13px;margin-bottom:2px">Pérdida Total (Balance) Vs Pérdida Técnica -- por Zona/Tipo</div>
-    <div class="sec-sub" style="margin-bottom:10px">Suma la entrada/salida de todas las estructuras ya creadas de la zona y tipo elegidos arriba (filtro "Ubicación"/"Estructura") para obtener su pérdida de balance, y la compara contra la suma de la pérdida técnica de esas MISMAS estructuras (solo las que tienen un circuito de Pérdidas Técnicas vinculado). <span id="be-agz-contador" style="color:var(--text3)"></span></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:8px">
+      <div class="sec-title" style="font-size:13px;margin-bottom:0">Pérdida Total (Balance) Vs Pérdida Técnica -- por Zona/Tipo <span id="be-agz-contador" style="font-weight:400;font-size:11px;color:var(--text3)"></span></div>
+      <!-- Filtro por fechas propio de esta tarjeta -- pedido explícito
+           ("no veo el filtro por fechas para que por defecto sea de
+           enero-2026 hacia adelante"). "Desde" arranca en 2026-01 por
+           default; "Hasta" vacío = el mes más reciente con datos (lo
+           resuelve el backend). -->
+      <div class="fbar" style="margin-bottom:0">
+        <label>Desde</label>
+        <input type="month" id="be-agz-desde" value="2026-01" onchange="beAgregadoZonaCargar()">
+        <label>Hasta</label>
+        <input type="month" id="be-agz-hasta" onchange="beAgregadoZonaCargar()">
+      </div>
+    </div>
     <div id="be-agz-vacio" style="color:var(--text3);font-size:12px">Elige una zona en el filtro de "Ubicación" de arriba para ver el agregado.</div>
     <div id="be-agz-contenido" class="hidden">
       <div class="chart-wrap" style="height:340px"><canvas id="ch-be-agz"></canvas></div>
@@ -8182,7 +8194,12 @@ async function beAgregadoZonaCargar(){
   vacio.classList.remove('hidden'); vacio.textContent = 'Cargando…';
   contenido.classList.add('hidden'); contador.textContent = '';
   try{
-    const url = `/api/balances-estructura/agregado-zona?zona=${encodeURIComponent(zona)}` + (tipo ? `&tipo=${encodeURIComponent(tipo)}` : '');
+    const desdeM = document.getElementById('be-agz-desde').value;   // "YYYY-MM" o ""
+    const hastaM = document.getElementById('be-agz-hasta').value;
+    let url = `/api/balances-estructura/agregado-zona?zona=${encodeURIComponent(zona)}`;
+    if(tipo) url += `&tipo=${encodeURIComponent(tipo)}`;
+    if(desdeM) url += `&desde=${desdeM}-01`;
+    if(hastaM) url += `&hasta=${hastaM}-01`;
     const datos = DEMO ? {meses:[], perdida_balance_kwh:[], perdida_tecnica_kwh:[], n_estructuras:0, n_vinculadas:0, nombres_estructuras:[]} : await apiGet(url, AUTH_TIMEOUT_MS);
     if(miSeq !== _beAgregadoZonaSeq) return;  // una llamada más nueva (otro filtro) ya está en vuelo/resuelta
     if(!datos.n_estructuras){
@@ -8219,14 +8236,15 @@ function beAgregadoZonaRenderChart(datos, zona, tipo){
     color, font:{size:10, weight:'700'},
   });
 
-  const etiquetaTipo = {PT:'transformadores', PT3:'transformadores tridevanados', PB:'barras', L:'líneas', Z:'balances por nivel', CARGA:'cargas', GEN:'generadores'}[tipo] || 'estructuras';
+  const etiquetaTipo = {PT:'Transformadores', PT3:'Transformadores tridevanados', PB:'Barras', L:'Líneas', Z:'Balances por nivel', CARGA:'Cargas', GEN:'Generadores'}[tipo] || 'Todos los tipos';
+  const etiquetaTipoMin = etiquetaTipo.toLowerCase();
 
   if(chBeAgz) chBeAgz.destroy();
   chBeAgz = new Chart(cv, {
     data:{
       labels: etiquetas,
       datasets:[
-        {type:'line', label:`Pérdida de balance (${datos.n_estructuras} ${etiquetaTipo})`, order:2,
+        {type:'line', label:`Pérdida de balance (${datos.n_estructuras} ${etiquetaTipoMin})`, order:2,
           data: datos.perdida_balance_kwh, borderColor:'#4472C4', backgroundColor:'rgba(68,114,196,.15)', fill:'origin',
           borderWidth:2.5, pointRadius:2, spanGaps:true, tension:0, yAxisID:'y',
           datalabels: datalabelsSimple('#4472C4', 'top')},
@@ -8250,7 +8268,7 @@ function beAgregadoZonaRenderChart(datos, zona, tipo){
       layout:{padding:{top:32, right:20, bottom:16}},
       interaction:{mode:'index', intersect:false},
       plugins:{
-        title:{display:true, text: `${zona}${tipo?' · '+tipo:' · Todos los tipos'}`,
+        title:{display:true, text: `${zona} ${etiquetaTipo}`,
           color:tickC, font:{size:12, weight:'700'}},
         legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:10}, color:tickC}},
         tooltip:{callbacks:{label:c=> c.raw==null?null:`${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:2})}${c.dataset.yAxisID==='yPct'?'%':' kWh'}`}},
