@@ -8209,17 +8209,27 @@ async function beAgregadoZonaCargar(){
     if(nivel) url += `&nivel=${encodeURIComponent(nivel)}`;
     if(desdeM) url += `&desde=${desdeM}-01`;
     if(hastaM) url += `&hasta=${hastaM}-01`;
-    const datos = DEMO ? {meses:[], perdida_balance_kwh:[], perdida_tecnica_kwh:[], n_estructuras:0, n_vinculadas:0, nombres_estructuras:[]} : await apiGet(url, AUTH_TIMEOUT_MS);
+    const datos = DEMO ? {meses:[], perdida_balance_kwh:[], perdida_tecnica_kwh:[], n_estructuras:0, n_vinculadas:0, nombres_estructuras:[], fuente_balance:'suma_estructuras'} : await apiGet(url, AUTH_TIMEOUT_MS);
     if(miSeq !== _beAgregadoZonaSeq) return;  // una llamada más nueva (otro filtro) ya está en vuelo/resuelta
     const sufijoNivel = nivel ? ` en Nivel ${nivel}` : '';
-    if(!datos.n_estructuras){
+    const usaEstructuraZona = datos.fuente_balance === 'estructura_zona';
+    // Con "Todos los tipos", el balance sale de la propia "Balance por
+    // Nivel de Tensión" (Z) de esa zona/nivel -- YA es el balance total
+    // medido de la zona (no sumar las sueltas ya creadas, que pueden no
+    // cubrir el 100%) -- pedido explícito ("quiero que sea el de la
+    // tabla en todas, ya que es el balance total de la zona"). Por eso
+    // "sin estructuras" solo bloquea la vista si TAMPOCO hay una Z de
+    // dónde sacar el balance.
+    if(!datos.n_estructuras && !usaEstructuraZona){
       vacio.textContent = tipo
         ? `No hay estructuras de tipo "${tipo}" con zona "${zona}"${sufijoNivel} creadas todavía.`
         : `No hay estructuras con zona "${zona}"${sufijoNivel} creadas todavía (aparte de "Z", que se excluye del agregado -- ver el selector de Tipo si querés verla sola).`;
       contenido.classList.add('hidden');
       return;
     }
-    contador.textContent = `${datos.n_estructuras} estructura${datos.n_estructuras===1?'':'s'} sumada${datos.n_estructuras===1?'':'s'} -- ${datos.n_vinculadas} con circuito técnico vinculado`;
+    contador.textContent = usaEstructuraZona
+      ? `Balance: "${datos.nombre_estructura_zona}" -- Técnica: ${datos.n_vinculadas} de ${datos.n_estructuras} estructura${datos.n_estructuras===1?'':'s'} con circuito vinculado`
+      : `${datos.n_estructuras} estructura${datos.n_estructuras===1?'':'s'} sumada${datos.n_estructuras===1?'':'s'} -- ${datos.n_vinculadas} con circuito técnico vinculado`;
     contador.title = datos.nombres_estructuras.join(', ');
     vacio.classList.add('hidden');
     contenido.classList.remove('hidden');
@@ -8248,13 +8258,16 @@ function beAgregadoZonaRenderChart(datos, zona, tipo, nivel){
 
   const etiquetaTipo = {PT:'Transformadores', PT3:'Transformadores tridevanados', PB:'Barras', L:'Líneas', Z:'Balances por nivel', CARGA:'Cargas', GEN:'Generadores'}[tipo] || 'Todos los tipos';
   const etiquetaTipoMin = etiquetaTipo.toLowerCase();
+  const labelBalance = datos.fuente_balance === 'estructura_zona'
+    ? `Pérdida de balance (indicador de zona)`
+    : `Pérdida de balance (${datos.n_estructuras} ${etiquetaTipoMin})`;
 
   if(chBeAgz) chBeAgz.destroy();
   chBeAgz = new Chart(cv, {
     data:{
       labels: etiquetas,
       datasets:[
-        {type:'line', label:`Pérdida de balance (${datos.n_estructuras} ${etiquetaTipoMin})`, order:2,
+        {type:'line', label:labelBalance, order:2,
           data: datos.perdida_balance_kwh, borderColor:'#4472C4', backgroundColor:'rgba(68,114,196,.15)', fill:'origin',
           borderWidth:2.5, pointRadius:2, spanGaps:true, tension:0, yAxisID:'y',
           datalabels: datalabelsSimple('#4472C4', 'top')},
