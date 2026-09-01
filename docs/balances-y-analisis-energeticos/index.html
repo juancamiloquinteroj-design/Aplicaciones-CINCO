@@ -3982,6 +3982,19 @@ tfoot td:first-child{text-align:left}
           Mostrar límites típicos en el gráfico
         </label>
       </div>
+      <!-- Botón chico para ver los valores de la Pérdida técnica sobre el
+           gráfico diario -- antes esa línea no tenía ni puntos ni
+           etiquetas, no había forma de leer el número sin pasar el mouse
+           encima -- pedido explícito ("un botón pequeño que me coloque
+           los datos de pérdida técnica en el gráfico"). Apagado por
+           defecto -- con un rango de varios meses se satura de números;
+           solo aplica al modo "Pérdida vs. técnica" (modo 1). -->
+      <div id="be-tecnica-datos-toggle-wrap">
+        <label style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--text3);cursor:pointer">
+          <input type="checkbox" id="be-tecnica-datos-en-grafico" onchange="if(BE_MODO_GRAFICO===1) renderChartBalanceEstructura(BE_CONSUMO_DATOS, BE_MODO_GRAFICO)">
+          🔢 Ver datos de pérdida técnica
+        </label>
+      </div>
     </div>
 
     <div class="be-resumen-cards">
@@ -10274,11 +10287,15 @@ async function renderChartBalanceEstructura(datos, modo){
     usaPct = true;
     yKwhTitulo = 'Pérdida / Pérdida técnica (kWh)';
     const tecnicaKwh = await _beTecnicaDiariaProrateada(fechas);
+    const mostrarDatosTecnica = document.getElementById('be-tecnica-datos-en-grafico')?.checked;
     datasets = [
       {type:'line', label:'Pérdida kWh', data:perdidaKwh, borderColor:'#4472C4', backgroundColor:'transparent',
         borderWidth:2.5, tension:0, spanGaps:true, yAxisID:'yKwh', order:1, ..._puntosAjuste('#4472C4')},
       {type:'line', label:'Pérdida técnica (prorrateada)', data:tecnicaKwh, borderColor:'#00B0F0', backgroundColor:'transparent',
-        borderWidth:2, pointRadius:0, tension:0, spanGaps:true, yAxisID:'yKwh', order:1, borderDash:[2,2]},
+        borderWidth:2, pointRadius:mostrarDatosTecnica?2:0, tension:0, spanGaps:true, yAxisID:'yKwh', order:1, borderDash:[2,2],
+        datalabels:{display:mostrarDatosTecnica, anchor:'end', align:'bottom', offset:8,
+          formatter:v=>v==null ? '' : v.toLocaleString('es-CO',{maximumFractionDigits:0}),
+          font:{size:9, weight:'700'}, color:'#00B0F0',}},
       {type:'line', label:'Pérdida %', data:perdidaPct, borderColor:'#ED7D31', backgroundColor:'transparent',
         borderWidth:2, tension:0, spanGaps:true, yAxisID:'yPct', order:1, borderDash:[6,3], ..._puntosAjuste('#ED7D31'),
         datalabels:{display: mesUnico, anchor:'end', align:'top', offset:12,
