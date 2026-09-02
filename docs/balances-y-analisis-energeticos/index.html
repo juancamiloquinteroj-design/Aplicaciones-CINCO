@@ -976,6 +976,16 @@ tfoot td:first-child{text-align:left}
     <span id="badge-offline" class="badge-offline hidden" title="No se pueden hacer cambios en este momento">🔌 SIN CONEXIÓN · viendo datos guardados<span id="badge-offline-fecha"></span></span>
     <span id="badge-visualizador" class="badge-demo hidden" title="Tu usuario solo puede consultar y filtrar -- pídele a un administrador que te cambie el rol en Centro de Mando si necesitas editar">👁 SOLO LECTURA</span>
     <span id="badge-recarga" class="badge-recarga hidden" title="El servidor revisa los archivos y actualiza los datos solo, cada pocos minutos"></span>
+    <!-- Botón para forzar la recarga YA, sin esperar el ciclo automático de
+         10 min -- pedido explícito ("se puede habilitar un botón para
+         poderlo cargar cuando yo quiera y no estar pidiendo... que si doy
+         click ahí automáticamente hace la búsqueda"). Reusa
+         POST /api/resincronizar, que YA existía en el backend (mismo
+         mecanismo que corre solo cada 10 min, ver _recarga_periodica en
+         main.py) -- vuelve a leer TODOS los archivos de este operador
+         (Pérdidas Técnicas, Usuarios Telemedidos, Clientes SIEC,
+         Alimentadores, etc), no solo el CSV de Pérdidas Técnicas. -->
+    <button type="button" class="btn-theme hidden" id="btn-recarga-manual" style="width:auto;padding:4px 10px;font-size:11px" onclick="recargarDatosManual()" title="Vuelve a leer los archivos de este operador ahora mismo, sin esperar el ciclo automático de 10 minutos">🔄 Actualizar ahora</button>
     <span id="badge-op" class="badge-op hidden"></span>
     <button class="btn-logout hidden" id="btn-suite" onclick="volverASuite()" title="Volver al selector de módulos">🧩 Módulos</button>
     <button class="btn-logout hidden" id="btn-logout" onclick="cerrarSesion()">Salir</button>
@@ -6647,7 +6657,8 @@ let _badgeRecargaInterval = null;
 // no dependen de que alguien entre a tocar nada a mano.
 async function actualizarBadgeRecarga(){
   const el = document.getElementById('badge-recarga');
-  if(DEMO){ el.classList.add('hidden'); return; }
+  const btn = document.getElementById('btn-recarga-manual');
+  if(DEMO){ el.classList.add('hidden'); btn.classList.add('hidden'); return; }
   try{
     const datos = await apiGet('/api/estado-recarga', 8000);
     if(!datos.ultima_actualizacion){
@@ -6657,8 +6668,36 @@ async function actualizarBadgeRecarga(){
       el.innerHTML = `Datos actualizados: <b>${hora}</b> <span style="opacity:.75">(cada ${datos.intervalo_minutos} min)</span>`;
     }
     el.classList.remove('hidden');
+    btn.classList.remove('hidden');
   }catch(e){
     el.classList.add('hidden');
+    btn.classList.add('hidden');
+  }
+}
+
+// "🔄 Actualizar ahora" -- fuerza la misma recarga que ya corre sola cada
+// 10 min, pero YA (pedido explícito, ver comentario del botón). Al
+// terminar recarga la página entera -- más simple y confiable que tratar
+// de refrescar a mano cada vista posible (son decenas), y así se garantiza
+// que TODO lo que se esté mirando quede con los datos nuevos.
+async function recargarDatosManual(){
+  const btn = document.getElementById('btn-recarga-manual');
+  if(btn.disabled) return;
+  const textoOriginal = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '⏳ Actualizando…';
+  try{
+    const res = await fetchConTimeout(`${API_BASE_URL}/api/resincronizar`, {
+      method:'POST', headers:{...authHeaders(), 'Content-Type':'application/json'}, body: '{}',
+    }, 120000);
+    const datos = await res.json().catch(()=>null);
+    if(!res.ok) throw new Error((datos && datos.detail) || 'No se pudo actualizar.');
+    btn.textContent = '✅ Listo -- recargando…';
+    setTimeout(()=> location.reload(), 700);
+  }catch(e){
+    alert(e.message || 'No se pudo actualizar los datos ahora mismo.');
+    btn.disabled = false;
+    btn.textContent = textoOriginal;
   }
 }
 
