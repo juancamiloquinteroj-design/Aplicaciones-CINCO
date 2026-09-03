@@ -21830,10 +21830,13 @@ async function _informesDescargarCaracterizacion(nemonico){
 
 // Solo la hoja "PERDIDA ALIMENTADOR" de la caracterización -- pedido
 // explícito ("quiero que se habilite un botón donde solo descargue la
-// hoja que se llama PERDIDA ALIMENTADOR"). Mismo chequeo de datos
-// (Base Transformadores/Base Nodos) que la caracterización completa --
-// esa hoja no los usa directo, pero generarla parte del mismo informe
-// completo (ver informes_alimentador.py), así que igual hacen falta.
+// hoja que se llama PERDIDA ALIMENTADOR"). A diferencia de la
+// caracterización completa, esta NO pide Base Transformadores/Base
+// Nodos -- esos solo alimentan MACROMEDIDORES/TRANSFORMADORES, que acá
+// ni se generan (se borran); PERDIDA ALIMENTADOR sale de
+// AlimentadorMensual + Circuito/BalanceMensual nada más -- pedido
+// explícito ("no debería pedir caracterización de macros ya que la
+// pérdida de alimentador sale es de la aplicación").
 async function informesCaracterizacionSoloPerdida(){
   if(DEMO){ alert('No disponible en modo demo.'); return; }
   const sel = document.getElementById('informes-caract-alimentador');
@@ -21841,18 +21844,6 @@ async function informesCaracterizacionSoloPerdida(){
   const nemonico = sel && sel.value;
   if(!nemonico){ if(msg) msg.textContent = 'Elige un alimentador.'; return; }
   document.getElementById('informes-caract-carga').classList.add('hidden');
-  if(msg) msg.textContent = 'Verificando datos…';
-  try{
-    const estado = await apiGet('/api/alimentadores/datos-informe/estado', AUTH_TIMEOUT_MS);
-    if(!estado.listo){
-      if(msg) msg.textContent = '';
-      informesMostrarCargaCaracterizacion(estado);
-      return;
-    }
-  }catch(e){
-    if(msg) msg.textContent = e.message || 'No se pudo verificar los datos.';
-    return;
-  }
   await _informesDescargarSoloPerdida(nemonico);
 }
 
