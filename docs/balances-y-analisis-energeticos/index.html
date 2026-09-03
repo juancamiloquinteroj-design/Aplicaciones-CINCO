@@ -3511,6 +3511,9 @@ tfoot td:first-child{text-align:left}
         <label>Alimentador</label>
         <select id="informes-caract-alimentador" style="min-width:280px"></select>
         <button type="button" class="btn-theme" style="width:auto;padding:0 18px" id="informes-caract-btn" onclick="informesCaracterizacionAlimentador()">⬇ Descargar caracterización (.xlsx)</button>
+        <!-- Solo la hoja "PERDIDA ALIMENTADOR" (sin RESUMEN/MACROMEDIDORES/
+             TRANSFORMADORES/Base Nodos/etc) -- pedido explícito. -->
+        <button type="button" class="btn-theme" style="width:auto;padding:0 18px" id="informes-caract-btn-hoja" onclick="informesCaracterizacionSoloPerdida()">⬇ Solo hoja "PERDIDA ALIMENTADOR"</button>
         <span id="informes-caract-msg" style="font-size:11.5px;color:var(--text3)"></span>
       </div>
       <div id="informes-caract-carga" class="hidden" style="margin-top:12px;padding:12px;border:1px solid var(--border);border-radius:8px;background:var(--bg2)">
@@ -21817,6 +21820,55 @@ async function _informesDescargarCaracterizacion(nemonico){
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url; a.download = `Caracterizacion ${nemonico}.xlsx`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    if(msg) msg.textContent = '';
+  }catch(e){
+    if(msg) msg.textContent = e.message || 'Error al descargar.';
+  }
+}
+
+// Solo la hoja "PERDIDA ALIMENTADOR" de la caracterización -- pedido
+// explícito ("quiero que se habilite un botón donde solo descargue la
+// hoja que se llama PERDIDA ALIMENTADOR"). Mismo chequeo de datos
+// (Base Transformadores/Base Nodos) que la caracterización completa --
+// esa hoja no los usa directo, pero generarla parte del mismo informe
+// completo (ver informes_alimentador.py), así que igual hacen falta.
+async function informesCaracterizacionSoloPerdida(){
+  if(DEMO){ alert('No disponible en modo demo.'); return; }
+  const sel = document.getElementById('informes-caract-alimentador');
+  const msg = document.getElementById('informes-caract-msg');
+  const nemonico = sel && sel.value;
+  if(!nemonico){ if(msg) msg.textContent = 'Elige un alimentador.'; return; }
+  document.getElementById('informes-caract-carga').classList.add('hidden');
+  if(msg) msg.textContent = 'Verificando datos…';
+  try{
+    const estado = await apiGet('/api/alimentadores/datos-informe/estado', AUTH_TIMEOUT_MS);
+    if(!estado.listo){
+      if(msg) msg.textContent = '';
+      informesMostrarCargaCaracterizacion(estado);
+      return;
+    }
+  }catch(e){
+    if(msg) msg.textContent = e.message || 'No se pudo verificar los datos.';
+    return;
+  }
+  await _informesDescargarSoloPerdida(nemonico);
+}
+
+async function _informesDescargarSoloPerdida(nemonico){
+  const msg = document.getElementById('informes-caract-msg');
+  if(msg) msg.textContent = 'Generando…';
+  try{
+    const res = await fetchConTimeout(`${API_BASE_URL}/api/alimentadores/informe/${encodeURIComponent(nemonico)}/perdida-alimentador`, {headers: authHeaders()}, AUTH_TIMEOUT_MS);
+    if(!res.ok){
+      const detalle = await res.json().catch(() => null);
+      throw new Error((detalle && detalle.detail) || 'No se pudo generar la hoja.');
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `Perdida Alimentador ${nemonico}.xlsx`;
     document.body.appendChild(a); a.click(); a.remove();
     URL.revokeObjectURL(url);
     if(msg) msg.textContent = '';
