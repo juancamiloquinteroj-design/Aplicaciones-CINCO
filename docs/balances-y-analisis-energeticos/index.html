@@ -3364,6 +3364,7 @@ tfoot td:first-child{text-align:left}
       <button type="button" class="btn-theme" style="width:auto;padding:0 14px" onclick="acLimpiarFiltros()" title="Vuelve Rango/Tipo/Liquidación/Zona/Subestación/Alimentador/Ciclo a su estado inicial">✕ Borrar filtros</button>
     </div>
     <div class="fbar" style="margin-bottom:0">
+      <button type="button" class="be-modo-btn activo" id="ac-btn-desglosar" onclick="acToggleDesglosar()" title="Con 'Todos' elegido: una línea por cada ciclo, o el total combinado">🔀 Desglosar por Ciclo</button>
       <button type="button" class="be-modo-btn" id="ac-btn-n21" onclick="acToggleN21()" title="Sobrepone la Pérdida N2-1 (%) del alimentador elegido -- solo con exactamente 1 alimentador seleccionado">📉 Pérdida N2-1</button>
       <span id="ac-n21-aviso" style="font-size:11px;color:var(--text3)"></span>
     </div>
@@ -13744,6 +13745,7 @@ let AC_FILAS = [];
 let AC_CICLO_SELECCIONADO = null;
 let AC_MODO = 'mensual';   // 'mensual' | 'anual' (ventana móvil de 12 meses -- "consumo/venta anual móvil")
 let AC_MOSTRAR_N21 = false;   // 📉 Pérdida N2-1 sobrepuesta (solo con 1 alimentador elegido)
+let AC_DESGLOSAR_CICLO = true;   // con "Todos" elegido: true = una línea por ciclo, false = el total combinado
 let chAcLinea = null;
 
 const AC_VENTANA_TABLA_MESES = 12;   // ventana móvil FIJA de la tabla de abajo -- pedido explícito
@@ -13927,17 +13929,17 @@ function acRenderDatosCiclo(){
     return;
   }
 
-  const kwhLiquidada = filas.reduce((s,f)=>s+(f.energia_liquidada_kwh||0), 0);
-  const kwhPonderada = filas.reduce((s,f)=>s+(f.energia_ponderada_kwh||0), 0);
   const zonas = new Set(filas.map(f=>f.zona)).size;
   const subestaciones = new Set(filas.map(f=>f.subestacion)).size;
   const alimentadores = new Set(filas.map(f=>f.alimentador)).size;
 
-  // "Último mes" -- usuarios/participación son una foto mensual, no algo
-  // que tenga sentido sumar en el rango; se toma el mes más reciente
-  // dentro del filtro actual.
+  // Pedido explícito: la energía es del ÚLTIMO MES (mensual), no la suma
+  // de todo el Rango -- mismo criterio que Usuarios/Participación, que ya
+  // eran una foto del mes más reciente.
   const ultimaClave = [...new Set(filas.map(acClave))].sort().slice(-1)[0];
   const filasUltimoMes = filas.filter(f => acClave(f)===ultimaClave);
+  const kwhLiquidada = filasUltimoMes.reduce((s,f)=>s+(f.energia_liquidada_kwh||0), 0);
+  const kwhPonderada = filasUltimoMes.reduce((s,f)=>s+(f.energia_ponderada_kwh||0), 0);
   const usuarios = filasUltimoMes.reduce((s,f)=>s+(f.usuarios||0), 0);
   const participacionProm = filasUltimoMes.length
     ? filasUltimoMes.reduce((s,f)=>s+(f.participacion_pct||0), 0) / filasUltimoMes.length
@@ -13945,8 +13947,8 @@ function acRenderDatosCiclo(){
 
   cont.innerHTML = [
     fila('Ciclo', AC_CICLO_SELECCIONADO ?? 'Todos'),
-    fila('Energía Liquidada', kwhLiquidada.toLocaleString('es-CO',{maximumFractionDigits:0})+' kWh'),
-    fila('Energía Ponderada', kwhPonderada.toLocaleString('es-CO',{maximumFractionDigits:0})+' kWh'),
+    fila(`Energía Liquidada (${labelMes(ultimaClave)})`, kwhLiquidada.toLocaleString('es-CO',{maximumFractionDigits:0})+' kWh'),
+    fila(`Energía Ponderada (${labelMes(ultimaClave)})`, kwhPonderada.toLocaleString('es-CO',{maximumFractionDigits:0})+' kWh'),
     fila(`Usuarios (${labelMes(ultimaClave)})`, usuarios.toLocaleString('es-CO')),
     fila(`Participación (${labelMes(ultimaClave)})`, participacionProm!=null ? participacionProm.toFixed(2)+'%' : '--'),
     fila('Zonas', zonas),
@@ -14075,6 +14077,16 @@ async function acToggleN21(){
   acRenderChart();
 }
 
+// Pedido explícito: con "Todos" elegido, poder ver una línea por cada
+// ciclo (desglosado) O el total combinado de todos -- un botón, aplica
+// en cualquier momento (no depende de qué ciclo esté elegido, aunque solo
+// tiene efecto visual mientras esté en "Todos").
+function acToggleDesglosar(){
+  AC_DESGLOSAR_CICLO = !AC_DESGLOSAR_CICLO;
+  document.getElementById('ac-btn-desglosar').classList.toggle('activo', AC_DESGLOSAR_CICLO);
+  acRenderChart();
+}
+
 function acSerieN21(nombreAlimentador){
   const clave = nombreAlimentador.trim().toUpperCase();
   const porClave = new Map();
@@ -14134,10 +14146,12 @@ function acRenderChart(){
   let etiquetas = [];
   const datasets = [];
 
-  if(AC_CICLO_SELECCIONADO==null){
-    // "Todos" -- pedido explícito: una línea/área por CADA ciclo (como el
-    // Power BI de referencia sin ningún ciclo elegido), no una sola línea
-    // con la suma de todos.
+  if(AC_CICLO_SELECCIONADO==null && AC_DESGLOSAR_CICLO){
+    // "Todos" + Desglosar activo -- pedido explícito: una línea/área por
+    // CADA ciclo (como el Power BI de referencia sin ningún ciclo
+    // elegido). Con el botón "Desglosar" apagado cae al else de abajo,
+    // que ya suma TODOS los ciclos en una sola línea (filasCompletas no
+    // filtra por ciclo cuando AC_CICLO_SELECCIONADO es null).
     const porCicloClave = new Map();   // ciclo -> Map(clave -> kwh)
     for(const f of filasCompletas){
       if(!porCicloClave.has(f.ciclo)) porCicloClave.set(f.ciclo, new Map());
