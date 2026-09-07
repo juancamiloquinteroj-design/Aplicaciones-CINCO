@@ -7984,17 +7984,26 @@ async function ipEjecutar(){
 }
 
 // Muestra debajo del log, de forma fija (sin tener que scrollear el
-// recuadro), cuál fue el último archivo que el script alcanzó a
-// procesar -- pedido explícito, útil tanto mientras corre como ya
-// terminado. Busca la ÚLTIMA línea "📦 Procesando: X..." del log (los 4
-// scripts de este submódulo imprimen esa misma línea por archivo).
+// recuadro), el progreso del script -- pedido explícito, útil tanto
+// mientras corre como ya terminado. XM procesa miles de archivos diarios
+// sueltos (aenc0801.Tx4, tfroc0801.Tx4...), así que si el log trae
+// líneas de carpeta ("📁 Procesando carpeta: 2026-08...", una por
+// mes/año) esas son mucho más legibles y tienen prioridad sobre el
+// nombre de archivo suelto ("📦 Procesando: X...", que sigue usando CGM).
 function ipActualizarResumen(logTexto){
   const el = document.getElementById('ip-resumen');
   if(!el) return;
-  const coincidencias = [...(logTexto || '').matchAll(/📦 Procesando: (.+?)\.\.\./g)];
-  if(!coincidencias.length){ el.textContent = ''; return; }
-  const ultimo = coincidencias[coincidencias.length - 1][1];
-  el.innerHTML = `📄 Último archivo procesado: <b>${ipEscapar(ultimo)}</b> <span style="color:var(--text3)">(${coincidencias.length} en total)</span>`;
+  logTexto = logTexto || '';
+  const carpetas = [...logTexto.matchAll(/📁 Procesando carpeta: (.+?)\.\.\./g)];
+  if(carpetas.length){
+    const ultima = carpetas[carpetas.length - 1][1];
+    el.innerHTML = `📁 Última carpeta procesada: <b>${ipEscapar(ultima)}</b> <span style="color:var(--text3)">(${carpetas.length} en total)</span>`;
+    return;
+  }
+  const archivos = [...logTexto.matchAll(/📦 Procesando: (.+?)\.\.\./g)];
+  if(!archivos.length){ el.textContent = ''; return; }
+  const ultimo = archivos[archivos.length - 1][1];
+  el.innerHTML = `📄 Último archivo procesado: <b>${ipEscapar(ultimo)}</b> <span style="color:var(--text3)">(${archivos.length} en total)</span>`;
 }
 
 function ipMostrarBadgeCorriendo(nombreScript){
