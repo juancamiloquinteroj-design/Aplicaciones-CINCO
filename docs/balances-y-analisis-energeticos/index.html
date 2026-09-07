@@ -1789,7 +1789,6 @@ tfoot td:first-child{text-align:left}
     </div>
     <div class="fbar" style="margin-bottom:6px">
       <button class="be-modo-btn" id="ipi-btn-variacion" onclick="ipiToggleVariacion()" title="Muestra la variación contra el mes anterior en las etiquetas">Δ Variación</button>
-      <button class="be-modo-btn activo" id="ipi-btn-relleno" onclick="ipiToggleRelleno()" title="Relleno debajo de la línea de kWh">🖍️ Relleno</button>
       <button class="be-modo-btn" id="ipi-btn-proyeccion" onclick="ipiToggleProyeccion()">🔮 Proyección</button>
       <input type="number" id="ipi-proyeccion-meses" value="2" min="1" max="24" step="1" title="Cuántos meses proyectar hacia adelante"
         style="width:52px;padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg)"
@@ -6333,7 +6332,12 @@ function ipiRenderChartAnualInicio(){
   const tickXFuerte = dark ? '#ffffff' : '#000000';
   const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
 
-  const visibles = ipiSerieCompleta(null).filter(f => f.pct!=null && f.clave >= '2025-01');
+  // Ventana móvil FIJA de 19 meses (el ancho que hoy va de Ene-2025 a
+  // Jul-2026) -- pedido explícito: al aparecer un mes nuevo (ej.
+  // Ago-2026) se corre sola, soltando el más viejo (Ene-2025) en vez de
+  // ir creciendo sin límite.
+  const VENTANA_INICIO_MESES = 19;
+  const visibles = ipiSerieCompleta(null).filter(f => f.pct!=null).slice(-VENTANA_INICIO_MESES);
   const etiquetas = visibles.map(f => labelMes(f.clave));
 
   if(chIniIpAnual) chIniIpAnual.destroy();
@@ -12924,7 +12928,6 @@ let IPI_FILAS = [];
 let chIpiLinea = null, chIpiBarras = null, chIpiDona = null;
 let IPI_MODO = 'mensual';            // 'mensual' | 'anual' (ventana móvil de 12 meses, mismo criterio que el Indicador Comercial)
 let IPI_MOSTRAR_VARIACION = false;   // Δ Variación -- mismo patrón que IP_Reg (ipToggleVariacion)
-let IPI_MOSTRAR_RELLENO = true;      // relleno bajo la línea de kWh -- toggle explícito para poder quitarlo
 let IPI_MOSTRAR_PROYECCION = false;  // 🔮 Proyección -- misma regresión lineal (ipRegresionLineal) que IP_Reg/Indicador Comercial
 let IPI_KWH_OCULTO = true;           // la línea de kWh arranca oculta -- al entrar solo se ve Pérdida % Mensual
 let IPI_BARRAS_MODO = 'mensual';     // 'mensual' | 'anual' -- agrupación del eje X de "Pérdida por Zona"
@@ -13000,17 +13003,12 @@ function ipiCambiarModo(modo){
     : 'Indicador de Pérdidas Institucional';
   ipiRenderChart();
   ipiRenderResumen();
+  ipiGenerarAnalisis();   // faltaba -- el análisis se quedaba comparando mensual aunque se pasara a Anual
 }
 
 function ipiToggleVariacion(){
   IPI_MOSTRAR_VARIACION = !IPI_MOSTRAR_VARIACION;
   document.getElementById('ipi-btn-variacion').classList.toggle('activo', IPI_MOSTRAR_VARIACION);
-  ipiRenderChart();
-}
-
-function ipiToggleRelleno(){
-  IPI_MOSTRAR_RELLENO = !IPI_MOSTRAR_RELLENO;
-  document.getElementById('ipi-btn-relleno').classList.toggle('activo', IPI_MOSTRAR_RELLENO);
   ipiRenderChart();
 }
 
@@ -13170,7 +13168,6 @@ function ipiRenderChart(){
   const tickXFuerte = dark ? '#ffffff' : '#000000';
   const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
   document.getElementById('ipi-btn-variacion').classList.toggle('activo', IPI_MOSTRAR_VARIACION);
-  document.getElementById('ipi-btn-relleno').classList.toggle('activo', IPI_MOSTRAR_RELLENO);
   document.getElementById('ipi-btn-proyeccion').classList.toggle('activo', IPI_MOSTRAR_PROYECCION);
   // Al entrar, solo Pérdida % Mensual queda visible -- kWh arranca oculto
   // (se prende a mano desde la leyenda) pero respeta lo que el usuario ya
@@ -13183,16 +13180,19 @@ function ipiRenderChart(){
   const nBase = series[0].serie.length;
   const datasets = [];
 
+  let kwhDatosTooltip = null;   // solo se llena en modo institucional -- usado por el tooltip para agregar la variación en kWh aunque esa línea esté oculta
   if(soloUnaSerie && series[0].zona===null){
     const s = series[0].serie;
     const pctDatos = s.map(f=>f.pct);
+    const kwhDatos = s.map(f=>f.kwh);
+    kwhDatosTooltip = kwhDatos;
     datasets.push(
-      {type:'line', label:`Pérdida % ${etiquetaModo} -- Institucional`, yAxisID:'yPct', data: pctDatos, order:1,
-        borderColor:IPI_COLOR_PCT, backgroundColor:'rgba(237,125,49,.15)', borderWidth:2.5, pointRadius:2, spanGaps:true, tension:0,
+      {type:'line', label:`Pérdida % ${etiquetaModo} -- Institucional`, yAxisID:'yPct', data: pctDatos, order:1, fill:false,
+        borderColor:IPI_COLOR_PCT, backgroundColor:'transparent', borderWidth:2.5, pointRadius:2, spanGaps:true, tension:0,
         datalabels: ipiEstiloDatalabel(IPI_COLOR_PCT, true)},
-      {type:'line', label:`Pérdida kWh ${etiquetaModo} -- Institucional`, yAxisID:'y', data: s.map(f=>f.kwh), order:3, hidden: IPI_KWH_OCULTO,
-        borderColor:IPI_COLOR_KWH, backgroundColor:'rgba(68,114,196,.18)', borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0,
-        fill: IPI_MOSTRAR_RELLENO, datalabels: ipiEstiloDatalabel(IPI_COLOR_KWH, false)},
+      {type:'line', label:`Pérdida kWh ${etiquetaModo} -- Institucional`, yAxisID:'y', data: kwhDatos, order:3, hidden: IPI_KWH_OCULTO, fill:false,
+        borderColor:IPI_COLOR_KWH, backgroundColor:'transparent', borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0,
+        datalabels: ipiEstiloDatalabel(IPI_COLOR_KWH, false)},
     );
     // Proyección -- regresión lineal simple sobre el % (misma función que
     // usa IP_Reg/Indicador Comercial), con banda de confianza.
@@ -13253,9 +13253,30 @@ function ipiRenderChart(){
       plugins:{
         legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:10}, color:tickC,
           filter:item=>!item.text.startsWith('Proyección (banda')}},
+        // El % de esta línea suele ser lo único visible (kWh arranca
+        // oculto) -- si Variación está activa, se agrega acá también la
+        // variación en kWh, tomándola de kwhDatosTooltip aunque esa línea
+        // esté apagada. Pedido explícito ("solo muestra la variación de %,
+        // quiero que también salga la de kWh al pasar el mouse").
         tooltip:{callbacks:{label:c=>{
           if(c.raw==null) return null;
-          return c.dataset.yAxisID==='yPct' ? `${c.dataset.label}: ${c.raw.toFixed(2)}%` : `${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`;
+          if(c.dataset.yAxisID!=='yPct') return `${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`;
+          const lineas = [`${c.dataset.label}: ${c.raw.toFixed(2)}%`];
+          if(IPI_MOSTRAR_VARIACION && c.dataIndex>0){
+            const pctAnt = c.dataset.data[c.dataIndex-1];
+            if(pctAnt!=null){
+              const dPct = c.raw - pctAnt;
+              lineas.push(`Variación %: ${dPct>=0?'▲':'▼'} ${Math.abs(dPct).toFixed(2)} pp`);
+            }
+            if(kwhDatosTooltip){
+              const kwhAct = kwhDatosTooltip[c.dataIndex], kwhAnt = kwhDatosTooltip[c.dataIndex-1];
+              if(kwhAct!=null && kwhAnt!=null){
+                const dKwh = kwhAct - kwhAnt;
+                lineas.push(`Pérdida kWh: ${kwhAct.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh (${dKwh>=0?'▲':'▼'} ${Math.abs(dKwh).toLocaleString('es-CO',{maximumFractionDigits:0})} kWh)`);
+              }
+            }
+          }
+          return lineas;
         }}},
         zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:3}}},
       },
@@ -13334,27 +13355,32 @@ function ipiGenerarAnalisis(){
   const signo = v => v >= 0 ? '+' : '-';
   const fk = v => Math.round(v).toLocaleString('es-CO');
   const etiquetaZona = primera.zona ? `Zona ${primera.zona}` : 'Institucional';
+  const esAnual = IPI_MODO==='anual';
+  const etiquetaModo = esAnual ? 'Anual (12 meses)' : 'Mensual';
+  const sufijoKwh = esAnual ? ' kWh/Anual' : ' kWh';
 
   const deltaMensual = actual.pct - anterior.pct;
   const sube = deltaMensual > 0;
   const deltaKwh = actual.kwh - anterior.kwh;
 
   const claveAnioAnterior = `${anioAct-1}-${String(mesAct).padStart(2,'0')}`;
-  const filaAnioAnterior = IPI_FILAS.length
-    ? (()=>{ const s = ipiSerieCompleta(primera.zona); return s.find(f => f.clave===claveAnioAnterior); })()
-    : null;
+  // El comparativo "mismo mes del año anterior" usa la MISMA serie
+  // (mensual o anual/12m según el toggle) que actual/anterior, para no
+  // mezclar un % anual contra uno mensual.
+  const serieComparable = esAnual ? ipiSerieAnual(ipiSerieCompleta(primera.zona), primera.zona) : ipiSerieCompleta(primera.zona);
+  const filaAnioAnterior = serieComparable.find(f => f.clave===claveAnioAnterior);
 
   let parrafoAnual = '';
   if(filaAnioAnterior && filaAnioAnterior.pct != null){
     const deltaAnual = actual.pct - filaAnioAnterior.pct;
     const subeAnual = deltaAnual > 0;
-    parrafoAnual = ` Frente al mismo mes del año anterior (${labelMesLargo(claveAnioAnterior)}), el índice era de <b>${filaAnioAnterior.pct.toFixed(2)}%</b>, por lo que la variación anual es de <b>${signo(deltaAnual)}${Math.abs(deltaAnual).toFixed(2)} pp</b> (${subeAnual?'aumenta':'disminuye'}).`;
+    parrafoAnual = ` Frente al mismo mes del año anterior (${labelMesLargo(claveAnioAnterior)}), el índice ${etiquetaModo.toLowerCase()} era de <b>${filaAnioAnterior.pct.toFixed(2)}%</b>, por lo que la variación interanual es de <b>${signo(deltaAnual)}${Math.abs(deltaAnual).toFixed(2)} pp</b> (${subeAnual?'aumenta':'disminuye'}).`;
   }
 
   cont.innerHTML = `
-    <div class="ip-comentario-titulo">Análisis IPT -- ${mesActualLargo}</div>
-    <div class="ip-comentario-cifra ${sube?'sube':'baja'}">${actual.pct.toFixed(2)}% (${fk(actual.kwh)} kWh)</div>
-    <p>El índice ${etiquetaZona} pasó de <b>${anterior.pct.toFixed(2)}%</b> en ${mesAnteriorLargo} a <b>${actual.pct.toFixed(2)}%</b> en ${mesActualLargo}, lo que equivale a pasar de una pérdida de <b>${fk(anterior.kwh)} kWh</b> a <b>${fk(actual.kwh)} kWh</b> -- un ${sube?'incremento':'descenso'} de <b>${Math.abs(deltaMensual).toFixed(2)} pp</b>, equivalente a <b>${signo(deltaKwh)}${fk(Math.abs(deltaKwh))} kWh</b>.${parrafoAnual}</p>
+    <div class="ip-comentario-titulo">Análisis IPT ${etiquetaModo} -- ${mesActualLargo}</div>
+    <div class="ip-comentario-cifra ${sube?'sube':'baja'}">${actual.pct.toFixed(2)}% (${fk(actual.kwh)}${sufijoKwh})</div>
+    <p>El índice ${etiquetaZona} (${etiquetaModo.toLowerCase()}) pasó de <b>${anterior.pct.toFixed(2)}%</b> en ${mesAnteriorLargo} a <b>${actual.pct.toFixed(2)}%</b> en ${mesActualLargo}, lo que equivale a pasar de una pérdida de <b>${fk(anterior.kwh)}${sufijoKwh}</b> a <b>${fk(actual.kwh)}${sufijoKwh}</b> -- un ${sube?'incremento':'descenso'} de <b>${Math.abs(deltaMensual).toFixed(2)} pp</b>, equivalente a <b>${signo(deltaKwh)}${fk(Math.abs(deltaKwh))}${sufijoKwh}</b>.${parrafoAnual}</p>
   `;
 }
 
