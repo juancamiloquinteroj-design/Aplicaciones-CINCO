@@ -1103,6 +1103,9 @@ tfoot td:first-child{text-align:left}
     <button class="sidebar-sublink" data-vista="ip-comercial" onclick="mostrarVista('ip-comercial')" style="line-height:1.25;text-align:left">
       💰 Indicador Pérdidas<br>Comercial
     </button>
+    <button class="sidebar-sublink" data-vista="ip-institucional" onclick="mostrarVista('ip-institucional')" style="line-height:1.25;text-align:left">
+      🏛️ Indicador Pérdidas<br>Institucional
+    </button>
     <button class="sidebar-sublink" data-vista="ip-nivel1" onclick="mostrarVista('ip-nivel1')" style="line-height:1.25;text-align:left">
       Indicador Pérdidas<br>Nivel de Tensión 1
     </button>
@@ -1759,6 +1762,49 @@ tfoot td:first-child{text-align:left}
   </div>
 </div>
 <!-- fin vista-ip-comercial -->
+
+<!-- ---------------- INDICADOR DE PÉRDIDAS INSTITUCIONAL ---------------- -->
+<!-- Depende EXCLUSIVAMENTE de "IPT Institucional.csv" (ver
+     load_ipt_institucional.py) -- desglose de pérdida por zona y nivel;
+     el % institucional (5 zonas combinadas) ya viene calculado en el CSV,
+     igual en las 5 filas de un mismo mes. -->
+<div id="vista-ip-institucional" class="vista-modulo hidden">
+  <div class="sec-hdr">
+    <div class="sec-title">Indicador de Pérdidas Institucional</div>
+    <div class="sec-sub">Pérdida total de energía por zona y a nivel institucional (suma de las 5 zonas), mes a mes.</div>
+  </div>
+
+  <div class="card">
+    <div class="fbar" style="margin-bottom:6px">
+      <label>Zona</label>
+      <select id="ipi-zona" onchange="ipiRenderTodo()"><option value="">Todas (Institucional)</option></select>
+      <label>Desde</label>
+      <select id="ipi-desde" onchange="ipiRenderTodo()"></select>
+      <label>Hasta</label>
+      <select id="ipi-hasta" onchange="ipiRenderTodo()"></select>
+      <button type="button" class="btn-theme" style="width:auto;padding:0 14px;margin-left:auto" onclick="ipiDescargarCsv()" title="Descarga el rango filtrado arriba">⬇ Descargar CSV</button>
+    </div>
+    <div style="text-align:center;margin-bottom:8px">
+      <div style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Pérdida Total kWh</div>
+    </div>
+    <div class="chart-wrap" style="height:380px"><canvas id="ch-ipi-linea"></canvas></div>
+    <div class="be-resumen-cards" id="ipi-resumen" style="margin:16px 0 0"></div>
+  </div>
+
+  <div class="card">
+    <div class="split-wrap">
+      <div>
+        <div class="card-title" style="text-align:center">Pérdida Acumulada por Zona</div>
+        <div class="chart-wrap" style="height:320px"><canvas id="ch-ipi-barras"></canvas></div>
+      </div>
+      <div>
+        <div class="card-title" style="text-align:center">Participación por Zona</div>
+        <div class="chart-wrap" style="height:320px"><canvas id="ch-ipi-dona"></canvas></div>
+      </div>
+    </div>
+  </div>
+</div>
+<!-- fin vista-ip-institucional -->
 
 <!-- ---------------- INDICADOR PÉRDIDAS NIVEL DE TENSIÓN 1 ---------------- -->
 <div id="vista-ip-nivel1" class="vista-modulo hidden">
@@ -6038,7 +6084,7 @@ function toggleSubmenuAlim(){
   }
 }
 
-let vistaCargada = {perdidas:false, parametrizacion:false, telemedidos:false, balancesEstructura:false, ipReg:false, ipComercial:false, ipNivel1:false, reportesSspd:false, tridevanados:false, alimResumen:false, alimNivel4:false, alimNivel3:false, alimN21:false, alimSubestaciones:false, alimAlimentadores:false, tempEntrada:false, informes:false, programaFacturacion:false};
+let vistaCargada = {perdidas:false, parametrizacion:false, telemedidos:false, balancesEstructura:false, ipReg:false, ipComercial:false, ipInstitucional:false, ipNivel1:false, reportesSspd:false, tridevanados:false, alimResumen:false, alimNivel4:false, alimNivel3:false, alimN21:false, alimSubestaciones:false, alimAlimentadores:false, tempEntrada:false, informes:false, programaFacturacion:false};
 
 async function mostrarVista(nombre){
   document.querySelectorAll('.vista-modulo').forEach(v=>v.classList.add('hidden'));
@@ -6057,7 +6103,7 @@ async function mostrarVista(nombre){
   // la sincronización de tema/alto justo al hacerse visible.
   if(nombre==='be-puntos-medida') _pmSincronizarTema();
 
-  const esIndicadorPerdidas = nombre==='ip-reg' || nombre==='ip-comercial' || nombre==='ip-nivel1' || nombre==='reportes-sspd' || nombre==='tridevanados';
+  const esIndicadorPerdidas = nombre==='ip-reg' || nombre==='ip-comercial' || nombre==='ip-institucional' || nombre==='ip-nivel1' || nombre==='reportes-sspd' || nombre==='tridevanados';
   document.getElementById('sidebar-ip-padre').classList.toggle('activa', esIndicadorPerdidas);
   if(esIndicadorPerdidas) abrirSubmenuIP();
 
@@ -6094,6 +6140,10 @@ async function mostrarVista(nombre){
   if(nombre==='ip-comercial' && !vistaCargada.ipComercial){
     vistaCargada.ipComercial = true;
     await cargarIndicadorPerdidasComercial();
+  }
+  if(nombre==='ip-institucional' && !vistaCargada.ipInstitucional){
+    vistaCargada.ipInstitucional = true;
+    await cargarIpInstitucional();
   }
   if(nombre==='ip-nivel1' && !vistaCargada.ipNivel1){
     vistaCargada.ipNivel1 = true;
@@ -6578,7 +6628,7 @@ function _iniRenderVariacionKwh(elId, valorAnt, valorAct, esPerdida){
 function cerrarSesion(){
   TOKEN=null; OPERADOR=null; PERSONA=null; DEMO=false;
   OFFLINE_MODO=false; OFFLINE_FECHA=null;
-  vistaCargada = {perdidas:false, parametrizacion:false, telemedidos:false, balancesEstructura:false, ipReg:false, ipComercial:false, ipNivel1:false, reportesSspd:false, tridevanados:false};
+  vistaCargada = {perdidas:false, parametrizacion:false, telemedidos:false, balancesEstructura:false, ipReg:false, ipComercial:false, ipInstitucional:false, ipNivel1:false, reportesSspd:false, tridevanados:false};
   document.getElementById('app-screen').classList.add('hidden');
   document.getElementById('suite-screen').classList.add('hidden');
   document.getElementById('login-screen').classList.remove('hidden');
@@ -12681,6 +12731,276 @@ function ipComercialDescargarCsv(){
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url; a.download = `indicador_perdidas_comercial_${OPERADOR.slug}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+
+/* ---- Indicador de Pérdidas INSTITUCIONAL -- depende EXCLUSIVAMENTE de
+   "IPT Institucional.csv" (ver load_ipt_institucional.py). Una fila por
+   Zona+Mes; "Todas (Institucional)" sin zona seleccionada agrega (suma)
+   las 5 zonas mes a mes -- distinto de tomar directo perdida_total_pct de
+   cualquier fila (ese % ya es el institucional, igual en las 5 filas de
+   un mismo mes, pero perdida_total_kwh SÍ es propio de cada zona y hay
+   que sumarlo para el agregado). ---- */
+let IPI_FILAS = [];
+let chIpiLinea = null, chIpiBarras = null, chIpiDona = null;
+
+function ipiClave(f){ return `${f.anio}-${String(f.mes).padStart(2,'0')}`; }
+
+// Un mes cuenta como "real" si alguna zona ya tiene pérdida distinta de
+// cero -- el mes más reciente del CSV suele venir con Entrada Zonal pero
+// todo lo demás en 0 (aún no calculado), y no debe ser el "hasta" por
+// defecto ni aparecer como último punto de la línea.
+function ipiMesesReales(){
+  const porMes = new Map();
+  for(const f of IPI_FILAS){
+    const c = ipiClave(f);
+    porMes.set(c, (porMes.get(c) || 0) + (f.perdida_total_kwh || 0));
+  }
+  return [...porMes.entries()].filter(([,v]) => v > 0).map(([c]) => c).sort();
+}
+
+async function cargarIpInstitucional(){
+  const cont = document.getElementById('ch-ipi-linea').parentElement;
+  try{
+    const datos = DEMO ? {filas:[]} : await apiGet('/api/ipt-institucional');
+    IPI_FILAS = datos.filas;
+  }catch(e){
+    cont.innerHTML = `<div style="text-align:center;color:#ef476f;padding:40px">${e.message || 'No se pudo cargar el indicador institucional.'}</div>`;
+    return;
+  }
+  if(!IPI_FILAS.length) return;
+
+  const selZona = document.getElementById('ipi-zona');
+  const zonas = [...new Set(IPI_FILAS.map(f=>f.zona))].sort();
+  selZona.innerHTML = '<option value="">Todas (Institucional)</option>' + zonas.map(z=>`<option value="${z}">${z}</option>`).join('');
+
+  const claves = [...new Set(IPI_FILAS.map(ipiClave))].sort();
+  const opciones = claves.map(c=>`<option value="${c}">${labelMesLargo(c)}</option>`).join('');
+  const selDesde = document.getElementById('ipi-desde');
+  const selHasta = document.getElementById('ipi-hasta');
+  selDesde.innerHTML = opciones;
+  selHasta.innerHTML = opciones;
+
+  const reales = ipiMesesReales();
+  const ultimoReal = reales.length ? reales[reales.length-1] : claves[claves.length-1];
+  selDesde.value = claves.includes('2025-01') ? '2025-01' : claves[0];
+  selHasta.value = ultimoReal;
+
+  ipiRenderTodo();
+}
+
+function ipiVisibles(){
+  const zona = document.getElementById('ipi-zona').value;
+  const desde = document.getElementById('ipi-desde').value;
+  const hasta = document.getElementById('ipi-hasta').value;
+  return IPI_FILAS.filter(f => {
+    const c = ipiClave(f);
+    return (!zona || f.zona===zona) && (!desde || c>=desde) && (!hasta || c<=hasta);
+  });
+}
+
+function ipiRenderTodo(){
+  ipiRenderChart();
+  ipiRenderResumen();
+  ipiRenderBarras();
+  ipiRenderDona();
+}
+
+// Línea principal: si hay zona seleccionada, esa zona sola; si no
+// ("Todas"), suma de las 5 zonas mes a mes (el agregado institucional).
+function ipiRenderChart(){
+  const visibles = ipiVisibles();
+  const dark = document.documentElement.getAttribute('data-theme')==='dark';
+  const tickC = dark ? '#aab8d1' : '#4b5e7a';
+  const tickXFuerte = dark ? '#ffffff' : '#000000';
+  const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
+  const zonaSel = document.getElementById('ipi-zona').value;
+
+  const claves = [...new Set(visibles.map(ipiClave))].sort();
+  const etiquetas = claves.map(labelMes);
+  const kwhPorClave = new Map();
+  for(const c of claves) kwhPorClave.set(c, 0);
+  for(const f of visibles) kwhPorClave.set(ipiClave(f), kwhPorClave.get(ipiClave(f)) + (f.perdida_total_kwh || 0));
+  const datosKwh = claves.map(c => kwhPorClave.get(c));
+  const color = zonaSel ? colorParaZona(zonaSel) : '#00b4d8';
+  const etiquetaSerie = zonaSel ? `Pérdida Total kWh -- Zona ${zonaSel}` : 'Pérdida Total kWh -- Institucional (5 zonas)';
+
+  if(chIpiLinea) chIpiLinea.destroy();
+  chIpiLinea = new Chart(document.getElementById('ch-ipi-linea'), {
+    data:{labels: etiquetas, datasets:[{
+      type:'line', label: etiquetaSerie, data: datosKwh,
+      borderColor: color, backgroundColor: color+'22', borderWidth:2.5, pointRadius:2, tension:.2, fill:true,
+      datalabels:{display:true, anchor:'end', align:'top', offset:4, formatter:v=>fmtGwh(v),
+        font:{size:10, weight:'700'}, color,
+        backgroundColor: dark?'rgba(30,30,40,.85)':'rgba(255,255,255,.85)', borderRadius:3, padding:{left:4,right:4,top:1,bottom:1}},
+    }]},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      layout:{padding:{top:28, right:16, left:8, bottom:4}},
+      interaction:{mode:'index', intersect:false},
+      plugins:{
+        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:10}, color:tickC}},
+        tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`}},
+        zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:3}}},
+      },
+      scales:{
+        x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:45, minRotation:45}},
+        y:{beginAtZero:true, grid:{color:gridC}, ticks:{color:tickC, font:{size:11}, callback:v=>fmtGwh(v)}},
+      },
+    },
+  });
+}
+
+// Tarjetas: mes más reciente visible vs el anterior -- % institucional
+// (idéntico en las 5 filas de un mismo mes, se toma de cualquiera) más el
+// desglose de la zona/agregado que esté graficado en la línea de arriba.
+function ipiRenderResumen(){
+  const cont = document.getElementById('ipi-resumen');
+  if(!cont) return;
+  const visibles = ipiVisibles();
+  const claves = [...new Set(visibles.map(ipiClave))].sort();
+  if(claves.length < 1){ cont.innerHTML = ''; return; }
+  const zonaSel = document.getElementById('ipi-zona').value;
+
+  const agregadoPorClave = c => {
+    const filas = visibles.filter(f => ipiClave(f)===c);
+    const kwh = filas.reduce((s,f)=>s+(f.perdida_total_kwh||0), 0);
+    const entradaEh = filas.reduce((s,f)=>s+(f.entrada_eh||0), 0);
+    const pct = filas.length ? filas[0].perdida_total_pct : null;   // igual en las 5 zonas
+    return {kwh, entradaEh, pct};
+  };
+
+  const claveActual = claves[claves.length-1];
+  const claveAnterior = claves.length > 1 ? claves[claves.length-2] : null;
+  const actual = agregadoPorClave(claveActual);
+  const anterior = claveAnterior ? agregadoPorClave(claveAnterior) : null;
+  const mesActual = labelMes(claveActual);
+  const mesAnterior = claveAnterior ? labelMes(claveAnterior) : null;
+
+  const fk = v => v==null ? '--' : v.toLocaleString('es-CO', {maximumFractionDigits:0}) + ' kWh';
+  const tarjeta = (etiqueta, valor, sub, colorValor) => `<div class="be-resumen-tile">
+    <div class="etiqueta">${etiqueta}</div>
+    <div class="valor"${colorValor ? ` style="color:${colorValor}"` : ''}>${valor}</div>
+    ${sub ? `<div class="sub">${sub}</div>` : ''}
+  </div>`;
+
+  const tarjetas = [
+    tarjeta(zonaSel ? `Pérdida ${zonaSel} (kWh)` : 'Pérdida Institucional (kWh)', fk(actual.kwh), mesActual),
+    tarjeta('Pérdida % Institucional', actual.pct!=null ? actual.pct.toFixed(2)+'%' : '--', mesActual),
+    tarjeta('Entrada EH (kWh)', fk(actual.entradaEh), mesActual),
+  ];
+  if(anterior){
+    const deltaKwh = actual.kwh - anterior.kwh;
+    const deltaKwhPct = anterior.kwh ? (deltaKwh / anterior.kwh * 100) : 0;
+    const colorKwh = ipColorVariacion(actual.kwh, anterior.kwh, 'var(--text2)');
+    tarjetas.push(tarjeta('Variación Mensual (kWh)', `${deltaKwh>=0?'▲':'▼'} ${fk(Math.abs(deltaKwh))} (${Math.abs(deltaKwhPct).toFixed(1)}%)`, `${mesAnterior} → ${mesActual}`, colorKwh));
+    if(actual.pct!=null && anterior.pct!=null){
+      const deltaPct = actual.pct - anterior.pct;
+      const colorPct = ipColorVariacion(actual.pct, anterior.pct, 'var(--text2)');
+      tarjetas.push(tarjeta('Variación Mensual (%)', `${deltaPct>=0?'▲':'▼'} ${Math.abs(deltaPct).toFixed(2)} pp`, `${mesAnterior} → ${mesActual}`, colorPct));
+    }
+  }
+  cont.innerHTML = tarjetas.join('');
+}
+
+// Barras acumuladas por zona: SIEMPRE las 5 zonas (independiente del
+// filtro de Zona de arriba, que es para la línea) -- suma de
+// perdida_total_kwh dentro del rango Desde/Hasta seleccionado.
+function ipiAcumuladoPorZona(){
+  const desde = document.getElementById('ipi-desde').value;
+  const hasta = document.getElementById('ipi-hasta').value;
+  const enRango = IPI_FILAS.filter(f => {
+    const c = ipiClave(f);
+    return (!desde || c>=desde) && (!hasta || c<=hasta);
+  });
+  const acumulado = new Map();
+  for(const f of enRango) acumulado.set(f.zona, (acumulado.get(f.zona)||0) + (f.perdida_total_kwh||0));
+  return [...acumulado.entries()].sort((a,b)=> b[1]-a[1]);   // mayor a menor
+}
+
+function ipiRenderBarras(){
+  const dark = document.documentElement.getAttribute('data-theme')==='dark';
+  const tickC = dark ? '#aab8d1' : '#4b5e7a';
+  const tickXFuerte = dark ? '#ffffff' : '#000000';
+  const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
+  const datos = ipiAcumuladoPorZona();
+
+  if(chIpiBarras) chIpiBarras.destroy();
+  chIpiBarras = new Chart(document.getElementById('ch-ipi-barras'), {
+    type:'bar',
+    data:{
+      labels: datos.map(([z])=>z),
+      datasets:[{
+        label:'Pérdida acumulada', data: datos.map(([,v])=>v),
+        backgroundColor: datos.map(([z])=>colorParaZona(z)), borderRadius:4,
+        datalabels:{display:true, anchor:'end', align:'top', offset:2, formatter:v=>fmtGwh(v), font:{size:11,weight:'700'}, color:tickC},
+      }],
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      layout:{padding:{top:24}},
+      plugins:{legend:{display:false}},
+      scales:{
+        x:{grid:{display:false}, ticks:{color:tickXFuerte, font:{size:12,weight:'700'}}},
+        y:{beginAtZero:true, grid:{color:gridC}, ticks:{color:tickC, font:{size:11}, callback:v=>fmtGwh(v)}},
+      },
+    },
+  });
+}
+
+function ipiRenderDona(){
+  const dark = document.documentElement.getAttribute('data-theme')==='dark';
+  const tickC = dark ? '#aab8d1' : '#4b5e7a';
+  const datos = ipiAcumuladoPorZona();
+  const total = datos.reduce((s,[,v])=>s+v, 0);
+
+  if(chIpiDona) chIpiDona.destroy();
+  chIpiDona = new Chart(document.getElementById('ch-ipi-dona'), {
+    type:'doughnut',
+    data:{
+      labels: datos.map(([z])=>z),
+      datasets:[{
+        data: datos.map(([,v])=>v),
+        backgroundColor: datos.map(([z])=>colorParaZona(z)),
+        borderColor: dark ? '#1a1f2e' : '#ffffff', borderWidth: 2,
+      }],
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      cutout:'62%',
+      plugins:{
+        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:11}, color:tickC}},
+        tooltip:{callbacks:{label:c=>{
+          const pct = total ? (c.raw/total*100) : 0;
+          return `${c.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh (${pct.toFixed(1)}%)`;
+        }}},
+        datalabels:{display:true, color:'#fff', font:{size:12,weight:'700'},
+          formatter:(v)=>{ const pct = total ? (v/total*100) : 0; return pct>=4 ? pct.toFixed(1)+'%' : ''; }},
+      },
+    },
+  });
+}
+
+// Exporta EXACTAMENTE el rango filtrado arriba (Desde/Hasta + Zona si hay
+// una seleccionada) -- CSV con ";" y coma decimal, mismo formato del resto
+// de la app.
+function ipiDescargarCsv(){
+  const visibles = ipiVisibles();
+  const encabezado = ['Mes','Zona','Perdida N21 (kWh)','Tecnica Trafos 32 (kWh)','Perdida N3 (kWh)','Perdida N4 (kWh)','Entrada Zonal (kWh)','Entrada EH (kWh)','Perdida Total (kWh)','Perdida Total Institucional (%)'];
+  const filas = visibles.map(f => [
+    labelMesLargo(ipiClave(f)), f.zona, f.perdida_n21, f.tecnica_trafos_32, f.perdida_n3, f.perdida_n4,
+    f.entrada_zonal, f.entrada_eh, f.perdida_total_kwh, f.perdida_total_pct,
+  ]);
+  const linea = fila => fila.map(v => {
+    if(v==null||v===undefined) return '';
+    return typeof v === 'number' ? String(v).replace('.',',') : String(v);
+  }).join(';');
+  const csv = [linea(encabezado), ...filas.map(linea)].join('\r\n');
+  const blob = new Blob(['﻿'+csv], {type:'text/csv;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `indicador_perdidas_institucional_${OPERADOR.slug}.csv`;
   document.body.appendChild(a); a.click(); a.remove();
   URL.revokeObjectURL(url);
 }
