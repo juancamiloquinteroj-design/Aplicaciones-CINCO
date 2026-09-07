@@ -8076,7 +8076,13 @@ function ipMostrarResultado(jobId, nombreArchivo){
   cont.innerHTML = html;
 }
 
-async function ipDescargarArchivo(jobId, nombre){
+// La descarga automática al terminar es un fetch() sin reintentos -- un
+// tropiezo puntual de red (se ha visto varias veces en esta sesión) la
+// tumbaba con "Failed to fetch" aunque la corrida hubiera terminado bien
+// y el archivo siguiera disponible (el botón "Descargar" de abajo sí
+// funcionaba). Ahora reintenta un par de veces antes de rendirse.
+async function ipDescargarArchivo(jobId, nombre, intento){
+  intento = intento || 1;
   try{
     const res = await fetch(`${API_BASE_URL}/api/indice-perdidas/job/${jobId}/descargar`, {headers: authHeaders()});
     if(!res.ok) throw new Error('el servidor no pudo entregar el archivo.');
@@ -8087,7 +8093,11 @@ async function ipDescargarArchivo(jobId, nombre){
     document.body.appendChild(a); a.click(); a.remove();
     URL.revokeObjectURL(url);
   }catch(e){
-    alert('No se pudo descargar: ' + e.message);
+    if(intento < 3){
+      await new Promise(r => setTimeout(r, 1000 * intento));
+      return ipDescargarArchivo(jobId, nombre, intento + 1);
+    }
+    alert('No se pudo descargar automático (' + e.message + ') -- usa el botón "Descargar" de abajo, el archivo sigue disponible.');
   }
 }
 
