@@ -14091,49 +14091,98 @@ function acSerieN21(nombreAlimentador){
   return resultado;
 }
 
+// Convierte {clave->valor} en la serie mensual ORDENADA (histórico
+// completo, sin recortar por Rango) -- helper compartido por el modo
+// "un ciclo" y el modo "todos los ciclos".
+function acSerieDesdeMapa(porClave){
+  return [...porClave.keys()].sort().map(c => ({clave:c, valor: porClave.get(c)}));
+}
+
+// Ventana móvil de 12 meses (mismo criterio que el resto de la app) --
+// null hasta que haya 12 meses reales previos.
+function acVentanaAnual(serieMensual){
+  return serieMensual.map((f,i) => {
+    if(i<11) return {clave:f.clave, valor:null};
+    const ventana = serieMensual.slice(i-11, i+1);
+    return {clave:f.clave, valor: ventana.reduce((s,v)=>s+(v.valor||0), 0)};
+  });
+}
+
+// Color estable por ciclo -- HSL rotado, escala a cualquier cantidad de
+// ciclos sin repetirse (a diferencia de una paleta fija corta).
+function acColorCiclo(i, n){
+  const hue = Math.round((i * 360 / Math.max(n,1)) % 360);
+  return `hsl(${hue}, 65%, 55%)`;
+}
+
 function acRenderChart(){
   const dark = document.documentElement.getAttribute('data-theme')==='dark';
   const tickC = dark ? '#aab8d1' : '#4b5e7a';
   const tickXFuerte = dark ? '#ffffff' : '#000000';
   const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
+  const etiquetaModo = AC_MODO==='anual' ? 'Anual Móvil' : 'Mensual';
+  const {desde, hasta} = acRangoMeses();
+  const alimentadores = mselValores('msel-ac-alimentador');
+  const mostrarN21 = AC_MOSTRAR_N21 && alimentadores.length===1 && ALIM_FILAS;
 
-  // Serie mensual completa (TODO el histórico, sin recortar por Rango
-  // todavía) -- hace falta para que la ventana móvil de 12 meses del modo
-  // Anual quede bien calculada incluso en los primeros meses visibles.
+  // Histórico completo (sin recortar por Rango todavía) -- hace falta
+  // para que la ventana móvil de 12 meses del modo Anual quede bien
+  // calculada incluso en los primeros meses visibles.
   const filasCompletas = acFilasFiltradasSinRango(null);
-  const porClave = new Map();
-  for(const f of filasCompletas) porClave.set(acClave(f), (porClave.get(acClave(f))||0) + (f.energia_liquidada_kwh||0));
-  const clavesCompletas = [...porClave.keys()].sort();
-  const serieMensual = clavesCompletas.map(c => ({clave:c, valor: porClave.get(c)}));
 
-  let serie = serieMensual;
-  if(AC_MODO==='anual'){
-    serie = serieMensual.map((f,i) => {
-      if(i<11) return {clave:f.clave, valor:null};
-      const ventana = serieMensual.slice(i-11, i+1);
-      return {clave:f.clave, valor: ventana.reduce((s,v)=>s+(v.valor||0), 0)};
+  let clavesVisibles = [];   // "YYYY-MM" en el mismo orden que etiquetas -- hace falta aparte para poder alinear la serie de N2-1
+  let etiquetas = [];
+  const datasets = [];
+
+  if(AC_CICLO_SELECCIONADO==null){
+    // "Todos" -- pedido explícito: una línea/área por CADA ciclo (como el
+    // Power BI de referencia sin ningún ciclo elegido), no una sola línea
+    // con la suma de todos.
+    const porCicloClave = new Map();   // ciclo -> Map(clave -> kwh)
+    for(const f of filasCompletas){
+      if(!porCicloClave.has(f.ciclo)) porCicloClave.set(f.ciclo, new Map());
+      const m = porCicloClave.get(f.ciclo);
+      m.set(acClave(f), (m.get(acClave(f))||0) + (f.energia_liquidada_kwh||0));
+    }
+    const ciclos = [...porCicloClave.keys()].sort((a,b)=>a-b);
+    const clavesCompletas = [...new Set(filasCompletas.map(acClave))].sort();
+    clavesVisibles = clavesCompletas.filter(c => (!desde || c>=desde) && (!hasta || c<=hasta));
+    etiquetas = clavesVisibles.map(labelMes);
+
+    ciclos.forEach((c, i) => {
+      let serie = acSerieDesdeMapa(porCicloClave.get(c));
+      if(AC_MODO==='anual') serie = acVentanaAnual(serie);
+      const porClaveVisible = new Map(serie.map(f=>[f.clave, f.valor]));
+      const color = acColorCiclo(i, ciclos.length);
+      datasets.push({
+        type:'line', label:`${c}`, data: clavesVisibles.map(v=>porClaveVisible.has(v) ? porClaveVisible.get(v) : null),
+        fill: !mostrarN21, spanGaps:true, yAxisID: mostrarN21 ? 'y' : undefined,
+        borderColor:color, backgroundColor:color.replace('hsl','hsla').replace(')', ',.25)'), borderWidth:1.5, pointRadius:0, tension:0,
+        datalabels:{display:false},
+      });
+    });
+  } else {
+    // Un ciclo puntual -- una sola línea (ya viene filtrada a ese ciclo).
+    const porClave = new Map();
+    for(const f of filasCompletas) porClave.set(acClave(f), (porClave.get(acClave(f))||0) + (f.energia_liquidada_kwh||0));
+    let serie = acSerieDesdeMapa(porClave);
+    if(AC_MODO==='anual') serie = acVentanaAnual(serie);
+    const visible = serie.filter(f => (!desde || f.clave>=desde) && (!hasta || f.clave<=hasta));
+    clavesVisibles = visible.map(f=>f.clave);
+    etiquetas = visible.map(f=>labelMes(f.clave));
+    datasets.push({
+      type:'line', label:`Ciclo ${AC_CICLO_SELECCIONADO} -- ${etiquetaModo}`, data: visible.map(f=>f.valor), fill:!mostrarN21, spanGaps:true,
+      yAxisID: mostrarN21 ? 'y' : undefined,
+      borderColor:'#00b4d8', backgroundColor:'rgba(0,180,216,.35)', borderWidth:2.5, pointRadius:0, tension:0,
+      datalabels:{display:false},
     });
   }
 
-  const {desde, hasta} = acRangoMeses();
-  const visible = serie.filter(f => (!desde || f.clave>=desde) && (!hasta || f.clave<=hasta));
-  const etiquetas = visible.map(f=>labelMes(f.clave));
-  const datos = visible.map(f=>f.valor);
-  const etiquetaModo = AC_MODO==='anual' ? 'Anual Móvil' : 'Mensual';
-
-  const alimentadores = mselValores('msel-ac-alimentador');
-  const mostrarN21 = AC_MOSTRAR_N21 && alimentadores.length===1 && ALIM_FILAS;
-  const datasets = [{
-    type:'line', label:`Ciclo ${AC_CICLO_SELECCIONADO ?? 'Todos'} -- ${etiquetaModo}`, data: datos, fill:!mostrarN21, spanGaps:true,
-    yAxisID: mostrarN21 ? 'y' : undefined,
-    borderColor:'#00b4d8', backgroundColor:'rgba(0,180,216,.35)', borderWidth:2.5, pointRadius:0, tension:0,
-    datalabels:{display:false},
-  }];
   if(mostrarN21){
     const n21PorClave = acSerieN21(alimentadores[0]);
     datasets.push({
       type:'line', label:`Pérdida N2-1 (%) -- ${alimentadores[0]}`, yAxisID:'yPct',
-      data: visible.map(f=>n21PorClave.has(f.clave) ? n21PorClave.get(f.clave) : null), spanGaps:true,
+      data: clavesVisibles.map(c => n21PorClave.has(c) ? n21PorClave.get(c) : null), spanGaps:true,
       borderColor:'#ED7D31', backgroundColor:'transparent', borderWidth:2.5, pointRadius:2, tension:0,
       datalabels:{display:true, anchor:'end', align:'top', offset:8, formatter:v=>v==null?'':v.toFixed(2)+'%',
         font:{size:11, weight:'700'}, color:'#ED7D31'},
@@ -14148,7 +14197,7 @@ function acRenderChart(){
       layout:{padding:{top:16, right:16, left:8, bottom:4}},
       interaction:{mode:'index', intersect:false},
       plugins:{
-        legend:{display:true, position:'top', align:'start', labels:{boxWidth:10, font:{size:11}, color:tickC}},
+        legend:{display:true, position:'top', align:'start', labels:{boxWidth:10, font:{size:10}, color:tickC}},
         tooltip:{callbacks:{label:c=>{
           if(c.raw==null) return null;
           return c.dataset.yAxisID==='yPct' ? `${c.dataset.label}: ${c.raw.toFixed(2)}%` : `${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`;
