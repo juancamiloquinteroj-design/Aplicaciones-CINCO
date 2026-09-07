@@ -7914,6 +7914,7 @@ function ipRenderPanel(){
     </div>
     <div id="ip-estado" style="font-size:12px;font-weight:700;margin-bottom:8px;min-height:16px"></div>
     <pre id="ip-log" style="background:var(--bg3);border-radius:8px;padding:10px;max-height:260px;overflow-y:auto;font-size:11px;white-space:pre-wrap;margin:0 0 10px;color:var(--text2)"></pre>
+    <div id="ip-resumen" style="font-size:12px;color:var(--text2);margin-bottom:14px"></div>
     <div id="ip-resultado"></div>
   `;
   ipRenderConfigCampos(script);
@@ -7938,6 +7939,7 @@ async function ipEjecutar(){
   }
 
   document.getElementById('ip-log').textContent = '';
+  document.getElementById('ip-resumen').textContent = '';
   document.getElementById('ip-resultado').innerHTML = '';
   const estadoEl = document.getElementById('ip-estado');
   const btn = document.getElementById('ip-btn-ejecutar');
@@ -7955,12 +7957,27 @@ async function ipEjecutar(){
   }
 }
 
+// Muestra debajo del log, de forma fija (sin tener que scrollear el
+// recuadro), cuál fue el último archivo que el script alcanzó a
+// procesar -- pedido explícito, útil tanto mientras corre como ya
+// terminado. Busca la ÚLTIMA línea "📦 Procesando: X..." del log (los 4
+// scripts de este submódulo imprimen esa misma línea por archivo).
+function ipActualizarResumen(logTexto){
+  const el = document.getElementById('ip-resumen');
+  if(!el) return;
+  const coincidencias = [...(logTexto || '').matchAll(/📦 Procesando: (.+?)\.\.\./g)];
+  if(!coincidencias.length){ el.textContent = ''; return; }
+  const ultimo = coincidencias[coincidencias.length - 1][1];
+  el.innerHTML = `📄 Último archivo procesado: <b>${ipEscapar(ultimo)}</b> <span style="color:var(--text3)">(${coincidencias.length} en total)</span>`;
+}
+
 async function ipPollJob(jobId){
   const estadoEl = document.getElementById('ip-estado');
   const logEl = document.getElementById('ip-log');
   try{
     const st = await apiGet(`/api/indice-perdidas/job/${jobId}`);
     if(logEl){ logEl.textContent = st.log || ''; logEl.scrollTop = logEl.scrollHeight; }
+    ipActualizarResumen(st.log);
     if(st.estado === 'corriendo'){
       if(estadoEl) estadoEl.textContent = '⏳ Corriendo...';
       return;
