@@ -1099,12 +1099,15 @@ tfoot td:first-child{text-align:left}
     </div>
   </div>
 
-  <div class="sec-hdr" style="margin-bottom:14px">
-    <div class="sec-title" style="font-size:15px">1. Índice de Pérdidas</div>
-    <div class="sec-sub">Consolidación CGM, consolidación XM, IPT Comercial e IPT Institucional -- elige un script para configurarlo y ejecutarlo. Cada operador puede cambiar sus propias carpetas/nombres de archivo y códigos de agente XM (ej. HLAC/HLAD).</div>
+  <div style="display:flex;gap:22px;align-items:flex-start">
+    <div style="width:250px;flex-shrink:0;background:var(--card-bg);border:1px solid var(--border);border-radius:12px;padding:16px 10px;box-shadow:var(--shadow-sm);position:sticky;top:20px">
+      <div class="sidebar-title" style="margin:0 8px 8px">1. Índice de Pérdidas</div>
+      <div id="ip-tabs" style="display:flex;flex-direction:column;gap:2px"><div style="font-size:12px;color:var(--text3);padding:8px 12px">Cargando…</div></div>
+    </div>
+    <div id="ip-detalle" class="card" style="flex:1;min-width:0">
+      <div style="font-size:12px;color:var(--text3);padding:10px 0">Elige un script de la izquierda para configurarlo y ejecutarlo.</div>
+    </div>
   </div>
-  <div class="mod-grid" id="ip-tabs"><div style="font-size:12px;color:var(--text3);padding:10px 0">Cargando…</div></div>
-  <div id="ip-detalle" class="card hidden"></div>
 </div>
 
 <!-- ==================== DASHBOARD ==================== -->
@@ -7733,11 +7736,12 @@ async function pzClickMunicipio(f, layer){
    (antes sueltos en el PC del usuario). Cada script corre en un job de
    fondo del backend; acá solo se hace polling del log y se ofrece
    descargar el archivo resultante y/o cargarlo de una vez a la base de
-   datos. Galería de cards + panel de detalle que se abre/cierra al
-   hacer click -- mismo patrón que Reportes SSPD (PR1..PR9, ver
-   _sspdToggleDetalle), pensado para que quepan muchos scripts más
-   adelante sin que la pantalla se vuelva una fila interminable de
-   pestañas. ---- */
+   datos. Lista lateral (mismo patrón visual que el sidebar de módulos:
+   "1. Índice de Pérdidas" como título + un sidebar-sublink por script) +
+   panel de detalle al lado -- pensado para que, cuando se agreguen más
+   módulos de scripts más adelante, cada uno sea otro bloque "título +
+   lista" en la misma columna izquierda, sin desperdiciar el ancho de la
+   pantalla como pasaba con la galería de cards. ---- */
 let IP_SCRIPTS = [];
 let IP_CONFIG = {};
 let IP_SCRIPT_ACTIVO = null;
@@ -7745,7 +7749,7 @@ let IP_POLL_TIMER = null;
 const IP_ICONOS = {cgm:'📥', xm:'⚡', comercial:'💰', institucional:'🏛️'};
 
 async function cargarIndicePerdidas(){
-  const grid = document.getElementById('ip-tabs');
+  const lista = document.getElementById('ip-tabs');
   try{
     const [scripts, config] = await Promise.all([
       apiGet('/api/indice-perdidas/scripts'),
@@ -7753,34 +7757,26 @@ async function cargarIndicePerdidas(){
     ]);
     IP_SCRIPTS = scripts.slice().sort((a,b)=>a.orden-b.orden);
     IP_CONFIG = config || {};
-    if(grid){
-      grid.innerHTML = IP_SCRIPTS.map(s => `
-        <div class="mod-card" onclick="ipToggleDetalle('${s.id}')">
-          <span class="mc-icon">${IP_ICONOS[s.id] || '🐍'}</span>
-          <div class="mc-title">${ipEscapar(s.nombre)}</div>
-          <div class="mc-desc">${ipEscapar(s.descripcion)}</div>
-        </div>
+    if(lista){
+      lista.innerHTML = IP_SCRIPTS.map(s => `
+        <button type="button" class="sidebar-sublink ip-tab-btn" data-id="${s.id}" onclick="ipSeleccionarScript('${s.id}')">
+          <span>${IP_ICONOS[s.id] || '🐍'}</span><span>${ipEscapar(s.nombre)}</span>
+        </button>
       `).join('');
     }
+    if(IP_SCRIPTS.length) ipSeleccionarScript(IP_SCRIPTS[0].id);
   }catch(e){
-    if(grid) grid.innerHTML = `<div style="font-size:12px;color:var(--text3);padding:10px 0">No se pudo cargar: ${e.message}</div>`;
+    if(lista) lista.innerHTML = `<div style="font-size:12px;color:var(--text3);padding:8px 12px">No se pudo cargar: ${e.message}</div>`;
   }
 }
 
-// Abre/cierra el panel de detalle de un script -- click en el mismo card
-// que ya está abierto lo cierra, click en otro cambia el contenido.
-function ipToggleDetalle(id){
-  const detalle = document.getElementById('ip-detalle');
-  ipDetenerPoll();
-  if(IP_SCRIPT_ACTIVO === id && !detalle.classList.contains('hidden')){
-    detalle.classList.add('hidden');
-    IP_SCRIPT_ACTIVO = null;
-    return;
-  }
+// Selecciona un script en la lista de la izquierda y renderiza su panel
+// de configuración/ejecución a la derecha.
+function ipSeleccionarScript(id){
   IP_SCRIPT_ACTIVO = id;
-  detalle.classList.remove('hidden');
+  ipDetenerPoll();
+  document.querySelectorAll('.ip-tab-btn').forEach(b => b.classList.toggle('active', b.dataset.id === id));
   ipRenderPanel();
-  detalle.scrollIntoView({behavior:'smooth', block:'nearest'});
 }
 
 function ipEscapar(txt){
