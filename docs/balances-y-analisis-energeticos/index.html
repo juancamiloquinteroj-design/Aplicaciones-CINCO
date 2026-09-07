@@ -1059,7 +1059,7 @@ tfoot td:first-child{text-align:left}
 <!-- ==================== SELECTOR DE SUITE ==================== -->
 <!-- Pantalla intermedia entre el login y el Visualizador -- pedido
      explícito del usuario: al iniciar sesión aparecen los módulos de la
-     suite (Código Python y Motor de Cálculo, ambos "Próximamente";
+     suite (Código Python, Motor de Cálculo "Próximamente" y
      Visualización de Datos = todo lo ya construido), en ESE orden. -->
 <div id="suite-screen" class="hidden" style="max-width:920px;margin:0 auto;padding:48px 20px">
   <div style="text-align:center;margin-bottom:34px">
@@ -1067,10 +1067,10 @@ tfoot td:first-child{text-align:left}
     <div style="font-size:13px;color:var(--text3);margin-top:6px">Elige un módulo</div>
   </div>
   <div class="mod-grid">
-    <div class="mod-card disabled" title="Próximamente">
+    <div class="mod-card active" onclick="entrarCodigoPython()">
       <span class="mc-icon">🐍</span>
       <div class="mc-title">Código Python</div>
-      <div class="mc-desc">Próximamente</div>
+      <div class="mc-desc">Scripts de consolidación del Índice de Pérdidas de tu operador.</div>
     </div>
     <div class="mod-card disabled" title="Próximamente">
       <span class="mc-icon">🧮</span>
@@ -1082,6 +1082,28 @@ tfoot td:first-child{text-align:left}
       <div class="mc-title">Visualización de Datos</div>
       <div class="mc-desc">Indicadores, pérdidas técnicas y balances de tu operador.</div>
     </div>
+  </div>
+</div>
+
+<!-- ==================== CÓDIGO PYTHON ==================== -->
+<!-- Pantalla propia de la suite (no es parte del Visualizador/app-shell) --
+     corre acá los scripts que generan/actualizan el Índice de Pérdidas
+     (antes sueltos en el PC del usuario). Ver cargarIndicePerdidas() y
+     funciones ip* más abajo. -->
+<div id="codigo-python-screen" class="hidden" style="max-width:920px;margin:0 auto;padding:36px 20px">
+  <div style="display:flex;align-items:center;gap:14px;margin-bottom:28px">
+    <button type="button" class="btn-theme" style="width:auto;padding:7px 14px" onclick="volverASuiteDesdeCodigoPython()">← Volver</button>
+    <div>
+      <div style="font-size:20px;font-weight:800;color:var(--text)">🐍 Código Python</div>
+      <div style="font-size:12px;color:var(--text3);margin-top:2px">Scripts que alimentan el Índice de Pérdidas de tu operador</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">1. Índice de Pérdidas</div>
+    <div class="card-sub">Corre acá los scripts que generan y actualizan el Índice de Pérdidas (consolidación CGM, consolidación XM, IPT Comercial e IPT Institucional) -- cada operador puede cambiar sus propias carpetas/nombres de archivo y códigos de agente XM (ej. HLAC/HLAD) antes de ejecutar.</div>
+    <div class="fbar" id="ip-tabs" style="margin:14px 0"></div>
+    <div id="ip-panel"><div style="font-size:12px;color:var(--text3);padding:10px 0">Cargando…</div></div>
   </div>
 </div>
 
@@ -1430,13 +1452,6 @@ tfoot td:first-child{text-align:left}
   <div class="sec-hdr">
     <div class="sec-title">Parametrización</div>
     <div class="sec-sub">Colores de zona y límites estadísticos para todas las gráficas</div>
-  </div>
-
-  <div class="card">
-    <div class="card-title">1. Índice de Pérdidas</div>
-    <div class="card-sub">Corre acá los scripts que generan y actualizan el Índice de Pérdidas (consolidación CGM, consolidación XM, IPT Comercial e IPT Institucional) -- cada operador puede cambiar sus propias carpetas/nombres de archivo y códigos de agente XM (ej. HLAC/HLAD) antes de ejecutar.</div>
-    <div class="fbar" id="ip-tabs" style="margin:14px 0"></div>
-    <div id="ip-panel"><div style="font-size:12px;color:var(--text3);padding:10px 0">Cargando…</div></div>
   </div>
 
   <div class="card">
@@ -6227,7 +6242,6 @@ async function mostrarVista(nombre){
   if(nombre==='parametrizacion' && !vistaCargada.parametrizacion){
     vistaCargada.parametrizacion = true;
     await cargarParametrizacion();
-    await cargarIndicePerdidas();
   }
   if(nombre==='telemedidos' && !vistaCargada.telemedidos){
     vistaCargada.telemedidos = true;
@@ -6981,6 +6995,7 @@ function cerrarSesion(){
   vistaCargada = {perdidas:false, parametrizacion:false, telemedidos:false, balancesEstructura:false, ipReg:false, ipComercial:false, ipInstitucional:false, ipNivel1:false, reportesSspd:false, tridevanados:false};
   document.getElementById('app-screen').classList.add('hidden');
   document.getElementById('suite-screen').classList.add('hidden');
+  document.getElementById('codigo-python-screen').classList.add('hidden');
   document.getElementById('login-screen').classList.remove('hidden');
   document.getElementById('badge-op').classList.add('hidden');
   document.getElementById('badge-demo').classList.add('hidden');
@@ -7026,6 +7041,22 @@ function volverASuite(){
   document.getElementById('btn-suite').classList.add('hidden');
   document.body.classList.remove('sidebar-fija');
   document.getElementById('sidebar').classList.add('hidden');
+}
+
+let _codigoPythonCargado = false;
+
+async function entrarCodigoPython(){
+  document.getElementById('suite-screen').classList.add('hidden');
+  document.getElementById('codigo-python-screen').classList.remove('hidden');
+  if(!_codigoPythonCargado){
+    _codigoPythonCargado = true;
+    await cargarIndicePerdidas();
+  }
+}
+
+function volverASuiteDesdeCodigoPython(){
+  document.getElementById('codigo-python-screen').classList.add('hidden');
+  document.getElementById('suite-screen').classList.remove('hidden');
 }
 
 async function entrarVisualizador(){
