@@ -1125,6 +1125,7 @@ tfoot td:first-child{text-align:left}
     <button class="sidebar-sublink" data-vista="alim-n21" onclick="mostrarVista('alim-n21')">Indicador N2-1</button>
     <button class="sidebar-sublink" data-vista="alim-subestaciones" onclick="mostrarVista('alim-subestaciones')">Subestaciones</button>
     <button class="sidebar-sublink" data-vista="alim-alimentadores" onclick="mostrarVista('alim-alimentadores')">Alimentadores</button>
+    <button class="sidebar-sublink" data-vista="alim-analisis-ciclo" onclick="mostrarVista('alim-analisis-ciclo')">Análisis por Ciclo</button>
   </div>
   <button class="sidebar-link" data-vista="temp-entrada" onclick="mostrarVista('temp-entrada')">🌡️ Temperatura vs Entrada</button>
   <button class="sidebar-link sidebar-link-padre" id="sidebar-be-padre" onclick="toggleSubmenuBE()">
@@ -3337,6 +3338,53 @@ tfoot td:first-child{text-align:left}
   </div>
 </div>
 <!-- fin vista-alim-alimentadores -->
+
+<!-- ---------------- ANÁLISIS POR CICLO (submódulo de Alimentadores) ---------------- -->
+<!-- Depende EXCLUSIVAMENTE de "analisis de ciclos.csv" (ver
+     load_analisis_ciclos.py) -- "tipo" se cruza al cargar contra
+     alimentadores_mensual.tipo, no viene en este CSV. -->
+<div id="vista-alim-analisis-ciclo" class="vista-modulo hidden">
+  <div class="sec-hdr">
+    <div class="sec-title">Análisis por Ciclo</div>
+    <div class="sec-sub">Energía liquidada por ciclo de facturación, mes a mes -- depende de "analisis de ciclos.csv".</div>
+  </div>
+
+  <div class="card">
+    <div class="fbar" style="margin-bottom:14px">
+      <label>Rango</label>
+      <input type="date" id="ac-desde" onchange="acRenderTodo()">
+      <span style="font-size:11px;color:var(--text3)">→</span>
+      <input type="date" id="ac-hasta" onchange="acRenderTodo()">
+      <label style="margin-left:10px">Tipo</label>
+      <select id="ac-tipo" onchange="acCambiarFiltroSuperior()"><option value="">Todos</option></select>
+      <label>Liquidación</label>
+      <select id="ac-liquidacion" onchange="acCambiarFiltroSuperior()"><option value="">Todas</option></select>
+    </div>
+
+    <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">
+      <div style="flex:2 1 520px;min-width:360px">
+        <div style="text-align:center;margin-bottom:8px">
+          <div style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Pérdidas Mensuales</div>
+        </div>
+        <div class="chart-wrap" style="height:380px"><canvas id="ch-ac-linea"></canvas></div>
+      </div>
+      <div style="flex:1 1 260px;max-width:300px">
+        <label style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:700">Zona</label>
+        <select id="ac-zona" onchange="acCambiarZona()" style="width:100%;margin:6px 0 14px"><option value="">Todas</option></select>
+        <label style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:700">Subestación</label>
+        <div class="msel" id="msel-ac-subestacion" style="margin:6px 0 14px"></div>
+        <label style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:700">Nombre Spard</label>
+        <div class="msel" id="msel-ac-alimentador" style="margin:6px 0"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Ciclo</div>
+    <div id="ac-ciclos-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:6px;margin-top:10px"></div>
+  </div>
+</div>
+<!-- fin vista-alim-analisis-ciclo -->
 
 <!-- ---------------- TEMPERATURA VS ENTRADA ---------------- -->
 <div id="vista-temp-entrada" class="vista-modulo hidden">
@@ -6108,7 +6156,7 @@ function toggleSubmenuAlim(){
   }
 }
 
-let vistaCargada = {perdidas:false, parametrizacion:false, telemedidos:false, balancesEstructura:false, ipReg:false, ipComercial:false, ipInstitucional:false, ipNivel1:false, reportesSspd:false, tridevanados:false, alimResumen:false, alimNivel4:false, alimNivel3:false, alimN21:false, alimSubestaciones:false, alimAlimentadores:false, tempEntrada:false, informes:false, programaFacturacion:false};
+let vistaCargada = {perdidas:false, parametrizacion:false, telemedidos:false, balancesEstructura:false, ipReg:false, ipComercial:false, ipInstitucional:false, ipNivel1:false, reportesSspd:false, tridevanados:false, alimResumen:false, alimNivel4:false, alimNivel3:false, alimN21:false, alimSubestaciones:false, alimAlimentadores:false, alimAnalisisCiclo:false, tempEntrada:false, informes:false, programaFacturacion:false};
 
 async function mostrarVista(nombre){
   document.querySelectorAll('.vista-modulo').forEach(v=>v.classList.add('hidden'));
@@ -6131,7 +6179,7 @@ async function mostrarVista(nombre){
   document.getElementById('sidebar-ip-padre').classList.toggle('activa', esIndicadorPerdidas);
   if(esIndicadorPerdidas) abrirSubmenuIP();
 
-  const esAlimentadores = nombre==='alim-n21' || nombre==='alim-subestaciones' || nombre==='alim-alimentadores';
+  const esAlimentadores = nombre==='alim-n21' || nombre==='alim-subestaciones' || nombre==='alim-alimentadores' || nombre==='alim-analisis-ciclo';
   document.getElementById('sidebar-alim-padre').classList.toggle('activa', esAlimentadores);
   if(esAlimentadores) abrirSubmenuAlim();
 
@@ -6210,6 +6258,10 @@ async function mostrarVista(nombre){
   if(nombre==='alim-alimentadores' && !vistaCargada.alimAlimentadores){
     vistaCargada.alimAlimentadores = true;
     await cargarAlimentadoresModulo('alim-alimentadores');
+  }
+  if(nombre==='alim-analisis-ciclo' && !vistaCargada.alimAnalisisCiclo){
+    vistaCargada.alimAnalisisCiclo = true;
+    await cargarAnalisisCiclos();
   }
   if(nombre==='temp-entrada' && !vistaCargada.tempEntrada){
     vistaCargada.tempEntrada = true;
@@ -13657,6 +13709,153 @@ async function _alimAsegurarDatosCargados(){
   const desde = `${Math.floor(idx/12)}-${String(idx%12+1).padStart(2,'0')}`;
   ALIM_FILAS = DEMO ? [] : (await apiGet(`/api/alimentadores?desde=${desde}`, AUTH_TIMEOUT_MS)).filas;
   return ALIM_FILAS;
+}
+
+/* ---- Análisis por Ciclo (submódulo de Alimentadores) -- depende
+   EXCLUSIVAMENTE de "analisis de ciclos.csv" (ver load_analisis_ciclos.py).
+   "tipo" se cruza al cargar el backend contra alimentadores_mensual.tipo,
+   no viene en este CSV. Zona = select simple; Subestación/Alimentador =
+   multiselect genérico (msel, ver más abajo en este archivo); Ciclo = una
+   grilla de botones de selección única (como el slicer de la referencia
+   en Power BI). ---- */
+let AC_FILAS = [];
+let AC_CICLO_SELECCIONADO = null;
+let chAcLinea = null;
+
+function acClave(f){ return `${f.anio}-${String(f.mes).padStart(2,'0')}`; }
+
+async function cargarAnalisisCiclos(){
+  const cont = document.getElementById('ch-ac-linea').parentElement;
+  try{
+    const datos = DEMO ? {filas:[]} : await apiGet('/api/analisis-ciclos');
+    AC_FILAS = datos.filas;
+  }catch(e){
+    cont.innerHTML = `<div style="text-align:center;color:#ef476f;padding:40px">${e.message || 'No se pudo cargar Análisis por Ciclo.'}</div>`;
+    return;
+  }
+  if(!AC_FILAS.length) return;
+
+  const tipos = [...new Set(AC_FILAS.map(f=>f.tipo).filter(Boolean))].sort();
+  document.getElementById('ac-tipo').innerHTML = '<option value="">Todos</option>' + tipos.map(t=>`<option value="${t}">${t}</option>`).join('');
+  const liquidaciones = [...new Set(AC_FILAS.map(f=>f.liquidacion).filter(Boolean))].sort();
+  document.getElementById('ac-liquidacion').innerHTML = '<option value="">Todas</option>' + liquidaciones.map(l=>`<option value="${l}">${l}</option>`).join('');
+  const zonas = [...new Set(AC_FILAS.map(f=>f.zona))].sort();
+  document.getElementById('ac-zona').innerHTML = '<option value="">Todas</option>' + zonas.map(z=>`<option value="${z}">${z}</option>`).join('');
+
+  const claves = [...new Set(AC_FILAS.map(acClave))].sort();
+  const inDesde = document.getElementById('ac-desde');
+  const inHasta = document.getElementById('ac-hasta');
+  if(!inDesde.value) inDesde.value = claves.includes('2025-01') ? '2025-01-01' : `${claves[0]}-01`;
+  if(!inHasta.value) inHasta.value = `${claves[claves.length-1]}-01`;
+
+  mselInit('msel-ac-subestacion', 'Subestación', 'Todas', [], ()=>acCambiarSubestacion());
+  mselInit('msel-ac-alimentador', 'Nombre Spard', 'Todos', [], ()=>acRenderTodo());
+
+  acCambiarZona();   // ya deja las 2 listas pobladas y llama acRenderTodo()
+}
+
+// Zona acota Subestación; Subestación (lo que esté elegido en el
+// multiselect) acota Alimentador -- mismo patrón en cascada que Zona/
+// Alimentador/Nivel en Pérdidas Técnicas.
+function acCambiarZona(){
+  const zona = document.getElementById('ac-zona').value;
+  const base = zona ? AC_FILAS.filter(f=>f.zona===zona) : AC_FILAS;
+  const subestaciones = [...new Set(base.map(f=>f.subestacion))].sort();
+  mselSetOpciones('msel-ac-subestacion', subestaciones.map(s=>({value:s, label:s})));
+  acCambiarSubestacion();
+}
+
+function acCambiarSubestacion(){
+  const zona = document.getElementById('ac-zona').value;
+  const subestaciones = mselValores('msel-ac-subestacion');
+  const base = AC_FILAS.filter(f => (!zona || f.zona===zona) && (!subestaciones.length || subestaciones.includes(f.subestacion)));
+  const alimentadores = [...new Set(base.map(f=>f.alimentador))].sort();
+  mselSetOpciones('msel-ac-alimentador', alimentadores.map(a=>({value:a, label:a})));
+  acRenderTodo();
+}
+
+function acCambiarFiltroSuperior(){ acRenderTodo(); }
+
+function acRangoMeses(){
+  const desde = document.getElementById('ac-desde').value ? document.getElementById('ac-desde').value.slice(0,7) : null;
+  const hasta = document.getElementById('ac-hasta').value ? document.getElementById('ac-hasta').value.slice(0,7) : null;
+  return {desde, hasta};
+}
+
+// Todos los filtros MENOS Ciclo -- lo que decide qué ciclos aparecen en
+// la grilla de abajo.
+function acFilasFiltradasSinCiclo(){
+  const {desde, hasta} = acRangoMeses();
+  const tipo = document.getElementById('ac-tipo').value;
+  const liquidacion = document.getElementById('ac-liquidacion').value;
+  const zona = document.getElementById('ac-zona').value;
+  const subestaciones = mselValores('msel-ac-subestacion');
+  const alimentadores = mselValores('msel-ac-alimentador');
+  return AC_FILAS.filter(f => {
+    const c = acClave(f);
+    return (!desde || c>=desde) && (!hasta || c<=hasta)
+      && (!tipo || f.tipo===tipo) && (!liquidacion || f.liquidacion===liquidacion)
+      && (!zona || f.zona===zona)
+      && (!subestaciones.length || subestaciones.includes(f.subestacion))
+      && (!alimentadores.length || alimentadores.includes(f.alimentador));
+  });
+}
+
+function acRenderTodo(){
+  acRenderCiclosGrid();
+  acRenderChart();
+}
+
+function acRenderCiclosGrid(){
+  const cont = document.getElementById('ac-ciclos-grid');
+  const filas = acFilasFiltradasSinCiclo();
+  const ciclos = [...new Set(filas.map(f=>f.ciclo))].sort((a,b)=>a-b);
+  if(!ciclos.includes(AC_CICLO_SELECCIONADO)) AC_CICLO_SELECCIONADO = ciclos.length ? ciclos[0] : null;
+  cont.innerHTML = ciclos.map(c => `
+    <button type="button" class="btn-theme${c===AC_CICLO_SELECCIONADO?' activo':''}" style="padding:8px 4px;font-weight:700" onclick="acSeleccionarCiclo(${c})">${c}</button>
+  `).join('') || '<span style="color:var(--text3);font-size:12px">Sin ciclos para este filtro.</span>';
+}
+
+function acSeleccionarCiclo(ciclo){
+  AC_CICLO_SELECCIONADO = ciclo;
+  acRenderCiclosGrid();
+  acRenderChart();
+}
+
+function acRenderChart(){
+  const dark = document.documentElement.getAttribute('data-theme')==='dark';
+  const tickC = dark ? '#aab8d1' : '#4b5e7a';
+  const tickXFuerte = dark ? '#ffffff' : '#000000';
+  const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
+
+  const filas = acFilasFiltradasSinCiclo().filter(f => AC_CICLO_SELECCIONADO==null || f.ciclo===AC_CICLO_SELECCIONADO);
+  const porClave = new Map();
+  for(const f of filas) porClave.set(acClave(f), (porClave.get(acClave(f))||0) + (f.energia_liquidada_kwh||0));
+  const claves = [...porClave.keys()].sort();
+  const etiquetas = claves.map(labelMes);
+  const datos = claves.map(c=>porClave.get(c));
+
+  if(chAcLinea) chAcLinea.destroy();
+  chAcLinea = new Chart(document.getElementById('ch-ac-linea'), {
+    data:{labels: etiquetas, datasets:[{
+      type:'line', label:`Ciclo ${AC_CICLO_SELECCIONADO ?? '--'}`, data: datos, fill:true,
+      borderColor:'#00b4d8', backgroundColor:'rgba(0,180,216,.35)', borderWidth:2.5, pointRadius:0, tension:.15,
+      datalabels:{display:false},
+    }]},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      layout:{padding:{top:16, right:16, left:8, bottom:4}},
+      interaction:{mode:'index', intersect:false},
+      plugins:{
+        legend:{display:true, position:'top', align:'start', labels:{boxWidth:10, font:{size:11}, color:tickC}},
+        tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`}},
+      },
+      scales:{
+        x:{grid:{display:false}, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}}},
+        y:{beginAtZero:false, grid:{color:gridC}, ticks:{color:tickC, font:{size:11}, callback:v=>fmtGwh(v)}},
+      },
+    },
+  });
 }
 
 /* ---- IP Nivel 4 / IP Nivel 3 -- balance DIARIO real (Entrada/Salida
