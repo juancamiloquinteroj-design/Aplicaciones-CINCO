@@ -988,6 +988,13 @@ tfoot td:first-child{text-align:left}
          (Pérdidas Técnicas, Usuarios Telemedidos, Clientes SIEC,
          Alimentadores, etc), no solo el CSV de Pérdidas Técnicas. -->
     <button type="button" class="btn-theme hidden" id="btn-recarga-manual" style="width:auto;padding:4px 10px;font-size:11px" onclick="recargarDatosManual()" title="Vuelve a leer los archivos de este operador ahora mismo, sin esperar el ciclo automático de 10 minutos">🔄 Actualizar ahora</button>
+    <!-- Aviso fijo (visible en CUALQUIER pantalla, no solo en Código
+         Python) de que hay un script corriendo en esta pestaña -- pedido
+         explícito para no tener miedo de cambiar de módulo mientras
+         corre algo largo. Cambiar de pantalla NO lo interrumpe (el job
+         sigue en el servidor); solo cerrar la pestaña, recargar (F5) o
+         un reinicio del backend sí lo cortan. Ver ipEjecutar/ipPollJob. -->
+    <span id="badge-ip-corriendo" class="badge-demo hidden" title="Puedes cambiar de módulo tranquilo -- esto sigue corriendo en el servidor. Eso sí, no cierres ni recargues esta pestaña."></span>
     <span id="badge-op" class="badge-op hidden"></span>
     <button class="btn-logout hidden" id="btn-suite" onclick="volverASuite()" title="Volver al selector de módulos">🧩 Módulos</button>
     <button class="btn-logout hidden" id="btn-logout" onclick="cerrarSesion()">Salir</button>
@@ -7029,6 +7036,8 @@ function cerrarSesion(){
   document.getElementById('badge-offline').classList.add('hidden');
   document.getElementById('badge-recarga').classList.add('hidden');
   if(_badgeRecargaInterval){ clearInterval(_badgeRecargaInterval); _badgeRecargaInterval = null; }
+  ipDetenerPoll();
+  ipOcultarBadgeCorriendo();
   document.getElementById('btn-logout').classList.add('hidden');
   document.getElementById('btn-suite').classList.add('hidden');
   document.getElementById('btn-menu').classList.add('hidden');
@@ -7959,6 +7968,8 @@ async function ipEjecutar(){
   const btn = document.getElementById('ip-btn-ejecutar');
   estadoEl.textContent = '⏳ Iniciando...';
   btn.disabled = true;
+  IP_POLL_FALLOS = 0;
+  ipMostrarBadgeCorriendo(script.nombre);
   try{
     const r = await apiPost(`/api/indice-perdidas/ejecutar/${script.id}`, body);
     ipDetenerPoll();
@@ -7966,6 +7977,7 @@ async function ipEjecutar(){
     await ipPollJob(r.job_id);
   }catch(e){
     estadoEl.textContent = '❌ ' + e.message;
+    ipOcultarBadgeCorriendo();
   }finally{
     btn.disabled = false;
   }
@@ -7985,11 +7997,44 @@ function ipActualizarResumen(logTexto){
   el.innerHTML = `📄 Último archivo procesado: <b>${ipEscapar(ultimo)}</b> <span style="color:var(--text3)">(${coincidencias.length} en total)</span>`;
 }
 
+function ipMostrarBadgeCorriendo(nombreScript){
+  const badge = document.getElementById('badge-ip-corriendo');
+  if(!badge) return;
+  badge.textContent = `⏳ Ejecutando: ${nombreScript}`;
+  badge.classList.remove('hidden');
+}
+
+function ipOcultarBadgeCorriendo(){
+  const badge = document.getElementById('badge-ip-corriendo');
+  if(badge) badge.classList.add('hidden');
+}
+
+// Refresca el "última corrida" guardado de cada script -- IP_SCRIPTS solo
+// se carga UNA vez al entrar a Código Python, así que sin esto, terminar
+// una corrida nueva no se reflejaba hasta recargar toda la página (bug
+// real reportado: seguía mostrando el resumen de la corrida anterior al
+// cambiar de pestaña y volver).
+async function ipRefrescarUltimaEjecucion(){
+  try{
+    const scripts = await apiGet('/api/indice-perdidas/scripts');
+    IP_SCRIPTS = scripts.slice().sort((a,b)=>a.orden-b.orden);
+  }catch(e){ /* si falla, sigue con lo que ya había en memoria */ }
+}
+
+// Un solo fallo de red al consultar el estado (típico: un blip de
+// conexión) NO debe hacer que la pantalla diga "error" si el script en
+// realidad sigue corriendo o ya terminó bien en el servidor -- pedido
+// explícito tras un caso real donde la corrida SÍ terminó ok pero la
+// pantalla mostró error por una falla puntual del polling. Solo se
+// avisa error después de varios fallos SEGUIDOS.
+let IP_POLL_FALLOS = 0;
+
 async function ipPollJob(jobId){
   const estadoEl = document.getElementById('ip-estado');
   const logEl = document.getElementById('ip-log');
   try{
     const st = await apiGet(`/api/indice-perdidas/job/${jobId}`);
+    IP_POLL_FALLOS = 0;
     if(logEl){ logEl.textContent = st.log || ''; logEl.scrollTop = logEl.scrollHeight; }
     ipActualizarResumen(st.log);
     if(st.estado === 'corriendo'){
@@ -7997,6 +8042,8 @@ async function ipPollJob(jobId){
       return;
     }
     ipDetenerPoll();
+    ipOcultarBadgeCorriendo();
+    await ipRefrescarUltimaEjecucion();
     if(st.estado === 'ok'){
       if(estadoEl) estadoEl.textContent = '✅ Terminado -- descargando archivo...';
       ipMostrarResultado(jobId, st.archivo_salida);
@@ -8006,8 +8053,15 @@ async function ipPollJob(jobId){
       if(estadoEl) estadoEl.textContent = '❌ Error: ' + (st.error || 'falló la ejecución.');
     }
   }catch(e){
+    IP_POLL_FALLOS++;
+    if(IP_POLL_FALLOS < 4){
+      if(estadoEl) estadoEl.textContent = '⏳ Corriendo... (reconectando)';
+      return;  // sigue el intervalo, no se rinde por un solo fallo de red
+    }
     ipDetenerPoll();
-    if(estadoEl) estadoEl.textContent = '❌ ' + e.message;
+    ipOcultarBadgeCorriendo();
+    await ipRefrescarUltimaEjecucion();
+    if(estadoEl) estadoEl.textContent = '❌ ' + e.message + ' -- revisa igual "Última corrida" más abajo, puede que sí haya terminado.';
   }
 }
 
