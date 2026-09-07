@@ -1099,12 +1099,12 @@ tfoot td:first-child{text-align:left}
     </div>
   </div>
 
-  <div class="card">
-    <div class="card-title">1. Índice de Pérdidas</div>
-    <div class="card-sub">Corre acá los scripts que generan y actualizan el Índice de Pérdidas (consolidación CGM, consolidación XM, IPT Comercial e IPT Institucional) -- cada operador puede cambiar sus propias carpetas/nombres de archivo y códigos de agente XM (ej. HLAC/HLAD) antes de ejecutar.</div>
-    <div class="fbar" id="ip-tabs" style="margin:14px 0"></div>
-    <div id="ip-panel"><div style="font-size:12px;color:var(--text3);padding:10px 0">Cargando…</div></div>
+  <div class="sec-hdr" style="margin-bottom:14px">
+    <div class="sec-title" style="font-size:15px">1. Índice de Pérdidas</div>
+    <div class="sec-sub">Consolidación CGM, consolidación XM, IPT Comercial e IPT Institucional -- elige un script para configurarlo y ejecutarlo. Cada operador puede cambiar sus propias carpetas/nombres de archivo y códigos de agente XM (ej. HLAC/HLAD).</div>
   </div>
+  <div class="mod-grid" id="ip-tabs"><div style="font-size:12px;color:var(--text3);padding:10px 0">Cargando…</div></div>
+  <div id="ip-detalle" class="card hidden"></div>
 </div>
 
 <!-- ==================== DASHBOARD ==================== -->
@@ -7728,18 +7728,24 @@ async function pzClickMunicipio(f, layer){
   }
 }
 
-/* ---- Parametrización: "1. Índice de Pérdidas" -- corre desde la web los
-   scripts de consolidación CGM/XM e IPT Comercial/Institucional (antes
-   sueltos en el PC del usuario). Cada script corre en un job de fondo del
-   backend; acá solo se hace polling del log y se ofrece descargar el
-   archivo resultante y/o cargarlo de una vez a la base de datos. ---- */
+/* ---- "Código Python" > "1. Índice de Pérdidas" -- corre desde la web
+   los scripts de consolidación CGM/XM e IPT Comercial/Institucional
+   (antes sueltos en el PC del usuario). Cada script corre en un job de
+   fondo del backend; acá solo se hace polling del log y se ofrece
+   descargar el archivo resultante y/o cargarlo de una vez a la base de
+   datos. Galería de cards + panel de detalle que se abre/cierra al
+   hacer click -- mismo patrón que Reportes SSPD (PR1..PR9, ver
+   _sspdToggleDetalle), pensado para que quepan muchos scripts más
+   adelante sin que la pantalla se vuelva una fila interminable de
+   pestañas. ---- */
 let IP_SCRIPTS = [];
 let IP_CONFIG = {};
 let IP_SCRIPT_ACTIVO = null;
 let IP_POLL_TIMER = null;
+const IP_ICONOS = {cgm:'📥', xm:'⚡', comercial:'💰', institucional:'🏛️'};
 
 async function cargarIndicePerdidas(){
-  const panel = document.getElementById('ip-panel');
+  const grid = document.getElementById('ip-tabs');
   try{
     const [scripts, config] = await Promise.all([
       apiGet('/api/indice-perdidas/scripts'),
@@ -7747,24 +7753,34 @@ async function cargarIndicePerdidas(){
     ]);
     IP_SCRIPTS = scripts.slice().sort((a,b)=>a.orden-b.orden);
     IP_CONFIG = config || {};
-    if(!IP_SCRIPT_ACTIVO && IP_SCRIPTS.length) IP_SCRIPT_ACTIVO = IP_SCRIPTS[0].id;
-    const tabsCont = document.getElementById('ip-tabs');
-    if(tabsCont){
-      tabsCont.innerHTML = IP_SCRIPTS.map(s =>
-        `<button type="button" class="be-modo-btn ip-tab-btn${s.id===IP_SCRIPT_ACTIVO?' activo':''}" data-id="${s.id}" onclick="ipCambiarScript('${s.id}')">${s.nombre}</button>`
-      ).join('');
+    if(grid){
+      grid.innerHTML = IP_SCRIPTS.map(s => `
+        <div class="mod-card" onclick="ipToggleDetalle('${s.id}')">
+          <span class="mc-icon">${IP_ICONOS[s.id] || '🐍'}</span>
+          <div class="mc-title">${ipEscapar(s.nombre)}</div>
+          <div class="mc-desc">${ipEscapar(s.descripcion)}</div>
+        </div>
+      `).join('');
     }
-    ipRenderPanel();
   }catch(e){
-    if(panel) panel.innerHTML = `<div style="font-size:12px;color:var(--text3);padding:10px 0">No se pudo cargar: ${e.message}</div>`;
+    if(grid) grid.innerHTML = `<div style="font-size:12px;color:var(--text3);padding:10px 0">No se pudo cargar: ${e.message}</div>`;
   }
 }
 
-function ipCambiarScript(id){
-  IP_SCRIPT_ACTIVO = id;
+// Abre/cierra el panel de detalle de un script -- click en el mismo card
+// que ya está abierto lo cierra, click en otro cambia el contenido.
+function ipToggleDetalle(id){
+  const detalle = document.getElementById('ip-detalle');
   ipDetenerPoll();
-  document.querySelectorAll('.ip-tab-btn').forEach(b => b.classList.toggle('activo', b.dataset.id === id));
+  if(IP_SCRIPT_ACTIVO === id && !detalle.classList.contains('hidden')){
+    detalle.classList.add('hidden');
+    IP_SCRIPT_ACTIVO = null;
+    return;
+  }
+  IP_SCRIPT_ACTIVO = id;
+  detalle.classList.remove('hidden');
   ipRenderPanel();
+  detalle.scrollIntoView({behavior:'smooth', block:'nearest'});
 }
 
 function ipEscapar(txt){
@@ -7802,7 +7818,7 @@ async function ipGuardarConfig(){
 
 function ipRenderPanel(){
   const script = IP_SCRIPTS.find(s => s.id === IP_SCRIPT_ACTIVO);
-  const cont = document.getElementById('ip-panel');
+  const cont = document.getElementById('ip-detalle');
   if(!script || !cont) return;
 
   let controles = '';
@@ -7815,6 +7831,7 @@ function ipRenderPanel(){
   }
 
   cont.innerHTML = `
+    <div class="card-title">${IP_ICONOS[script.id] || '🐍'} ${ipEscapar(script.nombre)}</div>
     <div class="card-sub" style="margin:0 0 12px">${ipEscapar(script.descripcion)}</div>
     <details style="margin-bottom:14px">
       <summary style="cursor:pointer;font-size:12px;font-weight:700;color:var(--text2)">⚙️ Configuración (rutas y códigos de agente de este operador)</summary>
