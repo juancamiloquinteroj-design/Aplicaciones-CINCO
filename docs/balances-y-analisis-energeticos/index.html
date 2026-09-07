@@ -1159,14 +1159,16 @@ tfoot td:first-child{text-align:left}
              tarjeta, que incluye el panel de análisis a la derecha) -- pedido
              explícito ("el titulo... debe ser centrado de la grafica"). -->
         <div style="text-align:center;margin-bottom:8px">
-          <div style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Indicador de Pérdidas Totales (IP_REG)</div>
+          <div id="ini-ip-titulo-grafico" style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Indicador de Pérdidas Totales (IP_REG)</div>
         </div>
         <div class="chart-wrap" style="height:320px"><canvas id="ch-ini-ip-anual"></canvas></div>
       </div>
       <div style="display:flex;flex-direction:column;gap:8px;min-height:0">
         <div class="fbar" style="margin-bottom:0">
           <label title="El análisis cambia cada mes -- elige un mes anterior para ver cómo se veía esa nota en su momento">Mes del análisis</label>
-          <select id="ini-ip-analisis-mes" onchange="ipGenerarAnalisisInicio()" style="flex:1;min-width:0"></select>
+          <select id="ini-ip-analisis-mes" onchange="iniIpAnalisisMesCambio()" style="flex:1;min-width:0"></select>
+          <button type="button" class="be-modo-btn activo" id="ini-ip-btn-ipreg" style="padding:0 8px" title="IP_Reg (12 meses)" onclick="iniIpCambiarModo('ipreg')">IP_Reg</button>
+          <button type="button" class="be-modo-btn" id="ini-ip-btn-institucional" style="padding:0 8px" title="Indicador de Pérdidas Institucional" onclick="iniIpCambiarModo('institucional')">Institucional</button>
         </div>
         <div id="ini-ip-mensual-comentario" class="ip-comentario-caja" style="flex:1"></div>
       </div>
@@ -1800,6 +1802,7 @@ tfoot td:first-child{text-align:left}
     </div>
     <div class="chart-wrap" style="height:420px"><canvas id="ch-ipi-linea"></canvas></div>
     <div class="be-resumen-cards" id="ipi-resumen" style="margin:16px 0 0"></div>
+    <div id="ipi-comentario" class="ip-comentario-caja" style="margin-top:16px;font-size:11.5px;padding:10px"></div>
   </div>
 
   <div class="card">
@@ -6258,9 +6261,163 @@ async function cargarDashboardIniIpReg(){
   if(DEMO){ card.classList.add('hidden'); return; }
   if(!(await ipAsegurarDatosCargados()) || !IP_REG_FILAS.length){ card.classList.add('hidden'); return; }
   card.classList.remove('hidden');
+  INI_IP_MODO = 'ipreg';
+  document.getElementById('ini-ip-btn-ipreg').classList.add('activo');
+  document.getElementById('ini-ip-btn-institucional').classList.remove('activo');
+  document.getElementById('ini-ip-titulo-grafico').textContent = 'Indicador de Pérdidas Totales (IP_REG)';
   ipPoblarSelectorAnalisisMes('ini-ip-analisis-mes');
   ipGenerarAnalisisInicio();
   ipRenderChartAnualInicio();
+}
+
+// Botón chiquito al lado de "Mes del análisis" -- pedido explícito, poder
+// cambiar la tarjeta de Inicio entre IP_Reg (Anual, CREG 015/2018) y el
+// Indicador de Pérdidas Institucional (IPT Institucional.csv), sin salir
+// de la pantalla de Inicio. Carga IPI_FILAS al vuelo si nadie entró antes
+// al módulo dedicado (mismo patrón que ipAsegurarDatosCargados).
+let INI_IP_MODO = 'ipreg';
+
+async function _ipiAsegurarDatosCargados(){
+  if(IPI_FILAS.length) return true;
+  try{
+    const datos = DEMO ? {filas:[]} : await apiGet('/api/ipt-institucional');
+    IPI_FILAS = datos.filas;
+  }catch(e){ return false; }
+  return IPI_FILAS.length > 0;
+}
+
+async function iniIpCambiarModo(modo){
+  INI_IP_MODO = modo;
+  document.getElementById('ini-ip-btn-ipreg').classList.toggle('activo', modo==='ipreg');
+  document.getElementById('ini-ip-btn-institucional').classList.toggle('activo', modo==='institucional');
+  if(modo==='ipreg'){
+    document.getElementById('ini-ip-titulo-grafico').textContent = 'Indicador de Pérdidas Totales (IP_REG)';
+    ipPoblarSelectorAnalisisMes('ini-ip-analisis-mes');
+    ipGenerarAnalisisInicio();
+    ipRenderChartAnualInicio();
+    return;
+  }
+  document.getElementById('ini-ip-titulo-grafico').textContent = 'Indicador de Pérdidas Institucional';
+  if(!(await _ipiAsegurarDatosCargados())) return;
+  ipiPoblarSelectorAnalisisMes('ini-ip-analisis-mes');
+  ipiGenerarAnalisisInicio();
+  ipiRenderChartAnualInicio();
+}
+
+// El selector "Mes del análisis" es compartido por los 2 modos -- según
+// cuál esté activo, dispara el generador de análisis correspondiente.
+function iniIpAnalisisMesCambio(){
+  if(INI_IP_MODO==='institucional') ipiGenerarAnalisisInicio();
+  else ipGenerarAnalisisInicio();
+}
+
+// Institucional -- mismo patrón que ipPoblarSelectorAnalisisMes, pero
+// sobre la serie institucional agregada (5 zonas), no por medidor/zona.
+function ipiPoblarSelectorAnalisisMes(idSelect){
+  const sel = document.getElementById(idSelect);
+  if(!sel) return;
+  const anterior = sel.value;
+  const reales = ipiSerieCompleta(null).filter(f => f.pct!=null);
+  sel.innerHTML = [...reales].reverse().map(f => `<option value="${f.clave}">${labelMes(f.clave)}</option>`).join('');
+  sel.value = (anterior && [...sel.options].some(o=>o.value===anterior)) ? anterior : (reales.length ? reales[reales.length-1].clave : '');
+}
+
+// Mismo par de series (Pérdida %, Pérdida kWh) que el gráfico principal
+// del Indicador de Pérdidas Institucional, pero simplificado para la
+// tarjeta de Inicio -- sin filtros/proyección/zona (esas herramientas
+// pertenecen a la página dedicada): agregado institucional, últimos meses
+// desde enero-2025.
+function ipiRenderChartAnualInicio(){
+  const dark = document.documentElement.getAttribute('data-theme')==='dark';
+  const tickC = dark ? '#ffffff' : '#000000';
+  const tickXFuerte = dark ? '#ffffff' : '#000000';
+  const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
+
+  const visibles = ipiSerieCompleta(null).filter(f => f.pct!=null && f.clave >= '2025-01');
+  const etiquetas = visibles.map(f => labelMes(f.clave));
+
+  if(chIniIpAnual) chIniIpAnual.destroy();
+  chIniIpAnual = new Chart(document.getElementById('ch-ini-ip-anual'), {
+    data:{
+      labels: etiquetas,
+      datasets:[
+        {type:'line', label:'Pérdida kWh Mensual -- Institucional', yAxisID:'y', order:2,
+          data: visibles.map(f=>f.kwh), borderColor:IPI_COLOR_KWH, backgroundColor:'transparent',
+          borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0},
+        {type:'line', label:'Pérdida % Mensual -- Institucional', yAxisID:'yPct', order:1,
+          data: visibles.map(f=>f.pct), borderColor:IPI_COLOR_PCT,
+          backgroundColor:'rgba(237,125,49,.12)', borderWidth:2.5, pointRadius:2, spanGaps:true, tension:0,
+          datalabels:{display:true, anchor:'end', align:'top', offset:12,
+            formatter:v=>v==null?'':v.toFixed(2)+'%', font:{size:11, weight:'700'}, color:IPI_COLOR_PCT}},
+      ],
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      layout:{padding:{top:24, right:20}},
+      interaction:{mode:'index', intersect:false},
+      plugins:{
+        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:10}, color:tickC}},
+        tooltip:{callbacks:{label:c=>{
+          if(c.raw==null) return null;
+          return c.dataset.yAxisID==='yPct' ? `${c.dataset.label}: ${c.raw.toFixed(2)}%` : `${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`;
+        }}},
+        zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:3}}},
+      },
+      scales:{
+        x:{grid:{display:false}, offset:true,
+          ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
+        yPct:{type:'linear', position:'left', grid:{color:gridC},
+          ticks:{color:tickC, font:{size:11}, callback:v=>v.toFixed(1)+'%'},
+          title:{display:true, text:'% Pérdida Mensual', color:tickC, font:{size:11}}},
+        y:{position:'right', grid:{drawOnChartArea:false},
+          ticks:{color:tickC, font:{size:10}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
+          title:{display:true, text:'Pérdida Mensual (kWh)', color:tickC, font:{size:10}},
+          afterFit:ax=>{ax.width=Math.max(ax.width,60)}},
+      },
+    },
+  });
+}
+
+// Análisis institucional para la tarjeta de Inicio -- respeta el
+// selector "Mes del análisis" (compartido con IP_Reg).
+function ipiGenerarAnalisisInicio(){
+  const cont = document.getElementById('ini-ip-mensual-comentario');
+  if(!cont) return;
+  const reales = ipiSerieCompleta(null).filter(f => f.pct!=null);
+  if(reales.length < 2){
+    cont.innerHTML = '<div class="ip-comentario-titulo">Análisis</div><p>Todavía no hay suficientes meses reales para analizar la variación.</p>';
+    return;
+  }
+  const sel = document.getElementById('ini-ip-analisis-mes');
+  let idx = sel && sel.value ? reales.findIndex(f => f.clave === sel.value) : -1;
+  if(idx < 1) idx = reales.length - 1;
+  const actual = reales[idx];
+  const anterior = reales[idx-1];
+  const mesActualLargo = labelMesLargo(actual.clave);
+  const mesAnteriorLargo = labelMesLargo(anterior.clave);
+  const [anioAct, mesAct] = actual.clave.split('-').map(Number);
+  const signo = v => v >= 0 ? '+' : '-';
+  const fk = v => Math.round(v).toLocaleString('es-CO');
+
+  const deltaMensual = actual.pct - anterior.pct;
+  const sube = deltaMensual > 0;
+  const deltaKwh = actual.kwh - anterior.kwh;
+
+  const claveAnioAnterior = `${anioAct-1}-${String(mesAct).padStart(2,'0')}`;
+  const filaAnioAnterior = reales.find(f => f.clave===claveAnioAnterior) || ipiSerieCompleta(null).find(f => f.clave===claveAnioAnterior);
+
+  let parrafoAnual = '';
+  if(filaAnioAnterior && filaAnioAnterior.pct != null){
+    const deltaAnual = actual.pct - filaAnioAnterior.pct;
+    const subeAnual = deltaAnual > 0;
+    parrafoAnual = ` Frente al mismo mes del año anterior (${labelMesLargo(claveAnioAnterior)}), el índice era de <b>${filaAnioAnterior.pct.toFixed(2)}%</b>, por lo que la variación anual es de <b>${signo(deltaAnual)}${Math.abs(deltaAnual).toFixed(2)} pp</b> (${subeAnual?'aumenta':'disminuye'}).`;
+  }
+
+  cont.innerHTML = `
+    <div class="ip-comentario-titulo">Análisis IPT -- ${mesActualLargo}</div>
+    <div class="ip-comentario-cifra ${sube?'sube':'baja'}">${actual.pct.toFixed(2)}% (${fk(actual.kwh)} kWh)</div>
+    <p>El índice Institucional pasó de <b>${anterior.pct.toFixed(2)}%</b> en ${mesAnteriorLargo} a <b>${actual.pct.toFixed(2)}%</b> en ${mesActualLargo}, lo que equivale a pasar de una pérdida de <b>${fk(anterior.kwh)} kWh</b> a <b>${fk(actual.kwh)} kWh</b> -- un ${sube?'incremento':'descenso'} de <b>${Math.abs(deltaMensual).toFixed(2)} pp</b>, equivalente a <b>${signo(deltaKwh)}${fk(Math.abs(deltaKwh))} kWh</b>.${parrafoAnual}</p>
+  `;
 }
 
 // Tarjeta de Inicio: el MISMO croquis por zona de Indicador N2-1
@@ -12769,6 +12926,7 @@ let IPI_MODO = 'mensual';            // 'mensual' | 'anual' (ventana móvil de 1
 let IPI_MOSTRAR_VARIACION = false;   // Δ Variación -- mismo patrón que IP_Reg (ipToggleVariacion)
 let IPI_MOSTRAR_RELLENO = true;      // relleno bajo la línea de kWh -- toggle explícito para poder quitarlo
 let IPI_MOSTRAR_PROYECCION = false;  // 🔮 Proyección -- misma regresión lineal (ipRegresionLineal) que IP_Reg/Indicador Comercial
+let IPI_KWH_OCULTO = true;           // la línea de kWh arranca oculta -- al entrar solo se ve Pérdida % Mensual
 let IPI_BARRAS_MODO = 'mensual';     // 'mensual' | 'anual' -- agrupación del eje X de "Pérdida por Zona"
 let IPI_BARRAS_METRICA = 'pct';      // 'pct' | 'kwh' -- qué se apila en "Pérdida por Zona"
 
@@ -12894,6 +13052,7 @@ function ipiRenderTodo(){
   ipiRenderResumen();
   ipiRenderBarras();
   ipiRenderDona();
+  ipiGenerarAnalisis();
 }
 
 // Serie mensual agregada (institucional = suma de las 5 zonas si zona es
@@ -12966,9 +13125,14 @@ function ipiEstiloDatalabel(color, esPct){
     return {
       display:true, anchor:'end', align: esPct?'top':'bottom', offset: esPct?10:14,
       formatter:v=>v==null?'':(esPct ? v.toFixed(2)+'%' : v.toLocaleString('es-CO',{maximumFractionDigits:0})+' kWh'),
-      font:{size: esPct?14:11, weight:'800'}, color,
+      font:{size: esPct?14:11, weight:'700'}, color,
     };
   }
+  // Mismo peso de letra (700) en ambos renglones -- antes el valor salía
+  // en 800 y la variación en 700, y se veía "como 2 tipos de letra
+  // distintos" (feedback explícito del usuario). También se achica un
+  // poco el % (14->13) para que el salto de tamaño contra el renglón de
+  // abajo sea menos brusco.
   const dark = document.documentElement.getAttribute('data-theme')==='dark';
   return {
     display:true, anchor:'end', align: esPct?'top':'bottom', offset: esPct?10:14,
@@ -12984,7 +13148,7 @@ function ipiEstiloDatalabel(color, esPct){
                    : [base, `${icono} ${Math.abs(delta).toLocaleString('es-CO',{maximumFractionDigits:0})}`];
     },
     color:(ctx)=>{ const datos = ctx.dataset.data; return [color, ipColorVariacion(datos[ctx.dataIndex], datos[ctx.dataIndex-1], dark?'#aab8d1':'#6b7280')]; },
-    textAlign:'center', font:[{size: esPct?14:11, weight:'800'},{size:10, weight:'700'}],
+    textAlign:'center', font:[{size: esPct?13:11, weight:'700'},{size:10, weight:'700'}],
   };
 }
 
@@ -13008,6 +13172,10 @@ function ipiRenderChart(){
   document.getElementById('ipi-btn-variacion').classList.toggle('activo', IPI_MOSTRAR_VARIACION);
   document.getElementById('ipi-btn-relleno').classList.toggle('activo', IPI_MOSTRAR_RELLENO);
   document.getElementById('ipi-btn-proyeccion').classList.toggle('activo', IPI_MOSTRAR_PROYECCION);
+  // Al entrar, solo Pérdida % Mensual queda visible -- kWh arranca oculto
+  // (se prende a mano desde la leyenda) pero respeta lo que el usuario ya
+  // haya prendido/apagado a mano, igual que IP_PT_OCULTO en IP_Reg.
+  if(chIpiLinea && chIpiLinea.data.datasets[1]) IPI_KWH_OCULTO = !!chIpiLinea.data.datasets[1].hidden;
 
   let etiquetas = series[0].serie.map(f => labelMes(f.clave));
   const etiquetaModo = IPI_MODO==='anual' ? 'Anual (12m)' : 'Mensual';
@@ -13022,7 +13190,7 @@ function ipiRenderChart(){
       {type:'line', label:`Pérdida % ${etiquetaModo} -- Institucional`, yAxisID:'yPct', data: pctDatos, order:1,
         borderColor:IPI_COLOR_PCT, backgroundColor:'rgba(237,125,49,.15)', borderWidth:2.5, pointRadius:2, spanGaps:true, tension:0,
         datalabels: ipiEstiloDatalabel(IPI_COLOR_PCT, true)},
-      {type:'line', label:`Pérdida kWh ${etiquetaModo} -- Institucional`, yAxisID:'y', data: s.map(f=>f.kwh), order:3,
+      {type:'line', label:`Pérdida kWh ${etiquetaModo} -- Institucional`, yAxisID:'y', data: s.map(f=>f.kwh), order:3, hidden: IPI_KWH_OCULTO,
         borderColor:IPI_COLOR_KWH, backgroundColor:'rgba(68,114,196,.18)', borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0,
         fill: IPI_MOSTRAR_RELLENO, datalabels: ipiEstiloDatalabel(IPI_COLOR_KWH, false)},
     );
@@ -13145,6 +13313,51 @@ function ipiRenderResumen(){
   cont.innerHTML = tarjetas.join('');
 }
 
+// Análisis narrativo -- mismo tono/estructura que ipComercialGenerarAnalisis
+// (Indicador Comercial): compara el último mes visible contra el anterior
+// y, si hay dato, contra el mismo mes del año anterior. Sigue la
+// zona/modo (Mensual o Anual) que esté elegido arriba.
+function ipiGenerarAnalisis(){
+  const cont = document.getElementById('ipi-comentario');
+  if(!cont) return;
+  const primera = ipiSeriesActivas()[0];
+  const visibles = primera.serie.filter(f => f.pct!=null);
+  if(visibles.length < 2){
+    cont.innerHTML = '<div class="ip-comentario-titulo">Análisis</div><p>Todavía no hay suficientes meses reales para analizar la variación.</p>';
+    return;
+  }
+  const actual = visibles[visibles.length-1];
+  const anterior = visibles[visibles.length-2];
+  const mesActualLargo = labelMesLargo(actual.clave);
+  const mesAnteriorLargo = labelMesLargo(anterior.clave);
+  const [anioAct, mesAct] = actual.clave.split('-').map(Number);
+  const signo = v => v >= 0 ? '+' : '-';
+  const fk = v => Math.round(v).toLocaleString('es-CO');
+  const etiquetaZona = primera.zona ? `Zona ${primera.zona}` : 'Institucional';
+
+  const deltaMensual = actual.pct - anterior.pct;
+  const sube = deltaMensual > 0;
+  const deltaKwh = actual.kwh - anterior.kwh;
+
+  const claveAnioAnterior = `${anioAct-1}-${String(mesAct).padStart(2,'0')}`;
+  const filaAnioAnterior = IPI_FILAS.length
+    ? (()=>{ const s = ipiSerieCompleta(primera.zona); return s.find(f => f.clave===claveAnioAnterior); })()
+    : null;
+
+  let parrafoAnual = '';
+  if(filaAnioAnterior && filaAnioAnterior.pct != null){
+    const deltaAnual = actual.pct - filaAnioAnterior.pct;
+    const subeAnual = deltaAnual > 0;
+    parrafoAnual = ` Frente al mismo mes del año anterior (${labelMesLargo(claveAnioAnterior)}), el índice era de <b>${filaAnioAnterior.pct.toFixed(2)}%</b>, por lo que la variación anual es de <b>${signo(deltaAnual)}${Math.abs(deltaAnual).toFixed(2)} pp</b> (${subeAnual?'aumenta':'disminuye'}).`;
+  }
+
+  cont.innerHTML = `
+    <div class="ip-comentario-titulo">Análisis IPT -- ${mesActualLargo}</div>
+    <div class="ip-comentario-cifra ${sube?'sube':'baja'}">${actual.pct.toFixed(2)}% (${fk(actual.kwh)} kWh)</div>
+    <p>El índice ${etiquetaZona} pasó de <b>${anterior.pct.toFixed(2)}%</b> en ${mesAnteriorLargo} a <b>${actual.pct.toFixed(2)}%</b> en ${mesActualLargo}, lo que equivale a pasar de una pérdida de <b>${fk(anterior.kwh)} kWh</b> a <b>${fk(actual.kwh)} kWh</b> -- un ${sube?'incremento':'descenso'} de <b>${Math.abs(deltaMensual).toFixed(2)} pp</b>, equivalente a <b>${signo(deltaKwh)}${fk(Math.abs(deltaKwh))} kWh</b>.${parrafoAnual}</p>
+  `;
+}
+
 // Rango PROPIO de "Pérdida por Zona" (independiente del de la línea
 // principal, de arriba) -- por defecto el último año disponible (ver
 // cargarIpInstitucional), pero editable a mano en sus propios inputs.
@@ -13233,7 +13446,12 @@ function ipiRenderBarras(){
     options:{
       responsive:true, maintainAspectRatio:false,
       layout:{padding:{top:24}},
-      plugins:{legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:10}, color:tickC,
+      // usePointStyle:false -- el default global de la app dibuja la
+      // leyenda como una LINEA (color = borderColor), que en un gráfico de
+      // barras se ve sin color porque las barras solo traen
+      // backgroundColor. Acá se vuelve al cuadrito clásico, que sí toma
+      // el backgroundColor de cada zona.
+      plugins:{legend:{display:true, position:'bottom', labels:{usePointStyle:false, boxWidth:12, font:{size:10}, color:tickC,
         filter:item=>item.text!=='Total'}}},
       scales:{
         x:{stacked:true, grid:{display:false}, ticks:{color:tickXFuerte, font:{size:11}}},
@@ -13265,7 +13483,10 @@ function ipiRenderDona(){
       responsive:true, maintainAspectRatio:false,
       cutout:'62%',
       plugins:{
-        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:11}, color:tickC}},
+        // usePointStyle:false por la misma razón que en ipiRenderBarras --
+        // sin esto la leyenda salía sin color (dibujaba una línea con
+        // borderColor, que acá es blanco/negro, no el color de cada zona).
+        legend:{display:true, position:'bottom', labels:{usePointStyle:false, boxWidth:12, font:{size:11}, color:tickC}},
         tooltip:{callbacks:{label:c=>{
           const pct = total ? (c.raw/total*100) : 0;
           return `${c.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh (${pct.toFixed(1)}%)`;
