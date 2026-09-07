@@ -1431,6 +1431,14 @@ tfoot td:first-child{text-align:left}
     <div class="sec-title">Parametrización</div>
     <div class="sec-sub">Colores de zona y límites estadísticos para todas las gráficas</div>
   </div>
+
+  <div class="card">
+    <div class="card-title">1. Índice de Pérdidas</div>
+    <div class="card-sub">Corre acá los scripts que generan y actualizan el Índice de Pérdidas (consolidación CGM, consolidación XM, IPT Comercial e IPT Institucional) -- cada operador puede cambiar sus propias carpetas/nombres de archivo y códigos de agente XM (ej. HLAC/HLAD) antes de ejecutar.</div>
+    <div class="fbar" id="ip-tabs" style="margin:14px 0"></div>
+    <div id="ip-panel"><div style="font-size:12px;color:var(--text3);padding:10px 0">Cargando…</div></div>
+  </div>
+
   <div class="card">
     <div class="card-title">Color por zona</div>
     <div class="card-sub">Cada operador trae sus propios códigos de zona -- asigna un color a cada uno y se usa en todas las gráficas y tablas de Pérdidas Técnicas.</div>
@@ -6219,6 +6227,7 @@ async function mostrarVista(nombre){
   if(nombre==='parametrizacion' && !vistaCargada.parametrizacion){
     vistaCargada.parametrizacion = true;
     await cargarParametrizacion();
+    await cargarIndicePerdidas();
   }
   if(nombre==='telemedidos' && !vistaCargada.telemedidos){
     vistaCargada.telemedidos = true;
@@ -7685,6 +7694,210 @@ async function pzClickMunicipio(f, layer){
     layer.bindTooltip(`<b>${nombre}</b>${nuevaZona?' -- Zona '+nuevaZona:''}`, {sticky:true, direction:'top'});
   }catch(e){
     alert(e.message || 'No se pudo guardar la zona.');
+  }
+}
+
+/* ---- Parametrización: "1. Índice de Pérdidas" -- corre desde la web los
+   scripts de consolidación CGM/XM e IPT Comercial/Institucional (antes
+   sueltos en el PC del usuario). Cada script corre en un job de fondo del
+   backend; acá solo se hace polling del log y se ofrece descargar el
+   archivo resultante y/o cargarlo de una vez a la base de datos. ---- */
+let IP_SCRIPTS = [];
+let IP_CONFIG = {};
+let IP_SCRIPT_ACTIVO = null;
+let IP_POLL_TIMER = null;
+
+async function cargarIndicePerdidas(){
+  const panel = document.getElementById('ip-panel');
+  try{
+    const [scripts, config] = await Promise.all([
+      apiGet('/api/indice-perdidas/scripts'),
+      apiGet('/api/indice-perdidas/config'),
+    ]);
+    IP_SCRIPTS = scripts.slice().sort((a,b)=>a.orden-b.orden);
+    IP_CONFIG = config || {};
+    if(!IP_SCRIPT_ACTIVO && IP_SCRIPTS.length) IP_SCRIPT_ACTIVO = IP_SCRIPTS[0].id;
+    const tabsCont = document.getElementById('ip-tabs');
+    if(tabsCont){
+      tabsCont.innerHTML = IP_SCRIPTS.map(s =>
+        `<button type="button" class="be-modo-btn ip-tab-btn${s.id===IP_SCRIPT_ACTIVO?' activo':''}" data-id="${s.id}" onclick="ipCambiarScript('${s.id}')">${s.nombre}</button>`
+      ).join('');
+    }
+    ipRenderPanel();
+  }catch(e){
+    if(panel) panel.innerHTML = `<div style="font-size:12px;color:var(--text3);padding:10px 0">No se pudo cargar: ${e.message}</div>`;
+  }
+}
+
+function ipCambiarScript(id){
+  IP_SCRIPT_ACTIVO = id;
+  ipDetenerPoll();
+  document.querySelectorAll('.ip-tab-btn').forEach(b => b.classList.toggle('activo', b.dataset.id === id));
+  ipRenderPanel();
+}
+
+function ipEscapar(txt){
+  return String(txt == null ? '' : txt).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+}
+
+function ipRenderConfigCampos(script){
+  const cont = document.getElementById('ip-config-campos');
+  if(!cont) return;
+  cont.innerHTML = script.campos_config.map(c => {
+    const valorGuardado = IP_CONFIG[c.clave];
+    const valor = (valorGuardado !== undefined && valorGuardado !== null && valorGuardado !== '') ? valorGuardado : c.default;
+    return `<div style="margin-bottom:8px">
+      <label style="display:block;font-size:11px;color:var(--text3);margin-bottom:3px">${ipEscapar(c.etiqueta)}</label>
+      <input type="text" data-clave="${c.clave}" value="${ipEscapar(valor)}"
+        style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg)">
+    </div>`;
+  }).join('');
+}
+
+async function ipGuardarConfig(){
+  const cont = document.getElementById('ip-config-campos');
+  const st = document.getElementById('ip-config-st');
+  if(!cont) return;
+  const valores = {};
+  cont.querySelectorAll('input[data-clave]').forEach(inp => { valores[inp.dataset.clave] = inp.value.trim(); });
+  try{
+    await apiPut('/api/indice-perdidas/config', {valores});
+    Object.assign(IP_CONFIG, valores);
+    if(st){ st.textContent = '✅ Guardado'; setTimeout(()=>{ if(st) st.textContent = ''; }, 2500); }
+  }catch(e){
+    if(st) st.textContent = '❌ ' + e.message;
+  }
+}
+
+function ipRenderPanel(){
+  const script = IP_SCRIPTS.find(s => s.id === IP_SCRIPT_ACTIVO);
+  const cont = document.getElementById('ip-panel');
+  if(!script || !cont) return;
+
+  let controles = '';
+  if(script.requiere_rango_fechas){
+    controles += `<label>Desde</label><input type="month" id="ip-fecha-desde">
+      <label style="margin-left:10px">Hasta</label><input type="month" id="ip-fecha-hasta">`;
+  }
+  if(script.requiere_mes_filtro){
+    controles += `<label>Mes a procesar <span style="color:var(--text3);font-weight:400">(vacío = todos)</span></label><input type="month" id="ip-mes-filtro">`;
+  }
+
+  cont.innerHTML = `
+    <div class="card-sub" style="margin:0 0 12px">${ipEscapar(script.descripcion)}</div>
+    <details style="margin-bottom:14px">
+      <summary style="cursor:pointer;font-size:12px;font-weight:700;color:var(--text2)">⚙️ Configuración (rutas y códigos de agente de este operador)</summary>
+      <div id="ip-config-campos" style="margin-top:12px"></div>
+      <div class="fbar" style="margin-top:4px">
+        <button type="button" class="btn-theme" style="width:auto;padding:6px 14px" onclick="ipGuardarConfig()">Guardar configuración</button>
+        <span id="ip-config-st" style="font-size:11px;font-weight:700;color:#06d6a0"></span>
+      </div>
+    </details>
+    <div class="fbar" style="margin-bottom:10px">
+      ${controles}
+      <button type="button" class="btn-theme" id="ip-btn-ejecutar" style="width:auto;padding:7px 18px;margin-left:auto" onclick="ipEjecutar()">▶ Ejecutar</button>
+    </div>
+    <div id="ip-estado" style="font-size:12px;font-weight:700;margin-bottom:8px;min-height:16px"></div>
+    <pre id="ip-log" style="background:var(--bg3);border-radius:8px;padding:10px;max-height:260px;overflow-y:auto;font-size:11px;white-space:pre-wrap;margin:0 0 10px;color:var(--text2)"></pre>
+    <div id="ip-resultado"></div>
+  `;
+  ipRenderConfigCampos(script);
+}
+
+function ipDetenerPoll(){
+  if(IP_POLL_TIMER){ clearInterval(IP_POLL_TIMER); IP_POLL_TIMER = null; }
+}
+
+async function ipEjecutar(){
+  const script = IP_SCRIPTS.find(s => s.id === IP_SCRIPT_ACTIVO);
+  if(!script) return;
+  const body = {};
+  if(script.requiere_rango_fechas){
+    const desde = document.getElementById('ip-fecha-desde').value;
+    const hasta = document.getElementById('ip-fecha-hasta').value;
+    if(!desde || !hasta){ alert('Elige el rango de fechas (desde/hasta).'); return; }
+    body.fecha_desde = desde; body.fecha_hasta = hasta;
+  }
+  if(script.requiere_mes_filtro){
+    body.mes_filtro = document.getElementById('ip-mes-filtro').value || null;
+  }
+
+  document.getElementById('ip-log').textContent = '';
+  document.getElementById('ip-resultado').innerHTML = '';
+  const estadoEl = document.getElementById('ip-estado');
+  const btn = document.getElementById('ip-btn-ejecutar');
+  estadoEl.textContent = '⏳ Iniciando...';
+  btn.disabled = true;
+  try{
+    const r = await apiPost(`/api/indice-perdidas/ejecutar/${script.id}`, body);
+    ipDetenerPoll();
+    IP_POLL_TIMER = setInterval(() => ipPollJob(r.job_id), 1500);
+    await ipPollJob(r.job_id);
+  }catch(e){
+    estadoEl.textContent = '❌ ' + e.message;
+  }finally{
+    btn.disabled = false;
+  }
+}
+
+async function ipPollJob(jobId){
+  const estadoEl = document.getElementById('ip-estado');
+  const logEl = document.getElementById('ip-log');
+  try{
+    const st = await apiGet(`/api/indice-perdidas/job/${jobId}`);
+    if(logEl){ logEl.textContent = st.log || ''; logEl.scrollTop = logEl.scrollHeight; }
+    if(st.estado === 'corriendo'){
+      if(estadoEl) estadoEl.textContent = '⏳ Corriendo...';
+      return;
+    }
+    ipDetenerPoll();
+    if(st.estado === 'ok'){
+      if(estadoEl) estadoEl.textContent = '✅ Terminado';
+      ipMostrarResultado(jobId, st.archivo_salida);
+    }else{
+      if(estadoEl) estadoEl.textContent = '❌ Error: ' + (st.error || 'falló la ejecución.');
+    }
+  }catch(e){
+    ipDetenerPoll();
+    if(estadoEl) estadoEl.textContent = '❌ ' + e.message;
+  }
+}
+
+function ipMostrarResultado(jobId, nombreArchivo){
+  const script = IP_SCRIPTS.find(s => s.id === IP_SCRIPT_ACTIVO);
+  const cont = document.getElementById('ip-resultado');
+  if(!cont) return;
+  let html = `<button type="button" class="btn-theme" style="width:auto;padding:7px 16px" onclick="ipDescargarArchivo('${jobId}','${ipEscapar(nombreArchivo || 'archivo')}')">📥 Descargar ${ipEscapar(nombreArchivo || 'archivo')}</button>`;
+  if(script && script.permite_cargar_bd){
+    html += ` <button type="button" class="btn-theme" style="width:auto;padding:7px 16px;margin-left:8px" onclick="ipCargarBD('${jobId}', this)">💾 Cargar a la base de datos ahora</button>`;
+  }
+  cont.innerHTML = html;
+}
+
+async function ipDescargarArchivo(jobId, nombre){
+  try{
+    const res = await fetch(`${API_BASE_URL}/api/indice-perdidas/job/${jobId}/descargar`, {headers: authHeaders()});
+    if(!res.ok) throw new Error('el servidor no pudo entregar el archivo.');
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = nombre || 'archivo';
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  }catch(e){
+    alert('No se pudo descargar: ' + e.message);
+  }
+}
+
+async function ipCargarBD(jobId, btn){
+  const textoOriginal = btn.textContent;
+  btn.disabled = true; btn.textContent = '⏳ Cargando...';
+  try{
+    await apiPost(`/api/indice-perdidas/job/${jobId}/cargar`, {});
+    btn.textContent = '✅ Cargado a la base de datos';
+  }catch(e){
+    alert('Error al cargar a la base de datos: ' + e.message);
+    btn.disabled = false; btn.textContent = textoOriginal;
   }
 }
 
