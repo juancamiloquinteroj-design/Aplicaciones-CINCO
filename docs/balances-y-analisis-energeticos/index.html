@@ -14064,6 +14064,33 @@ function acRenderChart(){
   });
 }
 
+// Flecha arriba/abajo cambia de Alimentador sin tocar el mouse -- mismo
+// patrón que "Ver Balance" (Balances por Estructura) y los botones ▲▼ de
+// Usuarios Telemedidos (mselSetSeleccion). Recorre la lista de
+// alimentadores que YA está disponible en el multiselect (respeta Zona/
+// Subestación/Tipo/Liquidación/Ciclo actuales -- el cruce dinámico de
+// acAplicarFiltros ya la dejó acotada ahí). Se ignora si el foco está en
+// un campo de texto/select/fecha o si no estamos en esta vista.
+function acPasoAlimentador(delta){
+  const st = MSEL['msel-ac-alimentador'];
+  const lista = st ? st.opciones.map(o=>o.value) : [];
+  if(!lista.length) return;
+  const actuales = mselValores('msel-ac-alimentador');
+  let idx = actuales.length===1 ? lista.indexOf(actuales[0]) : -1;
+  idx = idx<0 ? 0 : (idx + delta + lista.length) % lista.length;
+  mselSetSeleccion('msel-ac-alimentador', [lista[idx]]);
+}
+
+document.addEventListener('keydown', (ev)=>{
+  if(ev.key !== 'ArrowUp' && ev.key !== 'ArrowDown') return;
+  const vista = document.getElementById('vista-alim-analisis-ciclo');
+  if(!vista || vista.classList.contains('hidden')) return;
+  const tagActivo = document.activeElement && document.activeElement.tagName;
+  if(['INPUT','SELECT','TEXTAREA'].includes(tagActivo)) return;
+  ev.preventDefault();
+  acPasoAlimentador(ev.key==='ArrowDown' ? 1 : -1);
+});
+
 /* ---- IP Nivel 4 / IP Nivel 3 -- balance DIARIO real (Entrada/Salida
    medidas), depende de "Consolidado Nivel 4.csv" / "Consolidado Zonas
    N3.csv" (ver load_nivel34.py / GET /api/nivel34?nivel=). El "por qué"
