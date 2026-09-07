@@ -7938,7 +7938,21 @@ function ipRenderPanel(){
     const icono = u.estado === 'ok' ? '✅' : '❌';
     const resumenEl = document.getElementById('ip-resumen');
     if(resumenEl){
-      resumenEl.innerHTML = `${icono} Última corrida: ${fecha}${u.resumen ? ' -- ' + ipEscapar(u.resumen) : ''}`;
+      let html = `${icono} Última corrida: ${fecha}${u.resumen ? ' -- ' + ipEscapar(u.resumen) : ''}`;
+      // Si el script tiene "Cargar a la base de datos", avisar EXPLÍCITO
+      // si esa última corrida ya quedó cargada o sigue pendiente -- sin
+      // esto, al recargar la página no había forma de saberlo sin
+      // volver a correr todo (pedido explícito tras un caso real de
+      // confusión: el usuario no sabía si julio 2026 ya estaba cargado).
+      if(script.permite_cargar_bd && u.estado === 'ok'){
+        if(u.cargado_en){
+          const fechaCarga = new Date(u.cargado_en).toLocaleString('es-CO', {dateStyle:'short', timeStyle:'short'});
+          html += `<br>💾 <span style="color:#06d6a0">Cargado a la base de datos: ${fechaCarga}</span>`;
+        }else{
+          html += `<br>⚠️ <span style="color:#ffb703">Todavía NO se ha cargado a la base de datos -- corre "Ejecutar" de nuevo para volver a ver el botón "Cargar".</span>`;
+        }
+      }
+      resumenEl.innerHTML = html;
     }
   }
 }
