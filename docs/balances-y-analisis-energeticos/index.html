@@ -3380,7 +3380,7 @@ tfoot td:first-child{text-align:left}
         <label style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:700">Nombre Spard</label>
         <div class="msel" id="msel-ac-alimentador" style="margin:6px 0 14px"></div>
         <label style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:700">Datos del Ciclo</label>
-        <div id="ac-datos-ciclo" class="be-resumen-cards" style="grid-template-columns:1fr;margin-top:6px"></div>
+        <table class="be-tabla-creadas" style="margin-top:6px"><tbody id="ac-datos-ciclo"></tbody></table>
       </div>
     </div>
   </div>
@@ -13878,18 +13878,17 @@ function acAplicarFiltros(){
 // del Rango de fechas actual: energía, usuarios y participación del
 // último mes disponible, y cuántas zonas/subestaciones/alimentadores
 // distintos entran en el filtro activo.
+// Pedido explícito: tabla chica de 2 columnas (etiqueta/valor), NO
+// tarjetas -- mismo <tbody> que las demás tablas de la app
+// (.be-tabla-creadas), solo que angosta y sin encabezado.
 function acRenderDatosCiclo(){
   const cont = document.getElementById('ac-datos-ciclo');
   if(!cont) return;
-  const filas = acFilasFiltradas(null);
-  const tarjeta = (etiqueta, valor, sub) => `<div class="be-resumen-tile">
-    <div class="etiqueta">${etiqueta}</div>
-    <div class="valor">${valor}</div>
-    ${sub ? `<div class="sub">${sub}</div>` : ''}
-  </div>`;
+  const fila = (etiqueta, valor) => `<tr><td style="color:var(--text3)">${etiqueta}</td><td style="font-weight:700;text-align:right">${valor}</td></tr>`;
 
+  const filas = acFilasFiltradas(null);
   if(!filas.length){
-    cont.innerHTML = tarjeta('Ciclo', AC_CICLO_SELECCIONADO ?? 'Todos', 'Sin datos para este filtro');
+    cont.innerHTML = fila('Ciclo', AC_CICLO_SELECCIONADO ?? 'Todos') + fila('Datos', 'Sin datos para este filtro');
     return;
   }
 
@@ -13910,12 +13909,14 @@ function acRenderDatosCiclo(){
     : null;
 
   cont.innerHTML = [
-    tarjeta('Ciclo', AC_CICLO_SELECCIONADO ?? 'Todos'),
-    tarjeta('Energía Liquidada', kwhLiquidada.toLocaleString('es-CO',{maximumFractionDigits:0})+' kWh', 'suma del rango elegido'),
-    tarjeta('Energía Ponderada', kwhPonderada.toLocaleString('es-CO',{maximumFractionDigits:0})+' kWh', 'suma del rango elegido'),
-    tarjeta('Usuarios', usuarios.toLocaleString('es-CO'), labelMes(ultimaClave)),
-    tarjeta('Participación', participacionProm!=null ? participacionProm.toFixed(2)+'%' : '--', labelMes(ultimaClave)),
-    tarjeta('Cobertura', `${zonas} zona${zonas!==1?'s':''} -- ${subestaciones} subestación(es) -- ${alimentadores} alimentador(es)`),
+    fila('Ciclo', AC_CICLO_SELECCIONADO ?? 'Todos'),
+    fila('Energía Liquidada', kwhLiquidada.toLocaleString('es-CO',{maximumFractionDigits:0})+' kWh'),
+    fila('Energía Ponderada', kwhPonderada.toLocaleString('es-CO',{maximumFractionDigits:0})+' kWh'),
+    fila(`Usuarios (${labelMes(ultimaClave)})`, usuarios.toLocaleString('es-CO')),
+    fila(`Participación (${labelMes(ultimaClave)})`, participacionProm!=null ? participacionProm.toFixed(2)+'%' : '--'),
+    fila('Zonas', zonas),
+    fila('Subestaciones', subestaciones),
+    fila('Alimentadores', alimentadores),
   ].join('');
 }
 
