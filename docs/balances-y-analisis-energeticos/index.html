@@ -8110,15 +8110,41 @@ async function ipDescargarArchivo(jobId, nombre, intento){
   }
 }
 
+// "Cargar a la base de datos" puede tardar bastante para XM (cientos de
+// miles de filas + recalcular IP_Reg) -- una sola petición se pasaba del
+// timeout del navegador aunque el servidor SÍ terminara bien (caso real
+// confirmado: quedó a medias). Ahora el backend la corre en un hilo de
+// fondo y acá se hace polling de su estado, sin límite de tiempo.
 async function ipCargarBD(jobId, btn){
   const textoOriginal = btn.textContent;
   btn.disabled = true; btn.textContent = '⏳ Cargando...';
   try{
     await apiPost(`/api/indice-perdidas/job/${jobId}/cargar`, {});
-    btn.textContent = '✅ Cargado a la base de datos';
   }catch(e){
     alert('Error al cargar a la base de datos: ' + e.message);
     btn.disabled = false; btn.textContent = textoOriginal;
+    return;
+  }
+  ipPollCarga(jobId, btn, textoOriginal);
+}
+
+async function ipPollCarga(jobId, btn, textoOriginal){
+  try{
+    const st = await apiGet(`/api/indice-perdidas/job/${jobId}/estado-carga`);
+    if(st.carga_estado === 'cargando'){
+      setTimeout(() => ipPollCarga(jobId, btn, textoOriginal), 1500);
+      return;
+    }
+    if(st.carga_estado === 'ok'){
+      btn.textContent = '✅ Cargado a la base de datos';
+    }else{
+      alert('Error al cargar a la base de datos: ' + (st.carga_error || 'falló la carga.'));
+      btn.disabled = false; btn.textContent = textoOriginal;
+    }
+  }catch(e){
+    // Un tropiezo puntual de red consultando el estado NO significa que la
+    // carga haya fallado -- sigue intentando en vez de rendirse de una.
+    setTimeout(() => ipPollCarga(jobId, btn, textoOriginal), 1500);
   }
 }
 
