@@ -1168,7 +1168,8 @@ tfoot td:first-child{text-align:left}
           <label title="El análisis cambia cada mes -- elige un mes anterior para ver cómo se veía esa nota en su momento">Mes del análisis</label>
           <select id="ini-ip-analisis-mes" onchange="iniIpAnalisisMesCambio()" style="flex:1;min-width:0"></select>
           <button type="button" class="be-modo-btn activo" id="ini-ip-btn-ipreg" style="padding:0 8px" title="IP_Reg (12 meses)" onclick="iniIpCambiarModo('ipreg')">IP_Reg</button>
-          <button type="button" class="be-modo-btn" id="ini-ip-btn-institucional" style="padding:0 8px" title="Indicador de Pérdidas Institucional" onclick="iniIpCambiarModo('institucional')">Institucional</button>
+          <button type="button" class="be-modo-btn" id="ini-ip-btn-institucional" style="padding:0 8px" title="Indicador de Pérdidas Institucional (Anual, 12 meses)" onclick="iniIpCambiarModo('institucional')">Institucional</button>
+          <button type="button" class="be-modo-btn" id="ini-ip-btn-sobreponer" style="padding:0 8px" title="Sobrepone IP_Reg e Institucional en el mismo gráfico, para compararlos" onclick="iniIpCambiarModo('sobreponer')">🔀 Sobreponer</button>
         </div>
         <div id="ini-ip-mensual-comentario" class="ip-comentario-caja" style="flex:1"></div>
       </div>
@@ -6260,20 +6261,17 @@ async function cargarDashboardIniIpReg(){
   if(DEMO){ card.classList.add('hidden'); return; }
   if(!(await ipAsegurarDatosCargados()) || !IP_REG_FILAS.length){ card.classList.add('hidden'); return; }
   card.classList.remove('hidden');
-  INI_IP_MODO = 'ipreg';
-  document.getElementById('ini-ip-btn-ipreg').classList.add('activo');
-  document.getElementById('ini-ip-btn-institucional').classList.remove('activo');
-  document.getElementById('ini-ip-titulo-grafico').textContent = 'Indicador de Pérdidas Totales (IP_REG)';
-  ipPoblarSelectorAnalisisMes('ini-ip-analisis-mes');
-  ipGenerarAnalisisInicio();
-  ipRenderChartAnualInicio();
+  await iniIpCambiarModo('ipreg');
 }
 
-// Botón chiquito al lado de "Mes del análisis" -- pedido explícito, poder
-// cambiar la tarjeta de Inicio entre IP_Reg (Anual, CREG 015/2018) y el
-// Indicador de Pérdidas Institucional (IPT Institucional.csv), sin salir
-// de la pantalla de Inicio. Carga IPI_FILAS al vuelo si nadie entró antes
-// al módulo dedicado (mismo patrón que ipAsegurarDatosCargados).
+// Botones chiquitos al lado de "Mes del análisis" -- pedido explícito,
+// poder cambiar la tarjeta de Inicio entre IP_Reg (Anual, CREG 015/2018),
+// el Indicador de Pérdidas Institucional (IPT Institucional.csv, en modo
+// Anual/12m -- pedido explícito "debe aparecer... de manera anual") y un
+// tercer modo que sobrepone las 2 líneas % en el mismo gráfico para
+// compararlas visualmente, sin salir de Inicio. Carga IPI_FILAS al vuelo
+// si nadie entró antes al módulo dedicado (mismo patrón que
+// ipAsegurarDatosCargados).
 let INI_IP_MODO = 'ipreg';
 
 async function _ipiAsegurarDatosCargados(){
@@ -6289,6 +6287,8 @@ async function iniIpCambiarModo(modo){
   INI_IP_MODO = modo;
   document.getElementById('ini-ip-btn-ipreg').classList.toggle('activo', modo==='ipreg');
   document.getElementById('ini-ip-btn-institucional').classList.toggle('activo', modo==='institucional');
+  document.getElementById('ini-ip-btn-sobreponer').classList.toggle('activo', modo==='sobreponer');
+
   if(modo==='ipreg'){
     document.getElementById('ini-ip-titulo-grafico').textContent = 'Indicador de Pérdidas Totales (IP_REG)';
     ipPoblarSelectorAnalisisMes('ini-ip-analisis-mes');
@@ -6296,18 +6296,87 @@ async function iniIpCambiarModo(modo){
     ipRenderChartAnualInicio();
     return;
   }
-  document.getElementById('ini-ip-titulo-grafico').textContent = 'Indicador de Pérdidas Institucional';
   if(!(await _ipiAsegurarDatosCargados())) return;
+  if(modo==='sobreponer'){
+    document.getElementById('ini-ip-titulo-grafico').textContent = 'IP_Reg vs. Indicador de Pérdidas Institucional (Anual, 12 meses)';
+    ipiPoblarSelectorAnalisisMes('ini-ip-analisis-mes');
+    ipiGenerarAnalisisInicio();
+    iniIpRenderChartSobreponer();
+    return;
+  }
+  document.getElementById('ini-ip-titulo-grafico').textContent = 'Indicador de Pérdidas Institucional (Anual, 12 meses)';
   ipiPoblarSelectorAnalisisMes('ini-ip-analisis-mes');
   ipiGenerarAnalisisInicio();
   ipiRenderChartAnualInicio();
 }
 
-// El selector "Mes del análisis" es compartido por los 2 modos -- según
+// El selector "Mes del análisis" es compartido por los 3 modos -- según
 // cuál esté activo, dispara el generador de análisis correspondiente.
 function iniIpAnalisisMesCambio(){
-  if(INI_IP_MODO==='institucional') ipiGenerarAnalisisInicio();
-  else ipGenerarAnalisisInicio();
+  if(INI_IP_MODO==='ipreg') ipGenerarAnalisisInicio();
+  else ipiGenerarAnalisisInicio();
+}
+
+// Sobrepone la línea % de IP_Reg (rojo/naranja, como en su propio
+// gráfico) y la línea % Anual del Indicador Institucional (mismo color
+// que en su módulo dedicado) en el mismo eje -- para comparar los 2
+// índices de un vistazo. Usa la misma ventana móvil de 19 meses que
+// ipiRenderChartAnualInicio (institucional) y el equivalente de IP_Reg.
+function iniIpRenderChartSobreponer(){
+  const dark = document.documentElement.getAttribute('data-theme')==='dark';
+  const tickC = dark ? '#ffffff' : '#000000';
+  const tickXFuerte = dark ? '#ffffff' : '#000000';
+  const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
+  const VENTANA_MESES = 19;
+
+  const ipRegVisibles = IP_REG_FILAS.filter(f => f.ipt_pct != null).slice(-VENTANA_MESES);
+  const mensualInst = ipiSerieCompleta(null);
+  const anualInst = ipiSerieAnual(mensualInst, null).filter(f => f.pct != null).slice(-VENTANA_MESES);
+
+  // Etiquetas: la serie institucional (anual) manda -- por lo general
+  // cubre el mismo tramo; si difieren en longitud, spanGaps completa los
+  // huecos en vez de romper el eje X.
+  const claves = anualInst.length >= ipRegVisibles.length
+    ? anualInst.map(f=>f.clave)
+    : ipRegVisibles.map(f=>ipClaveNormal(f));
+  const etiquetas = claves.map(labelMes);
+  const porClaveIpReg = new Map(ipRegVisibles.map(f=>[ipClaveNormal(f), f.ipt_pct*100]));
+  const porClaveInst = new Map(anualInst.map(f=>[f.clave, f.pct]));
+
+  if(chIniIpAnual) chIniIpAnual.destroy();
+  chIniIpAnual = new Chart(document.getElementById('ch-ini-ip-anual'), {
+    data:{
+      labels: etiquetas,
+      datasets:[
+        {type:'line', label:'IPT -- IP_Reg (%)', data: claves.map(c=>porClaveIpReg.get(c) ?? null),
+          borderColor:'#ED7D31', backgroundColor:'transparent', borderWidth:2.5, pointRadius:2, spanGaps:true, tension:0,
+          datalabels:{display:true, anchor:'end', align:'top', offset:10, formatter:v=>v==null?'':v.toFixed(2)+'%',
+            font:{size:11, weight:'700'}, color:'#ED7D31'}},
+        {type:'line', label:'Institucional Anual (%)', data: claves.map(c=>porClaveInst.get(c) ?? null),
+          // IPI_COLOR_PCT (naranja) es idéntico al de IP_Reg -- acá se
+          // necesita un color DISTINTO para poder diferenciar las 2 líneas.
+          borderColor:'#00b4d8', backgroundColor:'transparent', borderWidth:2.5, pointRadius:2, spanGaps:true, tension:0,
+          datalabels:{display:true, anchor:'end', align:'bottom', offset:10, formatter:v=>v==null?'':v.toFixed(2)+'%',
+            font:{size:11, weight:'700'}, color:'#00b4d8'}},
+      ],
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      layout:{padding:{top:24, right:20}},
+      interaction:{mode:'index', intersect:false},
+      plugins:{
+        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:10}, color:tickC}},
+        tooltip:{callbacks:{label:c=> c.raw==null?null:`${c.dataset.label}: ${c.raw.toFixed(2)}%`}},
+        zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:3}}},
+      },
+      scales:{
+        x:{grid:{display:false}, offset:true,
+          ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
+        y:{beginAtZero:false, grid:{color:gridC}, ticks:{color:tickC, font:{size:11}, callback:v=>v.toFixed(1)+'%'},
+          title:{display:true, text:'Pérdida (%)', color:tickC, font:{size:11}}},
+      },
+    },
+  });
 }
 
 // Institucional -- mismo patrón que ipPoblarSelectorAnalisisMes, pero
@@ -6337,7 +6406,9 @@ function ipiRenderChartAnualInicio(){
   // Ago-2026) se corre sola, soltando el más viejo (Ene-2025) en vez de
   // ir creciendo sin límite.
   const VENTANA_INICIO_MESES = 19;
-  const visibles = ipiSerieCompleta(null).filter(f => f.pct!=null).slice(-VENTANA_INICIO_MESES);
+  // Pedido explícito: en Inicio el Institucional se muestra en modo
+  // ANUAL (ventana móvil de 12 meses), no el % mensual crudo.
+  const visibles = ipiSerieAnual(ipiSerieCompleta(null), null).filter(f => f.pct!=null).slice(-VENTANA_INICIO_MESES);
   const etiquetas = visibles.map(f => labelMes(f.clave));
 
   if(chIniIpAnual) chIniIpAnual.destroy();
@@ -6345,12 +6416,12 @@ function ipiRenderChartAnualInicio(){
     data:{
       labels: etiquetas,
       datasets:[
-        {type:'line', label:'Pérdida kWh Mensual -- Institucional', yAxisID:'y', order:2,
+        {type:'line', label:'Pérdida kWh Anual -- Institucional', yAxisID:'y', order:2,
           data: visibles.map(f=>f.kwh), borderColor:IPI_COLOR_KWH, backgroundColor:'transparent',
           borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0},
-        {type:'line', label:'Pérdida % Mensual -- Institucional', yAxisID:'yPct', order:1,
+        {type:'line', label:'Pérdida % Anual -- Institucional', yAxisID:'yPct', order:1,
           data: visibles.map(f=>f.pct), borderColor:IPI_COLOR_PCT,
-          backgroundColor:'rgba(237,125,49,.12)', borderWidth:2.5, pointRadius:2, spanGaps:true, tension:0,
+          backgroundColor:'transparent', borderWidth:2.5, pointRadius:2, spanGaps:true, tension:0,
           datalabels:{display:true, anchor:'end', align:'top', offset:12,
             formatter:v=>v==null?'':v.toFixed(2)+'%', font:{size:11, weight:'700'}, color:IPI_COLOR_PCT}},
       ],
@@ -6384,43 +6455,56 @@ function ipiRenderChartAnualInicio(){
 
 // Análisis institucional para la tarjeta de Inicio -- respeta el
 // selector "Mes del análisis" (compartido con IP_Reg).
+// Pedido explícito: explicar Mensual Y Anual juntos en el mismo texto
+// (igual criterio que ipiGenerarAnalisis del módulo dedicado). El
+// selector "Mes del análisis" fija el mes mensual; el anual toma la
+// ventana de 12 meses que CIERRA en ese mismo mes.
 function ipiGenerarAnalisisInicio(){
   const cont = document.getElementById('ini-ip-mensual-comentario');
   if(!cont) return;
-  const reales = ipiSerieCompleta(null).filter(f => f.pct!=null);
-  if(reales.length < 2){
+  const mensual = ipiSerieCompleta(null).filter(f => f.pct!=null);
+  const anual = ipiSerieAnual(ipiSerieCompleta(null), null).filter(f => f.pct!=null);
+  if(mensual.length < 2){
     cont.innerHTML = '<div class="ip-comentario-titulo">Análisis</div><p>Todavía no hay suficientes meses reales para analizar la variación.</p>';
     return;
   }
   const sel = document.getElementById('ini-ip-analisis-mes');
-  let idx = sel && sel.value ? reales.findIndex(f => f.clave === sel.value) : -1;
-  if(idx < 1) idx = reales.length - 1;
-  const actual = reales[idx];
-  const anterior = reales[idx-1];
-  const mesActualLargo = labelMesLargo(actual.clave);
-  const mesAnteriorLargo = labelMesLargo(anterior.clave);
-  const [anioAct, mesAct] = actual.clave.split('-').map(Number);
+  let idx = sel && sel.value ? mensual.findIndex(f => f.clave === sel.value) : -1;
+  if(idx < 1) idx = mensual.length - 1;
+  const actualM = mensual[idx];
+  const anteriorM = mensual[idx-1];
+  const mesActualLargo = labelMesLargo(actualM.clave);
+  const mesAnteriorLargo = labelMesLargo(anteriorM.clave);
   const signo = v => v >= 0 ? '+' : '-';
   const fk = v => Math.round(v).toLocaleString('es-CO');
+  const subeM = actualM.pct > anteriorM.pct;
 
-  const deltaMensual = actual.pct - anterior.pct;
-  const sube = deltaMensual > 0;
-  const deltaKwh = actual.kwh - anterior.kwh;
+  const claveAnioAnteriorDe = clave => { const [a,m] = clave.split('-').map(Number); return `${a-1}-${String(m).padStart(2,'0')}`; };
+  const parrafoInteranual = (serie, actual, etiquetaModo) => {
+    const fila = serie.find(f => f.clave===claveAnioAnteriorDe(actual.clave));
+    if(!fila || fila.pct==null) return '';
+    const delta = actual.pct - fila.pct;
+    return ` Frente al mismo mes del año anterior (${labelMesLargo(claveAnioAnteriorDe(actual.clave))}), el índice ${etiquetaModo} era de <b>${fila.pct.toFixed(2)}%</b> (variación interanual de <b>${signo(delta)}${Math.abs(delta).toFixed(2)} pp</b>, ${delta>0?'aumenta':'disminuye'}).`;
+  };
 
-  const claveAnioAnterior = `${anioAct-1}-${String(mesAct).padStart(2,'0')}`;
-  const filaAnioAnterior = reales.find(f => f.clave===claveAnioAnterior) || ipiSerieCompleta(null).find(f => f.clave===claveAnioAnterior);
+  const parrafoMensual = `<p><b>Mensual:</b> el índice Institucional pasó de <b>${anteriorM.pct.toFixed(2)}%</b> en ${mesAnteriorLargo} a <b>${actualM.pct.toFixed(2)}%</b> en ${mesActualLargo} (<b>${fk(anteriorM.kwh)} kWh</b> → <b>${fk(actualM.kwh)} kWh</b>) -- un ${subeM?'incremento':'descenso'} de <b>${Math.abs(actualM.pct-anteriorM.pct).toFixed(2)} pp</b>.${parrafoInteranual(mensual, actualM, 'mensual')}</p>`;
 
-  let parrafoAnual = '';
-  if(filaAnioAnterior && filaAnioAnterior.pct != null){
-    const deltaAnual = actual.pct - filaAnioAnterior.pct;
-    const subeAnual = deltaAnual > 0;
-    parrafoAnual = ` Frente al mismo mes del año anterior (${labelMesLargo(claveAnioAnterior)}), el índice era de <b>${filaAnioAnterior.pct.toFixed(2)}%</b>, por lo que la variación anual es de <b>${signo(deltaAnual)}${Math.abs(deltaAnual).toFixed(2)} pp</b> (${subeAnual?'aumenta':'disminuye'}).`;
+  const idxAnual = anual.findIndex(f => f.clave===actualM.clave);
+  let parrafoAnual = '<p><b>Anual (12 meses):</b> todavía no hay 12 meses reales seguidos que cierren en ese mes para calcular la ventana móvil.</p>';
+  let cifraAnual = '';
+  if(idxAnual >= 1){
+    const actualA = anual[idxAnual];
+    const anteriorA = anual[idxAnual-1];
+    const subeA = actualA.pct > anteriorA.pct;
+    parrafoAnual = `<p><b>Anual (12 meses):</b> la ventana móvil que cierra en ${mesActualLargo} es de <b>${actualA.pct.toFixed(2)}%</b>, frente a <b>${anteriorA.pct.toFixed(2)}%</b> de la ventana anterior (cerrando en ${labelMesLargo(anteriorA.clave)}), equivalente a <b>${fk(anteriorA.kwh)} kWh/Anual</b> → <b>${fk(actualA.kwh)} kWh/Anual</b> -- un ${subeA?'incremento':'descenso'} de <b>${Math.abs(actualA.pct-anteriorA.pct).toFixed(2)} pp</b>.${parrafoInteranual(anual, actualA, 'anual')}</p>`;
+    cifraAnual = ` -- ${actualA.pct.toFixed(2)}% Anual (12m)`;
   }
 
   cont.innerHTML = `
     <div class="ip-comentario-titulo">Análisis IPT -- ${mesActualLargo}</div>
-    <div class="ip-comentario-cifra ${sube?'sube':'baja'}">${actual.pct.toFixed(2)}% (${fk(actual.kwh)} kWh)</div>
-    <p>El índice Institucional pasó de <b>${anterior.pct.toFixed(2)}%</b> en ${mesAnteriorLargo} a <b>${actual.pct.toFixed(2)}%</b> en ${mesActualLargo}, lo que equivale a pasar de una pérdida de <b>${fk(anterior.kwh)} kWh</b> a <b>${fk(actual.kwh)} kWh</b> -- un ${sube?'incremento':'descenso'} de <b>${Math.abs(deltaMensual).toFixed(2)} pp</b>, equivalente a <b>${signo(deltaKwh)}${fk(Math.abs(deltaKwh))} kWh</b>.${parrafoAnual}</p>
+    <div class="ip-comentario-cifra ${subeM?'sube':'baja'}">${actualM.pct.toFixed(2)}% Mensual${cifraAnual}</div>
+    ${parrafoMensual}
+    ${parrafoAnual}
   `;
 }
 
@@ -13338,49 +13422,56 @@ function ipiRenderResumen(){
 // (Indicador Comercial): compara el último mes visible contra el anterior
 // y, si hay dato, contra el mismo mes del año anterior. Sigue la
 // zona/modo (Mensual o Anual) que esté elegido arriba.
+// Pedido explícito: el análisis debe explicar Mensual Y Anual EN
+// CONJUNTO, en el mismo texto -- no solo el modo que esté activo en el
+// gráfico de arriba. Arma un párrafo para cada uno (mismo criterio que
+// ipGenerarAnalisisPrincipal de IP_Reg: cifra principal + variación
+// mensual + variación interanual, pero acá repetido para ambas series).
 function ipiGenerarAnalisis(){
   const cont = document.getElementById('ipi-comentario');
   if(!cont) return;
-  const primera = ipiSeriesActivas()[0];
-  const visibles = primera.serie.filter(f => f.pct!=null);
-  if(visibles.length < 2){
+  const zona = ipiSeriesActivas()[0].zona;
+  const etiquetaZona = zona ? `Zona ${zona}` : 'Institucional';
+  const mensual = ipiSerieCompleta(zona).filter(f => f.pct!=null);
+  const anual = ipiSerieAnual(ipiSerieCompleta(zona), zona).filter(f => f.pct!=null);
+  if(mensual.length < 2){
     cont.innerHTML = '<div class="ip-comentario-titulo">Análisis</div><p>Todavía no hay suficientes meses reales para analizar la variación.</p>';
     return;
   }
-  const actual = visibles[visibles.length-1];
-  const anterior = visibles[visibles.length-2];
-  const mesActualLargo = labelMesLargo(actual.clave);
-  const mesAnteriorLargo = labelMesLargo(anterior.clave);
-  const [anioAct, mesAct] = actual.clave.split('-').map(Number);
   const signo = v => v >= 0 ? '+' : '-';
   const fk = v => Math.round(v).toLocaleString('es-CO');
-  const etiquetaZona = primera.zona ? `Zona ${primera.zona}` : 'Institucional';
-  const esAnual = IPI_MODO==='anual';
-  const etiquetaModo = esAnual ? 'Anual (12 meses)' : 'Mensual';
-  const sufijoKwh = esAnual ? ' kWh/Anual' : ' kWh';
 
-  const deltaMensual = actual.pct - anterior.pct;
-  const sube = deltaMensual > 0;
-  const deltaKwh = actual.kwh - anterior.kwh;
+  const actualM = mensual[mensual.length-1];
+  const anteriorM = mensual[mensual.length-2];
+  const mesActualLargo = labelMesLargo(actualM.clave);
+  const mesAnteriorLargo = labelMesLargo(anteriorM.clave);
+  const subeM = actualM.pct > anteriorM.pct;
 
-  const claveAnioAnterior = `${anioAct-1}-${String(mesAct).padStart(2,'0')}`;
-  // El comparativo "mismo mes del año anterior" usa la MISMA serie
-  // (mensual o anual/12m según el toggle) que actual/anterior, para no
-  // mezclar un % anual contra uno mensual.
-  const serieComparable = esAnual ? ipiSerieAnual(ipiSerieCompleta(primera.zona), primera.zona) : ipiSerieCompleta(primera.zona);
-  const filaAnioAnterior = serieComparable.find(f => f.clave===claveAnioAnterior);
+  // Comparativo "mismo mes del año anterior", una vez por serie (cada una
+  // contra SU propia serie, para no mezclar % anual con % mensual).
+  const claveAnioAnteriorDe = clave => { const [a,m] = clave.split('-').map(Number); return `${a-1}-${String(m).padStart(2,'0')}`; };
+  const parrafoInteranual = (serie, actual, etiquetaModo) => {
+    const fila = serie.find(f => f.clave===claveAnioAnteriorDe(actual.clave));
+    if(!fila || fila.pct==null) return '';
+    const delta = actual.pct - fila.pct;
+    return ` Frente al mismo mes del año anterior (${labelMesLargo(claveAnioAnteriorDe(actual.clave))}), el índice ${etiquetaModo} era de <b>${fila.pct.toFixed(2)}%</b> (variación interanual de <b>${signo(delta)}${Math.abs(delta).toFixed(2)} pp</b>, ${delta>0?'aumenta':'disminuye'}).`;
+  };
 
-  let parrafoAnual = '';
-  if(filaAnioAnterior && filaAnioAnterior.pct != null){
-    const deltaAnual = actual.pct - filaAnioAnterior.pct;
-    const subeAnual = deltaAnual > 0;
-    parrafoAnual = ` Frente al mismo mes del año anterior (${labelMesLargo(claveAnioAnterior)}), el índice ${etiquetaModo.toLowerCase()} era de <b>${filaAnioAnterior.pct.toFixed(2)}%</b>, por lo que la variación interanual es de <b>${signo(deltaAnual)}${Math.abs(deltaAnual).toFixed(2)} pp</b> (${subeAnual?'aumenta':'disminuye'}).`;
+  const parrafoMensual = `<p><b>Mensual:</b> el índice ${etiquetaZona} pasó de <b>${anteriorM.pct.toFixed(2)}%</b> en ${mesAnteriorLargo} a <b>${actualM.pct.toFixed(2)}%</b> en ${mesActualLargo} (<b>${fk(anteriorM.kwh)} kWh</b> → <b>${fk(actualM.kwh)} kWh</b>) -- un ${subeM?'incremento':'descenso'} de <b>${Math.abs(actualM.pct-anteriorM.pct).toFixed(2)} pp</b>.${parrafoInteranual(mensual, actualM, 'mensual')}</p>`;
+
+  let parrafoAnual = '<p><b>Anual (12 meses):</b> todavía no hay 12 meses reales seguidos para calcular la ventana móvil.</p>';
+  if(anual.length >= 2){
+    const actualA = anual[anual.length-1];
+    const anteriorA = anual[anual.length-2];
+    const subeA = actualA.pct > anteriorA.pct;
+    parrafoAnual = `<p><b>Anual (12 meses):</b> la ventana móvil pasó de <b>${anteriorA.pct.toFixed(2)}%</b> (cerrando en ${labelMesLargo(anteriorA.clave)}) a <b>${actualA.pct.toFixed(2)}%</b> (cerrando en ${labelMesLargo(actualA.clave)}), equivalente a <b>${fk(anteriorA.kwh)} kWh/Anual</b> → <b>${fk(actualA.kwh)} kWh/Anual</b> -- un ${subeA?'incremento':'descenso'} de <b>${Math.abs(actualA.pct-anteriorA.pct).toFixed(2)} pp</b>.${parrafoInteranual(anual, actualA, 'anual')}</p>`;
   }
 
   cont.innerHTML = `
-    <div class="ip-comentario-titulo">Análisis IPT ${etiquetaModo} -- ${mesActualLargo}</div>
-    <div class="ip-comentario-cifra ${sube?'sube':'baja'}">${actual.pct.toFixed(2)}% (${fk(actual.kwh)}${sufijoKwh})</div>
-    <p>El índice ${etiquetaZona} (${etiquetaModo.toLowerCase()}) pasó de <b>${anterior.pct.toFixed(2)}%</b> en ${mesAnteriorLargo} a <b>${actual.pct.toFixed(2)}%</b> en ${mesActualLargo}, lo que equivale a pasar de una pérdida de <b>${fk(anterior.kwh)}${sufijoKwh}</b> a <b>${fk(actual.kwh)}${sufijoKwh}</b> -- un ${sube?'incremento':'descenso'} de <b>${Math.abs(deltaMensual).toFixed(2)} pp</b>, equivalente a <b>${signo(deltaKwh)}${fk(Math.abs(deltaKwh))}${sufijoKwh}</b>.${parrafoAnual}</p>
+    <div class="ip-comentario-titulo">Análisis IPT -- ${mesActualLargo}</div>
+    <div class="ip-comentario-cifra ${subeM?'sube':'baja'}">${actualM.pct.toFixed(2)}% Mensual${anual.length ? ` -- ${anual[anual.length-1].pct.toFixed(2)}% Anual (12m)` : ''}</div>
+    ${parrafoMensual}
+    ${parrafoAnual}
   `;
 }
 
