@@ -3352,19 +3352,22 @@ tfoot td:first-child{text-align:left}
   <div class="card">
     <div class="fbar" style="margin-bottom:14px">
       <label>Rango</label>
-      <input type="date" id="ac-desde" onchange="acRenderTodo()">
+      <input type="month" id="ac-desde" onchange="acRenderTodo()">
       <span style="font-size:11px;color:var(--text3)">→</span>
-      <input type="date" id="ac-hasta" onchange="acRenderTodo()">
+      <input type="month" id="ac-hasta" onchange="acRenderTodo()">
       <label style="margin-left:10px">Tipo</label>
       <select id="ac-tipo" onchange="acCambiarFiltroSuperior()"><option value="">Todos</option></select>
       <label>Liquidación</label>
       <select id="ac-liquidacion" onchange="acCambiarFiltroSuperior()"><option value="">Todas</option></select>
+      <button type="button" class="btn-theme ip-com-modo-btn activo" id="ac-btn-mensual" style="width:auto;padding:0 16px;margin-left:auto" onclick="acCambiarModo('mensual')">📅 Mensual</button>
+      <button type="button" class="btn-theme ip-com-modo-btn" id="ac-btn-anual" style="width:auto;padding:0 16px" onclick="acCambiarModo('anual')">📆 Anual Móvil</button>
+      <button type="button" class="btn-theme" style="width:auto;padding:0 14px" onclick="acLimpiarFiltros()" title="Vuelve Rango/Tipo/Liquidación/Zona/Subestación/Alimentador/Ciclo a su estado inicial">✕ Borrar filtros</button>
     </div>
 
     <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">
       <div style="flex:2 1 520px;min-width:360px">
         <div style="text-align:center;margin-bottom:8px">
-          <div style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Pérdidas Mensuales</div>
+          <div style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Venta por Ciclo</div>
         </div>
         <div class="chart-wrap" style="height:380px"><canvas id="ch-ac-linea"></canvas></div>
       </div>
@@ -13720,6 +13723,7 @@ async function _alimAsegurarDatosCargados(){
    en Power BI). ---- */
 let AC_FILAS = [];
 let AC_CICLO_SELECCIONADO = null;
+let AC_MODO = 'mensual';   // 'mensual' | 'anual' (ventana móvil de 12 meses -- "consumo/venta anual móvil")
 let chAcLinea = null;
 
 function acClave(f){ return `${f.anio}-${String(f.mes).padStart(2,'0')}`; }
@@ -13748,8 +13752,8 @@ async function cargarAnalisisCiclos(){
   const claves = [...new Set(AC_FILAS.map(acClave))].sort();
   const inDesde = document.getElementById('ac-desde');
   const inHasta = document.getElementById('ac-hasta');
-  if(!inDesde.value) inDesde.value = claves.includes('2025-01') ? '2025-01-01' : `${claves[0]}-01`;
-  if(!inHasta.value) inHasta.value = `${claves[claves.length-1]}-01`;
+  if(!inDesde.value) inDesde.value = claves.includes('2025-01') ? '2025-01' : claves[0];
+  if(!inHasta.value) inHasta.value = claves[claves.length-1];
 
   mselInit('msel-ac-subestacion', 'Subestación', 'Todas', [], ()=>acCambiarSubestacion());
   mselInit('msel-ac-alimentador', 'Nombre Spard', 'Todos', [], ()=>acRenderTodo());
@@ -13780,27 +13784,68 @@ function acCambiarSubestacion(){
 function acCambiarFiltroSuperior(){ acRenderTodo(); }
 
 function acRangoMeses(){
-  const desde = document.getElementById('ac-desde').value ? document.getElementById('ac-desde').value.slice(0,7) : null;
-  const hasta = document.getElementById('ac-hasta').value ? document.getElementById('ac-hasta').value.slice(0,7) : null;
+  // type="month" -- el value YA viene como "YYYY-MM", sin día.
+  const desde = document.getElementById('ac-desde').value || null;
+  const hasta = document.getElementById('ac-hasta').value || null;
   return {desde, hasta};
+}
+
+function acCambiarModo(modo){
+  AC_MODO = modo;
+  document.getElementById('ac-btn-mensual').classList.toggle('activo', modo==='mensual');
+  document.getElementById('ac-btn-anual').classList.toggle('activo', modo==='anual');
+  acRenderChart();
+}
+
+// Pedido explícito: limpiar todos los filtros propios de este módulo de
+// una sola vez (Rango, Tipo, Liquidación, Zona, Subestación, Alimentador,
+// Ciclo, modo) y volver al estado inicial.
+function acLimpiarFiltros(){
+  document.getElementById('ac-desde').value = '';
+  document.getElementById('ac-hasta').value = '';
+  document.getElementById('ac-tipo').value = '';
+  document.getElementById('ac-liquidacion').value = '';
+  document.getElementById('ac-zona').value = '';
+  mselSetSeleccion('msel-ac-subestacion', []);
+  mselSetSeleccion('msel-ac-alimentador', []);
+  AC_CICLO_SELECCIONADO = null;
+  AC_MODO = 'mensual';
+  document.getElementById('ac-btn-mensual').classList.add('activo');
+  document.getElementById('ac-btn-anual').classList.remove('activo');
+  const claves = [...new Set(AC_FILAS.map(acClave))].sort();
+  if(claves.length){
+    document.getElementById('ac-desde').value = claves.includes('2025-01') ? '2025-01' : claves[0];
+    document.getElementById('ac-hasta').value = claves[claves.length-1];
+  }
+  acCambiarZona();   // repuebla Subestación/Alimentador sin filtro y llama acRenderTodo()
 }
 
 // Todos los filtros MENOS Ciclo -- lo que decide qué ciclos aparecen en
 // la grilla de abajo.
-function acFilasFiltradasSinCiclo(){
-  const {desde, hasta} = acRangoMeses();
+// Todos los filtros MENOS Ciclo Y MENOS el Rango de fechas -- hace falta
+// el histórico completo para calcular bien la ventana móvil de 12 meses
+// del modo Anual incluso en los primeros meses del rango visible.
+function acFilasFiltradasSinCicloSinRango(){
   const tipo = document.getElementById('ac-tipo').value;
   const liquidacion = document.getElementById('ac-liquidacion').value;
   const zona = document.getElementById('ac-zona').value;
   const subestaciones = mselValores('msel-ac-subestacion');
   const alimentadores = mselValores('msel-ac-alimentador');
-  return AC_FILAS.filter(f => {
+  return AC_FILAS.filter(f =>
+    (!tipo || f.tipo===tipo) && (!liquidacion || f.liquidacion===liquidacion)
+    && (!zona || f.zona===zona)
+    && (!subestaciones.length || subestaciones.includes(f.subestacion))
+    && (!alimentadores.length || alimentadores.includes(f.alimentador))
+  );
+}
+
+// Todos los filtros MENOS Ciclo, CON el Rango de fechas -- lo que decide
+// qué ciclos aparecen en la grilla de abajo.
+function acFilasFiltradasSinCiclo(){
+  const {desde, hasta} = acRangoMeses();
+  return acFilasFiltradasSinCicloSinRango().filter(f => {
     const c = acClave(f);
-    return (!desde || c>=desde) && (!hasta || c<=hasta)
-      && (!tipo || f.tipo===tipo) && (!liquidacion || f.liquidacion===liquidacion)
-      && (!zona || f.zona===zona)
-      && (!subestaciones.length || subestaciones.includes(f.subestacion))
-      && (!alimentadores.length || alimentadores.includes(f.alimentador));
+    return (!desde || c>=desde) && (!hasta || c<=hasta);
   });
 }
 
@@ -13813,10 +13858,15 @@ function acRenderCiclosGrid(){
   const cont = document.getElementById('ac-ciclos-grid');
   const filas = acFilasFiltradasSinCiclo();
   const ciclos = [...new Set(filas.map(f=>f.ciclo))].sort((a,b)=>a-b);
-  if(!ciclos.includes(AC_CICLO_SELECCIONADO)) AC_CICLO_SELECCIONADO = ciclos.length ? ciclos[0] : null;
-  cont.innerHTML = ciclos.map(c => `
+  // null = "Todos" (suma de todos los ciclos, igual que el Power BI de
+  // referencia sin ningún ciclo elegido en el slicer) -- SIEMPRE válido,
+  // solo se resetea a "Todos" si había un ciclo puntual elegido que ya no
+  // aparece con el filtro actual (nunca se fuerza un ciclo por defecto).
+  if(AC_CICLO_SELECCIONADO!=null && !ciclos.includes(AC_CICLO_SELECCIONADO)) AC_CICLO_SELECCIONADO = null;
+  const botonTodos = `<button type="button" class="btn-theme${AC_CICLO_SELECCIONADO==null?' activo':''}" style="padding:8px 4px;font-weight:700" onclick="acSeleccionarCiclo(null)">Todos</button>`;
+  cont.innerHTML = botonTodos + ciclos.map(c => `
     <button type="button" class="btn-theme${c===AC_CICLO_SELECCIONADO?' activo':''}" style="padding:8px 4px;font-weight:700" onclick="acSeleccionarCiclo(${c})">${c}</button>
-  `).join('') || '<span style="color:var(--text3);font-size:12px">Sin ciclos para este filtro.</span>';
+  `).join('');
 }
 
 function acSeleccionarCiclo(ciclo){
@@ -13831,18 +13881,35 @@ function acRenderChart(){
   const tickXFuerte = dark ? '#ffffff' : '#000000';
   const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
 
-  const filas = acFilasFiltradasSinCiclo().filter(f => AC_CICLO_SELECCIONADO==null || f.ciclo===AC_CICLO_SELECCIONADO);
+  // Serie mensual completa (TODO el histórico, sin recortar por Rango
+  // todavía) -- hace falta para que la ventana móvil de 12 meses del modo
+  // Anual quede bien calculada incluso en los primeros meses visibles.
+  const filasCompletas = acFilasFiltradasSinCicloSinRango().filter(f => AC_CICLO_SELECCIONADO==null || f.ciclo===AC_CICLO_SELECCIONADO);
   const porClave = new Map();
-  for(const f of filas) porClave.set(acClave(f), (porClave.get(acClave(f))||0) + (f.energia_liquidada_kwh||0));
-  const claves = [...porClave.keys()].sort();
-  const etiquetas = claves.map(labelMes);
-  const datos = claves.map(c=>porClave.get(c));
+  for(const f of filasCompletas) porClave.set(acClave(f), (porClave.get(acClave(f))||0) + (f.energia_liquidada_kwh||0));
+  const clavesCompletas = [...porClave.keys()].sort();
+  const serieMensual = clavesCompletas.map(c => ({clave:c, valor: porClave.get(c)}));
+
+  let serie = serieMensual;
+  if(AC_MODO==='anual'){
+    serie = serieMensual.map((f,i) => {
+      if(i<11) return {clave:f.clave, valor:null};
+      const ventana = serieMensual.slice(i-11, i+1);
+      return {clave:f.clave, valor: ventana.reduce((s,v)=>s+(v.valor||0), 0)};
+    });
+  }
+
+  const {desde, hasta} = acRangoMeses();
+  const visible = serie.filter(f => (!desde || f.clave>=desde) && (!hasta || f.clave<=hasta));
+  const etiquetas = visible.map(f=>labelMes(f.clave));
+  const datos = visible.map(f=>f.valor);
+  const etiquetaModo = AC_MODO==='anual' ? 'Anual Móvil' : 'Mensual';
 
   if(chAcLinea) chAcLinea.destroy();
   chAcLinea = new Chart(document.getElementById('ch-ac-linea'), {
     data:{labels: etiquetas, datasets:[{
-      type:'line', label:`Ciclo ${AC_CICLO_SELECCIONADO ?? '--'}`, data: datos, fill:true,
-      borderColor:'#00b4d8', backgroundColor:'rgba(0,180,216,.35)', borderWidth:2.5, pointRadius:0, tension:.15,
+      type:'line', label:`Ciclo ${AC_CICLO_SELECCIONADO ?? 'Todos'} -- ${etiquetaModo}`, data: datos, fill:true, spanGaps:true,
+      borderColor:'#00b4d8', backgroundColor:'rgba(0,180,216,.35)', borderWidth:2.5, pointRadius:0, tension:0,
       datalabels:{display:false},
     }]},
     options:{
@@ -13851,7 +13918,7 @@ function acRenderChart(){
       interaction:{mode:'index', intersect:false},
       plugins:{
         legend:{display:true, position:'top', align:'start', labels:{boxWidth:10, font:{size:11}, color:tickC}},
-        tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`}},
+        tooltip:{callbacks:{label:c=> c.raw==null?null:`${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`}},
       },
       scales:{
         x:{grid:{display:false}, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}}},
