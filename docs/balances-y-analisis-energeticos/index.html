@@ -3388,9 +3388,9 @@ tfoot td:first-child{text-align:left}
   <div class="card">
     <div class="card-title">Ciclo</div>
     <div id="ac-ciclos-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:8px;margin-top:10px"></div>
-    <div class="be-tabla-scroll" style="max-height:360px;margin-top:18px">
+    <div class="be-tabla-scroll" style="max-height:420px;margin-top:18px">
       <table class="be-tabla-creadas">
-        <thead><tr><th>Ciclo</th><th>Energía Liquidada (kWh)</th></tr></thead>
+        <thead><tr id="ac-tabla-ciclos-head"></tr></thead>
         <tbody id="ac-tabla-ciclos-body"></tbody>
       </table>
     </div>
@@ -13939,18 +13939,57 @@ function acRenderCiclosGrid(){
 
 // Tabla de todos los ciclos visibles (según el resto de filtros) con su
 // energía liquidada total en el rango elegido -- pedido explícito.
+// Pedido explícito: histórico MES A MES de cada ciclo (una columna por
+// mes dentro del Rango elegido, como una tabla dinámica de Excel), con
+// una columna final de Variación (último mes vs. el anterior).
 function acRenderTablaCiclos(){
+  const thead = document.getElementById('ac-tabla-ciclos-head');
   const tbody = document.getElementById('ac-tabla-ciclos-body');
-  if(!tbody) return;
+  if(!thead || !tbody) return;
+
   const filas = acFilasFiltradas('ciclo');
-  const porCiclo = new Map();
-  for(const f of filas) porCiclo.set(f.ciclo, (porCiclo.get(f.ciclo)||0) + (f.energia_liquidada_kwh||0));
-  const ciclos = [...porCiclo.entries()].sort((a,b)=>a[0]-b[0]);
-  tbody.innerHTML = ciclos.map(([c,v]) => `
-    <tr style="cursor:pointer;${c===AC_CICLO_SELECCIONADO?'background:var(--bg3)':''}" onclick="acSeleccionarCiclo(${c})">
-      <td>${c}</td><td>${v.toLocaleString('es-CO',{maximumFractionDigits:0})}</td>
-    </tr>
-  `).join('') || '<tr><td colspan="2" style="color:var(--text3)">Sin datos para este filtro.</td></tr>';
+  const claves = [...new Set(filas.map(acClave))].sort();
+  const porCicloClave = new Map();   // ciclo -> Map(clave -> kwh)
+  for(const f of filas){
+    if(!porCicloClave.has(f.ciclo)) porCicloClave.set(f.ciclo, new Map());
+    const m = porCicloClave.get(f.ciclo);
+    m.set(acClave(f), (m.get(acClave(f))||0) + (f.energia_liquidada_kwh||0));
+  }
+  const ciclos = [...porCicloClave.keys()].sort((a,b)=>a-b);
+
+  thead.innerHTML = '<th>Ciclo</th>' + claves.map(c=>`<th style="text-align:right">${labelMes(c)}</th>`).join('') + '<th style="text-align:right">Variación</th>';
+
+  if(!ciclos.length){
+    tbody.innerHTML = `<tr><td colspan="${claves.length+2}" style="color:var(--text3)">Sin datos para este filtro.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = ciclos.map(c => {
+    const valores = porCicloClave.get(c);
+    const celdasMes = claves.map(clave => {
+      const v = valores.get(clave);
+      return `<td style="text-align:right">${v!=null ? v.toLocaleString('es-CO',{maximumFractionDigits:0}) : '--'}</td>`;
+    }).join('');
+
+    // Variación = último mes CON dato vs. el mes anterior a ese, dentro
+    // de las columnas mostradas (no necesariamente los últimos 2 índices
+    // del rango, por si el ciclo no tiene dato en el último mes).
+    const clavesConDato = claves.filter(clave => valores.has(clave));
+    let celdaVariacion = '<td style="text-align:right;color:var(--text3)">--</td>';
+    if(clavesConDato.length >= 2){
+      const actual = valores.get(clavesConDato[clavesConDato.length-1]);
+      const anterior = valores.get(clavesConDato[clavesConDato.length-2]);
+      const delta = actual - anterior;
+      const deltaPct = anterior ? (delta/anterior*100) : 0;
+      const color = ipColorVariacion(actual, anterior, 'var(--text2)');
+      const icono = delta>=0 ? '▲' : '▼';
+      celdaVariacion = `<td style="text-align:right;font-weight:700;color:${color}">${icono} ${Math.abs(delta).toLocaleString('es-CO',{maximumFractionDigits:0})} (${Math.abs(deltaPct).toFixed(1)}%)</td>`;
+    }
+
+    return `<tr style="cursor:pointer;${c===AC_CICLO_SELECCIONADO?'background:var(--bg3)':''}" onclick="acSeleccionarCiclo(${c})">
+      <td style="font-weight:700">${c}</td>${celdasMes}${celdaVariacion}
+    </tr>`;
+  }).join('');
 }
 
 // Pedido explícito: mostrar en el título qué Alimentador y Ciclo están
