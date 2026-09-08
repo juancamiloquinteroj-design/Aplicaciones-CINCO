@@ -9303,21 +9303,23 @@ async function beAgregadoZonaCargar(){
   const zona = zonaEl ? zonaEl.value : '';
   const tipo = tipoEl ? tipoEl.value : '';
   const nivel = nivelEl ? nivelEl.value : '';
-  if(!zona || zona === '__sin_zona__'){
-    vacio.classList.remove('hidden'); vacio.textContent = 'Elige una zona en el filtro de "Ubicación" de arriba para ver el agregado.';
-    contenido.classList.add('hidden'); contador.textContent = '';
-    return;
-  }
+  // Sin zona elegida ("Todas") -- pedido explícito ("como Power BI"): en
+  // vez de bloquear pidiendo elegir una, se agregan TODAS las zonas
+  // conocidas (el backend hace la suma, ver agregado_zona en
+  // balances_estructura.py) -- se filtra hasta que el usuario elija una
+  // zona puntual.
+  const todasLasZonas = !zona || zona === '__sin_zona__';
   vacio.classList.remove('hidden'); vacio.textContent = 'Cargando…';
   contenido.classList.add('hidden'); contador.textContent = '';
   try{
     const desdeM = document.getElementById('be-agz-desde').value;   // "YYYY-MM" o ""
     const hastaM = document.getElementById('be-agz-hasta').value;
-    let url = `/api/balances-estructura/agregado-zona?zona=${encodeURIComponent(zona)}`;
-    if(tipo) url += `&tipo=${encodeURIComponent(tipo)}`;
-    if(nivel) url += `&nivel=${encodeURIComponent(nivel)}`;
-    if(desdeM) url += `&desde=${desdeM}-01`;
-    if(hastaM) url += `&hasta=${hastaM}-01`;
+    let url = `/api/balances-estructura/agregado-zona?`;
+    if(!todasLasZonas) url += `zona=${encodeURIComponent(zona)}&`;
+    if(tipo) url += `tipo=${encodeURIComponent(tipo)}&`;
+    if(nivel) url += `nivel=${encodeURIComponent(nivel)}&`;
+    if(desdeM) url += `desde=${desdeM}-01&`;
+    if(hastaM) url += `hasta=${hastaM}-01&`;
     const datos = DEMO ? {meses:[], perdida_balance_kwh:[], perdida_tecnica_kwh:[], n_estructuras:0, n_vinculadas:0, nombres_estructuras:[], fuente_balance:'suma_estructuras'} : await apiGet(url, AUTH_TIMEOUT_MS);
     if(miSeq !== _beAgregadoZonaSeq) return;  // una llamada más nueva (otro filtro) ya está en vuelo/resuelta
     const sufijoNivel = nivel ? ` en Nivel ${nivel}` : '';
@@ -9328,21 +9330,25 @@ async function beAgregadoZonaCargar(){
     // cubrir el 100%) -- pedido explícito ("quiero que sea el de la
     // tabla en todas, ya que es el balance total de la zona"). Por eso
     // "sin estructuras" solo bloquea la vista si TAMPOCO hay una Z de
-    // dónde sacar el balance.
+    // dónde sacar el balance. En modo "Todas las zonas" no hay una Z
+    // única, así que solo importa si hubo estructuras.
     if(!datos.n_estructuras && !usaEstructuraZona){
-      vacio.textContent = tipo
-        ? `No hay estructuras de tipo "${tipo}" con zona "${zona}"${sufijoNivel} creadas todavía.`
-        : `No hay estructuras con zona "${zona}"${sufijoNivel} creadas todavía (aparte de "Z", que se excluye del agregado -- ver el selector de Tipo si querés verla sola).`;
+      vacio.textContent = todasLasZonas
+        ? `No hay estructuras${tipo?` de tipo "${tipo}"`:''}${sufijoNivel} creadas todavía en ninguna zona.`
+        : (tipo
+          ? `No hay estructuras de tipo "${tipo}" con zona "${zona}"${sufijoNivel} creadas todavía.`
+          : `No hay estructuras con zona "${zona}"${sufijoNivel} creadas todavía (aparte de "Z", que se excluye del agregado -- ver el selector de Tipo si querés verla sola).`);
       contenido.classList.add('hidden');
       return;
     }
-    contador.textContent = usaEstructuraZona
+    const prefijoContador = todasLasZonas ? 'Todas las zonas -- ' : '';
+    contador.textContent = prefijoContador + (usaEstructuraZona
       ? `Balance: "${datos.nombre_estructura_zona}" -- Técnica: ${datos.n_vinculadas} de ${datos.n_estructuras} estructura${datos.n_estructuras===1?'':'s'} con circuito vinculado`
-      : `${datos.n_estructuras} estructura${datos.n_estructuras===1?'':'s'} sumada${datos.n_estructuras===1?'':'s'} -- ${datos.n_vinculadas} con circuito técnico vinculado`;
+      : `${datos.n_estructuras} estructura${datos.n_estructuras===1?'':'s'} sumada${datos.n_estructuras===1?'':'s'} -- ${datos.n_vinculadas} con circuito técnico vinculado`);
     contador.title = datos.nombres_estructuras.join(', ');
     vacio.classList.add('hidden');
     contenido.classList.remove('hidden');
-    beAgregadoZonaRenderChart(datos, zona, tipo, nivel);
+    beAgregadoZonaRenderChart(datos, todasLasZonas ? 'Todas las zonas' : zona, tipo, nivel);
   }catch(e){
     if(miSeq !== _beAgregadoZonaSeq) return;
     vacio.textContent = e.message || 'No se pudo cargar el agregado.';
