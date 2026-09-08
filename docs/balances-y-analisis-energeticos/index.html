@@ -8050,6 +8050,39 @@ function ipAutocompletarUsuarioId(){
   const frontera = (inputFrontera.value || '').trim();
   const mapa = ipLeerMapaFronteras();
   if(frontera && mapa[frontera]) inputUsuario.value = mapa[frontera];
+  const sug = document.getElementById('ip-frontera-sugerencias');
+  if(sug) sug.innerHTML = '';
+}
+
+// "🔍 Buscar" -- resuelve el problema real ("en Excel era una tabla
+// dinámica, doble click y me decía de dónde salía; acá no sé de dónde
+// sacar el usuario_id a partir del código SIC"): busca el nombre legible
+// de la frontera en los archivos AENC más recientes y sugiere el/los
+// usuario_id de Usuarios Telemedidos más parecidos por nombre -- un click
+// en la sugerencia llena "usuario_id en Balances" solo, sin adivinar.
+async function ipSugerirUsuarioId(){
+  const inputFrontera = document.getElementById('ip-frontera-nueva');
+  const sug = document.getElementById('ip-frontera-sugerencias');
+  const frontera = (inputFrontera.value || '').trim();
+  if(!frontera || !sug) return;
+  sug.innerHTML = '<span style="color:var(--text3)">🔎 Buscando...</span>';
+  try{
+    const r = await apiGet(`/api/indice-perdidas/aenc-sugerir?frontera=${encodeURIComponent(frontera)}`);
+    if(!r.nombre_aenc){
+      sug.innerHTML = `<span style="color:var(--text3)">No encontré "${ipEscapar(frontera)}" en ningún archivo AENC reciente -- revisá el código.</span>`;
+      return;
+    }
+    const encabezado = `<div style="margin-bottom:4px">En AENC esta frontera se llama <b>"${ipEscapar(r.nombre_aenc)}"</b>${r.candidatos.length ? ' -- coincidencias en Usuarios Telemedidos:' : ', pero no encontré ningún nombre parecido en Usuarios Telemedidos:'}</div>`;
+    sug.innerHTML = encabezado + (r.candidatos.length
+      ? r.candidatos.map(c => `
+          <div class="be-buscador-opt" style="display:inline-block;margin:2px 6px 2px 0;padding:4px 9px;border:1px solid var(--border);border-radius:7px;cursor:pointer"
+            onclick="document.getElementById('ip-frontera-usuario-id').value='${ipEscapar(c.usuario_id).replace(/'/g,"\\'")}'; this.parentElement.querySelectorAll('.be-buscador-opt').forEach(o=>o.style.outline='')" >
+            ${ipEscapar(c.nombre)} <span style="color:var(--text3)">(usuario_id: ${ipEscapar(c.usuario_id)} · ${Math.round(c.score*100)}% parecido)</span>
+          </div>`).join('')
+      : `<span style="color:var(--text3)">Buscá manualmente en Usuarios Telemedidos por ese nombre.</span>`);
+  }catch(e){
+    sug.innerHTML = `<span style="color:#dc2626">❌ ${ipEscapar(e.message)}</span>`;
+  }
 }
 async function ipAgregarFrontera(){
   const inputFrontera = document.getElementById('ip-frontera-nueva');
@@ -8139,10 +8172,12 @@ function ipRenderPanel(){
         <input type="text" id="ip-frontera-usuario-id" placeholder="usuario_id en Balances (si es distinto)"
           style="flex:1;padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg)"
           onkeydown="if(event.key==='Enter'){event.preventDefault();ipAgregarFrontera();}">
+        <button type="button" class="be-editar-btn" style="white-space:nowrap" title="No sabés el usuario_id de esta frontera -- buscarlo por nombre" onclick="ipSugerirUsuarioId()">🔍 Buscar</button>
         <button type="button" class="btn-theme" style="width:auto;padding:6px 14px" onclick="ipAgregarFrontera()">＋ Agregar</button>
       </div>
+      <div id="ip-frontera-sugerencias" style="font-size:11px;margin-bottom:8px"></div>
       <div style="font-size:10.5px;color:var(--text3);margin-bottom:8px">
-        Si el código SIC de la frontera no es el mismo usuario_id (Socket ID) que usa esa frontera en Usuarios Telemedidos/Balances, escribí acá cuál es -- queda guardado para la próxima vez.
+        Si el código SIC de la frontera no es el mismo usuario_id (Socket ID) que usa esa frontera en Usuarios Telemedidos/Balances, escribí acá cuál es (o usá "🔍 Buscar") -- queda guardado para la próxima vez.
       </div>
       <div id="ip-fronteras-lista" style="display:flex;gap:6px;flex-wrap:wrap"></div>
     </div>` : '';
