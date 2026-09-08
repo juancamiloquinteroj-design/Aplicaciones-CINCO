@@ -5381,6 +5381,32 @@ async function _expImagenBloque(elId, nombreBase, ev){
   const clonEl = el.cloneNode(true);
   clonEl.querySelectorAll('.exp-wrap, .no-exportar').forEach(b => b.remove());
 
+  // -1) <td rowspan> (ej. la columna "Nivel" de la tabla de Valorización)
+  // -- html2canvas no soporta bien rowspan: cada fila queda con distinta
+  // cantidad de celdas y todo se corre/desalinea al rasterizar, y la
+  // celda "unida" no se nota (pedido explícito, "no está centrado la
+  // segunda columna... no aparece que estén unidas las celdas"). Se
+  // reemplaza cada rowspan por N celdas planas (una por fila, sin borde
+  // entre ellas) -- misma cantidad de columnas en TODAS las filas, y el
+  // "unido" se simula quitando el borde entre esas celdas.
+  clonEl.querySelectorAll('td[rowspan]').forEach(celdaOrig => {
+    const n = parseInt(celdaOrig.getAttribute('rowspan'), 10) || 1;
+    if(n <= 1) return;
+    celdaOrig.removeAttribute('rowspan');
+    celdaOrig.style.borderBottom = 'none';
+    let fila = celdaOrig.closest('tr');
+    for(let i=1; i<n; i++){
+      fila = fila.nextElementSibling;
+      if(!fila) break;
+      const spacer = document.createElement('td');
+      spacer.className = celdaOrig.className;
+      spacer.style.cssText = celdaOrig.style.cssText;
+      spacer.style.borderTop = 'none';
+      if(i < n-1) spacer.style.borderBottom = 'none';
+      fila.insertBefore(spacer, fila.firstChild);
+    }
+  });
+
   // 0) <details> (ej. "Contratos Mensuales") -- html2canvas no respeta
   // bien el colapsado nativo (details:not([open]) > *:not(summary){display:
   // none} es una regla del UA stylesheet, no CSS explícito) y termina
@@ -16643,7 +16669,7 @@ function alimResumenRenderTablaValorizacion(clave){
            que estos valores son aproximados... para hacerse una idea del
            costo total de energía que no se reconoce"). -->
       <div style="font-size:11px;color:var(--text3);font-style:italic;margin-top:8px;text-align:center">
-        Nota: estos valores son aproximados -- sirven para hacerse una idea del costo total de la energía que no se reconoce, no reemplazan el cálculo oficial de facturación.
+        Nota: estos valores son aproximados -- sirven para hacerse una idea del costo total de la energía que no se reconoce, no reemplazan el cálculo oficial de facturación ni el cálculo oficial de compra de energía.
       </div>
     </div>`;
 
