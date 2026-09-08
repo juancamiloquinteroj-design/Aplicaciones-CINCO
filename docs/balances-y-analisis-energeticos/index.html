@@ -8053,14 +8053,37 @@ async function ipGuardarFronterasActivas(){
   catch(e){ /* no crítico -- si falla, se vuelve a intentar guardar en el próximo cambio */ }
 }
 
+// Etiqueta corta del canal para mostrar en el chip -- mismo texto que el
+// <select> de abajo, para que se lea igual en los dos lados.
+const IP_CANAL_ETIQUETA = {canal3: 'solo exportación', canal1: 'solo importación'};
+
 function ipRenderFronterasLista(){
   const cont = document.getElementById('ip-fronteras-lista');
   if(!cont) return;
-  cont.innerHTML = IP_FRONTERAS_ACTIVAS.map((f, i) => `
-    <span class="be-modo-btn activo" style="cursor:default;display:inline-flex;align-items:center;gap:6px">
-      ${ipEscapar(f.frontera)}${f.usuarioId && f.usuarioId !== f.frontera ? ` → ${ipEscapar(f.usuarioId)}` : ''}
-      <button type="button" onclick="ipQuitarFrontera(${i})" style="background:none;border:none;color:inherit;font-weight:800;cursor:pointer;padding:0;line-height:1" title="Quitar">✕</button>
-    </span>`).join('') || `<span style="font-size:11px;color:var(--text3)">Todavía no agregaste ninguna frontera.</span>`;
+  cont.innerHTML = IP_FRONTERAS_ACTIVAS.map((f, i) => {
+    const partes = [];
+    if(f.usuarioId && f.usuarioId !== f.frontera) partes.push(`→ ${ipEscapar(f.usuarioId)}`);
+    if(f.canal) partes.push(IP_CANAL_ETIQUETA[f.canal] || f.canal);
+    if(f.reemplazarDesde) partes.push(`reemplaza desde ${ipEscapar(f.reemplazarDesde)}`);
+    return `<span class="be-modo-btn activo" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px" onclick="ipEditarFrontera(${i})" title="Click para editar">
+      ${ipEscapar(f.frontera)}${partes.length ? ` <span style="opacity:.85;font-weight:400">(${partes.join(' · ')})</span>` : ''}
+      <button type="button" onclick="event.stopPropagation();ipQuitarFrontera(${i})" style="background:none;border:none;color:inherit;font-weight:800;cursor:pointer;padding:0;line-height:1" title="Quitar">✕</button>
+    </span>`;
+  }).join('') || `<span style="font-size:11px;color:var(--text3)">Todavía no agregaste ninguna frontera.</span>`;
+}
+
+// Click en un chip -- recarga sus datos en el formulario de arriba para
+// corregirlos (canal, fecha de reemplazo, usuario_id) sin tener que
+// quitarlo y volver a escribir el código de memoria.
+function ipEditarFrontera(i){
+  const f = IP_FRONTERAS_ACTIVAS[i];
+  if(!f) return;
+  document.getElementById('ip-frontera-nueva').value = f.frontera;
+  document.getElementById('ip-frontera-usuario-id').value = f.usuarioId || '';
+  const selCanal = document.getElementById('ip-frontera-canal');
+  if(selCanal) selCanal.value = f.canal || '';
+  const inputDesde = document.getElementById('ip-frontera-reemplazo-desde');
+  if(inputDesde) inputDesde.value = f.reemplazarDesde || '';
 }
 // Catálogo completo de fronteras AENC (código SIC + nombre), del archivo
 // más reciente disponible -- pedido explícito ("ahí debería mostrarme
@@ -8170,7 +8193,19 @@ async function ipSugerirUsuarioId(){
     const encabezado = r.nombre_aenc
       ? `<div style="margin-bottom:4px">En AENC esta frontera se llama <b>"${ipEscapar(r.nombre_aenc)}"</b> -- coincidencia(s) en Usuarios Telemedidos:</div>`
       : `<div style="margin-bottom:4px">No encontré el nombre de esta frontera en AENC, pero sí un usuario_id idéntico al código SIC en Usuarios Telemedidos:</div>`;
-    sug.innerHTML = encabezado + r.candidatos.map(chip).join('') + diag;
+    // Rol histórico (Importación/Exportación) -- pedido explícito ("eso
+    // debería poder discriminar aunque C3 es exportación y canal 1
+    // importación"): AENC plano sí trae esa bandera (Novedades CGM no) --
+    // se usa como sugerencia y precarga sola el selector de canal de
+    // abajo, el usuario la puede corregir si no aplica.
+    let avisoCanal = '';
+    if(r.canal_sugerido){
+      const selCanal = document.getElementById('ip-frontera-canal');
+      if(selCanal && !selCanal.value) selCanal.value = r.canal_sugerido;
+      const etiquetaRol = r.impo_expo === 'E' ? 'Exportación' : 'Importación';
+      avisoCanal = `<div style="margin-top:4px;color:var(--text2)">📌 En AENC esta frontera históricamente es de <b>${etiquetaRol}</b> -- precargué "Canal a completar" con <b>${ipEscapar(IP_CANAL_ETIQUETA[r.canal_sugerido] || r.canal_sugerido)}</b>, corregilo si no aplica.</div>`;
+    }
+    sug.innerHTML = encabezado + r.candidatos.map(chip).join('') + avisoCanal + diag;
   }catch(e){
     sug.innerHTML = `<span style="color:#dc2626">❌ ${ipEscapar(e.message)}</span>`;
   }
@@ -8178,18 +8213,26 @@ async function ipSugerirUsuarioId(){
 async function ipAgregarFrontera(){
   const inputFrontera = document.getElementById('ip-frontera-nueva');
   const inputUsuario = document.getElementById('ip-frontera-usuario-id');
+  const selCanal = document.getElementById('ip-frontera-canal');
+  const inputDesde = document.getElementById('ip-frontera-reemplazo-desde');
   const frontera = (inputFrontera.value || '').trim();
   const usuarioId = (inputUsuario.value || '').trim();
+  const canal = selCanal ? selCanal.value : '';
+  const reemplazarDesde = inputDesde ? inputDesde.value : '';
   if(!frontera) return;
-  if(!IP_FRONTERAS_ACTIVAS.some(f => f.frontera.toLowerCase() === frontera.toLowerCase())){
-    IP_FRONTERAS_ACTIVAS.push({frontera, usuarioId});
-  }
+  // Si ya estaba en la lista, EDITA sus datos en vez de ignorarla -- pedido
+  // implícito del flujo "click en un chip para corregirlo" (ipEditarFrontera).
+  const existente = IP_FRONTERAS_ACTIVAS.find(f => f.frontera.toLowerCase() === frontera.toLowerCase());
+  if(existente) Object.assign(existente, {usuarioId, canal, reemplazarDesde});
+  else IP_FRONTERAS_ACTIVAS.push({frontera, usuarioId, canal, reemplazarDesde});
   if(usuarioId){
     const mapa = ipLeerMapaFronteras();
     mapa[frontera] = usuarioId;
     await ipGuardarMapaFronteras(mapa);
   }
   inputFrontera.value = ''; inputUsuario.value = '';
+  if(selCanal) selCanal.value = '';
+  if(inputDesde) inputDesde.value = '';
   ipRenderFronterasLista();
   await ipGuardarFronterasActivas();
 }
@@ -8272,8 +8315,32 @@ function ipRenderPanel(){
         <button type="button" class="btn-theme" style="width:auto;padding:6px 14px" onclick="ipAgregarFrontera()">＋ Agregar</button>
       </div>
       <div id="ip-frontera-sugerencias" style="font-size:11px;margin-bottom:8px"></div>
+      <!-- Canal + fecha de reemplazo -- pedido explícito ("el problema, las
+           está añadiendo a los dos canales C3 y C1... eso debería poder
+           discriminar aunque C3 es exportación y canal 1 importación" +
+           "yo debo poner desde qué día hacer el reemplazo, no solo el
+           mes"): Novedades CGM trae un solo número sin bandera I/E, así
+           que si la frontera se usa en dos canales hay que decirle acá
+           cuál es el correcto (el otro queda protegido); y si el dato
+           real de ese medidor está roto (telemetría en 0 o basura), acá
+           se indica desde cuándo pisarlo igual. Ambos opcionales -- vacío
+           = comportamiento de siempre (ambos canales, nunca pisa dato real). -->
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">
+        <div style="flex:1;min-width:200px">
+          <label style="display:block;font-size:10px;color:var(--text3);margin-bottom:3px">Canal a completar</label>
+          <select id="ip-frontera-canal" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg)">
+            <option value="">Ambos canales (como viene)</option>
+            <option value="canal3">Solo Exportación (canal3)</option>
+            <option value="canal1">Solo Importación (canal1)</option>
+          </select>
+        </div>
+        <div style="flex:1;min-width:200px">
+          <label style="display:block;font-size:10px;color:var(--text3);margin-bottom:3px">Reemplazar dato real desde <span style="font-weight:400">(si es poco confiable)</span></label>
+          <input type="date" id="ip-frontera-reemplazo-desde" style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg)">
+        </div>
+      </div>
       <div style="font-size:10.5px;color:var(--text3);margin-bottom:8px">
-        Elegí una frontera de la lista (trae el nombre de AENC) -- si su usuario_id (Socket ID) en Usuarios Telemedidos/Balances es distinto al código SIC, escribilo acá -- queda guardado para la próxima vez.
+        Elegí una frontera de la lista (trae el nombre de AENC) -- si su usuario_id (Socket ID) en Usuarios Telemedidos/Balances es distinto al código SIC, escribilo acá -- queda guardado para la próxima vez. Click en un chip de abajo para corregirlo.
       </div>
       <div id="ip-fronteras-lista" style="display:flex;gap:6px;flex-wrap:wrap"></div>
     </div>` : '';
@@ -8370,6 +8437,15 @@ async function ipEjecutar(){
     const mapa = ipLeerMapaFronteras();
     IP_FRONTERAS_ACTIVAS.forEach(f => { if(f.usuarioId) mapa[f.frontera] = f.usuarioId; });
     body.mapa_fronteras = mapa;
+    // Canal a completar y fecha de reemplazo -- pedido explícito (ver
+    // docstring de _buscar_candidatos en el backend): solo se manda para
+    // las fronteras que de verdad tengan algo configurado.
+    body.mapa_canal = {};
+    body.mapa_reemplazo_desde = {};
+    IP_FRONTERAS_ACTIVAS.forEach(f => {
+      if(f.canal) body.mapa_canal[f.frontera] = f.canal;
+      if(f.reemplazarDesde) body.mapa_reemplazo_desde[f.frontera] = f.reemplazarDesde;
+    });
     const desde = document.getElementById('ip-fecha-desde').value;
     const hasta = document.getElementById('ip-fecha-hasta').value;
     if(desde) body.fecha_desde = desde;
@@ -8523,34 +8599,40 @@ function ipMostrarResultadoAenc(jobId, resultado){
     return;
   }
   const estructurasUnicas = [...new Set(candidatos.map(c => c.estructura_nombre))];
+  const forzados = candidatos.filter(c => c.forzado).length;
   const filas = candidatos.map(c => `
-    <tr>
+    <tr${c.forzado ? ' style="background:rgba(220,38,38,.08)"' : ''}>
       <td>${ipEscapar(c.estructura_nombre)}</td>
       <td>${ipEscapar(c.frontera)}${c.usuario_id && c.usuario_id !== c.frontera ? ` <span style="color:var(--text3)">(${ipEscapar(c.usuario_id)})</span>` : ''}</td>
+      <td>${ipEscapar(c.canal || '')}</td>
       <td>${ipEscapar(c.fecha)}</td>
       <td style="text-align:right">${Number(c.valor).toLocaleString('es-CO')}</td>
       <td>${ipEscapar(c.archivo)}</td>
+      <td>${c.forzado ? `<span style="color:#dc2626;font-weight:700" title="Va a reemplazar un dato real existente">⚠️ reemplaza ${Number(c.valor_anterior).toLocaleString('es-CO')}</span>` : ''}</td>
     </tr>`).join('');
   cont.innerHTML = `
     <div style="font-size:12px;font-weight:700;color:var(--text2);margin-bottom:6px">
       ${candidatos.length} día(s) encontrado(s) en ${estructurasUnicas.length} estructura${estructurasUnicas.length===1?'':'s'}: ${ipEscapar(estructurasUnicas.join(', '))}
+      ${forzados ? `<span style="color:#dc2626"> -- ${forzados} van a REEMPLAZAR un dato real existente</span>` : ''}
     </div>
     <div style="max-height:260px;overflow-y:auto;margin-bottom:10px;border:1px solid var(--border);border-radius:8px">
       <table style="width:100%;border-collapse:collapse;font-size:11.5px">
         <thead><tr style="position:sticky;top:0;background:var(--bg3)">
           <th style="text-align:left;padding:6px 8px">Estructura</th><th style="text-align:left;padding:6px 8px">Frontera (usuario_id)</th>
-          <th style="text-align:left;padding:6px 8px">Día</th><th style="text-align:right;padding:6px 8px">Valor (kWh)</th>
-          <th style="text-align:left;padding:6px 8px">Archivo</th>
+          <th style="text-align:left;padding:6px 8px">Canal</th><th style="text-align:left;padding:6px 8px">Día</th>
+          <th style="text-align:right;padding:6px 8px">Valor (kWh)</th><th style="text-align:left;padding:6px 8px">Archivo</th>
+          <th style="text-align:left;padding:6px 8px">Aviso</th>
         </tr></thead>
         <tbody>${filas}</tbody>
       </table>
     </div>
-    <button type="button" class="btn-theme" style="width:auto;padding:7px 16px" onclick="ipAplicarAenc('${jobId}', this)">✅ Aplicar a Balances (${candidatos.length})</button>
+    <button type="button" class="btn-theme" style="width:auto;padding:7px 16px" onclick="ipAplicarAenc('${jobId}', this, ${forzados})">✅ Aplicar a Balances (${candidatos.length})</button>
   `;
 }
 
-async function ipAplicarAenc(jobId, btn){
-  if(!confirm('¿Aplicar estos días a Balances por Estructura? Van a quedar como ajustes con nota de que salieron de AENC -- no se puede deshacer desde acá, habría que borrar el ajuste a mano en Ver Balance.')) return;
+async function ipAplicarAenc(jobId, btn, forzados){
+  const avisoForzados = forzados ? `\n\n⚠️ ${forzados} de esos días van a REEMPLAZAR un dato real que ya existía (marcados en rojo en la tabla) -- revisalos antes de confirmar.` : '';
+  if(!confirm('¿Aplicar estos días a Balances por Estructura? Van a quedar como ajustes con nota de que salieron de AENC/Novedades CGM -- no se puede deshacer desde acá, habría que borrar el ajuste a mano en Ver Balance.' + avisoForzados)) return;
   btn.disabled = true;
   const textoOriginal = btn.textContent;
   btn.textContent = 'Aplicando...';
