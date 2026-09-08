@@ -2559,6 +2559,17 @@ tfoot td:first-child{text-align:left}
               <div class="resnivel-campo-label">Mes</div>
               <select id="alim-resumen-mes" onchange="alimResumenRenderNiveles()" style="border:1.5px solid var(--border);border-radius:4px;padding:6px 8px;font-weight:700;font-size:13px;color:var(--text);background:var(--card-bg)"></select>
             </div>
+            <!-- Tarifa G+T+R -- pedido explícito ("como estaba al inicio,
+                 eso no se debe tocar"): UNA sola tarifa compartida por los
+                 3 niveles, acá arriba, como el diseño original (antes de
+                 pasar a una tarifa por nivel adentro de cada tarjeta). La
+                 tarifa POR NIVEL sigue existiendo, pero solo para la tabla
+                 de la derecha (ver alimResumenRenderTablaValorizacion) --
+                 son dos cosas distintas. -->
+            <div class="resnivel-campo" style="min-width:170px">
+              <div class="resnivel-campo-label">Tarifa G+T+R ($/kWh)</div>
+              <input type="number" min="0" step="0.01" placeholder="--" id="alim-resumen-tarifa" oninput="alimResumenActualizarValorizacion()">
+            </div>
           </div>
           <!-- Título propio + borde -- pedido explícito ("colócalo al
                lado todo como dentro de una tarjeta, que se entienda que
@@ -2604,31 +2615,39 @@ tfoot td:first-child{text-align:left}
         <!-- Se quitó el mapa de zonas -- pedido explícito ("vamos a
              quitar el mapa y ahí se van a colocar más tarjetas
              informativas y donde se pueda colocar información
-             financiera"). Ahora esta columna trae Contratos Mensuales
-             (costo fijo mensual, addable) y un Balance Financiero que
-             cruza esos contratos contra la Valorización ($) de los 3
-             niveles (ver alimResumenAgregarContrato/
-             _alimResumenActualizarBalanceFinanciero más abajo). -->
-        <div style="flex:0 1 440px;min-width:320px;display:flex;flex-direction:column;gap:16px">
+             financiera"). Contratos Mensuales / Balance Financiero /
+             Valorización de la Pérdida van TODOS adentro de UNA sola
+             tarjeta (pedido explícito, "algo así como señalado en rojo
+             bien bonito" -- antes eran 3-4 cajas separadas con bordes
+             repetidos) -- separadores finos entre secciones en vez de
+             bordes completos. Contratos Mensuales es <details> (pedido
+             explícito, "más compacto"): colapsada no ocupa casi espacio. -->
+        <div style="flex:0 1 440px;min-width:320px">
           <div style="border:1.5px solid var(--border);border-radius:12px;padding:14px">
-            <div style="text-align:center;font-size:13px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase;margin-bottom:10px">Contratos Mensuales</div>
-            <div id="alim-resumen-contratos-lista" style="display:flex;flex-direction:column;gap:5px;margin-bottom:10px"></div>
-            <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px">
-              <input type="text" placeholder="Nombre del contrato" id="alim-resumen-contrato-nombre" onkeydown="if(event.key==='Enter') alimResumenAgregarContrato()">
-              <div style="display:flex;gap:6px">
-                <input type="number" min="0" step="1" placeholder="$ mensual" id="alim-resumen-contrato-valor" style="flex:1;min-width:0" onkeydown="if(event.key==='Enter') alimResumenAgregarContrato()">
-                <button class="btn-theme" style="width:auto;padding:0 12px;flex-shrink:0" onclick="alimResumenAgregarContrato()">＋</button>
+            <details id="alim-resumen-contratos-det">
+              <summary style="text-align:center;font-size:13px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase;cursor:pointer;list-style:none">
+                Contratos Mensuales <span id="alim-resumen-contratos-resumen" style="font-weight:600;color:var(--text3);text-transform:none;letter-spacing:0"></span>
+              </summary>
+              <div style="margin-top:10px">
+                <div id="alim-resumen-contratos-lista" style="display:flex;flex-direction:column;gap:5px;margin-bottom:10px"></div>
+                <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px">
+                  <input type="text" placeholder="Nombre del contrato" id="alim-resumen-contrato-nombre" onkeydown="if(event.key==='Enter') alimResumenAgregarContrato()">
+                  <div style="display:flex;gap:6px">
+                    <input type="number" min="0" step="1" placeholder="$ mensual" id="alim-resumen-contrato-valor" style="flex:1;min-width:0" onkeydown="if(event.key==='Enter') alimResumenAgregarContrato()">
+                    <button class="btn-theme" style="width:auto;padding:0 12px;flex-shrink:0" onclick="alimResumenAgregarContrato()">＋</button>
+                  </div>
+                </div>
+                <div class="resnivel-subgrupo-campos">
+                  <div class="resnivel-campo">
+                    <div class="resnivel-campo-label">Total Contratos ($/mes)</div>
+                    <div class="resnivel-campo-caja destacada" id="alim-resumen-contratos-total">--</div>
+                  </div>
+                </div>
               </div>
-            </div>
-            <div class="resnivel-subgrupo-campos">
-              <div class="resnivel-campo">
-                <div class="resnivel-campo-label">Total Contratos ($/mes)</div>
-                <div class="resnivel-campo-caja destacada" id="alim-resumen-contratos-total">--</div>
-              </div>
-            </div>
-          </div>
+            </details>
 
-          <div style="border:1.5px solid var(--border);border-radius:12px;padding:14px">
+            <div style="border-top:1px solid var(--border);margin:14px 0"></div>
+
             <div style="text-align:center;font-size:13px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase;margin-bottom:10px">Balance Financiero</div>
             <div class="resnivel-subgrupo-campos">
               <div class="resnivel-campo">
@@ -2648,15 +2667,17 @@ tfoot td:first-child{text-align:left}
                 <div class="resnivel-campo-caja destacada" id="alim-resumen-bf-balance">--</div>
               </div>
             </div>
-          </div>
 
-          <!-- Tabla de Valorización (Total/Técnica × Reconocido/No
-               Reconocido, kWh y $) -- pedido explícito, DEBAJO de Balance
-               Financiero, con su PROPIA tarifa por nivel (independiente de
-               la tarifa de las tarjetas de la izquierda): "son tarifas
-               diferentes, una afecta la izquierda y otra la derecha". Ver
-               alimResumenRenderTablaValorizacion. -->
-          <div id="alim-resumen-tabla-valorizacion"></div>
+            <div style="border-top:1px solid var(--border);margin:14px 0"></div>
+
+            <!-- Tabla de Valorización (Total/Técnica × Reconocido/No
+                 Reconocido, kWh y $), con su PROPIA tarifa por nivel
+                 (independiente de la tarifa de las tarjetas de la
+                 izquierda): "son tarifas diferentes, una afecta la
+                 izquierda y otra la derecha". Ver
+                 alimResumenRenderTablaValorizacion. -->
+            <div id="alim-resumen-tabla-valorizacion"></div>
+          </div>
         </div>
       </div>
     </div>
@@ -15895,29 +15916,23 @@ function _alimResumenGuardarPct(nivelClave, valor){
   localStorage.setItem(_alimResumenClaveLS(nivelClave), valor);
 }
 
-// Tarifa ($/kWh) -- pedido explícito ("un campo para colocar el valor de
-// la tarifa de Nivel IV, Nivel III y Nivel 2-1"): antes era UNA sola
-// tarifa para los 3 niveles, ahora cada nivel tiene la suya (Nivel 2-1
-// "será promedio de la tarifa" -- el usuario ingresa directo ese
-// promedio, no se calcula solo). Por nivel + por mes + por operador,
-// mismo criterio de persistencia que % Reconocido.
-function _alimResumenTarifaClaveLS(nivelClave, mesClave){
+// Tarifa G+T+R ($/kWh) -- UNA sola, compartida por los 3 niveles (diseño
+// original) -- pedido explícito ("como estaba al inicio, eso no se debe
+// tocar"): se probó separarla por nivel acá a la izquierda, pero eso
+// termina siendo SOLO la tarifa de la tabla de la derecha (ver más abajo,
+// _alimResumenTarifaDerClaveLS) -- son dos tarifas distintas a propósito.
+// Por mes + por operador, mismo criterio de persistencia que % Reconocido
+// (y misma clave que la tarifa compartida de siempre, sin romper lo viejo).
+function _alimResumenTarifaClaveLS(mesClave){
   const slug = (typeof OPERADOR !== 'undefined' && OPERADOR && OPERADOR.slug) ? OPERADOR.slug : 'default';
-  return `pt_tarifa_${slug}_${nivelClave}_${mesClave}`;
+  return `pt_tarifa_${slug}_${mesClave}`;
 }
-function _alimResumenLeerTarifa(nivelClave, mesClave){
-  const v = localStorage.getItem(_alimResumenTarifaClaveLS(nivelClave, mesClave));
-  if(v!=null && v!=='') return v;
-  // Antes había UNA sola tarifa compartida por los 3 niveles (clave vieja
-  // sin nivel) -- si todavía no se tocó la tarifa de ESTE nivel, se rescata
-  // ese valor viejo en vez de mostrar vacío, para no perder lo que ya
-  // estaba escrito al pasar a tarifas por nivel.
-  const slug = (typeof OPERADOR !== 'undefined' && OPERADOR && OPERADOR.slug) ? OPERADOR.slug : 'default';
-  const vieja = localStorage.getItem(`pt_tarifa_${slug}_${mesClave}`);
-  return vieja==null || vieja==='' ? '' : vieja;
+function _alimResumenLeerTarifa(mesClave){
+  const v = localStorage.getItem(_alimResumenTarifaClaveLS(mesClave));
+  return v==null || v==='' ? '' : v;
 }
-function _alimResumenGuardarTarifa(nivelClave, mesClave, valor){
-  localStorage.setItem(_alimResumenTarifaClaveLS(nivelClave, mesClave), valor);
+function _alimResumenGuardarTarifa(mesClave, valor){
+  localStorage.setItem(_alimResumenTarifaClaveLS(mesClave), valor);
 }
 
 // Tarifa DERECHA -- pedido explícito ("son tarifas diferentes, una
@@ -16000,14 +16015,18 @@ function _alimResumenKwhNivel(nivelClave){
   return {actual, tecKwh, totalKwhRec, totalKwhNoRec, tecKwhRec, tecKwhNoRec};
 }
 
-// Valorización con la Tarifa IZQUIERDA (una por nivel, ver
-// alim-resumen-tarifa-${nivelClave}) -- alimenta el "Valor Total ($)"
-// simple de cada tarjeta de Nivel y el cuadro Total de más abajo (sin
-// tocar esos dos, pedido explícito).
+// Valorización con la Tarifa G+T+R compartida (ver #alim-resumen-tarifa,
+// junto a Mes) -- alimenta el "Valor Total ($)" simple de cada tarjeta de
+// Nivel, el cuadro Total de más abajo, y también el campo de Informes
+// (informesActualizarTarifaPrecarga) -- todos comparten la misma tarifa,
+// diseño original, sin tocar.
 function _alimResumenValorNivelCalc(nivelClave){
   const k = _alimResumenKwhNivel(nivelClave);
   if(!k) return null;
-  const tarifaInput = document.getElementById(`alim-resumen-tarifa-${nivelClave}`);
+  // Tarifa G+T+R -- UNA sola, compartida por los 3 niveles (como el
+  // diseño original) -- pedido explícito ("como estaba al inicio, eso no
+  // se debe tocar").
+  const tarifaInput = document.getElementById('alim-resumen-tarifa');
   const tarifaNum = tarifaInput && tarifaInput.value !== '' ? Number(tarifaInput.value) : null;
   const tarifaValida = tarifaNum!=null && !isNaN(tarifaNum);
   const money = v => (v!=null && tarifaValida) ? v * tarifaNum : null;
@@ -16096,16 +16115,15 @@ function _alimResumenActualizarValorTotalNivel(nivelClave){
   if(el) el.textContent = _alimResumenFmtMoney(r ? r.valorTotal : null);
 }
 
-// Se dispara al escribir en la Tarifa IZQUIERDA de un nivel -- recalcula
-// el "Valor Total ($)" de esa tarjeta + el cuadro Total de abajo (que
-// sigue sumando Reconocido/No Reconocido con esta misma tarifa, sin
-// tocar su fórmula de siempre).
-function alimResumenActualizarTarifa(nivelClave){
-  const input = document.getElementById(`alim-resumen-tarifa-${nivelClave}`);
+// Se dispara al escribir en la Tarifa G+T+R (una sola, compartida) --
+// recalcula el "Valor Total ($)" de LAS 3 tarjetas de nivel + el cuadro
+// Total de abajo (que sigue sumando Reconocido/No Reconocido con esta
+// misma tarifa, sin tocar su fórmula de siempre).
+function alimResumenActualizarValorizacion(){
+  const input = document.getElementById('alim-resumen-tarifa');
   const sel = document.getElementById('alim-resumen-mes');
-  if(!input || !sel || !sel.value) return;
-  _alimResumenGuardarTarifa(nivelClave, sel.value, input.value);
-  _alimResumenActualizarValorTotalNivel(nivelClave);
+  if(input && sel && sel.value) _alimResumenGuardarTarifa(sel.value, input.value);
+  ALIM_RESUMEN_NIVELES.forEach(n => _alimResumenActualizarValorTotalNivel(n.clave));
   _alimResumenActualizarTotales();
 }
 
@@ -16148,6 +16166,11 @@ function alimResumenRenderContratos(){
     </div>`).join('') : `<div style="font-size:12px;color:var(--text3)">Todavía no agregaste ningún contrato.</div>`;
   const total = contratos.reduce((s, c) => s + (Number(c.valor) || 0), 0);
   if(totalEl) totalEl.textContent = _alimResumenFmtMoney(total);
+  // Resumen visible en el <summary> aunque esté colapsado -- pedido
+  // explícito ("más compacto"): no hace falta desplegar para saber
+  // cuántos contratos hay y cuánto suman.
+  const resumenEl = document.getElementById('alim-resumen-contratos-resumen');
+  if(resumenEl) resumenEl.textContent = contratos.length ? `(${contratos.length} · ${_alimResumenFmtMoney(total)})` : '';
   _alimResumenActualizarBalanceFinanciero();
 }
 
@@ -16266,6 +16289,11 @@ function alimResumenRenderNiveles(){
   alimResumenRenderIpReg(clave);
   const fmt = v => v==null ? '--' : v.toLocaleString('es-CO',{maximumFractionDigits:0});
 
+  // Tarifa G+T+R -- UNA sola para los 3 niveles (diseño original,
+  // restaurado -- pedido explícito). El input vive arriba, junto a Mes.
+  const tarifaInput = document.getElementById('alim-resumen-tarifa');
+  if(tarifaInput) tarifaInput.value = _alimResumenLeerTarifa(clave);
+
   // "Campo Excel" -- etiqueta ARRIBA de una caja blanca con borde fino,
   // pedido explícito ("lo más parecido como está ahí"). `opts`: {destacada, id}.
   const campo = (etiqueta, valor, opts) => {
@@ -16309,14 +16337,10 @@ function alimResumenRenderNiveles(){
     // explícito: "el reconocimiento negativo no existe"), se trata como 0.
     const perdidaRec = pctValido ? Math.max(0, actual.entrada * pctNum/100) : null;
 
-    // Tarifa IZQUIERDA de este nivel -- pedido explícito: "son tarifas
-    // diferentes, una afectará lo de la izquierda [esta tarjeta] y otra
-    // tarifa será para la derecha [la tabla nueva, ver
-    // alimResumenRenderTablaValorizacion]". Acá solo un "Valor Total ($)"
-    // simple (Pérdida por Balance × esta tarifa) -- el detalle Reconocido/
-    // No Reconocido/Técnica vive en la tabla de la derecha, con su propia
-    // tarifa.
-    const tarifaGuardada = _alimResumenLeerTarifa(n.clave, clave);
+    // Valor Total ($) de este nivel -- Pérdida por Balance × la Tarifa
+    // G+T+R compartida de arriba (la tabla de la derecha, más abajo, tiene
+    // su PROPIA tarifa por nivel, independiente de esta).
+    const tarifaGuardada = tarifaInput ? tarifaInput.value : '';
     const tarifaNum = tarifaGuardada === '' ? null : Number(tarifaGuardada);
     const tarifaValida = tarifaNum!=null && !isNaN(tarifaNum);
     const valorTotal = tarifaValida ? actual.perdida * tarifaNum : null;
@@ -16347,11 +16371,6 @@ function alimResumenRenderNiveles(){
             campo('Pérdida Reconocida', perdidaRec==null?'--':fmt(perdidaRec), {id:`alim-resumen-perdrec-${n.clave}`})
           )}
           ${subgrupo('Valorización ($)',
-            `<div class="resnivel-campo">
-              <div class="resnivel-campo-label">Tarifa ${n.clave==='n21'?'(promedio, $/kWh)':'($/kWh)'}</div>
-              <input type="number" min="0" step="0.01" placeholder="--" value="${tarifaGuardada}" style="border-color:var(--accent);color:var(--accent);font-weight:800"
-                id="alim-resumen-tarifa-${n.clave}" oninput="alimResumenActualizarTarifa('${n.clave}')">
-            </div>` +
             campo('Valor Total', _alimResumenFmtMoney(valorTotal), {id:`alim-resumen-valortotal-${n.clave}`, destacada:true})
           )}
           ${subgrupo('Índices',
@@ -16407,14 +16426,11 @@ function alimResumenRenderTablaValorizacion(clave){
     </tr>`).join('');
 
   cont.innerHTML = `
-    <div style="border:1.5px solid var(--border);border-radius:12px;padding:16px;margin-bottom:16px">
-      <div style="text-align:center;font-size:14px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase;margin-bottom:12px" title="Independiente de la Tarifa de las tarjetas de Nivel (izquierda) -- esta alimenta solo la tabla de abajo">Tarifa por Nivel (esta tabla)</div>
-      <div style="display:flex;flex-wrap:wrap;gap:20px;justify-content:center">
-        ${ALIM_RESUMEN_NIVELES.map(filaTarifa).join('')}
-      </div>
+    <div style="text-align:center;font-size:13px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase;margin-bottom:10px" title="Independiente de la Tarifa G+T+R de las tarjetas de Nivel -- esta alimenta solo la tabla de abajo">Valorización de la Pérdida</div>
+    <div style="display:flex;flex-wrap:wrap;gap:14px;justify-content:center;margin-bottom:12px">
+      ${ALIM_RESUMEN_NIVELES.map(filaTarifa).join('')}
     </div>
-    <div style="border:1.5px solid var(--border);border-radius:12px;padding:16px;overflow-x:auto">
-      <div style="text-align:center;font-size:14px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase;margin-bottom:12px">Valorización de la Pérdida</div>
+    <div style="overflow-x:auto">
       <table class="resval-tabla">
         <thead>
           <tr><th></th><th></th><th colspan="2">kWh</th><th colspan="2">$</th></tr>
