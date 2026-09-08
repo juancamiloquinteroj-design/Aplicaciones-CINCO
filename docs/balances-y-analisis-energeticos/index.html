@@ -21767,6 +21767,29 @@ function ipValorOverlay(f, campo){
   return IP_COLUMNAS_PCT_NIVEL.has(campo) ? v*100 : v;  // decimal-nivel (Pj n2/n3) ya está en escala 0-100
 }
 
+// Versión ANUALIZADA de una variable sobrepuesta -- misma ventana móvil de
+// 12 meses reales terminando en claveNormalFin que usa PT/IPT (ver
+// _agregar_rolling en ip_reg_calculo.py), para que el modo Anual del
+// gráfico principal solo mezcle series de la MISMA escala temporal (pedido
+// explícito: "que no permita mezcla de mensual-anual de las variables").
+// Para variables en % (Pj, %Preales) una suma de 12 meses no significa
+// nada -- se promedia en vez de sumar. null si falta algún mes de la
+// ventana (igual criterio que el backend: ventana incompleta = sin dato).
+function ipValorOverlayAnualizado(claveNormalFin, campo){
+  const [anioFin, mesFin] = claveNormalFin.split('-').map(Number);
+  const esPct = ipEsOverlayPct(campo);
+  let total = 0, n = 0;
+  for(let k=11; k>=0; k--){
+    const idx = anioFin*12 + (mesFin-1) - k;
+    const clave = `${Math.floor(idx/12)}-${String((idx%12)+1).padStart(2,'0')}`;
+    const fReal = ipFilaConDatosRealesDe(clave);
+    const v = fReal ? ipValorOverlay(fReal, campo) : null;
+    if(v==null) return null;
+    total += v; n++;
+  }
+  return esPct ? total/n : total;
+}
+
 function ipPoblarVariablesOverlay(){
   const nivel = Number(document.getElementById('ip-overlay-nivel').value);
   const cont = document.getElementById('ip-overlay-variables');
@@ -21826,10 +21849,14 @@ function ipRegresionLineal(puntos){
 // Botones "Anual (IP_Reg)" / "Mensual" junto al gráfico principal --
 // pedido explícito ("que la gráfica inicial también tenga un botón para
 // cambiar a mensual") para poder comparar mes a mes (indicador de UN solo
-// mes, sin ventana móvil de 12) contra otra fuente, sin el desfase/mezcla
-// de la ventana anual. Esconde las herramientas que son EXCLUSIVAS del
-// modo anual (Tendencia/Proyección/Sombrear/Variación/Medidor/Sobreponer
-// variable) -- pedido explícito "que no permita mezcla de mensual-anual".
+// mes, sin ventana móvil de 12) contra otra fuente, sin el desfase de la
+// ventana anual. "Sobreponer variable" queda disponible en los DOS modos
+// -- pedido explícito: en Anual sobrepone la variable ANUALIZADA (ventana
+// móvil de 12 meses, igual criterio que PT/IPT) y en Mensual la variable
+// de ESE mes suelto (ver ipValorOverlayAnualizado más abajo) -- nunca las
+// dos mezcladas en el mismo gráfico. Tendencia/Proyección/Sombrear/
+// Variación/Medidor sí son exclusivos del modo Anual (no tienen
+// equivalente mensual con sentido) y se esconden en Mensual.
 function ipCambiarModoGraficoPrincipal(modo){
   IP_MODO_GRAFICO_PRINCIPAL = modo;
   const esAnual = modo === 'anual';
@@ -21837,7 +21864,6 @@ function ipCambiarModoGraficoPrincipal(modo){
   document.getElementById('ip-btn-modo-mensual').classList.toggle('activo', !esAnual);
   document.getElementById('ip-controles-anual-1').classList.toggle('hidden', !esAnual);
   document.getElementById('ip-fbar-medidor').classList.toggle('hidden', !esAnual);
-  document.getElementById('ip-fbar-overlay').classList.toggle('hidden', !esAnual);
   document.getElementById('ip-titulo-grafico').textContent = esAnual
     ? 'Indicador de Pérdidas Totales (IP_REG)'
     : 'Indicador de Pérdidas Mensual (%) -- sin ventana móvil';
@@ -21863,20 +21889,39 @@ function ipRenderChartPrincipalMensual(){
   });
   const etiquetas = visibles.map(f => labelMes(ipClaveNormal(f)));
 
+  const datasets = [
+    {type:'bar', label:'Pérdida Mensual (kWh)', yAxisID:'y', order:2,
+      data: visibles.map(f=>f.perdida_mensual_kwh), backgroundColor:'#4472C4', borderColor:'#4472C4', borderWidth:1},
+    {type:'line', label:'% Pérdida Mensual', yAxisID:'yPct', order:1,
+      data: visibles.map(f=>f.pct_perdida_mensual==null?null:f.pct_perdida_mensual*100), borderColor:'#ED7D31',
+      backgroundColor:'rgba(237,125,49,.12)', borderWidth:2.5, pointRadius:2.5, spanGaps:true, tension:0,
+      datalabels:{display:true, anchor:'end', align:'top', offset:12,
+        formatter:v=>v==null?'':v.toFixed(2)+'%', font:{size:11, weight:'700'}, color:'#ED7D31',}},
+  ];
+
+  // Modo Mensual -- variable de ESE mes suelto (dato crudo, sin ventana
+  // móvil), nunca la anualizada -- pedido explícito, misma escala temporal
+  // que la línea principal de este gráfico.
+  let colorOverlay = 0;
+  for(const clave of IP_OVERLAYS_ACTIVOS){
+    const [nivelStr, campo] = clave.split(':');
+    const nivel = Number(nivelStr);
+    const etiquetaVar = (IP_COLUMNAS_NIVEL[nivel].find(([c])=>c===campo) || [null, campo])[1];
+    const esPct = ipEsOverlayPct(campo);
+    datasets.push({
+      type:'line', label:`N${nivel} ${etiquetaVar}`, yAxisID: esPct ? 'yPct' : 'y', order:5,
+      data: visibles.map(f => {
+        const fReal = ipFilaConDatosRealesDe(ipClaveNormal(f));
+        return fReal ? ipValorOverlay(fReal, campo) : null;
+      }),
+      borderColor: IP_PALETA_OVERLAY[colorOverlay++ % IP_PALETA_OVERLAY.length], backgroundColor:'transparent',
+      borderWidth:1.75, borderDash:[3,2], pointRadius:1.5, spanGaps:true, tension:0, datalabels:{display:false},
+    });
+  }
+
   if(chIpReg) chIpReg.destroy();
   chIpReg = new Chart(document.getElementById('ch-ip-reg'), {
-    data:{
-      labels: etiquetas,
-      datasets:[
-        {type:'bar', label:'Pérdida Mensual (kWh)', yAxisID:'y', order:2,
-          data: visibles.map(f=>f.perdida_mensual_kwh), backgroundColor:'#4472C4', borderColor:'#4472C4', borderWidth:1},
-        {type:'line', label:'% Pérdida Mensual', yAxisID:'yPct', order:1,
-          data: visibles.map(f=>f.pct_perdida_mensual==null?null:f.pct_perdida_mensual*100), borderColor:'#ED7D31',
-          backgroundColor:'rgba(237,125,49,.12)', borderWidth:2.5, pointRadius:2.5, spanGaps:true, tension:0,
-          datalabels:{display:true, anchor:'end', align:'top', offset:12,
-            formatter:v=>v==null?'':v.toFixed(2)+'%', font:{size:11, weight:'700'}, color:'#ED7D31',}},
-      ],
-    },
+    data:{ labels: etiquetas, datasets },
     options:{
       responsive:true, maintainAspectRatio:false,
       layout:{padding:{top:24, right:28}},
@@ -22044,15 +22089,12 @@ function ipRenderChart(){
     const etiquetaVar = (IP_COLUMNAS_NIVEL[nivel].find(([c])=>c===campo) || [null, campo])[1];
     const esPct = ipEsOverlayPct(campo);
     datasets.push({
-      type:'line', label:`N${nivel} ${etiquetaVar}`, yAxisID: esPct ? 'yPct' : 'y', order:5,
-      // OJO: el dato crudo de "f" (Eej, EsVFC, etc.) pertenece a la fecha
-      // REGULATORIA de "f", no a su fecha normal -- hay que buscar la fila
-      // cuyo dato crudo sí corresponde al mes real de este punto del eje X
-      // (ver ipFilaConDatosRealesDe), si no, todo queda corrido 3 meses.
-      data: visibles.map(f => {
-        const fReal = ipFilaConDatosRealesDe(ipClaveNormal(f));
-        return fReal ? ipValorOverlay(fReal, campo) : null;
-      }),
+      // Modo Anual -- variable ANUALIZADA (ventana móvil de 12 meses,
+      // mismo criterio que PT/IPT), nunca el dato crudo de un solo mes:
+      // pedido explícito, no mezclar escalas mensual/anual en el mismo
+      // gráfico. Ver ipValorOverlayAnualizado.
+      type:'line', label:`N${nivel} ${etiquetaVar} (12m)`, yAxisID: esPct ? 'yPct' : 'y', order:5,
+      data: visibles.map(f => ipValorOverlayAnualizado(ipClaveNormal(f), campo)),
       borderColor: IP_PALETA_OVERLAY[colorOverlay++ % IP_PALETA_OVERLAY.length], backgroundColor:'transparent',
       borderWidth:1.75, borderDash:[3,2], pointRadius:1.5, spanGaps:true, tension:0, datalabels:{display:false},
     });
