@@ -16109,21 +16109,30 @@ function _alimResumenActualizarTotales(){
 // criterio que alimResumenActualizarReconocido).
 // Actualiza el "Valor Total ($)" simple de la tarjeta de UN nivel
 // (izquierda) -- Pérdida por Balance × Tarifa izquierda de ese nivel.
-function _alimResumenActualizarValorTotalNivel(nivelClave){
+// Actualiza los 4 campos de "Valorización ($)" de UNA tarjeta de Nivel
+// (Reconocido/Total/No Reconocido/Técnica) -- como estaba originalmente,
+// pedido explícito ("le quitaste algunos costos que tenía valorización en
+// la existente, acomódala como estaba").
+function _alimResumenActualizarValorizacionNivel(nivelClave){
   const r = _alimResumenValorNivelCalc(nivelClave);
-  const el = document.getElementById(`alim-resumen-valortotal-${nivelClave}`);
-  if(el) el.textContent = _alimResumenFmtMoney(r ? r.valorTotal : null);
+  const set = (suffix, val) => {
+    const el = document.getElementById(`alim-resumen-${suffix}-${nivelClave}`);
+    if(el) el.textContent = _alimResumenFmtMoney(val);
+  };
+  set('valorrec', r ? r.valorRec : null);
+  set('valortotal', r ? r.valorTotal : null);
+  set('valornorec', r ? r.valorNoRec : null);
+  set('valortecnica', r ? r.valorTecnica : null);
 }
 
 // Se dispara al escribir en la Tarifa G+T+R (una sola, compartida) --
-// recalcula el "Valor Total ($)" de LAS 3 tarjetas de nivel + el cuadro
-// Total de abajo (que sigue sumando Reconocido/No Reconocido con esta
-// misma tarifa, sin tocar su fórmula de siempre).
+// recalcula los 4 campos de Valorización de LAS 3 tarjetas de nivel + el
+// cuadro Total de abajo.
 function alimResumenActualizarValorizacion(){
   const input = document.getElementById('alim-resumen-tarifa');
   const sel = document.getElementById('alim-resumen-mes');
   if(input && sel && sel.value) _alimResumenGuardarTarifa(sel.value, input.value);
-  ALIM_RESUMEN_NIVELES.forEach(n => _alimResumenActualizarValorTotalNivel(n.clave));
+  ALIM_RESUMEN_NIVELES.forEach(n => _alimResumenActualizarValorizacionNivel(n.clave));
   _alimResumenActualizarTotales();
 }
 
@@ -16337,13 +16346,13 @@ function alimResumenRenderNiveles(){
     // explícito: "el reconocimiento negativo no existe"), se trata como 0.
     const perdidaRec = pctValido ? Math.max(0, actual.entrada * pctNum/100) : null;
 
-    // Valor Total ($) de este nivel -- Pérdida por Balance × la Tarifa
-    // G+T+R compartida de arriba (la tabla de la derecha, más abajo, tiene
-    // su PROPIA tarifa por nivel, independiente de esta).
-    const tarifaGuardada = tarifaInput ? tarifaInput.value : '';
-    const tarifaNum = tarifaGuardada === '' ? null : Number(tarifaGuardada);
-    const tarifaValida = tarifaNum!=null && !isNaN(tarifaNum);
-    const valorTotal = tarifaValida ? actual.perdida * tarifaNum : null;
+    // Valorización ($) de este nivel -- Reconocido/Total/No Reconocido/
+    // Técnica, con la Tarifa G+T+R compartida de arriba (la tabla de la
+    // derecha, más abajo, tiene su PROPIA tarifa por nivel, independiente
+    // de esta). Como estaba originalmente -- pedido explícito ("le
+    // quitaste algunos costos que tenía valorización, acomódala como
+    // estaba").
+    const valores = _alimResumenValorNivelCalc(n.clave) || {};
 
     // "Pérdida Técnica (%)" se recalcula con la Entrada de ESTA vista (el
     // balance real, `actual.entrada`) en vez del tec.pct que manda el
@@ -16371,7 +16380,10 @@ function alimResumenRenderNiveles(){
             campo('Pérdida Reconocida', perdidaRec==null?'--':fmt(perdidaRec), {id:`alim-resumen-perdrec-${n.clave}`})
           )}
           ${subgrupo('Valorización ($)',
-            campo('Valor Total', _alimResumenFmtMoney(valorTotal), {id:`alim-resumen-valortotal-${n.clave}`, destacada:true})
+            campo('Valor Reconocido', _alimResumenFmtMoney(valores.valorRec), {id:`alim-resumen-valorrec-${n.clave}`}) +
+            campo('Valor Total', _alimResumenFmtMoney(valores.valorTotal), {id:`alim-resumen-valortotal-${n.clave}`}) +
+            campo('Valor No Reconocido', _alimResumenFmtMoney(valores.valorNoRec), {id:`alim-resumen-valornorec-${n.clave}`, destacada:true}) +
+            campo('Valor Pérdida Técnica', _alimResumenFmtMoney(valores.valorTecnica), {id:`alim-resumen-valortecnica-${n.clave}`})
           )}
           ${subgrupo('Índices',
             campo('Pérdida por Balance (%)', actual.pct.toFixed(2)+'%', {destacada:true}) +
@@ -16463,6 +16475,7 @@ function alimResumenActualizarReconocido(nivelClave){
   const fmt = v => v==null ? '--' : v.toLocaleString('es-CO',{maximumFractionDigits:0});
   if(destinoKwh) destinoKwh.textContent = fmt(perdidaRec);
 
+  _alimResumenActualizarValorizacionNivel(nivelClave);
   _alimResumenActualizarFilaTabla(nivelClave);
   _alimResumenActualizarTotales();
 }
