@@ -7954,6 +7954,13 @@ function ipRenderPanel(){
       }
       resumenEl.innerHTML = html;
     }
+    // Botón de descarga SIEMPRE disponible mientras haya un archivo
+    // guardado de forma permanente -- no depende de que sigas en la
+    // misma sesión donde corriste el script.
+    const resultadoEl = document.getElementById('ip-resultado');
+    if(resultadoEl && u.estado === 'ok' && u.archivo_descarga){
+      resultadoEl.innerHTML = `<button type="button" class="btn-theme" style="width:auto;padding:7px 16px" onclick="ipDescargarUltima('${script.id}','${ipEscapar(u.archivo_descarga)}')">📥 Descargar ${ipEscapar(u.archivo_descarga)}</button>`;
+    }
   }
 }
 
@@ -8102,12 +8109,14 @@ function ipMostrarResultado(jobId, nombreArchivo){
 // La descarga automática al terminar es un fetch() sin reintentos -- un
 // tropiezo puntual de red (se ha visto varias veces en esta sesión) la
 // tumbaba con "Failed to fetch" aunque la corrida hubiera terminado bien
-// y el archivo siguiera disponible (el botón "Descargar" de abajo sí
-// funcionaba). Ahora reintenta un par de veces antes de rendirse.
-async function ipDescargarArchivo(jobId, nombre, intento){
+// y el archivo siguiera disponible. Ahora reintenta un par de veces antes
+// de rendirse. `ruta` es relativa a la API (ver ipDescargarArchivo y
+// ipDescargarUltima, según venga de un job en vivo o del último guardado
+// permanente).
+async function ipDescargarDesdeRuta(ruta, nombre, intento){
   intento = intento || 1;
   try{
-    const res = await fetch(`${API_BASE_URL}/api/indice-perdidas/job/${jobId}/descargar`, {headers: authHeaders()});
+    const res = await fetch(`${API_BASE_URL}${ruta}`, {headers: authHeaders()});
     if(!res.ok) throw new Error('el servidor no pudo entregar el archivo.');
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
@@ -8118,10 +8127,23 @@ async function ipDescargarArchivo(jobId, nombre, intento){
   }catch(e){
     if(intento < 3){
       await new Promise(r => setTimeout(r, 1000 * intento));
-      return ipDescargarArchivo(jobId, nombre, intento + 1);
+      return ipDescargarDesdeRuta(ruta, nombre, intento + 1);
     }
-    alert('No se pudo descargar automático (' + e.message + ') -- usa el botón "Descargar" de abajo, el archivo sigue disponible.');
+    alert('No se pudo descargar automático (' + e.message + ') -- intenta de nuevo en un momento, el archivo sigue disponible.');
   }
+}
+
+async function ipDescargarArchivo(jobId, nombre, intento){
+  return ipDescargarDesdeRuta(`/api/indice-perdidas/job/${jobId}/descargar`, nombre, intento);
+}
+
+// Descarga el resultado de la ÚLTIMA corrida guardada de forma permanente
+// -- a diferencia de ipDescargarArchivo (depende de un job vivo en esta
+// sesión), este botón funciona SIEMPRE que haya una corrida exitosa
+// guardada, aunque se recargue la página -- pedido explícito ("ese botón
+// debe estar habilitado siempre ya que los datos se están almacenando").
+async function ipDescargarUltima(scriptId, nombre){
+  return ipDescargarDesdeRuta(`/api/indice-perdidas/descarga-ultima/${scriptId}`, nombre);
 }
 
 // "Cargar a la base de datos" puede tardar bastante para XM (cientos de
