@@ -16055,14 +16055,15 @@ function _alimResumenValorNivelCalcDer(nivelClave){
   const tarifaValida = tarifaNum!=null && !isNaN(tarifaNum);
   const money = v => (v!=null && tarifaValida) ? v * tarifaNum : null;
 
-  let totalKwhRec, totalKwhNoRec, tecKwhRec, tecKwhNoRec;
-  if(nivelClave === 'nivel4'){
-    totalKwhRec = null; totalKwhNoRec = k.actual.perdida;
-    tecKwhRec = null; tecKwhNoRec = k.tecKwh;
-  }else{
-    totalKwhRec = k.totalKwhRec; totalKwhNoRec = k.totalKwhNoRec;
-    tecKwhRec = null; tecKwhNoRec = null;
-  }
+  // Pérdida Técnica NUNCA se reparte -- SIEMPRE 100% No Reconocido, en
+  // los 3 niveles (pedido explícito: "no está trayendo tampoco la
+  // pérdida técnica... la pérdida técnica como costo no reconocido").
+  // Pérdida por Balance: Nivel 4 no maneja % Reconocido -> también 100%
+  // No Reconocido; Nivel 3/N2-1 sí reparten con su % Reconocido real.
+  const totalKwhRec = (nivelClave === 'nivel4') ? null : k.totalKwhRec;
+  const totalKwhNoRec = (nivelClave === 'nivel4') ? k.actual.perdida : k.totalKwhNoRec;
+  const tecKwhRec = null;
+  const tecKwhNoRec = k.tecKwh;
 
   return {
     // kWh crudo de la fila (Pérdida por Balance / Pérdida Técnica) --
@@ -16104,34 +16105,33 @@ function _alimResumenActualizarFilaTabla(nivelClave){
 // niveles) y "Contratos Mensuales" ($/mes) al lado -- pedido explícito
 // ("en la parte inferior... el costo total no reconocido... y al lado el
 // costo de los contratos mensuales").
+// Todo con la MISMA base (Tarifa Neta, derecha) -- pedido explícito
+// ("necesito ahí una pequeña que diga el total reconocido y total, la
+// suma de esas dos"): No Reconocido + Reconocido = Total. Antes mezclaba
+// el Reconocido de la izquierda (otra tarifa) con el No Reconocido de
+// acá -- daba una cuenta sin sentido (dos tarifas distintas restadas
+// entre sí), corregido.
 function _alimResumenActualizarTotalesTabla(){
-  let totNoRec = 0;
+  let totNoRec = 0, totRec = 0;
   ALIM_RESUMEN_NIVELES.forEach(n => {
     const r = _alimResumenValorNivelCalcDer(n.clave);
     if(!r) return;
     if(r.totalMoneyNoRec!=null) totNoRec += r.totalMoneyNoRec;
     if(r.tecMoneyNoRec!=null) totNoRec += r.tecMoneyNoRec;
+    if(r.totalMoneyRec!=null) totRec += r.totalMoneyRec;
+    if(r.tecMoneyRec!=null) totRec += r.tecMoneyRec;
   });
-  // Utilidad = Valor Reconocido (Total 3 niveles, Tarifa G+T+R de la
-  // izquierda -- el mismo que ya suma el cuadro "Total") menos el Costo
-  // Total No Reconocido de acá -- pedido explícito ("la diferencia sería
-  // el valor de la utilidad que tiene la empresa").
-  let totRec = 0, huboRec = false;
-  ALIM_RESUMEN_NIVELES.forEach(n => {
-    const r = _alimResumenValorNivelCalc(n.clave);
-    if(r && r.valorRec!=null){ totRec += r.valorRec; huboRec = true; }
-  });
-  const utilidad = huboRec ? totRec - totNoRec : null;
+  const totGeneral = totNoRec + totRec;
 
   const totContratos = _alimResumenLeerContratos().reduce((s, c) => s + (Number(c.valor) || 0), 0);
   const elNoRec = document.getElementById('alim-resumen-tabla-tot-norec');
   const elContratos = document.getElementById('alim-resumen-tabla-tot-contratos');
-  const elRecRef = document.getElementById('alim-resumen-tabla-tot-recref');
-  const elUtilidad = document.getElementById('alim-resumen-tabla-tot-utilidad');
+  const elRec = document.getElementById('alim-resumen-tabla-tot-rec');
+  const elGeneral = document.getElementById('alim-resumen-tabla-tot-general');
   if(elNoRec) elNoRec.textContent = _alimResumenFmtMoney(totNoRec);
   if(elContratos) elContratos.textContent = _alimResumenFmtMoney(totContratos);
-  if(elRecRef) elRecRef.textContent = huboRec ? _alimResumenFmtMoney(totRec) : '--';
-  if(elUtilidad) elUtilidad.textContent = utilidad!=null ? _alimResumenFmtMoney(utilidad) : '--';
+  if(elRec) elRec.textContent = _alimResumenFmtMoney(totRec);
+  if(elGeneral) elGeneral.textContent = _alimResumenFmtMoney(totGeneral);
 }
 
 // Se dispara al escribir en la Tarifa DERECHA de un nivel -- recalcula
@@ -16159,9 +16159,6 @@ function _alimResumenActualizarTotales(){
   if(elTotTotal) elTotTotal.textContent = huboTotal ? _alimResumenFmtMoney(totTotal) : '--';
   if(elTotRec) elTotRec.textContent = huboRec ? _alimResumenFmtMoney(totRec) : '--';
   if(elTotNoRec) elTotNoRec.textContent = huboNoRec ? _alimResumenFmtMoney(totNoRec) : '--';
-  // La "Utilidad" de la tabla de la derecha usa este mismo Valor
-  // Reconocido -- se refresca también cuando cambia la Tarifa G+T+R.
-  _alimResumenActualizarTotalesTabla();
 }
 
 // Actualiza los 4 campos de "Valorización ($)" de UNA tarjeta de Nivel
@@ -16502,23 +16499,26 @@ function alimResumenRenderTablaValorizacion(clave){
         <tbody>${filasTabla}</tbody>
       </table>
     </div>
-    <!-- 3 tarjetas al pie -- pedido explícito ("el costo total no
-         reconocido... necesito ahí un desglose... la diferencia sería el
-         valor de la utilidad que tiene la empresa"): Costo Total No
-         Reconocido (pérdida en compra de energía) + Utilidad (Valor
-         Reconocido de la izquierda menos ese costo, desglose visible
-         abajo del número) + Contratos Mensuales al lado. Ver
-         _alimResumenActualizarTotalesTabla. -->
+    <!-- 4 tarjetas al pie, TODAS con la misma base (Tarifa Neta, esta
+         tabla) -- pedido explícito ("necesito ahí una pequeña que diga el
+         total reconocido y total, la suma de esas dos"): No Reconocido
+         (grande, roja) + Reconocido (chica) + Total = la suma de esas dos
+         (chica) + Contratos Mensuales aparte. Pérdida Técnica SIEMPRE
+         cuenta 100% como No Reconocido en las 3 filas -- ver
+         _alimResumenValorNivelCalcDer/_alimResumenActualizarTotalesTabla. -->
     <div style="display:flex;gap:12px;margin-top:14px;align-items:stretch;flex-wrap:wrap">
-      <div style="flex:1 1 160px;border:1.5px solid #ef476f;border-radius:12px;padding:14px;text-align:center;background:color-mix(in srgb, #ef476f 8%, transparent)">
+      <div style="flex:2 1 200px;border:1.5px solid #ef476f;border-radius:12px;padding:14px;text-align:center;background:color-mix(in srgb, #ef476f 8%, transparent)">
         <div style="font-size:11px;font-weight:800;letter-spacing:.5px;color:var(--text2);text-transform:uppercase;margin-bottom:6px">Costo Total No Reconocido</div>
         <div style="font-size:20px;font-weight:800;color:#ef476f" id="alim-resumen-tabla-tot-norec">--</div>
         <div style="font-size:10px;color:var(--text3);margin-top:4px">Pérdida en compra de energía</div>
       </div>
-      <div style="flex:1 1 160px;border:1.5px solid #2a9d5c;border-radius:12px;padding:14px;text-align:center;background:color-mix(in srgb, #2a9d5c 8%, transparent)">
-        <div style="font-size:11px;font-weight:800;letter-spacing:.5px;color:var(--text2);text-transform:uppercase;margin-bottom:6px">Utilidad</div>
-        <div style="font-size:20px;font-weight:800;color:#2a9d5c" id="alim-resumen-tabla-tot-utilidad">--</div>
-        <div style="font-size:10px;color:var(--text3);margin-top:4px">Valor Reconocido (<span id="alim-resumen-tabla-tot-recref">--</span>) − Costo No Reconocido</div>
+      <div style="flex:1 1 130px;border:1.5px solid var(--border);border-radius:12px;padding:14px;text-align:center">
+        <div style="font-size:11px;font-weight:800;letter-spacing:.5px;color:var(--text2);text-transform:uppercase;margin-bottom:6px">Reconocido</div>
+        <div style="font-size:16px;font-weight:800;color:var(--text)" id="alim-resumen-tabla-tot-rec">--</div>
+      </div>
+      <div style="flex:1 1 130px;border:1.5px solid var(--border);border-radius:12px;padding:14px;text-align:center">
+        <div style="font-size:11px;font-weight:800;letter-spacing:.5px;color:var(--text2);text-transform:uppercase;margin-bottom:6px">Total</div>
+        <div style="font-size:16px;font-weight:800;color:var(--text)" id="alim-resumen-tabla-tot-general">--</div>
       </div>
       <div style="flex:1 1 140px;border:1.5px solid var(--border);border-radius:12px;padding:14px;text-align:center">
         <div style="font-size:11px;font-weight:800;letter-spacing:.5px;color:var(--text2);text-transform:uppercase;margin-bottom:6px">Contratos Mensuales</div>
