@@ -16163,6 +16163,24 @@ function _alimResumenActualizarTotalesTabla(){
   if(elDiagTotal) elDiagTotal.textContent = _alimResumenFmtMoney(totNoRec);
   if(elCompra) elCompra.textContent = _alimResumenFmtMoney(compra);
   if(elUtilidad) elUtilidad.textContent = _alimResumenFmtMoney(utilidad);
+
+  // Explicación narrativa -- pedido explícito ("una explicación diciendo
+  // que el operador está dejando de recibir una utilidad de tanto dinero
+  // y perdiendo tanto dinero en compra de energía"). Utilidad negativa
+  // (lo normal: Compra a Tarifa G+T+R suele ser menor que el Costo No
+  // Reconocido a Tarifa Neta) = "deja de recibir" esa utilidad; si diera
+  // positiva, se lee como ganancia real.
+  const elNarrativa = document.getElementById('alim-resumen-tabla-diag-narrativa');
+  if(elNarrativa){
+    if(compra==null || utilidad==null){
+      elNarrativa.textContent = 'Completá la Tarifa G+T+R y la Tarifa Neta de los 3 niveles para ver la explicación.';
+    }else{
+      const fraseUtilidad = utilidad < 0
+        ? `el operador está dejando de recibir una utilidad de ${_alimResumenFmtMoney(Math.abs(utilidad))}`
+        : `el operador está recibiendo una utilidad de ${_alimResumenFmtMoney(utilidad)}`;
+      elNarrativa.textContent = `Para el mes elegido, ${fraseUtilidad}, y está perdiendo ${_alimResumenFmtMoney(compra)} en la compra de energía para cubrir esa pérdida no reconocida.`;
+    }
+  }
 }
 
 // Se dispara al escribir en la Tarifa DERECHA de un nivel -- recalcula
@@ -16556,32 +16574,34 @@ function alimResumenRenderTablaValorizacion(clave){
          Compra = el mismo kWh No Reconocido valorizado con la Tarifa
          G+T+R compartida (izquierda) en vez de la Tarifa Neta de acá.
          Utilidad = Compra - Costo Total No Reconocido (fórmula exacta
-         pedida). Diagrama simple: una caja arriba que se abre en dos
-         abajo. -->
-    <div style="margin-top:20px">
-      <div style="text-align:center;font-size:11px;font-weight:800;letter-spacing:.5px;color:var(--text2);text-transform:uppercase;margin-bottom:10px">¿En qué se divide el Costo No Reconocido?</div>
+         pedida). Agrandado -- pedido explícito ("que sea más grande") --
+         y con una explicación narrativa abajo (ver
+         _alimResumenNarrativaDiagrama). -->
+    <div style="margin-top:24px">
+      <div style="text-align:center;font-size:14px;font-weight:800;letter-spacing:.5px;color:var(--text2);text-transform:uppercase;margin-bottom:14px">¿En qué se divide el Costo No Reconocido?</div>
       <div style="display:flex;justify-content:center">
         <div style="text-align:center">
-          <div class="resnivel-campo-label">Costo Total No Reconocido</div>
-          <div class="resnivel-campo-caja destacada" style="min-width:160px" id="alim-resumen-tabla-diag-total">--</div>
+          <div class="resnivel-campo-label" style="font-size:12px">Costo Total No Reconocido</div>
+          <div class="resnivel-campo-caja destacada" style="min-width:220px;font-size:22px;padding:12px" id="alim-resumen-tabla-diag-total">--</div>
         </div>
       </div>
       <div style="display:flex;justify-content:center;margin:2px 0">
-        <div style="width:180px;border-bottom:2px solid var(--border);position:relative;height:14px">
-          <div style="position:absolute;left:0;bottom:0;width:2px;height:14px;background:var(--border)"></div>
-          <div style="position:absolute;right:0;bottom:0;width:2px;height:14px;background:var(--border)"></div>
+        <div style="width:240px;border-bottom:2px solid var(--border);position:relative;height:18px">
+          <div style="position:absolute;left:0;bottom:0;width:2px;height:18px;background:var(--border)"></div>
+          <div style="position:absolute;right:0;bottom:0;width:2px;height:18px;background:var(--border)"></div>
         </div>
       </div>
-      <div style="display:flex;gap:24px;justify-content:center">
+      <div style="display:flex;gap:32px;justify-content:center;margin-bottom:16px">
         <div style="text-align:center">
-          <div class="resnivel-campo-label">Compra (Tarifa G+T+R)</div>
-          <div class="resnivel-campo-caja" id="alim-resumen-tabla-diag-compra">--</div>
+          <div class="resnivel-campo-label" style="font-size:12px">Compra (Tarifa G+T+R)</div>
+          <div class="resnivel-campo-caja" style="min-width:180px;font-size:19px;padding:12px" id="alim-resumen-tabla-diag-compra">--</div>
         </div>
         <div style="text-align:center">
-          <div class="resnivel-campo-label">Utilidad</div>
-          <div class="resnivel-campo-caja" id="alim-resumen-tabla-diag-utilidad">--</div>
+          <div class="resnivel-campo-label" style="font-size:12px">Utilidad</div>
+          <div class="resnivel-campo-caja" style="min-width:180px;font-size:19px;padding:12px" id="alim-resumen-tabla-diag-utilidad">--</div>
         </div>
       </div>
+      <div style="border:1px solid var(--border);border-radius:10px;padding:12px 16px;background:var(--bg3);font-size:13px;line-height:1.6;color:var(--text)" id="alim-resumen-tabla-diag-narrativa"></div>
     </div>`;
 
   ALIM_RESUMEN_NIVELES.forEach(n => _alimResumenActualizarFilaTabla(n.clave));
