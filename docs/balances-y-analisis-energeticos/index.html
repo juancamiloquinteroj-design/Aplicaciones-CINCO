@@ -513,6 +513,7 @@ canvas[id^="ch-tride-"]:active{cursor:grabbing}
 .resval-tabla thead th{background:var(--bg3);font-size:10px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:var(--text2);text-align:center}
 .resval-td-nivel{text-align:left;font-weight:800;vertical-align:middle}
 .resval-td-tipo{text-align:left;color:var(--text2)}
+.resval-td-crudo{font-weight:800;background:var(--bg3)}
 
 /* "Variación Mensual por Zona" (Indicador N2-1) -- columnas Entrada/
    Salida ocultas por defecto (botón "Entrada / Salida") y el pill de
@@ -2659,38 +2660,6 @@ tfoot td:first-child{text-align:left}
                     <div class="resnivel-campo-label">Total Contratos ($/mes)</div>
                     <div class="resnivel-campo-caja destacada" id="alim-resumen-contratos-total">--</div>
                   </div>
-                </div>
-              </div>
-            </details>
-
-            <div style="border-top:1px solid var(--border);margin:14px 0"></div>
-
-            <!-- Colapsable, igual que Contratos Mensuales -- pedido
-                 explícito ("quitar lo de balance financiero y colocar la
-                 tabla de valoración pérdida que se vea completa"): le
-                 cede el espacio de arriba a la tabla de Valorización, sin
-                 borrar el cálculo -- el resultado del Balance queda
-                 visible en el título aunque esté cerrada. -->
-            <details id="alim-resumen-balance-det">
-              <summary style="text-align:center;font-size:13px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase;cursor:pointer;list-style:none">
-                Balance Financiero <span id="alim-resumen-balance-resumen" style="font-weight:600;color:var(--text3);text-transform:none;letter-spacing:0"></span>
-              </summary>
-              <div class="resnivel-subgrupo-campos" style="margin-top:10px">
-                <div class="resnivel-campo">
-                  <div class="resnivel-campo-label">Valorización P. Técnica (3 niveles)</div>
-                  <div class="resnivel-campo-caja" id="alim-resumen-bf-valortecnica">--</div>
-                </div>
-                <div class="resnivel-campo">
-                  <div class="resnivel-campo-label">Valor Reconocido (3 niveles)</div>
-                  <div class="resnivel-campo-caja" id="alim-resumen-bf-valorrec">--</div>
-                </div>
-                <div class="resnivel-campo">
-                  <div class="resnivel-campo-label">Total Contratos ($/mes)</div>
-                  <div class="resnivel-campo-caja" id="alim-resumen-bf-contratos">--</div>
-                </div>
-                <div class="resnivel-campo">
-                  <div class="resnivel-campo-label">Balance (Reconocido − Contratos)</div>
-                  <div class="resnivel-campo-caja destacada" id="alim-resumen-bf-balance">--</div>
                 </div>
               </div>
             </details>
@@ -16076,6 +16045,13 @@ function _alimResumenValorNivelCalcDer(nivelClave){
   const tarifaValida = tarifaNum!=null && !isNaN(tarifaNum);
   const money = v => (v!=null && tarifaValida) ? v * tarifaNum : null;
   return {
+    // kWh crudo de la fila (Pérdida por Balance / Pérdida Técnica) --
+    // pedido explícito ("no está trayendo los datos de pérdida técnica de
+    // cada nivel... acomódalo como en las tarjetas de la izquierda"): se
+    // ve SIEMPRE, aunque falte el % Reconocido (ahí sí, Reconocido/No
+    // Reconocido quedan en "--", igual que "Pérdida Reconocida" en la
+    // tarjeta de la izquierda).
+    totalKwh: k.actual.perdida, tecKwh: k.tecKwh,
     totalKwhRec: k.totalKwhRec, totalKwhNoRec: k.totalKwhNoRec, tecKwhRec: k.tecKwhRec, tecKwhNoRec: k.tecKwhNoRec,
     totalMoneyRec: money(k.totalKwhRec), totalMoneyNoRec: money(k.totalKwhNoRec),
     tecMoneyRec: money(k.tecKwhRec), tecMoneyNoRec: money(k.tecKwhNoRec),
@@ -16092,10 +16068,12 @@ function _alimResumenActualizarFilaTabla(nivelClave){
     const el = document.getElementById(`alim-resumen-tabla-${nivelClave}-${suffix}`);
     if(el) el.textContent = esMoneda ? _alimResumenFmtMoney(val) : fmt(val);
   };
+  set('total-kwh', r ? r.totalKwh : null, false);
   set('total-kwh-rec', r ? r.totalKwhRec : null, false);
   set('total-kwh-norec', r ? r.totalKwhNoRec : null, false);
   set('total-money-rec', r ? r.totalMoneyRec : null, true);
   set('total-money-norec', r ? r.totalMoneyNoRec : null, true);
+  set('tecnica-kwh', r ? r.tecKwh : null, false);
   set('tecnica-kwh-rec', r ? r.tecKwhRec : null, false);
   set('tecnica-kwh-norec', r ? r.tecKwhNoRec : null, false);
   set('tecnica-money-rec', r ? r.tecMoneyRec : null, true);
@@ -16127,15 +16105,8 @@ function _alimResumenActualizarTotales(){
   if(elTotTotal) elTotTotal.textContent = huboTotal ? _alimResumenFmtMoney(totTotal) : '--';
   if(elTotRec) elTotRec.textContent = huboRec ? _alimResumenFmtMoney(totRec) : '--';
   if(elTotNoRec) elTotNoRec.textContent = huboNoRec ? _alimResumenFmtMoney(totNoRec) : '--';
-  _alimResumenActualizarBalanceFinanciero();
 }
 
-// Se dispara al escribir en la Tarifa de UN nivel -- recalcula solo la
-// Valorización de ESE nivel + los Totales/Balance (no reconstruye toda la
-// caja, para no perder el foco del input a mitad de escritura -- mismo
-// criterio que alimResumenActualizarReconocido).
-// Actualiza el "Valor Total ($)" simple de la tarjeta de UN nivel
-// (izquierda) -- Pérdida por Balance × Tarifa izquierda de ese nivel.
 // Actualiza los 4 campos de "Valorización ($)" de UNA tarjeta de Nivel
 // (Reconocido/Total/No Reconocido/Técnica) -- como estaba originalmente,
 // pedido explícito ("le quitaste algunos costos que tenía valorización en
@@ -16163,37 +16134,6 @@ function alimResumenActualizarValorizacion(){
   _alimResumenActualizarTotales();
 }
 
-// -------------------------------------------------------- Balance Financiero
-// Cruza la Valorización de los 3 niveles (Pérdida Técnica valorizada y
-// Valor Reconocido) contra el Total de Contratos Mensuales -- pedido
-// explícito ("a lo que voy es poder hacer un balance financiero"). Balance
-// = Valor Reconocido (lo que se reconoce por la pérdida) - Contratos (lo
-// que cuesta mensualmente comprar la energía que cubre esa pérdida).
-function _alimResumenActualizarBalanceFinanciero(){
-  let totTecnica = 0, huboTecnica = false, totRec = 0, huboRec = false;
-  ALIM_RESUMEN_NIVELES.forEach(n => {
-    const r = _alimResumenValorNivelCalc(n.clave);
-    if(r && r.valorTecnica!=null){ totTecnica += r.valorTecnica; huboTecnica = true; }
-    if(r && r.valorRec!=null){ totRec += r.valorRec; huboRec = true; }
-  });
-  const contratos = _alimResumenLeerContratos();
-  const totContratos = contratos.reduce((s, c) => s + (Number(c.valor) || 0), 0);
-
-  const elTecnica = document.getElementById('alim-resumen-bf-valortecnica');
-  const elRec = document.getElementById('alim-resumen-bf-valorrec');
-  const elContratos = document.getElementById('alim-resumen-bf-contratos');
-  const elBalance = document.getElementById('alim-resumen-bf-balance');
-  if(elTecnica) elTecnica.textContent = huboTecnica ? _alimResumenFmtMoney(totTecnica) : '--';
-  if(elRec) elRec.textContent = huboRec ? _alimResumenFmtMoney(totRec) : '--';
-  if(elContratos) elContratos.textContent = _alimResumenFmtMoney(totContratos);
-  if(elBalance) elBalance.textContent = huboRec ? _alimResumenFmtMoney(totRec - totContratos) : '--';
-
-  // Resumen visible en el <summary> aunque esté colapsado -- mismo
-  // criterio que Contratos Mensuales.
-  const resumenEl = document.getElementById('alim-resumen-balance-resumen');
-  if(resumenEl) resumenEl.textContent = huboRec ? `(${_alimResumenFmtMoney(totRec - totContratos)})` : '';
-}
-
 function alimResumenRenderContratos(){
   const cont = document.getElementById('alim-resumen-contratos-lista');
   const totalEl = document.getElementById('alim-resumen-contratos-total');
@@ -16212,7 +16152,6 @@ function alimResumenRenderContratos(){
   // cuántos contratos hay y cuánto suman.
   const resumenEl = document.getElementById('alim-resumen-contratos-resumen');
   if(resumenEl) resumenEl.textContent = contratos.length ? `(${contratos.length} · ${_alimResumenFmtMoney(total)})` : '';
-  _alimResumenActualizarBalanceFinanciero();
 }
 
 function alimResumenAgregarContrato(){
@@ -16470,7 +16409,14 @@ function alimResumenRenderTablaValorizacion(clave){
   const cont = document.getElementById('alim-resumen-tabla-valorizacion');
   if(!cont) return;
 
+  // Columna "Pérdida (kWh)" cruda PRIMERO -- pedido explícito ("no está
+  // trayendo los datos de pérdida técnica de cada nivel... acomódalo como
+  // en las tarjetas de la izquierda"): ahí "Pérdida por Balance (kWh)" y
+  // "Pérdida Técnica" se ven siempre, sin depender de si hay % Reconocido
+  // cargado -- acá igual, Reconocido/No Reconocido pueden quedar en "--"
+  // (falta el %) pero la Pérdida cruda de esa fila siempre se ve.
   const celdas = (nivelClave, prefijo) => `
+      <td id="alim-resumen-tabla-${nivelClave}-${prefijo}-kwh" class="resval-td-crudo">--</td>
       <td id="alim-resumen-tabla-${nivelClave}-${prefijo}-kwh-rec">--</td>
       <td id="alim-resumen-tabla-${nivelClave}-${prefijo}-kwh-norec">--</td>
       <td id="alim-resumen-tabla-${nivelClave}-${prefijo}-money-rec">--</td>
@@ -16479,11 +16425,11 @@ function alimResumenRenderTablaValorizacion(clave){
   const filasTabla = ALIM_RESUMEN_NIVELES.map(n => `
     <tr>
       <td rowspan="2" class="resval-td-nivel" style="color:${n.color}">${n.nombre}</td>
-      <td class="resval-td-tipo">Total</td>
+      <td class="resval-td-tipo">Pérdida por Balance</td>
       ${celdas(n.clave, 'total')}
     </tr>
     <tr>
-      <td class="resval-td-tipo">Técnica</td>
+      <td class="resval-td-tipo">Pérdida Técnica</td>
       ${celdas(n.clave, 'tecnica')}
     </tr>`).join('');
 
@@ -16492,8 +16438,8 @@ function alimResumenRenderTablaValorizacion(clave){
     <div style="overflow-x:auto">
       <table class="resval-tabla">
         <thead>
-          <tr><th></th><th></th><th colspan="2">kWh</th><th colspan="2">$</th></tr>
-          <tr><th>Nivel</th><th></th><th>Reconocido</th><th>No Reconocido</th><th>Reconocido</th><th>No Reconocido</th></tr>
+          <tr><th></th><th></th><th colspan="3">kWh</th><th colspan="2">$</th></tr>
+          <tr><th>Nivel</th><th></th><th>Pérdida</th><th>Reconocido</th><th>No Reconocido</th><th>Reconocido</th><th>No Reconocido</th></tr>
         </thead>
         <tbody>${filasTabla}</tbody>
       </table>
