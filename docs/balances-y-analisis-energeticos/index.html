@@ -16133,17 +16133,36 @@ function _alimResumenActualizarTotalesTabla(){
       if(r.totalMoneyRec!=null) totRec += r.totalMoneyRec;
     }
   });
-  const totGeneral = totNoRec + totRec;
-
-  const totContratos = _alimResumenLeerContratos().reduce((s, c) => s + (Number(c.valor) || 0), 0);
   const elNoRec = document.getElementById('alim-resumen-tabla-tot-norec');
-  const elContratos = document.getElementById('alim-resumen-tabla-tot-contratos');
   const elRec = document.getElementById('alim-resumen-tabla-tot-rec');
-  const elGeneral = document.getElementById('alim-resumen-tabla-tot-general');
   if(elNoRec) elNoRec.textContent = _alimResumenFmtMoney(totNoRec);
-  if(elContratos) elContratos.textContent = _alimResumenFmtMoney(totContratos);
   if(elRec) elRec.textContent = _alimResumenFmtMoney(totRec);
-  if(elGeneral) elGeneral.textContent = _alimResumenFmtMoney(totGeneral);
+
+  // "¿En qué se divide el Costo No Reconocido?" -- pedido explícito:
+  // Compra = el MISMO kWh No Reconocido (Nivel 4 con su Pérdida Técnica,
+  // Nivel 3/N2-1 con su Pérdida por Balance -- igual criterio que arriba)
+  // pero valorizado con la Tarifa G+T+R COMPARTIDA (izquierda, la del
+  // otro cuadro), no con la Tarifa Neta (derecha) de esta tabla. Utilidad
+  // = Compra - Costo Total No Reconocido (fórmula exacta pedida).
+  const tarifaGtrInput = document.getElementById('alim-resumen-tarifa');
+  const tarifaGtrNum = tarifaGtrInput && tarifaGtrInput.value !== '' ? Number(tarifaGtrInput.value) : null;
+  const tarifaGtrValida = tarifaGtrNum!=null && !isNaN(tarifaGtrNum);
+  let kwhNoRecTotal = 0, hayKwh = false;
+  ALIM_RESUMEN_NIVELES.forEach(n => {
+    const k = _alimResumenKwhNivel(n.clave);
+    if(!k) return;
+    const kwh = (n.clave === 'nivel4') ? k.tecKwhNoRec : k.totalKwhNoRec;
+    if(kwh!=null){ kwhNoRecTotal += kwh; hayKwh = true; }
+  });
+  const compra = (hayKwh && tarifaGtrValida) ? kwhNoRecTotal * tarifaGtrNum : null;
+  const utilidad = compra!=null ? compra - totNoRec : null;
+
+  const elDiagTotal = document.getElementById('alim-resumen-tabla-diag-total');
+  const elCompra = document.getElementById('alim-resumen-tabla-diag-compra');
+  const elUtilidad = document.getElementById('alim-resumen-tabla-diag-utilidad');
+  if(elDiagTotal) elDiagTotal.textContent = _alimResumenFmtMoney(totNoRec);
+  if(elCompra) elCompra.textContent = _alimResumenFmtMoney(compra);
+  if(elUtilidad) elUtilidad.textContent = _alimResumenFmtMoney(utilidad);
 }
 
 // Se dispara al escribir en la Tarifa DERECHA de un nivel -- recalcula
@@ -16198,6 +16217,9 @@ function alimResumenActualizarValorizacion(){
   if(input && sel && sel.value) _alimResumenGuardarTarifa(sel.value, input.value);
   ALIM_RESUMEN_NIVELES.forEach(n => _alimResumenActualizarValorizacionNivel(n.clave));
   _alimResumenActualizarTotales();
+  // "Compra (Tarifa G+T+R)" del diagrama de abajo usa esta misma tarifa
+  // compartida -- se refresca también acá.
+  _alimResumenActualizarTotalesTabla();
 }
 
 function alimResumenRenderContratos(){
@@ -16511,13 +16533,11 @@ function alimResumenRenderTablaValorizacion(clave){
         <tbody>${filasTabla}</tbody>
       </table>
     </div>
-    <!-- 4 campos al pie, compactos y sin color -- pedido explícito
-         ("organicemos mejor que las tarjetas tengan mucho tamaño y no
-         coloridas"): mismo patrón chico label-izq/caja-der que ya usa
-         "Total Contratos" más arriba, no cajas grandes de colores. TODOS
-         con la misma base (Tarifa Neta de esta tabla) y SOLO la fila
-         "Pérdida por Balance" -- Pérdida Técnica es referencia, sumar las
-         dos duplicaba el costo (pedido explícito, corregido en
+    <!-- 2 campos al pie, compactos y sin color -- pedido explícito
+         ("quita el valor total y el costo de contratos mensuales"; ya
+         están arriba, en Contratos Mensuales). TODOS con la misma base
+         (Tarifa Neta de esta tabla) y SOLO una fila por nivel -- Nivel 4
+         con Pérdida Técnica, Nivel 3/N2-1 con Pérdida por Balance (ver
          _alimResumenActualizarTotalesTabla). -->
     <div class="resnivel-subgrupo-campos" style="margin-top:14px">
       <div class="resnivel-campo">
@@ -16528,13 +16548,39 @@ function alimResumenRenderTablaValorizacion(clave){
         <div class="resnivel-campo-label">Reconocido</div>
         <div class="resnivel-campo-caja" id="alim-resumen-tabla-tot-rec">--</div>
       </div>
-      <div class="resnivel-campo">
-        <div class="resnivel-campo-label">Total</div>
-        <div class="resnivel-campo-caja" id="alim-resumen-tabla-tot-general">--</div>
+    </div>
+
+    <!-- "¿En qué se divide el Costo No Reconocido?" -- pedido explícito
+         ("más abajo se hace como un diagrama... se divide en 2, 1 la
+         ganancia (utilidad) y el otro es la compra que hace el OR"):
+         Compra = el mismo kWh No Reconocido valorizado con la Tarifa
+         G+T+R compartida (izquierda) en vez de la Tarifa Neta de acá.
+         Utilidad = Compra - Costo Total No Reconocido (fórmula exacta
+         pedida). Diagrama simple: una caja arriba que se abre en dos
+         abajo. -->
+    <div style="margin-top:20px">
+      <div style="text-align:center;font-size:11px;font-weight:800;letter-spacing:.5px;color:var(--text2);text-transform:uppercase;margin-bottom:10px">¿En qué se divide el Costo No Reconocido?</div>
+      <div style="display:flex;justify-content:center">
+        <div style="text-align:center">
+          <div class="resnivel-campo-label">Costo Total No Reconocido</div>
+          <div class="resnivel-campo-caja destacada" style="min-width:160px" id="alim-resumen-tabla-diag-total">--</div>
+        </div>
       </div>
-      <div class="resnivel-campo">
-        <div class="resnivel-campo-label">Contratos Mensuales</div>
-        <div class="resnivel-campo-caja" id="alim-resumen-tabla-tot-contratos">--</div>
+      <div style="display:flex;justify-content:center;margin:2px 0">
+        <div style="width:180px;border-bottom:2px solid var(--border);position:relative;height:14px">
+          <div style="position:absolute;left:0;bottom:0;width:2px;height:14px;background:var(--border)"></div>
+          <div style="position:absolute;right:0;bottom:0;width:2px;height:14px;background:var(--border)"></div>
+        </div>
+      </div>
+      <div style="display:flex;gap:24px;justify-content:center">
+        <div style="text-align:center">
+          <div class="resnivel-campo-label">Compra (Tarifa G+T+R)</div>
+          <div class="resnivel-campo-caja" id="alim-resumen-tabla-diag-compra">--</div>
+        </div>
+        <div style="text-align:center">
+          <div class="resnivel-campo-label">Utilidad</div>
+          <div class="resnivel-campo-caja" id="alim-resumen-tabla-diag-utilidad">--</div>
+        </div>
       </div>
     </div>`;
 
