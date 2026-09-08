@@ -8068,18 +8068,26 @@ async function ipSugerirUsuarioId(){
   sug.innerHTML = '<span style="color:var(--text3)">🔎 Buscando...</span>';
   try{
     const r = await apiGet(`/api/indice-perdidas/aenc-sugerir?frontera=${encodeURIComponent(frontera)}`);
-    if(!r.nombre_aenc){
-      sug.innerHTML = `<span style="color:var(--text3)">No encontré "${ipEscapar(frontera)}" en ningún archivo AENC reciente -- revisá el código.</span>`;
+    const chip = c => `
+      <div class="be-buscador-opt" style="display:inline-block;margin:2px 6px 2px 0;padding:4px 9px;border:1px solid ${c.score>=1 ? '#06d6a0' : 'var(--border)'};border-radius:7px;cursor:pointer"
+        onclick="document.getElementById('ip-frontera-usuario-id').value='${ipEscapar(c.usuario_id).replace(/'/g,"\\'")}'">
+        ${c.score>=1 ? '✅ ' : ''}${ipEscapar(c.nombre||c.usuario_id)} <span style="color:var(--text3)">(usuario_id: ${ipEscapar(c.usuario_id)}${c.score>=1 ? ' -- coincide exacto con el código SIC' : ' · ' + Math.round(c.score*100) + '% parecido por nombre'})</span>
+      </div>`;
+    // Diagnóstico -- pedido implícito tras un caso real: "no sale nada"
+    // llevó a pensar (mal) que AENC no trae el nombre, cuando el problema
+    // real puede ser la carpeta configurada (⚙️ Configuración) o
+    // simplemente que esta frontera no aparece en los archivos recientes.
+    // Mostrar SIEMPRE cuántos archivos se revisaron y dónde, para que se
+    // pueda distinguir un caso del otro sin adivinar.
+    const diag = `<div style="font-size:10px;color:var(--text3);margin-top:4px">Revisé ${r.archivos_revisados||0} archivo(s) AENC en "${ipEscapar(r.carpeta||'')}".</div>`;
+    if(!r.nombre_aenc && !r.candidatos.length){
+      sug.innerHTML = `<span style="color:var(--text3)">No encontré "${ipEscapar(frontera)}" en ningún archivo AENC revisado, ni un usuario_id igual a ese código en Usuarios Telemedidos.</span>${diag}`;
       return;
     }
-    const encabezado = `<div style="margin-bottom:4px">En AENC esta frontera se llama <b>"${ipEscapar(r.nombre_aenc)}"</b>${r.candidatos.length ? ' -- coincidencias en Usuarios Telemedidos:' : ', pero no encontré ningún nombre parecido en Usuarios Telemedidos:'}</div>`;
-    sug.innerHTML = encabezado + (r.candidatos.length
-      ? r.candidatos.map(c => `
-          <div class="be-buscador-opt" style="display:inline-block;margin:2px 6px 2px 0;padding:4px 9px;border:1px solid var(--border);border-radius:7px;cursor:pointer"
-            onclick="document.getElementById('ip-frontera-usuario-id').value='${ipEscapar(c.usuario_id).replace(/'/g,"\\'")}'; this.parentElement.querySelectorAll('.be-buscador-opt').forEach(o=>o.style.outline='')" >
-            ${ipEscapar(c.nombre)} <span style="color:var(--text3)">(usuario_id: ${ipEscapar(c.usuario_id)} · ${Math.round(c.score*100)}% parecido)</span>
-          </div>`).join('')
-      : `<span style="color:var(--text3)">Buscá manualmente en Usuarios Telemedidos por ese nombre.</span>`);
+    const encabezado = r.nombre_aenc
+      ? `<div style="margin-bottom:4px">En AENC esta frontera se llama <b>"${ipEscapar(r.nombre_aenc)}"</b> -- coincidencia(s) en Usuarios Telemedidos:</div>`
+      : `<div style="margin-bottom:4px">No encontré el nombre de esta frontera en AENC, pero sí un usuario_id idéntico al código SIC en Usuarios Telemedidos:</div>`;
+    sug.innerHTML = encabezado + r.candidatos.map(chip).join('') + diag;
   }catch(e){
     sug.innerHTML = `<span style="color:#dc2626">❌ ${ipEscapar(e.message)}</span>`;
   }
