@@ -2601,30 +2601,34 @@ tfoot td:first-child{text-align:left}
              cruza esos contratos contra la Valorización ($) de los 3
              niveles (ver alimResumenAgregarContrato/
              _alimResumenActualizarBalanceFinanciero más abajo). -->
-        <div style="flex:1 1 420px;min-width:420px;display:flex;flex-direction:column;gap:20px">
-          <div style="border:1.5px solid var(--border);border-radius:12px;padding:16px">
-            <div style="text-align:center;font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase;margin-bottom:14px">Contratos Mensuales</div>
-            <div id="alim-resumen-contratos-lista" style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px"></div>
-            <div class="fbar" style="margin-bottom:10px">
-              <input type="text" placeholder="Nombre del contrato" id="alim-resumen-contrato-nombre" style="flex:1 1 150px" onkeydown="if(event.key==='Enter') alimResumenAgregarContrato()">
-              <input type="number" min="0" step="1" placeholder="$ mensual" id="alim-resumen-contrato-valor" style="width:130px" onkeydown="if(event.key==='Enter') alimResumenAgregarContrato()">
-              <button class="btn-theme" style="width:auto;padding:0 14px" onclick="alimResumenAgregarContrato()">＋ Agregar</button>
+        <div style="flex:0 1 320px;min-width:280px;display:flex;flex-direction:column;gap:16px">
+          <div style="border:1.5px solid var(--border);border-radius:12px;padding:14px">
+            <div style="text-align:center;font-size:13px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase;margin-bottom:10px">Contratos Mensuales</div>
+            <div id="alim-resumen-contratos-lista" style="display:flex;flex-direction:column;gap:5px;margin-bottom:10px"></div>
+            <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px">
+              <input type="text" placeholder="Nombre del contrato" id="alim-resumen-contrato-nombre" onkeydown="if(event.key==='Enter') alimResumenAgregarContrato()">
+              <div style="display:flex;gap:6px">
+                <input type="number" min="0" step="1" placeholder="$ mensual" id="alim-resumen-contrato-valor" style="flex:1;min-width:0" onkeydown="if(event.key==='Enter') alimResumenAgregarContrato()">
+                <button class="btn-theme" style="width:auto;padding:0 12px;flex-shrink:0" onclick="alimResumenAgregarContrato()">＋</button>
+              </div>
             </div>
-            <div class="resnivel-campo">
-              <div class="resnivel-campo-label">Total Contratos ($/mes)</div>
-              <div class="resnivel-campo-caja destacada" id="alim-resumen-contratos-total">--</div>
+            <div class="resnivel-subgrupo-campos">
+              <div class="resnivel-campo">
+                <div class="resnivel-campo-label">Total Contratos ($/mes)</div>
+                <div class="resnivel-campo-caja destacada" id="alim-resumen-contratos-total">--</div>
+              </div>
             </div>
           </div>
 
-          <div style="border:1.5px solid var(--border);border-radius:12px;padding:16px">
-            <div style="text-align:center;font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase;margin-bottom:14px">Balance Financiero</div>
-            <div style="display:flex;flex-direction:column;gap:10px">
+          <div style="border:1.5px solid var(--border);border-radius:12px;padding:14px">
+            <div style="text-align:center;font-size:13px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase;margin-bottom:10px">Balance Financiero</div>
+            <div class="resnivel-subgrupo-campos">
               <div class="resnivel-campo">
-                <div class="resnivel-campo-label">Valorización Pérdida Técnica (Total 3 niveles)</div>
+                <div class="resnivel-campo-label">Valorización P. Técnica (3 niveles)</div>
                 <div class="resnivel-campo-caja" id="alim-resumen-bf-valortecnica">--</div>
               </div>
               <div class="resnivel-campo">
-                <div class="resnivel-campo-label">Valor Reconocido (Total 3 niveles)</div>
+                <div class="resnivel-campo-label">Valor Reconocido (3 niveles)</div>
                 <div class="resnivel-campo-caja" id="alim-resumen-bf-valorrec">--</div>
               </div>
               <div class="resnivel-campo">
@@ -2632,7 +2636,7 @@ tfoot td:first-child{text-align:left}
                 <div class="resnivel-campo-caja" id="alim-resumen-bf-contratos">--</div>
               </div>
               <div class="resnivel-campo">
-                <div class="resnivel-campo-label">Balance (Valor Reconocido − Contratos)</div>
+                <div class="resnivel-campo-label">Balance (Reconocido − Contratos)</div>
                 <div class="resnivel-campo-caja destacada" id="alim-resumen-bf-balance">--</div>
               </div>
             </div>
@@ -15887,7 +15891,14 @@ function _alimResumenTarifaClaveLS(nivelClave, mesClave){
 }
 function _alimResumenLeerTarifa(nivelClave, mesClave){
   const v = localStorage.getItem(_alimResumenTarifaClaveLS(nivelClave, mesClave));
-  return v==null || v==='' ? '' : v;
+  if(v!=null && v!=='') return v;
+  // Antes había UNA sola tarifa compartida por los 3 niveles (clave vieja
+  // sin nivel) -- si todavía no se tocó la tarifa de ESTE nivel, se rescata
+  // ese valor viejo en vez de mostrar vacío, para no perder lo que ya
+  // estaba escrito al pasar a tarifas por nivel.
+  const slug = (typeof OPERADOR !== 'undefined' && OPERADOR && OPERADOR.slug) ? OPERADOR.slug : 'default';
+  const vieja = localStorage.getItem(`pt_tarifa_${slug}_${mesClave}`);
+  return vieja==null || vieja==='' ? '' : vieja;
 }
 function _alimResumenGuardarTarifa(nivelClave, mesClave, valor){
   localStorage.setItem(_alimResumenTarifaClaveLS(nivelClave, mesClave), valor);
@@ -16231,6 +16242,15 @@ function alimResumenRenderNiveles(){
             campo('Pérdida Reconocida', perdidaRec==null?'--':fmt(perdidaRec), {id:`alim-resumen-perdrec-${n.clave}`})
           )}
           ${subgrupo('Valorización ($)',
+            // Tarifa PRIMERO y resaltada -- pedido explícito ("no sé dónde
+            // ingreso la tarifa"): es el único campo que hay que llenar acá
+            // para que el resto de esta columna (Reconocido/Total/No
+            // Reconocido/Técnica) deje de mostrar "--".
+            `<div class="resnivel-campo">
+              <div class="resnivel-campo-label">Tarifa ${n.clave==='n21'?'(promedio, $/kWh)':'($/kWh)'}</div>
+              <input type="number" min="0" step="0.01" placeholder="--" value="${tarifaGuardada}" style="border-color:var(--accent);color:var(--accent);font-weight:800"
+                id="alim-resumen-tarifa-${n.clave}" oninput="alimResumenActualizarTarifa('${n.clave}')">
+            </div>` +
             campo('Valor Reconocido', _alimResumenFmtMoney(valorRec), {id:`alim-resumen-valorrec-${n.clave}`}) +
             campo('Valor Total', _alimResumenFmtMoney(valorTotal), {id:`alim-resumen-valortotal-${n.clave}`}) +
             campo('Valor No Reconocido', _alimResumenFmtMoney(valorNoRec), {id:`alim-resumen-valornorec-${n.clave}`, destacada:true}) +
@@ -16243,11 +16263,6 @@ function alimResumenRenderNiveles(){
               <div class="resnivel-campo-label">% Reconocido</div>
               <input type="number" min="0" max="100" step="0.01" placeholder="--" value="${pctGuardado}"
                 id="alim-resumen-pct-${n.clave}" oninput="alimResumenActualizarReconocido('${n.clave}')">
-            </div>` +
-            `<div class="resnivel-campo">
-              <div class="resnivel-campo-label">Tarifa ${n.clave==='n21'?'(promedio, $/kWh)':'($/kWh)'}</div>
-              <input type="number" min="0" step="0.01" placeholder="--" value="${tarifaGuardada}"
-                id="alim-resumen-tarifa-${n.clave}" oninput="alimResumenActualizarTarifa('${n.clave}')">
             </div>`
           )}
         </div>
