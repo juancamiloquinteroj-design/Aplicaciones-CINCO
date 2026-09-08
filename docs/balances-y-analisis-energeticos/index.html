@@ -2560,13 +2560,6 @@ tfoot td:first-child{text-align:left}
               <select id="alim-resumen-mes" onchange="alimResumenRenderNiveles()" style="border:1.5px solid var(--border);border-radius:4px;padding:6px 8px;font-weight:700;font-size:13px;color:var(--text);background:var(--card-bg)"></select>
             </div>
           </div>
-          <!-- Tarifa por nivel + tabla de Valorización (kWh y $, Reconocido
-               y No Reconocido, Total y Técnica) -- pedido explícito, boceto
-               tipo Excel que mostró el usuario: la Tarifa va ACÁ arriba
-               (donde vivía la Tarifa vieja compartida, antes de este
-               rediseño), no metida adentro de cada tarjeta de nivel. Ver
-               alimResumenRenderTablaValorizacion más abajo. -->
-          <div id="alim-resumen-tabla-valorizacion" style="margin-bottom:24px"></div>
           <!-- Título propio + borde -- pedido explícito ("colócalo al
                lado todo como dentro de una tarjeta, que se entienda que
                es Indicador Regulatorio"): antes el título y las 4
@@ -2616,7 +2609,7 @@ tfoot td:first-child{text-align:left}
              cruza esos contratos contra la Valorización ($) de los 3
              niveles (ver alimResumenAgregarContrato/
              _alimResumenActualizarBalanceFinanciero más abajo). -->
-        <div style="flex:0 1 320px;min-width:280px;display:flex;flex-direction:column;gap:16px">
+        <div style="flex:0 1 440px;min-width:320px;display:flex;flex-direction:column;gap:16px">
           <div style="border:1.5px solid var(--border);border-radius:12px;padding:14px">
             <div style="text-align:center;font-size:13px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase;margin-bottom:10px">Contratos Mensuales</div>
             <div id="alim-resumen-contratos-lista" style="display:flex;flex-direction:column;gap:5px;margin-bottom:10px"></div>
@@ -2656,6 +2649,14 @@ tfoot td:first-child{text-align:left}
               </div>
             </div>
           </div>
+
+          <!-- Tabla de Valorización (Total/Técnica × Reconocido/No
+               Reconocido, kWh y $) -- pedido explícito, DEBAJO de Balance
+               Financiero, con su PROPIA tarifa por nivel (independiente de
+               la tarifa de las tarjetas de la izquierda): "son tarifas
+               diferentes, una afecta la izquierda y otra la derecha". Ver
+               alimResumenRenderTablaValorizacion. -->
+          <div id="alim-resumen-tabla-valorizacion"></div>
         </div>
       </div>
     </div>
@@ -15918,6 +15919,25 @@ function _alimResumenLeerTarifa(nivelClave, mesClave){
 function _alimResumenGuardarTarifa(nivelClave, mesClave, valor){
   localStorage.setItem(_alimResumenTarifaClaveLS(nivelClave, mesClave), valor);
 }
+
+// Tarifa DERECHA -- pedido explícito ("son tarifas diferentes, una
+// afectará lo de la izquierda y otra tarifa será para la derecha"): una
+// segunda tarifa por nivel, independiente de la de arriba, que alimenta
+// SOLO la tabla "Valorización de la Pérdida" (columna derecha, debajo de
+// Balance Financiero) -- la de arriba sigue alimentando el "Valor Total
+// ($)" de cada tarjeta de Nivel (izquierda) y el cuadro Total de abajo.
+function _alimResumenTarifaDerClaveLS(nivelClave, mesClave){
+  const slug = (typeof OPERADOR !== 'undefined' && OPERADOR && OPERADOR.slug) ? OPERADOR.slug : 'default';
+  return `pt_tarifa_der_${slug}_${nivelClave}_${mesClave}`;
+}
+function _alimResumenLeerTarifaDer(nivelClave, mesClave){
+  const v = localStorage.getItem(_alimResumenTarifaDerClaveLS(nivelClave, mesClave));
+  return v==null || v==='' ? '' : v;
+}
+function _alimResumenGuardarTarifaDer(nivelClave, mesClave, valor){
+  localStorage.setItem(_alimResumenTarifaDerClaveLS(nivelClave, mesClave), valor);
+}
+
 const _alimResumenFmtMoney = v => v==null ? '--' : '$'+v.toLocaleString('es-CO',{maximumFractionDigits:0});
 
 // Contratos Mensuales -- pedido explícito ("un campo para colocar el
@@ -15948,12 +15968,14 @@ function _alimResumenGuardarContratos(lista){
 // - Valor Reconocido. Valor Técnica = Pérdida Técnica (kWh) × Tarifa --
 // pedido explícito, además de Pérdida por Balance también valorizar la
 // Pérdida Técnica.
-// Fila "Total" = Pérdida por Balance; fila "Técnica" = Pérdida Técnica --
-// cada una con su propio kWh/​$ Reconocido y No Reconocido, aplicando el
-// MISMO % Reconocido sobre el total kWh de esa propia fila (Entrada×% para
-// Total -- ya existía --, Pérdida Técnica×% para Técnica, pedido explícito
-// "cada fila con ambas columnas"). Todo × la Tarifa DE ESTE NIVEL da los $.
-function _alimResumenValorNivelCalc(nivelClave){
+// kWh -- tariff-independiente, compartido por la tarifa izquierda (Valor
+// Total simple de cada tarjeta de Nivel) y la derecha (tabla de
+// Valorización): fila "Total" = Pérdida por Balance; fila "Técnica" =
+// Pérdida Técnica -- cada una con su propio kWh Reconocido/No Reconocido,
+// aplicando el MISMO % Reconocido sobre el total kWh de esa propia fila
+// (Entrada×% para Total, Pérdida Técnica×% para Técnica -- pedido
+// explícito "cada fila con ambas columnas").
+function _alimResumenKwhNivel(nivelClave){
   const sel = document.getElementById('alim-resumen-mes');
   const clave = sel ? sel.value : null;
   if(!clave) return null;
@@ -15965,10 +15987,6 @@ function _alimResumenValorNivelCalc(nivelClave){
   const pctNum = pctInput && pctInput.value !== '' ? Number(pctInput.value) : null;
   const pctValido = pctNum!=null && !isNaN(pctNum);
 
-  const tarifaInput = document.getElementById(`alim-resumen-tarifa-${nivelClave}`);
-  const tarifaNum = tarifaInput && tarifaInput.value !== '' ? Number(tarifaInput.value) : null;
-  const tarifaValida = tarifaNum!=null && !isNaN(tarifaNum);
-
   const tec = ALIM_RESUMEN_TECNICA[nivelClave] ? ALIM_RESUMEN_TECNICA[nivelClave][clave] : null;
   const tecKwh = (tec && tec.perdida!=null) ? tec.perdida : null;
 
@@ -15979,17 +15997,42 @@ function _alimResumenValorNivelCalc(nivelClave){
   const tecKwhRec = (tecKwh!=null && pctValido) ? Math.max(0, tecKwh * pctNum/100) : null;
   const tecKwhNoRec = (tecKwh!=null && tecKwhRec!=null) ? tecKwh - tecKwhRec : null;
 
-  const money = v => (v!=null && tarifaValida) ? v * tarifaNum : null;
+  return {actual, tecKwh, totalKwhRec, totalKwhNoRec, tecKwhRec, tecKwhNoRec};
+}
 
+// Valorización con la Tarifa IZQUIERDA (una por nivel, ver
+// alim-resumen-tarifa-${nivelClave}) -- alimenta el "Valor Total ($)"
+// simple de cada tarjeta de Nivel y el cuadro Total de más abajo (sin
+// tocar esos dos, pedido explícito).
+function _alimResumenValorNivelCalc(nivelClave){
+  const k = _alimResumenKwhNivel(nivelClave);
+  if(!k) return null;
+  const tarifaInput = document.getElementById(`alim-resumen-tarifa-${nivelClave}`);
+  const tarifaNum = tarifaInput && tarifaInput.value !== '' ? Number(tarifaInput.value) : null;
+  const tarifaValida = tarifaNum!=null && !isNaN(tarifaNum);
+  const money = v => (v!=null && tarifaValida) ? v * tarifaNum : null;
   return {
-    // Nombres viejos (Total/Rec/NoRec/Tecnica) -- los sigue usando el
-    // cuadro "Total" de abajo y el Balance Financiero, sin tocarlos.
-    valorTotal: money(actual.perdida), valorRec: money(totalKwhRec), valorNoRec: money(totalKwhNoRec),
-    valorTecnica: money(tecKwh),
-    // Celdas de la tabla nueva.
-    totalKwhRec, totalKwhNoRec, tecKwhRec, tecKwhNoRec,
-    totalMoneyRec: money(totalKwhRec), totalMoneyNoRec: money(totalKwhNoRec),
-    tecMoneyRec: money(tecKwhRec), tecMoneyNoRec: money(tecKwhNoRec),
+    valorTotal: money(k.actual.perdida), valorRec: money(k.totalKwhRec), valorNoRec: money(k.totalKwhNoRec),
+    valorTecnica: money(k.tecKwh),
+  };
+}
+
+// Valorización con la Tarifa DERECHA (independiente, ver
+// alim-resumen-tarifa-der-${nivelClave}) -- alimenta SOLO la tabla
+// "Valorización de la Pérdida" (columna derecha, debajo de Balance
+// Financiero). Pedido explícito: "son tarifas diferentes, una afecta la
+// izquierda y otra la derecha".
+function _alimResumenValorNivelCalcDer(nivelClave){
+  const k = _alimResumenKwhNivel(nivelClave);
+  if(!k) return null;
+  const tarifaInput = document.getElementById(`alim-resumen-tarifa-der-${nivelClave}`);
+  const tarifaNum = tarifaInput && tarifaInput.value !== '' ? Number(tarifaInput.value) : null;
+  const tarifaValida = tarifaNum!=null && !isNaN(tarifaNum);
+  const money = v => (v!=null && tarifaValida) ? v * tarifaNum : null;
+  return {
+    totalKwhRec: k.totalKwhRec, totalKwhNoRec: k.totalKwhNoRec, tecKwhRec: k.tecKwhRec, tecKwhNoRec: k.tecKwhNoRec,
+    totalMoneyRec: money(k.totalKwhRec), totalMoneyNoRec: money(k.totalKwhNoRec),
+    tecMoneyRec: money(k.tecKwhRec), tecMoneyNoRec: money(k.tecKwhNoRec),
   };
 }
 
@@ -15997,7 +16040,7 @@ function _alimResumenValorNivelCalc(nivelClave){
 // Técnica × kWh/​$ × Reconocido/No Reconocido) -- solo textContent, no
 // reconstruye la tabla (perdería el foco de los inputs de Tarifa/%).
 function _alimResumenActualizarFilaTabla(nivelClave){
-  const r = _alimResumenValorNivelCalc(nivelClave);
+  const r = _alimResumenValorNivelCalcDer(nivelClave);
   const fmt = v => v==null ? '--' : v.toLocaleString('es-CO',{maximumFractionDigits:0});
   const set = (suffix, val, esMoneda) => {
     const el = document.getElementById(`alim-resumen-tabla-${nivelClave}-${suffix}`);
@@ -16011,6 +16054,17 @@ function _alimResumenActualizarFilaTabla(nivelClave){
   set('tecnica-kwh-norec', r ? r.tecKwhNoRec : null, false);
   set('tecnica-money-rec', r ? r.tecMoneyRec : null, true);
   set('tecnica-money-norec', r ? r.tecMoneyNoRec : null, true);
+}
+
+// Se dispara al escribir en la Tarifa DERECHA de un nivel -- recalcula
+// solo la fila de ESE nivel en la tabla (no reconstruye toda la tabla,
+// para no perder el foco del input a mitad de escritura).
+function alimResumenActualizarTarifaDer(nivelClave){
+  const input = document.getElementById(`alim-resumen-tarifa-der-${nivelClave}`);
+  const sel = document.getElementById('alim-resumen-mes');
+  if(!input || !sel || !sel.value) return;
+  _alimResumenGuardarTarifaDer(nivelClave, sel.value, input.value);
+  _alimResumenActualizarFilaTabla(nivelClave);
 }
 
 function _alimResumenActualizarTotales(){
@@ -16034,12 +16088,24 @@ function _alimResumenActualizarTotales(){
 // Valorización de ESE nivel + los Totales/Balance (no reconstruye toda la
 // caja, para no perder el foco del input a mitad de escritura -- mismo
 // criterio que alimResumenActualizarReconocido).
+// Actualiza el "Valor Total ($)" simple de la tarjeta de UN nivel
+// (izquierda) -- Pérdida por Balance × Tarifa izquierda de ese nivel.
+function _alimResumenActualizarValorTotalNivel(nivelClave){
+  const r = _alimResumenValorNivelCalc(nivelClave);
+  const el = document.getElementById(`alim-resumen-valortotal-${nivelClave}`);
+  if(el) el.textContent = _alimResumenFmtMoney(r ? r.valorTotal : null);
+}
+
+// Se dispara al escribir en la Tarifa IZQUIERDA de un nivel -- recalcula
+// el "Valor Total ($)" de esa tarjeta + el cuadro Total de abajo (que
+// sigue sumando Reconocido/No Reconocido con esta misma tarifa, sin
+// tocar su fórmula de siempre).
 function alimResumenActualizarTarifa(nivelClave){
   const input = document.getElementById(`alim-resumen-tarifa-${nivelClave}`);
   const sel = document.getElementById('alim-resumen-mes');
   if(!input || !sel || !sel.value) return;
   _alimResumenGuardarTarifa(nivelClave, sel.value, input.value);
-  _alimResumenActualizarFilaTabla(nivelClave);
+  _alimResumenActualizarValorTotalNivel(nivelClave);
   _alimResumenActualizarTotales();
 }
 
@@ -16243,10 +16309,17 @@ function alimResumenRenderNiveles(){
     // explícito: "el reconocimiento negativo no existe"), se trata como 0.
     const perdidaRec = pctValido ? Math.max(0, actual.entrada * pctNum/100) : null;
 
-    // La Tarifa (por nivel) y la Valorización ($) ya NO viven acá adentro
-    // -- pedido explícito, boceto tipo Excel: pasaron a una tabla aparte,
-    // arriba de todo (ver alimResumenRenderTablaValorizacion), esta caja
-    // se queda solo con Balance/Pérdida(kWh)/Índices.
+    // Tarifa IZQUIERDA de este nivel -- pedido explícito: "son tarifas
+    // diferentes, una afectará lo de la izquierda [esta tarjeta] y otra
+    // tarifa será para la derecha [la tabla nueva, ver
+    // alimResumenRenderTablaValorizacion]". Acá solo un "Valor Total ($)"
+    // simple (Pérdida por Balance × esta tarifa) -- el detalle Reconocido/
+    // No Reconocido/Técnica vive en la tabla de la derecha, con su propia
+    // tarifa.
+    const tarifaGuardada = _alimResumenLeerTarifa(n.clave, clave);
+    const tarifaNum = tarifaGuardada === '' ? null : Number(tarifaGuardada);
+    const tarifaValida = tarifaNum!=null && !isNaN(tarifaNum);
+    const valorTotal = tarifaValida ? actual.perdida * tarifaNum : null;
 
     // "Pérdida Técnica (%)" se recalcula con la Entrada de ESTA vista (el
     // balance real, `actual.entrada`) en vez del tec.pct que manda el
@@ -16272,6 +16345,14 @@ function alimResumenRenderNiveles(){
             campo('Pérdida Técnica', tec?fmt(tec.perdida):'--') +
             campo('Pérdida Gestionable', fmt(_alimResumenGestionable(n.clave, clave, actual, tec))) +
             campo('Pérdida Reconocida', perdidaRec==null?'--':fmt(perdidaRec), {id:`alim-resumen-perdrec-${n.clave}`})
+          )}
+          ${subgrupo('Valorización ($)',
+            `<div class="resnivel-campo">
+              <div class="resnivel-campo-label">Tarifa ${n.clave==='n21'?'(promedio, $/kWh)':'($/kWh)'}</div>
+              <input type="number" min="0" step="0.01" placeholder="--" value="${tarifaGuardada}" style="border-color:var(--accent);color:var(--accent);font-weight:800"
+                id="alim-resumen-tarifa-${n.clave}" oninput="alimResumenActualizarTarifa('${n.clave}')">
+            </div>` +
+            campo('Valor Total', _alimResumenFmtMoney(valorTotal), {id:`alim-resumen-valortotal-${n.clave}`, destacada:true})
           )}
           ${subgrupo('Índices',
             campo('Pérdida por Balance (%)', actual.pct.toFixed(2)+'%', {destacada:true}) +
@@ -16303,9 +16384,9 @@ function alimResumenRenderTablaValorizacion(clave){
   const filaTarifa = n => `
     <div class="resnivel-campo">
       <div class="resnivel-campo-label">Tarifa ${n.nombre}${n.clave==='n21'?' (promedio)':''} ($/kWh)</div>
-      <input type="number" min="0" step="0.01" placeholder="--" value="${_alimResumenLeerTarifa(n.clave, clave)}"
+      <input type="number" min="0" step="0.01" placeholder="--" value="${_alimResumenLeerTarifaDer(n.clave, clave)}"
         style="border-color:var(--accent);color:var(--accent);font-weight:800"
-        id="alim-resumen-tarifa-${n.clave}" oninput="alimResumenActualizarTarifa('${n.clave}')">
+        id="alim-resumen-tarifa-der-${n.clave}" oninput="alimResumenActualizarTarifaDer('${n.clave}')">
     </div>`;
 
   const celdas = (nivelClave, prefijo) => `
@@ -16327,7 +16408,7 @@ function alimResumenRenderTablaValorizacion(clave){
 
   cont.innerHTML = `
     <div style="border:1.5px solid var(--border);border-radius:12px;padding:16px;margin-bottom:16px">
-      <div style="text-align:center;font-size:14px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase;margin-bottom:12px">Tarifa por Nivel</div>
+      <div style="text-align:center;font-size:14px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase;margin-bottom:12px" title="Independiente de la Tarifa de las tarjetas de Nivel (izquierda) -- esta alimenta solo la tabla de abajo">Tarifa por Nivel (esta tabla)</div>
       <div style="display:flex;flex-wrap:wrap;gap:20px;justify-content:center">
         ${ALIM_RESUMEN_NIVELES.map(filaTarifa).join('')}
       </div>
