@@ -8015,21 +8015,57 @@ function ipSeleccionarScript(id){
 
 // "5. Traer Datos AENC a Balances" -- lista addable de fronteras (mismo
 // patrón que Contratos Mensuales en Análisis Financiero).
+// Mapa persistente {frontera: usuario_id_real} -- pedido explícito ("no
+// sé cómo relacionarlos con el archivo de balances ya que se llama
+// diferente, sería que me dieras la opción que yo hiciera esa
+// relación"): el código SIC de la frontera (el que trae el AENC) no
+// siempre es el mismo usuario_id (Socket ID) que usa esa frontera en
+// Usuarios Telemedidos/Balances. Se guarda en la MISMA config de
+// Índice de Pérdidas (clave "aenc_mapa_fronteras", un JSON) para no
+// tener que volver a escribirlo cada vez que se abre el script.
+function ipLeerMapaFronteras(){
+  try{ return JSON.parse(IP_CONFIG.aenc_mapa_fronteras || '{}'); }catch(e){ return {}; }
+}
+async function ipGuardarMapaFronteras(mapa){
+  IP_CONFIG.aenc_mapa_fronteras = JSON.stringify(mapa);
+  try{ await apiPut('/api/indice-perdidas/config', {valores: {aenc_mapa_fronteras: IP_CONFIG.aenc_mapa_fronteras}}); }
+  catch(e){ /* no crítico -- si falla, se vuelve a intentar guardar en el próximo agregado */ }
+}
+
 function ipRenderFronterasLista(){
   const cont = document.getElementById('ip-fronteras-lista');
   if(!cont) return;
   cont.innerHTML = IP_FRONTERAS_ACTIVAS.map((f, i) => `
     <span class="be-modo-btn activo" style="cursor:default;display:inline-flex;align-items:center;gap:6px">
-      ${ipEscapar(f)}
+      ${ipEscapar(f.frontera)}${f.usuarioId && f.usuarioId !== f.frontera ? ` → ${ipEscapar(f.usuarioId)}` : ''}
       <button type="button" onclick="ipQuitarFrontera(${i})" style="background:none;border:none;color:inherit;font-weight:800;cursor:pointer;padding:0;line-height:1" title="Quitar">✕</button>
     </span>`).join('') || `<span style="font-size:11px;color:var(--text3)">Todavía no agregaste ninguna frontera.</span>`;
 }
-function ipAgregarFrontera(){
-  const input = document.getElementById('ip-frontera-nueva');
-  const valor = (input.value || '').trim();
-  if(!valor) return;
-  if(!IP_FRONTERAS_ACTIVAS.some(f => f.toLowerCase() === valor.toLowerCase())) IP_FRONTERAS_ACTIVAS.push(valor);
-  input.value = '';
+// Autocompleta "usuario_id en Balances" si esta frontera ya tenía un
+// mapeo guardado de una vez anterior -- para no tener que volver a
+// escribirlo cada vez.
+function ipAutocompletarUsuarioId(){
+  const inputFrontera = document.getElementById('ip-frontera-nueva');
+  const inputUsuario = document.getElementById('ip-frontera-usuario-id');
+  const frontera = (inputFrontera.value || '').trim();
+  const mapa = ipLeerMapaFronteras();
+  if(frontera && mapa[frontera]) inputUsuario.value = mapa[frontera];
+}
+async function ipAgregarFrontera(){
+  const inputFrontera = document.getElementById('ip-frontera-nueva');
+  const inputUsuario = document.getElementById('ip-frontera-usuario-id');
+  const frontera = (inputFrontera.value || '').trim();
+  const usuarioId = (inputUsuario.value || '').trim();
+  if(!frontera) return;
+  if(!IP_FRONTERAS_ACTIVAS.some(f => f.frontera.toLowerCase() === frontera.toLowerCase())){
+    IP_FRONTERAS_ACTIVAS.push({frontera, usuarioId});
+  }
+  if(usuarioId){
+    const mapa = ipLeerMapaFronteras();
+    mapa[frontera] = usuarioId;
+    await ipGuardarMapaFronteras(mapa);
+  }
+  inputFrontera.value = ''; inputUsuario.value = '';
   ipRenderFronterasLista();
 }
 function ipQuitarFrontera(i){
@@ -8095,11 +8131,18 @@ function ipRenderPanel(){
   const bloqueFronteras = script.requiere_fronteras ? `
     <div style="margin-bottom:12px">
       <label style="display:block;font-size:11px;color:var(--text3);margin-bottom:4px">Número(s) de frontera (código SIC)</label>
-      <div style="display:flex;gap:6px;margin-bottom:8px">
-        <input type="text" id="ip-frontera-nueva" placeholder="Ej. Frt06510"
+      <div style="display:flex;gap:6px;margin-bottom:6px">
+        <input type="text" id="ip-frontera-nueva" placeholder="Código SIC, ej. Frt06510"
+          style="flex:1;padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg)"
+          onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('ip-frontera-usuario-id').focus();}"
+          oninput="ipAutocompletarUsuarioId()">
+        <input type="text" id="ip-frontera-usuario-id" placeholder="usuario_id en Balances (si es distinto)"
           style="flex:1;padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg)"
           onkeydown="if(event.key==='Enter'){event.preventDefault();ipAgregarFrontera();}">
         <button type="button" class="btn-theme" style="width:auto;padding:6px 14px" onclick="ipAgregarFrontera()">＋ Agregar</button>
+      </div>
+      <div style="font-size:10.5px;color:var(--text3);margin-bottom:8px">
+        Si el código SIC de la frontera no es el mismo usuario_id (Socket ID) que usa esa frontera en Usuarios Telemedidos/Balances, escribí acá cuál es -- queda guardado para la próxima vez.
       </div>
       <div id="ip-fronteras-lista" style="display:flex;gap:6px;flex-wrap:wrap"></div>
     </div>` : '';
@@ -8188,7 +8231,14 @@ async function ipEjecutar(){
   }
   if(script.requiere_fronteras){
     if(!IP_FRONTERAS_ACTIVAS.length){ alert('Agregá al menos un número de frontera.'); return; }
-    body.fronteras = IP_FRONTERAS_ACTIVAS.slice();
+    body.fronteras = IP_FRONTERAS_ACTIVAS.map(f => f.frontera);
+    // mapa_fronteras -- combina lo que ya estaba guardado con lo que se
+    // haya escrito en esta tanda (ipAgregarFrontera ya lo persiste, esto
+    // es solo para que la corrida use el valor más fresco sin depender
+    // de que el guardado en el servidor ya haya vuelto).
+    const mapa = ipLeerMapaFronteras();
+    IP_FRONTERAS_ACTIVAS.forEach(f => { if(f.usuarioId) mapa[f.frontera] = f.usuarioId; });
+    body.mapa_fronteras = mapa;
     const desde = document.getElementById('ip-fecha-desde').value;
     const hasta = document.getElementById('ip-fecha-hasta').value;
     if(desde) body.fecha_desde = desde;
@@ -8345,7 +8395,7 @@ function ipMostrarResultadoAenc(jobId, resultado){
   const filas = candidatos.map(c => `
     <tr>
       <td>${ipEscapar(c.estructura_nombre)}</td>
-      <td>${ipEscapar(c.frontera)}</td>
+      <td>${ipEscapar(c.frontera)}${c.usuario_id && c.usuario_id !== c.frontera ? ` <span style="color:var(--text3)">(${ipEscapar(c.usuario_id)})</span>` : ''}</td>
       <td>${ipEscapar(c.fecha)}</td>
       <td style="text-align:right">${Number(c.valor).toLocaleString('es-CO')}</td>
       <td>${ipEscapar(c.archivo)}</td>
@@ -8357,7 +8407,7 @@ function ipMostrarResultadoAenc(jobId, resultado){
     <div style="max-height:260px;overflow-y:auto;margin-bottom:10px;border:1px solid var(--border);border-radius:8px">
       <table style="width:100%;border-collapse:collapse;font-size:11.5px">
         <thead><tr style="position:sticky;top:0;background:var(--bg3)">
-          <th style="text-align:left;padding:6px 8px">Estructura</th><th style="text-align:left;padding:6px 8px">Frontera</th>
+          <th style="text-align:left;padding:6px 8px">Estructura</th><th style="text-align:left;padding:6px 8px">Frontera (usuario_id)</th>
           <th style="text-align:left;padding:6px 8px">Día</th><th style="text-align:right;padding:6px 8px">Valor (kWh)</th>
           <th style="text-align:left;padding:6px 8px">Archivo</th>
         </tr></thead>
