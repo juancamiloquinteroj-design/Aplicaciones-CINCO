@@ -5381,6 +5381,33 @@ async function _expImagenBloque(elId, nombreBase, ev){
   const clonEl = el.cloneNode(true);
   clonEl.querySelectorAll('.exp-wrap, .no-exportar').forEach(b => b.remove());
 
+  // 0) <details> (ej. "Contratos Mensuales") -- html2canvas no respeta
+  // bien el colapsado nativo (details:not([open]) > *:not(summary){display:
+  // none} es una regla del UA stylesheet, no CSS explícito) y termina
+  // dibujando el contenido escondido superpuesto con lo que viene
+  // después -- pedido explícito ("sale mal"). Se reemplaza cada <details>
+  // del clon por un <div> plano: si estaba cerrado, solo queda el
+  // <summary>; si estaba abierto, el contenido se ve normal.
+  const clonDetails = [...clonEl.querySelectorAll('details')];
+  clonDetails.forEach((clonDet, i) => {
+    const div = document.createElement('div');
+    const resumenOrig = el.querySelectorAll('details')[i]?.querySelector('summary');
+    const resumenClon = clonDet.querySelector('summary');
+    if(resumenClon){
+      const resumenDiv = document.createElement('div');
+      resumenDiv.innerHTML = resumenClon.innerHTML;
+      if(resumenOrig){
+        const cs = getComputedStyle(resumenOrig);
+        ['fontSize','fontWeight','letterSpacing','color','textAlign','textTransform','marginBottom'].forEach(p => { resumenDiv.style[p] = cs[p]; });
+      }
+      div.appendChild(resumenDiv);
+    }
+    if(clonDet.open){
+      [...clonDet.children].forEach(child => { if(child.tagName !== 'SUMMARY') div.appendChild(child); });
+    }
+    clonDet.replaceWith(div);
+  });
+
   // 1) <select>/<input> -> div plano, con el mismo texto/estilo visual (el
   // estilo se copia del ORIGINAL, ya en el documento, para que
   // getComputedStyle refleje las reglas CSS reales, no solo el inline).
