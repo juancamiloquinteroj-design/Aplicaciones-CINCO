@@ -8041,6 +8041,68 @@ function ipRenderFronterasLista(){
       <button type="button" onclick="ipQuitarFrontera(${i})" style="background:none;border:none;color:inherit;font-weight:800;cursor:pointer;padding:0;line-height:1" title="Quitar">✕</button>
     </span>`).join('') || `<span style="font-size:11px;color:var(--text3)">Todavía no agregaste ninguna frontera.</span>`;
 }
+// Catálogo completo de fronteras AENC (código SIC + nombre), del archivo
+// más reciente disponible -- pedido explícito ("ahí debería mostrarme
+// todas las fronteras de AENC con el nombre"): antes había que escribir
+// el código de memoria a ciegas; ahora se puede buscar/navegar por nombre
+// o código, como cualquier buscador de la app (mismo patrón visual que
+// "Buscar medidor por nombre o código" de Balances por Estructura). Se
+// pide una sola vez por sesión (no cambia día a día) y se cachea.
+let IP_AENC_FRONTERAS = null;
+let IP_AENC_FRONTERAS_CARGANDO = null;
+async function ipCargarFronterasAenc(){
+  if(IP_AENC_FRONTERAS) return IP_AENC_FRONTERAS;
+  if(IP_AENC_FRONTERAS_CARGANDO) return IP_AENC_FRONTERAS_CARGANDO;
+  IP_AENC_FRONTERAS_CARGANDO = (async () => {
+    try{ IP_AENC_FRONTERAS = (await apiGet('/api/indice-perdidas/aenc-fronteras')).fronteras || []; }
+    catch(e){ IP_AENC_FRONTERAS = []; }
+    return IP_AENC_FRONTERAS;
+  })();
+  return IP_AENC_FRONTERAS_CARGANDO;
+}
+async function ipBuscarFrontera(input){
+  const lista = input.nextElementSibling;
+  const texto = input.value.trim().toLowerCase();
+  ipAutocompletarUsuarioId();
+  lista.classList.remove('hidden');
+  lista.innerHTML = '<div class="be-buscador-vacio">Cargando fronteras de AENC...</div>';
+  const fronteras = await ipCargarFronterasAenc();
+  if(document.activeElement !== input) return;  // el usuario ya se fue de este campo
+  const candidatos = (texto
+    ? fronteras.filter(f => f.codigo_sic.toLowerCase().includes(texto) || (f.nombre||'').toLowerCase().includes(texto))
+    : fronteras
+  ).slice(0, 50);
+  lista.innerHTML = candidatos.length
+    ? candidatos.map((f,i) => `<div class="be-buscador-opt${i===0?' activa':''}" data-codigo="${ipEscapar(f.codigo_sic)}" onmousedown="ipElegirFrontera(event,this)">${ipEscapar(f.codigo_sic)} <span style="color:var(--text3)">-- ${ipEscapar(f.nombre||'(sin nombre)')}</span></div>`).join('')
+    : `<div class="be-buscador-vacio">${fronteras.length ? 'Sin resultados' : 'No hay ningún archivo AENC disponible para listar -- revisá ⚙️ Configuración'}</div>`;
+}
+function ipElegirFrontera(ev, opt){
+  ev.preventDefault();
+  const lista = opt.parentElement;
+  const input = lista.previousElementSibling;
+  input.value = opt.dataset.codigo;
+  lista.classList.add('hidden');
+  ipAutocompletarUsuarioId();
+  ipSugerirUsuarioId();  // ya se sabe el código -- de una sugiere el usuario_id
+}
+function ipFronteraBuscadorTecla(ev, input){
+  const lista = input.nextElementSibling;
+  if(lista.classList.contains('hidden')) return;
+  const opts = [...lista.querySelectorAll('.be-buscador-opt')];
+  if(!opts.length) return;
+  let idx = opts.findIndex(o=>o.classList.contains('activa'));
+  if(ev.key==='ArrowDown'){ ev.preventDefault(); idx=(idx+1+opts.length)%opts.length; }
+  else if(ev.key==='ArrowUp'){ ev.preventDefault(); idx=(idx-1+opts.length)%opts.length; }
+  else if(ev.key==='Enter'){ ev.preventDefault(); if(idx>=0) ipElegirFrontera(ev, opts[idx]); return; }
+  else if(ev.key==='Escape'){ lista.classList.add('hidden'); return; }
+  else return;
+  opts.forEach(o=>o.classList.remove('activa'));
+  opts[idx].classList.add('activa');
+}
+function ipFronteraBuscadorCerrarDiferido(input){
+  setTimeout(() => { const lista = input.nextElementSibling; if(lista) lista.classList.add('hidden'); }, 150);
+}
+
 // Autocompleta "usuario_id en Balances" si esta frontera ya tenía un
 // mapeo guardado de una vez anterior -- para no tener que volver a
 // escribirlo cada vez.
@@ -8171,21 +8233,24 @@ function ipRenderPanel(){
 
   const bloqueFronteras = script.requiere_fronteras ? `
     <div style="margin-bottom:12px">
-      <label style="display:block;font-size:11px;color:var(--text3);margin-bottom:4px">Número(s) de frontera (código SIC)</label>
-      <div style="display:flex;gap:6px;margin-bottom:6px">
-        <input type="text" id="ip-frontera-nueva" placeholder="Código SIC, ej. Frt06510"
-          style="flex:1;padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg)"
-          onkeydown="if(event.key==='Enter'){event.preventDefault();document.getElementById('ip-frontera-usuario-id').focus();}"
-          oninput="ipAutocompletarUsuarioId()">
+      <label style="display:block;font-size:11px;color:var(--text3);margin-bottom:4px">Número(s) de frontera (código SIC) -- escribí o dejá vacío para ver todas las de AENC</label>
+      <div style="display:flex;gap:6px;margin-bottom:6px;align-items:flex-start">
+        <div class="be-buscador" style="flex:1">
+          <input type="text" id="ip-frontera-nueva" placeholder="Buscar por código SIC o nombre..." autocomplete="off"
+            oninput="ipBuscarFrontera(this)" onfocus="ipBuscarFrontera(this)"
+            onkeydown="ipFronteraBuscadorTecla(event,this)" onblur="ipFronteraBuscadorCerrarDiferido(this)"
+            style="width:100%;box-sizing:border-box;padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg)">
+          <div class="be-buscador-lista hidden"></div>
+        </div>
         <input type="text" id="ip-frontera-usuario-id" placeholder="usuario_id en Balances (si es distinto)"
           style="flex:1;padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg)"
           onkeydown="if(event.key==='Enter'){event.preventDefault();ipAgregarFrontera();}">
-        <button type="button" class="be-editar-btn" style="white-space:nowrap" title="No sabés el usuario_id de esta frontera -- buscarlo por nombre" onclick="ipSugerirUsuarioId()">🔍 Buscar</button>
+        <button type="button" class="be-editar-btn" style="white-space:nowrap" title="Volver a sugerir el usuario_id de esta frontera" onclick="ipSugerirUsuarioId()">🔍 Sugerir</button>
         <button type="button" class="btn-theme" style="width:auto;padding:6px 14px" onclick="ipAgregarFrontera()">＋ Agregar</button>
       </div>
       <div id="ip-frontera-sugerencias" style="font-size:11px;margin-bottom:8px"></div>
       <div style="font-size:10.5px;color:var(--text3);margin-bottom:8px">
-        Si el código SIC de la frontera no es el mismo usuario_id (Socket ID) que usa esa frontera en Usuarios Telemedidos/Balances, escribí acá cuál es (o usá "🔍 Buscar") -- queda guardado para la próxima vez.
+        Elegí una frontera de la lista (trae el nombre de AENC) -- si su usuario_id (Socket ID) en Usuarios Telemedidos/Balances es distinto al código SIC, escribilo acá -- queda guardado para la próxima vez.
       </div>
       <div id="ip-fronteras-lista" style="display:flex;gap:6px;flex-wrap:wrap"></div>
     </div>` : '';
