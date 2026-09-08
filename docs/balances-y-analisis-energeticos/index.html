@@ -2551,15 +2551,6 @@ tfoot td:first-child{text-align:left}
               <div class="resnivel-campo-label">Mes</div>
               <select id="alim-resumen-mes" onchange="alimResumenRenderNiveles()" style="border:1.5px solid var(--border);border-radius:4px;padding:6px 8px;font-weight:700;font-size:13px;color:var(--text);background:var(--card-bg)"></select>
             </div>
-            <!-- Tarifa G+T+R ($/kWh) -- pedido explícito ("colocar la
-                 tarifa en celda para que se calcule el valor en plata
-                 reconocido y no reconocido"): la ingresa el usuario, por
-                 mes (igual criterio que % Reconocido -- localStorage por
-                 operador). -->
-            <div class="resnivel-campo" style="min-width:170px">
-              <div class="resnivel-campo-label">Tarifa G+T+R ($/kWh)</div>
-              <input type="number" min="0" step="0.01" placeholder="--" id="alim-resumen-tarifa" oninput="alimResumenActualizarValorizacion()">
-            </div>
           </div>
           <!-- Título propio + borde -- pedido explícito ("colócalo al
                lado todo como dentro de una tarjeta, que se entienda que
@@ -2602,13 +2593,50 @@ tfoot td:first-child{text-align:left}
           </div>
         </div>
 
-        <!-- Mapa de zonas (solo N2-1, es el único nivel con zonas) --
-             pedido explícito ("un mapa así"): croquis coloreado por zona
-             (mismo croquis de Indicador N2-1) con una torta Venta/Pérdida
-             Técnica/Pérdida No Técnica por zona, del mes elegido arriba. -->
-        <div style="flex:1 1 420px;min-width:420px">
-          <div style="text-align:center;font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase;margin-bottom:14px">Pérdida por Zona (N2-1)</div>
-          <div id="alim-resumen-mapa-leaflet" style="height:740px;border-radius:10px;overflow:hidden;background:var(--bg3)"></div>
+        <!-- Se quitó el mapa de zonas -- pedido explícito ("vamos a
+             quitar el mapa y ahí se van a colocar más tarjetas
+             informativas y donde se pueda colocar información
+             financiera"). Ahora esta columna trae Contratos Mensuales
+             (costo fijo mensual, addable) y un Balance Financiero que
+             cruza esos contratos contra la Valorización ($) de los 3
+             niveles (ver alimResumenAgregarContrato/
+             _alimResumenActualizarBalanceFinanciero más abajo). -->
+        <div style="flex:1 1 420px;min-width:420px;display:flex;flex-direction:column;gap:20px">
+          <div style="border:1.5px solid var(--border);border-radius:12px;padding:16px">
+            <div style="text-align:center;font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase;margin-bottom:14px">Contratos Mensuales</div>
+            <div id="alim-resumen-contratos-lista" style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px"></div>
+            <div class="fbar" style="margin-bottom:10px">
+              <input type="text" placeholder="Nombre del contrato" id="alim-resumen-contrato-nombre" style="flex:1 1 150px" onkeydown="if(event.key==='Enter') alimResumenAgregarContrato()">
+              <input type="number" min="0" step="1" placeholder="$ mensual" id="alim-resumen-contrato-valor" style="width:130px" onkeydown="if(event.key==='Enter') alimResumenAgregarContrato()">
+              <button class="btn-theme" style="width:auto;padding:0 14px" onclick="alimResumenAgregarContrato()">＋ Agregar</button>
+            </div>
+            <div class="resnivel-campo">
+              <div class="resnivel-campo-label">Total Contratos ($/mes)</div>
+              <div class="resnivel-campo-caja destacada" id="alim-resumen-contratos-total">--</div>
+            </div>
+          </div>
+
+          <div style="border:1.5px solid var(--border);border-radius:12px;padding:16px">
+            <div style="text-align:center;font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase;margin-bottom:14px">Balance Financiero</div>
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <div class="resnivel-campo">
+                <div class="resnivel-campo-label">Valorización Pérdida Técnica (Total 3 niveles)</div>
+                <div class="resnivel-campo-caja" id="alim-resumen-bf-valortecnica">--</div>
+              </div>
+              <div class="resnivel-campo">
+                <div class="resnivel-campo-label">Valor Reconocido (Total 3 niveles)</div>
+                <div class="resnivel-campo-caja" id="alim-resumen-bf-valorrec">--</div>
+              </div>
+              <div class="resnivel-campo">
+                <div class="resnivel-campo-label">Total Contratos ($/mes)</div>
+                <div class="resnivel-campo-caja" id="alim-resumen-bf-contratos">--</div>
+              </div>
+              <div class="resnivel-campo">
+                <div class="resnivel-campo-label">Balance (Valor Reconocido − Contratos)</div>
+                <div class="resnivel-campo-caja destacada" id="alim-resumen-bf-balance">--</div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -15847,30 +15875,53 @@ function _alimResumenGuardarPct(nivelClave, valor){
   localStorage.setItem(_alimResumenClaveLS(nivelClave), valor);
 }
 
-// Tarifa G+T+R ($/kWh) -- lo ingresa el usuario, UNA por mes (no por
-// nivel, misma tarifa aplica a los 3) y por operador -- mismo criterio
-// de persistencia que % Reconocido.
-function _alimResumenTarifaClaveLS(clave){
+// Tarifa ($/kWh) -- pedido explícito ("un campo para colocar el valor de
+// la tarifa de Nivel IV, Nivel III y Nivel 2-1"): antes era UNA sola
+// tarifa para los 3 niveles, ahora cada nivel tiene la suya (Nivel 2-1
+// "será promedio de la tarifa" -- el usuario ingresa directo ese
+// promedio, no se calcula solo). Por nivel + por mes + por operador,
+// mismo criterio de persistencia que % Reconocido.
+function _alimResumenTarifaClaveLS(nivelClave, mesClave){
   const slug = (typeof OPERADOR !== 'undefined' && OPERADOR && OPERADOR.slug) ? OPERADOR.slug : 'default';
-  return `pt_tarifa_${slug}_${clave}`;
+  return `pt_tarifa_${slug}_${nivelClave}_${mesClave}`;
 }
-function _alimResumenLeerTarifa(clave){
-  const v = localStorage.getItem(_alimResumenTarifaClaveLS(clave));
+function _alimResumenLeerTarifa(nivelClave, mesClave){
+  const v = localStorage.getItem(_alimResumenTarifaClaveLS(nivelClave, mesClave));
   return v==null || v==='' ? '' : v;
 }
-function _alimResumenGuardarTarifa(clave, valor){
-  localStorage.setItem(_alimResumenTarifaClaveLS(clave), valor);
+function _alimResumenGuardarTarifa(nivelClave, mesClave, valor){
+  localStorage.setItem(_alimResumenTarifaClaveLS(nivelClave, mesClave), valor);
 }
 const _alimResumenFmtMoney = v => v==null ? '--' : '$'+v.toLocaleString('es-CO',{maximumFractionDigits:0});
 
-// Valor Total/Reconocido/No Reconocido ($) de un nivel, con los valores
-// ACTUALES de pantalla (input % Reconocido + input Tarifa, aunque el
-// usuario todavía no le haya dado Enter/blur) -- para poder recalcular en
-// vivo sin reconstruir toda la caja (perdería el foco de los inputs).
-// Pedido explícito: "el valor en plata del reconocimiento y el total, y
-// la resta de esos dos sería el no reconocido" -- Valor Total = Pérdida
-// por Balance × Tarifa; Valor No Reconocido = Valor Total - Valor
-// Reconocido (no un cálculo aparte).
+// Contratos Mensuales -- pedido explícito ("un campo para colocar el
+// precio de los contratos mensuales, se debe poder añadir más"): cada uno
+// es nombre + costo fijo mensual ($, no $/kWh -- "es lo que le cuesta
+// mensual"), para poder armar un balance financiero contra la
+// Valorización de las pérdidas. Lista completa (no por mes: un contrato
+// es un costo recurrente) persistida por operador.
+function _alimResumenContratosClaveLS(){
+  const slug = (typeof OPERADOR !== 'undefined' && OPERADOR && OPERADOR.slug) ? OPERADOR.slug : 'default';
+  return `pt_contratos_${slug}`;
+}
+function _alimResumenLeerContratos(){
+  try{ return JSON.parse(localStorage.getItem(_alimResumenContratosClaveLS()) || '[]'); }
+  catch(e){ return []; }
+}
+function _alimResumenGuardarContratos(lista){
+  localStorage.setItem(_alimResumenContratosClaveLS(), JSON.stringify(lista));
+}
+
+// Valor Total/Reconocido/No Reconocido/Técnica ($) de un nivel, con los
+// valores ACTUALES de pantalla (input % Reconocido + input Tarifa DE ESE
+// NIVEL, aunque el usuario todavía no le haya dado Enter/blur) -- para
+// poder recalcular en vivo sin reconstruir toda la caja (perdería el foco
+// de los inputs). Pedido explícito: "el valor en plata del reconocimiento
+// y el total, y la resta de esos dos sería el no reconocido" -- Valor
+// Total = Pérdida por Balance × Tarifa; Valor No Reconocido = Valor Total
+// - Valor Reconocido. Valor Técnica = Pérdida Técnica (kWh) × Tarifa --
+// pedido explícito, además de Pérdida por Balance también valorizar la
+// Pérdida Técnica.
 function _alimResumenValorNivelCalc(nivelClave){
   const sel = document.getElementById('alim-resumen-mes');
   const clave = sel ? sel.value : null;
@@ -15883,14 +15934,17 @@ function _alimResumenValorNivelCalc(nivelClave){
   const pctNum = pctInput && pctInput.value !== '' ? Number(pctInput.value) : null;
   const perdidaRec = (pctNum!=null && !isNaN(pctNum)) ? Math.max(0, actual.entrada * pctNum/100) : null;
 
-  const tarifaInput = document.getElementById('alim-resumen-tarifa');
+  const tarifaInput = document.getElementById(`alim-resumen-tarifa-${nivelClave}`);
   const tarifaNum = tarifaInput && tarifaInput.value !== '' ? Number(tarifaInput.value) : null;
   const tarifaValida = tarifaNum!=null && !isNaN(tarifaNum);
+
+  const tec = ALIM_RESUMEN_TECNICA[nivelClave] ? ALIM_RESUMEN_TECNICA[nivelClave][clave] : null;
 
   const valorTotal = tarifaValida ? actual.perdida * tarifaNum : null;
   const valorRec = (perdidaRec!=null && tarifaValida) ? perdidaRec * tarifaNum : null;
   const valorNoRec = (valorTotal!=null && valorRec!=null) ? valorTotal - valorRec : null;
-  return {valorTotal, valorRec, valorNoRec};
+  const valorTecnica = (tec && tec.perdida!=null && tarifaValida) ? tec.perdida * tarifaNum : null;
+  return {valorTotal, valorRec, valorNoRec, valorTecnica};
 }
 
 function _alimResumenActualizarValorizacionNivel(nivelClave){
@@ -15898,9 +15952,11 @@ function _alimResumenActualizarValorizacionNivel(nivelClave){
   const elTotal = document.getElementById(`alim-resumen-valortotal-${nivelClave}`);
   const elRec = document.getElementById(`alim-resumen-valorrec-${nivelClave}`);
   const elNoRec = document.getElementById(`alim-resumen-valornorec-${nivelClave}`);
+  const elTecnica = document.getElementById(`alim-resumen-valortecnica-${nivelClave}`);
   if(elTotal) elTotal.textContent = _alimResumenFmtMoney(r ? r.valorTotal : null);
   if(elRec) elRec.textContent = _alimResumenFmtMoney(r ? r.valorRec : null);
   if(elNoRec) elNoRec.textContent = _alimResumenFmtMoney(r ? r.valorNoRec : null);
+  if(elTecnica) elTecnica.textContent = _alimResumenFmtMoney(r ? r.valorTecnica : null);
 }
 
 function _alimResumenActualizarTotales(){
@@ -15917,16 +15973,84 @@ function _alimResumenActualizarTotales(){
   if(elTotTotal) elTotTotal.textContent = huboTotal ? _alimResumenFmtMoney(totTotal) : '--';
   if(elTotRec) elTotRec.textContent = huboRec ? _alimResumenFmtMoney(totRec) : '--';
   if(elTotNoRec) elTotNoRec.textContent = huboNoRec ? _alimResumenFmtMoney(totNoRec) : '--';
+  _alimResumenActualizarBalanceFinanciero();
 }
 
-// Se dispara al escribir en la Tarifa -- recalcula Valorización de los 3
-// niveles + el Total (la tarifa es una sola, aplica a todos).
-function alimResumenActualizarValorizacion(){
-  const tarifaInput = document.getElementById('alim-resumen-tarifa');
+// Se dispara al escribir en la Tarifa de UN nivel -- recalcula solo la
+// Valorización de ESE nivel + los Totales/Balance (no reconstruye toda la
+// caja, para no perder el foco del input a mitad de escritura -- mismo
+// criterio que alimResumenActualizarReconocido).
+function alimResumenActualizarTarifa(nivelClave){
+  const input = document.getElementById(`alim-resumen-tarifa-${nivelClave}`);
   const sel = document.getElementById('alim-resumen-mes');
-  if(tarifaInput && sel && sel.value) _alimResumenGuardarTarifa(sel.value, tarifaInput.value);
-  ALIM_RESUMEN_NIVELES.forEach(n => _alimResumenActualizarValorizacionNivel(n.clave));
+  if(!input || !sel || !sel.value) return;
+  _alimResumenGuardarTarifa(nivelClave, sel.value, input.value);
+  _alimResumenActualizarValorizacionNivel(nivelClave);
   _alimResumenActualizarTotales();
+}
+
+// -------------------------------------------------------- Balance Financiero
+// Cruza la Valorización de los 3 niveles (Pérdida Técnica valorizada y
+// Valor Reconocido) contra el Total de Contratos Mensuales -- pedido
+// explícito ("a lo que voy es poder hacer un balance financiero"). Balance
+// = Valor Reconocido (lo que se reconoce por la pérdida) - Contratos (lo
+// que cuesta mensualmente comprar la energía que cubre esa pérdida).
+function _alimResumenActualizarBalanceFinanciero(){
+  let totTecnica = 0, huboTecnica = false, totRec = 0, huboRec = false;
+  ALIM_RESUMEN_NIVELES.forEach(n => {
+    const r = _alimResumenValorNivelCalc(n.clave);
+    if(r && r.valorTecnica!=null){ totTecnica += r.valorTecnica; huboTecnica = true; }
+    if(r && r.valorRec!=null){ totRec += r.valorRec; huboRec = true; }
+  });
+  const contratos = _alimResumenLeerContratos();
+  const totContratos = contratos.reduce((s, c) => s + (Number(c.valor) || 0), 0);
+
+  const elTecnica = document.getElementById('alim-resumen-bf-valortecnica');
+  const elRec = document.getElementById('alim-resumen-bf-valorrec');
+  const elContratos = document.getElementById('alim-resumen-bf-contratos');
+  const elBalance = document.getElementById('alim-resumen-bf-balance');
+  if(elTecnica) elTecnica.textContent = huboTecnica ? _alimResumenFmtMoney(totTecnica) : '--';
+  if(elRec) elRec.textContent = huboRec ? _alimResumenFmtMoney(totRec) : '--';
+  if(elContratos) elContratos.textContent = _alimResumenFmtMoney(totContratos);
+  if(elBalance) elBalance.textContent = huboRec ? _alimResumenFmtMoney(totRec - totContratos) : '--';
+}
+
+function alimResumenRenderContratos(){
+  const cont = document.getElementById('alim-resumen-contratos-lista');
+  const totalEl = document.getElementById('alim-resumen-contratos-total');
+  if(!cont) return;
+  const contratos = _alimResumenLeerContratos();
+  cont.innerHTML = contratos.length ? contratos.map(c => `
+    <div style="display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid var(--border);border-radius:8px;font-size:12.5px">
+      <span style="flex:1">${_mselEsc(c.nombre)}</span>
+      <b>${_alimResumenFmtMoney(Number(c.valor)||0)}</b>
+      <button type="button" class="be-modo-btn no-exportar" style="padding:2px 8px;color:#ef476f" onclick="alimResumenQuitarContrato('${c.id}')" title="Quitar">✕</button>
+    </div>`).join('') : `<div style="font-size:12px;color:var(--text3)">Todavía no agregaste ningún contrato.</div>`;
+  const total = contratos.reduce((s, c) => s + (Number(c.valor) || 0), 0);
+  if(totalEl) totalEl.textContent = _alimResumenFmtMoney(total);
+  _alimResumenActualizarBalanceFinanciero();
+}
+
+function alimResumenAgregarContrato(){
+  const nombreInput = document.getElementById('alim-resumen-contrato-nombre');
+  const valorInput = document.getElementById('alim-resumen-contrato-valor');
+  const nombre = nombreInput.value.trim();
+  const valor = Number(valorInput.value);
+  if(!nombre || !valorInput.value || isNaN(valor)){
+    alert('Escribí un nombre y un valor mensual válido para el contrato.');
+    return;
+  }
+  const contratos = _alimResumenLeerContratos();
+  contratos.push({id: `${Date.now()}_${Math.random().toString(36).slice(2,7)}`, nombre, valor});
+  _alimResumenGuardarContratos(contratos);
+  nombreInput.value = ''; valorInput.value = '';
+  alimResumenRenderContratos();
+}
+
+function alimResumenQuitarContrato(id){
+  const contratos = _alimResumenLeerContratos().filter(c => c.id !== id);
+  _alimResumenGuardarContratos(contratos);
+  alimResumenRenderContratos();
 }
 
 async function alimResumenCargar(){
@@ -15972,7 +16096,7 @@ async function alimResumenCargar(){
   }
 
   alimResumenRenderNiveles();
-  alimResumenCargarMapa();
+  alimResumenRenderContratos();
 }
 
 // IP_Reg (Mensual y Anual/12M, % y kWh) arriba de todo -- pedido explícito
@@ -16008,150 +16132,6 @@ function alimResumenRenderIpReg(clave){
     </div>`;
 }
 
-// Mapa de zonas (croquis, mismo de Indicador N2-1) con una torta Venta/
-// Pérdida Técnica/Pérdida No Técnica por zona -- pedido explícito ("un
-// mapa así"). Solo N2-1 tiene zonas (Nivel 3/4 no) -- ver
-// mapaZonasRenderLeaflet/mapaZonasCentroPorZona/mapaZonasDibujarFlecha,
-// toda esa infraestructura es la misma que ya usa Indicador N2-1, no se
-// duplica acá. La Pérdida Técnica por zona (ALIM_N21_TECNICA_POR_ZONA) se
-// comparte con ese módulo -- si el usuario ya lo visitó esta sesión, no
-// se vuelve a pedir.
-let ALIM_RESUMEN_MAPA_REF = null;
-let ALIM_RESUMEN_MAPA_MARCADORES = [];
-let ALIM_RESUMEN_MAPA_PIES = {};  // {zona: Chart} -- se destruyen y recrean en cada render
-let ALIM_RESUMEN_MAPA_GEN = 0;
-
-async function alimResumenCargarMapa(){
-  const cont = document.getElementById('alim-resumen-mapa-leaflet');
-  if(!cont) return;
-  const miGen = ++ALIM_RESUMEN_MAPA_GEN;
-  if(!MAPA_ZONAS_INSTANCIAS['alim-resumen-mapa-leaflet']){
-    cont.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text3);font-size:12px">Cargando…</div>';
-  }
-  try{
-    const topo = await mapaZonasCargarTopo();
-    const resp = DEMO ? {departamento:null, municipios:{}, posiciones:{}} : await apiGet('/api/mapa-zonas');
-    if(miGen !== ALIM_RESUMEN_MAPA_GEN) return;
-    if(!resp.departamento){
-      cont.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text3);font-size:12px;text-align:center;padding:20px">Todavía no se parametrizó el departamento ni las zonas -- hacelo en Parametrización → Mapa de zonas por municipio.</div>';
-      ALIM_RESUMEN_MAPA_REF = null;
-      return;
-    }
-    const features = mapaZonasFeaturesDeDepto(topo, resp.departamento);
-    if(miGen !== ALIM_RESUMEN_MAPA_GEN) return;
-    const render = mapaZonasRenderLeaflet('alim-resumen-mapa-leaflet', features, id => resp.municipios[id], null, 0.7, null);
-    if(!render || miGen !== ALIM_RESUMEN_MAPA_GEN) return;
-    ALIM_RESUMEN_MAPA_REF = {resp, features, mapa: render.mapa};
-
-    const zonas = Object.keys(mapaZonasCentroPorZona(features, resp.municipios));
-    if(!DEMO && !Object.keys(ALIM_N21_TECNICA_POR_ZONA).length && zonas.length){
-      await Promise.all(zonas.map(async z => {
-        try{
-          const resp2 = await apiGet(`/api/resumen?nivel=1&nivel=2&zona=${encodeURIComponent(z)}`, AUTH_TIMEOUT_MS);
-          ALIM_N21_TECNICA_POR_ZONA[z] = _alimNivelTecnicaPorMes(resp2);
-        }catch(e){
-          ALIM_N21_TECNICA_POR_ZONA[z] = {};
-        }
-      }));
-      if(miGen !== ALIM_RESUMEN_MAPA_GEN) return;
-    }
-    alimResumenRenderMarcadoresZona();
-  }catch(e){
-    if(miGen !== ALIM_RESUMEN_MAPA_GEN) return;
-    ALIM_RESUMEN_MAPA_REF = null;
-    cont.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#ef476f;font-size:12px">${e.message || 'No se pudo cargar el croquis.'}</div>`;
-  }
-}
-
-// Venta (=Salida) / Pérdida Técnica / Pérdida No Técnica (=Pérdida por
-// Balance menos Pérdida Técnica) de una zona, para el mes elegido en
-// #alim-resumen-mes -- mismo criterio que Nivel 3/N2-1 (Gestionable =
-// P.Total - P.Técnica, pedido explícito en su momento).
-function _alimResumenDatosZonaMapa(zona, clave){
-  const actual = alimN21AgregarMensual(new Set([zona])).find(f => f.clave === clave);
-  if(!actual || actual.entrada == null) return null;
-  const tecZona = ALIM_N21_TECNICA_POR_ZONA[zona] || {};
-  const tec = tecZona[clave];
-  const perdidaTecnica = tec ? tec.perdida : 0;
-  const perdidaNoTecnica = actual.perdida - perdidaTecnica;
-  const venta = actual.salida;
-  const pct = v => actual.entrada ? v/actual.entrada*100 : null;
-  return {venta, perdidaTecnica, perdidaNoTecnica, ventaPct: pct(venta), tecnicaPct: pct(perdidaTecnica), noTecnicaPct: pct(perdidaNoTecnica)};
-}
-
-function alimResumenRenderMarcadoresZona(){
-  if(!ALIM_RESUMEN_MAPA_REF || !ALIM_RESUMEN_MAPA_REF.mapa) return;
-  const sel = document.getElementById('alim-resumen-mes');
-  if(!sel || !sel.value) return;
-  const clave = sel.value;
-  const {resp, features, mapa} = ALIM_RESUMEN_MAPA_REF;
-
-  ALIM_RESUMEN_MAPA_MARCADORES.forEach(m => mapa.removeLayer(m));
-  ALIM_RESUMEN_MAPA_MARCADORES = [];
-  Object.values(ALIM_RESUMEN_MAPA_PIES).forEach(ch => ch && ch.destroy());
-  ALIM_RESUMEN_MAPA_PIES = {};
-
-  const centros = mapaZonasCentroPorZona(features, resp.municipios);
-  const datosPorZona = {};
-  Object.keys(centros).forEach(zona => {
-    const d = _alimResumenDatosZonaMapa(zona, clave);
-    if(d) datosPorZona[zona] = d;
-  });
-  const zonasConDatos = Object.keys(datosPorZona);
-  if(!zonasConDatos.length) return;
-
-  const deptoBounds = L.geoJSON(features).getBounds();
-  const posicionesGuardadas = resp.posiciones || {};
-  const auto = mapaZonasPosicionesAutomaticas(centros, deptoBounds);
-  const fmt = v => v==null ? '--' : Math.round(v).toLocaleString('es-CO');
-  const fmtPct = v => v==null ? '--' : v.toFixed(2)+'%';
-  const COLOR_VENTA = '#2a9d5c', COLOR_TECNICA = '#ED7D31', COLOR_NOTECNICA = '#C00000';
-
-  zonasConDatos.forEach(zona => {
-    const d = datosPorZona[zona];
-    const color = colorParaZona(zona);
-    const tip = centros[zona];
-    const guardada = posicionesGuardadas[zona];
-    const box = guardada ? L.latLng(guardada.lat, guardada.lng) : auto[zona];
-
-    const flecha = mapaZonasDibujarFlecha(mapa, box, tip);
-    ALIM_RESUMEN_MAPA_MARCADORES.push(...flecha.capas);
-
-    // Tarjeta chica -- pedido explícito ("se ven muy grandes... unas
-    // encima de otras"): la torta agrega alto extra sobre el zcard
-    // "normal" de N2-1 (152px), así que se achica todo (ancho, torta,
-    // tipografía, padding) para que la posición automática en círculo
-    // (mapaZonasPosicionesAutomaticas, compartida con N2-1) no las choque.
-    const idPie = `alim-resumen-pie-${zona}`;
-    const html = `<div class="zcard" style="border-top:3px solid ${color};width:138px;padding:4px 6px 5px">
-      <div class="zc-h" style="font-size:11px">Zona ${zona}</div>
-      <canvas id="${idPie}" width="46" height="46" style="display:block;margin:3px auto"></canvas>
-      <div class="zc-rows" style="gap:0">
-        <div style="font-size:9.5px;line-height:1.4"><span style="color:${COLOR_VENTA}">●&nbsp;Venta</span><b>${fmt(d.venta)}&nbsp;·&nbsp;${fmtPct(d.ventaPct)}</b></div>
-        <div style="font-size:9.5px;line-height:1.4"><span style="color:${COLOR_TECNICA}">●&nbsp;P.Téc.</span><b>${fmt(d.perdidaTecnica)}&nbsp;·&nbsp;${fmtPct(d.tecnicaPct)}</b></div>
-        <div style="font-size:9.5px;line-height:1.4"><span style="color:${COLOR_NOTECNICA}">●&nbsp;P.No&nbsp;Téc.</span><b>${fmt(d.perdidaNoTecnica)}&nbsp;·&nbsp;${fmtPct(d.noTecnicaPct)}</b></div>
-      </div>
-    </div>`;
-    const marker = L.marker(box, {
-      icon: L.divIcon({className:'', iconSize:[138,0], iconAnchor:[69,58], html}),
-      interactive:false, zIndexOffset:4000,
-    });
-    marker.addTo(mapa);
-    ALIM_RESUMEN_MAPA_MARCADORES.push(marker);
-
-    const cv = document.getElementById(idPie);
-    if(cv){
-      ALIM_RESUMEN_MAPA_PIES[zona] = new Chart(cv, {
-        type:'pie',
-        data:{labels:['Venta','P. Técnica','P. No Técnica'], datasets:[{
-          data:[Math.max(0,d.venta), Math.max(0,d.perdidaTecnica), Math.max(0,d.perdidaNoTecnica)],
-          backgroundColor:[COLOR_VENTA, COLOR_TECNICA, COLOR_NOTECNICA], borderWidth:1, borderColor:'#fff',
-        }]},
-        options:{responsive:false, animation:false, plugins:{legend:{display:false}, tooltip:{enabled:false}, datalabels:{display:false}}},
-      });
-    }
-  });
-}
 
 // Arma las 3 tarjetas (una por nivel) COMPLETAS -- se llama al cambiar de
 // mes. El % Reconocido de cada tarjeta arranca con lo último guardado en
@@ -16164,9 +16144,6 @@ function alimResumenRenderNiveles(){
   if(!cont || !sel || !sel.value) return;
   const clave = sel.value;
   alimResumenRenderIpReg(clave);
-  alimResumenRenderMarcadoresZona();
-  const tarifaInput = document.getElementById('alim-resumen-tarifa');
-  if(tarifaInput) tarifaInput.value = _alimResumenLeerTarifa(clave);
   const fmt = v => v==null ? '--' : v.toLocaleString('es-CO',{maximumFractionDigits:0});
 
   // "Campo Excel" -- etiqueta ARRIBA de una caja blanca con borde fino,
@@ -16212,15 +16189,21 @@ function alimResumenRenderNiveles(){
     // explícito: "el reconocimiento negativo no existe"), se trata como 0.
     const perdidaRec = pctValido ? Math.max(0, actual.entrada * pctNum/100) : null;
 
-    const tarifaGuardada = tarifaInput ? tarifaInput.value : '';
+    // Tarifa PROPIA de este nivel -- pedido explícito ("un campo para
+    // colocar el valor de la tarifa de Nivel IV, Nivel III y Nivel 2-1")
+    // -- N2-1 la ingresa el usuario como el promedio, no se calcula solo.
+    const tarifaGuardada = _alimResumenLeerTarifa(n.clave, clave);
     const tarifaNum = tarifaGuardada === '' ? null : Number(tarifaGuardada);
     const tarifaValida = tarifaNum!=null && !isNaN(tarifaNum);
     // Valor Total = Pérdida por Balance × Tarifa; Valor No Reconocido =
     // Valor Total - Valor Reconocido (pedido explícito: "la resta de
-    // esos dos sería el no reconocido").
+    // esos dos sería el no reconocido"). Valor Técnica = Pérdida Técnica
+    // (kWh) × Tarifa -- pedido explícito, valorizar también la pérdida
+    // técnica (no solo la pérdida por balance).
     const valorTotal = tarifaValida ? actual.perdida * tarifaNum : null;
     const valorRec = (perdidaRec!=null && tarifaValida) ? perdidaRec * tarifaNum : null;
     const valorNoRec = (valorTotal!=null && valorRec!=null) ? valorTotal - valorRec : null;
+    const valorTecnica = (tec && tec.perdida!=null && tarifaValida) ? tec.perdida * tarifaNum : null;
 
     // "Pérdida Técnica (%)" se recalcula con la Entrada de ESTA vista (el
     // balance real, `actual.entrada`) en vez del tec.pct que manda el
@@ -16250,7 +16233,8 @@ function alimResumenRenderNiveles(){
           ${subgrupo('Valorización ($)',
             campo('Valor Reconocido', _alimResumenFmtMoney(valorRec), {id:`alim-resumen-valorrec-${n.clave}`}) +
             campo('Valor Total', _alimResumenFmtMoney(valorTotal), {id:`alim-resumen-valortotal-${n.clave}`}) +
-            campo('Valor No Reconocido', _alimResumenFmtMoney(valorNoRec), {id:`alim-resumen-valornorec-${n.clave}`, destacada:true})
+            campo('Valor No Reconocido', _alimResumenFmtMoney(valorNoRec), {id:`alim-resumen-valornorec-${n.clave}`, destacada:true}) +
+            campo('Valor Pérdida Técnica', _alimResumenFmtMoney(valorTecnica), {id:`alim-resumen-valortecnica-${n.clave}`})
           )}
           ${subgrupo('Índices',
             campo('Pérdida por Balance (%)', actual.pct.toFixed(2)+'%', {destacada:true}) +
@@ -16259,6 +16243,11 @@ function alimResumenRenderNiveles(){
               <div class="resnivel-campo-label">% Reconocido</div>
               <input type="number" min="0" max="100" step="0.01" placeholder="--" value="${pctGuardado}"
                 id="alim-resumen-pct-${n.clave}" oninput="alimResumenActualizarReconocido('${n.clave}')">
+            </div>` +
+            `<div class="resnivel-campo">
+              <div class="resnivel-campo-label">Tarifa ${n.clave==='n21'?'(promedio, $/kWh)':'($/kWh)'}</div>
+              <input type="number" min="0" step="0.01" placeholder="--" value="${tarifaGuardada}"
+                id="alim-resumen-tarifa-${n.clave}" oninput="alimResumenActualizarTarifa('${n.clave}')">
             </div>`
           )}
         </div>
