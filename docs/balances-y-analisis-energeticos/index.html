@@ -2627,6 +2627,15 @@ tfoot td:first-child{text-align:left}
           </div>
           <div style="text-align:center;font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase;margin-bottom:10px">Análisis Financiero</div>
           <div style="border:1.5px solid var(--border);border-radius:12px;padding:14px">
+            <!-- "Tarifa Neta" -- PRIMERA fila del panel, pedido explícito
+                 ("en la primera fila, en una sola fila... el costo de las
+                 tarifas... sin desperdiciar espacio"): los 3 valores de
+                 Tarifa por Nivel (los mismos que alimentan la tabla de
+                 Valorización de abajo) en una sola fila compacta, arriba
+                 de todo -- también depende del Mes elegido, como ya
+                 pasaba. Ver alimResumenRenderTarifaNeta. -->
+            <div id="alim-resumen-tarifa-neta" style="margin-bottom:14px"></div>
+            <div style="border-top:1px solid var(--border);margin-bottom:14px"></div>
             <details id="alim-resumen-contratos-det">
               <summary style="text-align:center;font-size:13px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase;cursor:pointer;list-style:none">
                 Contratos Mensuales <span id="alim-resumen-contratos-resumen" style="font-weight:600;color:var(--text3);text-transform:none;letter-spacing:0"></span>
@@ -16400,6 +16409,7 @@ function alimResumenRenderNiveles(){
         </div>
       </div>`;
   }).join('');
+  alimResumenRenderTarifaNeta(clave);
   alimResumenRenderTablaValorizacion(clave);
   _alimResumenActualizarTotales();
 }
@@ -16411,17 +16421,34 @@ function alimResumenRenderNiveles(){
 // al cambiar de Mes; escribir en un input de Tarifa dispara
 // alimResumenActualizarTarifa, que NO reconstruye esto, así no se pierde
 // el foco a mitad de escritura.
+// "Tarifa Neta" -- PRIMERA fila del panel de Análisis Financiero, pedido
+// explícito ("en la primera fila, en una sola fila... el costo de las
+// tarifas... sin desperdiciar espacio"): las 3 tarifas por nivel (las
+// mismas que alimentan la tabla "Valorización de la Pérdida" de abajo,
+// independientes de la Tarifa G+T+R de las tarjetas de Nivel) en una
+// única fila compacta -- grid de 3 columnas iguales, nunca se envuelve a
+// dos líneas aunque el nombre del nivel sea largo. También depende del
+// Mes elegido (mismo criterio de siempre: persistida por nivel+mes).
+function alimResumenRenderTarifaNeta(clave){
+  const cont = document.getElementById('alim-resumen-tarifa-neta');
+  if(!cont) return;
+  const campoTarifa = n => `
+    <div class="resnivel-campo" style="min-width:0">
+      <div class="resnivel-campo-label" style="white-space:normal">${n.nombre}${n.clave==='n21'?' (prom.)':''}</div>
+      <input type="number" min="0" step="0.01" placeholder="--" value="${_alimResumenLeerTarifaDer(n.clave, clave)}"
+        style="border-color:var(--accent);color:var(--accent);font-weight:800;width:100%;box-sizing:border-box"
+        id="alim-resumen-tarifa-der-${n.clave}" oninput="alimResumenActualizarTarifaDer('${n.clave}')">
+    </div>`;
+  cont.innerHTML = `
+    <div style="font-size:11px;font-weight:800;letter-spacing:.5px;color:var(--text2);text-transform:uppercase;margin-bottom:6px" title="$/kWh por nivel, independiente de la Tarifa G+T+R de las tarjetas de Nivel -- alimenta la tabla de Valorización de más abajo">Tarifa Neta ($/kWh)</div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+      ${ALIM_RESUMEN_NIVELES.map(campoTarifa).join('')}
+    </div>`;
+}
+
 function alimResumenRenderTablaValorizacion(clave){
   const cont = document.getElementById('alim-resumen-tabla-valorizacion');
   if(!cont) return;
-
-  const filaTarifa = n => `
-    <div class="resnivel-campo">
-      <div class="resnivel-campo-label">Tarifa ${n.nombre}${n.clave==='n21'?' (promedio)':''} ($/kWh)</div>
-      <input type="number" min="0" step="0.01" placeholder="--" value="${_alimResumenLeerTarifaDer(n.clave, clave)}"
-        style="border-color:var(--accent);color:var(--accent);font-weight:800"
-        id="alim-resumen-tarifa-der-${n.clave}" oninput="alimResumenActualizarTarifaDer('${n.clave}')">
-    </div>`;
 
   const celdas = (nivelClave, prefijo) => `
       <td id="alim-resumen-tabla-${nivelClave}-${prefijo}-kwh-rec">--</td>
@@ -16441,10 +16468,7 @@ function alimResumenRenderTablaValorizacion(clave){
     </tr>`).join('');
 
   cont.innerHTML = `
-    <div style="text-align:center;font-size:13px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase;margin-bottom:10px" title="Independiente de la Tarifa G+T+R de las tarjetas de Nivel -- esta alimenta solo la tabla de abajo">Valorización de la Pérdida</div>
-    <div style="display:flex;flex-wrap:wrap;gap:14px;justify-content:center;margin-bottom:12px">
-      ${ALIM_RESUMEN_NIVELES.map(filaTarifa).join('')}
-    </div>
+    <div style="text-align:center;font-size:13px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase;margin-bottom:10px">Valorización de la Pérdida</div>
     <div style="overflow-x:auto">
       <table class="resval-tabla">
         <thead>
