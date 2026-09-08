@@ -16037,6 +16037,16 @@ function _alimResumenValorNivelCalc(nivelClave){
 // "Valorización de la Pérdida" (columna derecha, debajo de Balance
 // Financiero). Pedido explícito: "son tarifas diferentes, una afecta la
 // izquierda y otra la derecha".
+// Política de Reconocido/No Reconocido -- pedido explícito, distinta por
+// nivel:
+//   - Nivel 4: NO tiene % Reconocido (no aplica ese concepto ahí) -- TODA
+//     su pérdida (por Balance Y Técnica) cuenta como costo NO Reconocido,
+//     sin split ("debería tenerse en cuenta la pérdida técnica como costo
+//     no reconocido tanto por balance como técnica").
+//   - Nivel 3 / N2-1: el % Reconocido SÍ aplica, pero SOLO a la fila
+//     "Pérdida por Balance" -- la fila "Pérdida Técnica" no se reparte en
+//     Reconocido/No Reconocido ("no hay que sacar el costo de reconocido
+//     y no reconocido, solo la del balance").
 function _alimResumenValorNivelCalcDer(nivelClave){
   const k = _alimResumenKwhNivel(nivelClave);
   if(!k) return null;
@@ -16044,17 +16054,25 @@ function _alimResumenValorNivelCalcDer(nivelClave){
   const tarifaNum = tarifaInput && tarifaInput.value !== '' ? Number(tarifaInput.value) : null;
   const tarifaValida = tarifaNum!=null && !isNaN(tarifaNum);
   const money = v => (v!=null && tarifaValida) ? v * tarifaNum : null;
+
+  let totalKwhRec, totalKwhNoRec, tecKwhRec, tecKwhNoRec;
+  if(nivelClave === 'nivel4'){
+    totalKwhRec = null; totalKwhNoRec = k.actual.perdida;
+    tecKwhRec = null; tecKwhNoRec = k.tecKwh;
+  }else{
+    totalKwhRec = k.totalKwhRec; totalKwhNoRec = k.totalKwhNoRec;
+    tecKwhRec = null; tecKwhNoRec = null;
+  }
+
   return {
     // kWh crudo de la fila (Pérdida por Balance / Pérdida Técnica) --
     // pedido explícito ("no está trayendo los datos de pérdida técnica de
     // cada nivel... acomódalo como en las tarjetas de la izquierda"): se
-    // ve SIEMPRE, aunque falte el % Reconocido (ahí sí, Reconocido/No
-    // Reconocido quedan en "--", igual que "Pérdida Reconocida" en la
-    // tarjeta de la izquierda).
+    // ve SIEMPRE, sin importar el split de Reconocido/No Reconocido.
     totalKwh: k.actual.perdida, tecKwh: k.tecKwh,
-    totalKwhRec: k.totalKwhRec, totalKwhNoRec: k.totalKwhNoRec, tecKwhRec: k.tecKwhRec, tecKwhNoRec: k.tecKwhNoRec,
-    totalMoneyRec: money(k.totalKwhRec), totalMoneyNoRec: money(k.totalKwhNoRec),
-    tecMoneyRec: money(k.tecKwhRec), tecMoneyNoRec: money(k.tecKwhNoRec),
+    totalKwhRec, totalKwhNoRec, tecKwhRec, tecKwhNoRec,
+    totalMoneyRec: money(totalKwhRec), totalMoneyNoRec: money(totalKwhNoRec),
+    tecMoneyRec: money(tecKwhRec), tecMoneyNoRec: money(tecKwhNoRec),
   };
 }
 
@@ -16078,6 +16096,27 @@ function _alimResumenActualizarFilaTabla(nivelClave){
   set('tecnica-kwh-norec', r ? r.tecKwhNoRec : null, false);
   set('tecnica-money-rec', r ? r.tecMoneyRec : null, true);
   set('tecnica-money-norec', r ? r.tecMoneyNoRec : null, true);
+  _alimResumenActualizarTotalesTabla();
+}
+
+// Pie de la tabla -- 2 tarjetas: "Costo Total No Reconocido" (suma de
+// TODAS las celdas No Reconocido ($) visibles en la tabla, de los 3
+// niveles) y "Contratos Mensuales" ($/mes) al lado -- pedido explícito
+// ("en la parte inferior... el costo total no reconocido... y al lado el
+// costo de los contratos mensuales").
+function _alimResumenActualizarTotalesTabla(){
+  let totNoRec = 0;
+  ALIM_RESUMEN_NIVELES.forEach(n => {
+    const r = _alimResumenValorNivelCalcDer(n.clave);
+    if(!r) return;
+    if(r.totalMoneyNoRec!=null) totNoRec += r.totalMoneyNoRec;
+    if(r.tecMoneyNoRec!=null) totNoRec += r.tecMoneyNoRec;
+  });
+  const totContratos = _alimResumenLeerContratos().reduce((s, c) => s + (Number(c.valor) || 0), 0);
+  const elNoRec = document.getElementById('alim-resumen-tabla-tot-norec');
+  const elContratos = document.getElementById('alim-resumen-tabla-tot-contratos');
+  if(elNoRec) elNoRec.textContent = _alimResumenFmtMoney(totNoRec);
+  if(elContratos) elContratos.textContent = _alimResumenFmtMoney(totContratos);
 }
 
 // Se dispara al escribir en la Tarifa DERECHA de un nivel -- recalcula
@@ -16152,6 +16191,7 @@ function alimResumenRenderContratos(){
   // cuántos contratos hay y cuánto suman.
   const resumenEl = document.getElementById('alim-resumen-contratos-resumen');
   if(resumenEl) resumenEl.textContent = contratos.length ? `(${contratos.length} · ${_alimResumenFmtMoney(total)})` : '';
+  _alimResumenActualizarTotalesTabla();
 }
 
 function alimResumenAgregarContrato(){
@@ -16443,6 +16483,20 @@ function alimResumenRenderTablaValorizacion(clave){
         </thead>
         <tbody>${filasTabla}</tbody>
       </table>
+    </div>
+    <!-- 2 tarjetas al pie -- pedido explícito ("el costo total no
+         reconocido de la suma de los niveles... en una tarjeta bonita, y
+         al lado el costo de los contratos mensuales en una tarjeta
+         bonita pequeña"). Ver _alimResumenActualizarTotalesTabla. -->
+    <div style="display:flex;gap:12px;margin-top:14px;align-items:stretch">
+      <div style="flex:2;border:1.5px solid #ef476f;border-radius:12px;padding:14px;text-align:center;background:color-mix(in srgb, #ef476f 8%, transparent)">
+        <div style="font-size:11px;font-weight:800;letter-spacing:.5px;color:var(--text2);text-transform:uppercase;margin-bottom:6px">Costo Total No Reconocido</div>
+        <div style="font-size:22px;font-weight:800;color:#ef476f" id="alim-resumen-tabla-tot-norec">--</div>
+      </div>
+      <div style="flex:1;border:1.5px solid var(--border);border-radius:12px;padding:14px;text-align:center">
+        <div style="font-size:11px;font-weight:800;letter-spacing:.5px;color:var(--text2);text-transform:uppercase;margin-bottom:6px">Contratos Mensuales</div>
+        <div style="font-size:16px;font-weight:800;color:var(--text)" id="alim-resumen-tabla-tot-contratos">--</div>
+      </div>
     </div>`;
 
   ALIM_RESUMEN_NIVELES.forEach(n => _alimResumenActualizarFilaTabla(n.clave));
