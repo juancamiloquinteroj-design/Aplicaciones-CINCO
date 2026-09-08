@@ -1672,27 +1672,36 @@ tfoot td:first-child{text-align:left}
 
   <div class="card">
     <div class="fbar" style="margin-bottom:6px">
+      <label>Vista</label>
+      <button class="be-modo-btn activo" id="ip-btn-modo-anual" onclick="ipCambiarModoGraficoPrincipal('anual')" title="Ventana móvil de 12 meses (IP_REG, CREG 015/2018)">📊 Anual (IP_Reg)</button>
+      <button class="be-modo-btn" id="ip-btn-modo-mensual" onclick="ipCambiarModoGraficoPrincipal('mensual')" title="El indicador de un solo mes, sin ventana móvil -- para comparar mes a mes contra otra fuente">📅 Mensual</button>
       <label>Rango</label>
       <input type="date" id="ip-chart-desde" onchange="ipRenderChart(); ipRenderTablaNivel(); ipRenderChartMensual();">
       <span style="font-size:11px;color:var(--text3)">→</span>
       <input type="date" id="ip-chart-hasta" onchange="ipRenderChart(); ipRenderTablaNivel(); ipRenderChartMensual();">
-      <button class="be-modo-btn" id="ip-btn-tendencia" onclick="ipToggleTendencia()">📈 Tendencia</button>
-      <button class="be-modo-btn" id="ip-btn-proyeccion" onclick="ipToggleProyeccion()">🔮 Proyección</button>
-      <input type="number" id="ip-proyeccion-meses" value="2" min="1" max="24" step="1" title="Cuántos meses proyectar hacia adelante"
-        style="width:52px;padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg)"
-        onchange="if(IP_MOSTRAR_PROYECCION) ipRenderChart()">
-      <span style="font-size:11px;color:var(--text3)">meses</span>
-      <button class="be-modo-btn" id="ip-btn-sombra" onclick="ipToggleSombraVentana()" title="Resalta los 12 meses que alimentan el último punto real">🌓 Sombrear 12 meses</button>
-      <button class="be-modo-btn" id="ip-btn-variacion" onclick="ipToggleVariacion()" title="Muestra la variación contra el mes anterior en las etiquetas">Δ Variación</button>
+      <!-- Herramientas de análisis del modo Anual -- no tienen sentido en
+           Mensual (no hay ventana móvil que "sombrear", ni tendencia/
+           proyección de un solo punto) -- pedido explícito: "que no
+           permita mezcla de mensual-anual de las variables". -->
+      <span id="ip-controles-anual-1" style="display:contents">
+        <button class="be-modo-btn" id="ip-btn-tendencia" onclick="ipToggleTendencia()">📈 Tendencia</button>
+        <button class="be-modo-btn" id="ip-btn-proyeccion" onclick="ipToggleProyeccion()">🔮 Proyección</button>
+        <input type="number" id="ip-proyeccion-meses" value="2" min="1" max="24" step="1" title="Cuántos meses proyectar hacia adelante"
+          style="width:52px;padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg)"
+          onchange="if(IP_MOSTRAR_PROYECCION) ipRenderChart()">
+        <span style="font-size:11px;color:var(--text3)">meses</span>
+        <button class="be-modo-btn" id="ip-btn-sombra" onclick="ipToggleSombraVentana()" title="Resalta los 12 meses que alimentan el último punto real">🌓 Sombrear 12 meses</button>
+        <button class="be-modo-btn" id="ip-btn-variacion" onclick="ipToggleVariacion()" title="Muestra la variación contra el mes anterior en las etiquetas">Δ Variación</button>
+      </span>
     </div>
-    <div class="fbar no-exportar" style="margin-bottom:6px">
+    <div class="fbar no-exportar" id="ip-fbar-medidor" style="margin-bottom:6px">
       <label title="Buscar un medidor/frontera (código SIC, ej. Frt00264) que aplique al cálculo del indicador y sobreponer su consumo">Medidor (código SIC)</label>
       <input type="text" id="ip-medidor-buscar" placeholder="Ej. Frt00264" style="width:120px;padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg)"
         onkeydown="if(event.key==='Enter') ipAgregarMedidor()">
       <button class="btn-theme" style="width:auto;padding:0 12px" onclick="ipAgregarMedidor()">＋ Agregar</button>
       <div id="ip-medidores-activos" style="display:flex;gap:6px;flex-wrap:wrap"></div>
     </div>
-    <div class="fbar no-exportar" style="margin-bottom:6px">
+    <div class="fbar no-exportar" id="ip-fbar-overlay" style="margin-bottom:6px">
       <label>Sobreponer variable</label>
       <select id="ip-overlay-nivel" onchange="ipPoblarVariablesOverlay()">
         <option value="1">Nivel 1</option>
@@ -13212,6 +13221,7 @@ let IP_SOMBREAR_VENTANA = false;
 let IP_MOSTRAR_VARIACION = false;  // etiqueta completa: valor + variación vs. el mes anterior (% para IPT, kWh para PT)
 let IP_MEDIDORES_ACTIVOS = [];  // [{usuario_id, datosPorClaveNormal: Map}] -- medidores buscados por código SIC, sobrepuestos en kWh
 let IP_OVERLAYS_ACTIVOS = new Set();  // "nivel:campo" -- variables crudas sobrepuestas en el grafico principal
+let IP_MODO_GRAFICO_PRINCIPAL = 'anual';  // 'anual' (ventana móvil 12m, IP_REG) | 'mensual' (un solo mes, sin ventana) -- botones junto al gráfico principal
 
 const IP_COLUMNAS_NIVEL = {
   1: [["n1_eej","Eej"],["n1_estj","EsTj"],["n1_eprealesj","EPRealesj"],["n1_eeg","EeG"],
@@ -21813,7 +21823,94 @@ function ipRegresionLineal(puntos){
   return {m, b, errorEstandar, n};
 }
 
+// Botones "Anual (IP_Reg)" / "Mensual" junto al gráfico principal --
+// pedido explícito ("que la gráfica inicial también tenga un botón para
+// cambiar a mensual") para poder comparar mes a mes (indicador de UN solo
+// mes, sin ventana móvil de 12) contra otra fuente, sin el desfase/mezcla
+// de la ventana anual. Esconde las herramientas que son EXCLUSIVAS del
+// modo anual (Tendencia/Proyección/Sombrear/Variación/Medidor/Sobreponer
+// variable) -- pedido explícito "que no permita mezcla de mensual-anual".
+function ipCambiarModoGraficoPrincipal(modo){
+  IP_MODO_GRAFICO_PRINCIPAL = modo;
+  const esAnual = modo === 'anual';
+  document.getElementById('ip-btn-modo-anual').classList.toggle('activo', esAnual);
+  document.getElementById('ip-btn-modo-mensual').classList.toggle('activo', !esAnual);
+  document.getElementById('ip-controles-anual-1').classList.toggle('hidden', !esAnual);
+  document.getElementById('ip-fbar-medidor').classList.toggle('hidden', !esAnual);
+  document.getElementById('ip-fbar-overlay').classList.toggle('hidden', !esAnual);
+  document.getElementById('ip-titulo-grafico').textContent = esAnual
+    ? 'Indicador de Pérdidas Totales (IP_REG)'
+    : 'Indicador de Pérdidas Mensual (%) -- sin ventana móvil';
+  ipRenderChart();
+}
+
+// Mismas series que la tarjeta "Indicador Mensual" de más abajo
+// (ipRenderChartMensual), pero dibujadas en el canvas del gráfico
+// PRINCIPAL (ch-ip-reg) cuando IP_MODO_GRAFICO_PRINCIPAL==='mensual' --
+// deliberadamente SIN tendencia/proyección/overlays/medidores (esos son
+// conceptos de la ventana anual, no de un mes suelto).
+function ipRenderChartPrincipalMensual(){
+  const dark = document.documentElement.getAttribute('data-theme')==='dark';
+  const tickC = dark ? '#ffffff' : '#000000';
+  const tickXFuerte = dark ? '#ffffff' : '#000000';
+  const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
+
+  const desde = document.getElementById('ip-chart-desde').value ? document.getElementById('ip-chart-desde').value.slice(0,7) : null;
+  const hasta = document.getElementById('ip-chart-hasta').value ? document.getElementById('ip-chart-hasta').value.slice(0,7) : null;
+  const visibles = IP_REG_FILAS.filter(f => {
+    const clave = ipClaveNormal(f);
+    return (!desde || clave >= desde) && (!hasta || clave <= hasta) && f.pct_perdida_mensual != null;
+  });
+  const etiquetas = visibles.map(f => labelMes(ipClaveNormal(f)));
+
+  if(chIpReg) chIpReg.destroy();
+  chIpReg = new Chart(document.getElementById('ch-ip-reg'), {
+    data:{
+      labels: etiquetas,
+      datasets:[
+        {type:'bar', label:'Pérdida Mensual (kWh)', yAxisID:'y', order:2,
+          data: visibles.map(f=>f.perdida_mensual_kwh), backgroundColor:'#4472C4', borderColor:'#4472C4', borderWidth:1},
+        {type:'line', label:'% Pérdida Mensual', yAxisID:'yPct', order:1,
+          data: visibles.map(f=>f.pct_perdida_mensual==null?null:f.pct_perdida_mensual*100), borderColor:'#ED7D31',
+          backgroundColor:'rgba(237,125,49,.12)', borderWidth:2.5, pointRadius:2.5, spanGaps:true, tension:0,
+          datalabels:{display:true, anchor:'end', align:'top', offset:12,
+            formatter:v=>v==null?'':v.toFixed(2)+'%', font:{size:11, weight:'700'}, color:'#ED7D31',}},
+      ],
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      layout:{padding:{top:24, right:28}},
+      interaction:{mode:'index', intersect:false},
+      plugins:{
+        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:10}, color:tickC}},
+        tooltip:{callbacks:{label:c=>{
+          if(c.raw==null) return null;
+          return c.dataset.yAxisID==='yPct' ? `${c.dataset.label}: ${c.raw.toFixed(3)}%` : `${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`;
+        }}},
+        zoom:{
+          pan:{enabled:true, mode:'x'},
+          zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'},
+          limits:{x:{minRange:3}},
+        },
+      },
+      scales:{
+        x:{grid:{display:false}, offset:true,
+          ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
+        yPct:{type:'linear', position:'left', grid:{color:gridC},
+          ticks:{color:tickC, font:{size:11}, callback:v=>v.toFixed(1)+'%'},
+          title:{display:true, text:'% Pérdida Mensual', color:tickC, font:{size:11}}},
+        y:{position:'right', grid:{drawOnChartArea:false},
+          ticks:{color:tickC, font:{size:11}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
+          title:{display:true, text:'Pérdida Mensual (kWh)', color:tickC, font:{size:11}},
+          afterFit:ax=>{ax.width=Math.max(ax.width,60)}},
+      },
+    },
+  });
+}
+
 function ipRenderChart(){
+  if(IP_MODO_GRAFICO_PRINCIPAL === 'mensual'){ ipRenderChartPrincipalMensual(); return; }
+
   const dark = document.documentElement.getAttribute('data-theme')==='dark';
   const tickC = dark ? '#ffffff' : '#000000';
   const tickXFuerte = dark ? '#ffffff' : '#000000';  // eje X en negro/blanco fuerte -- el gris tenue de tickC casi no se veía
