@@ -8007,7 +8007,13 @@ async function cargarIndicePerdidas(){
 // de configuración/ejecución a la derecha.
 function ipSeleccionarScript(id){
   IP_SCRIPT_ACTIVO = id;
-  IP_FRONTERAS_ACTIVAS = [];
+  // "5. Traer Datos AENC a Balances" se corre casi a diario con las
+  // MISMAS fronteras -- pedido explícito ("se debe almacenar la frontera
+  // para poderla buscar después ya que eso hay que hacerlo casi diario"):
+  // en vez de arrancar vacío, recupera la lista que quedó guardada la
+  // última vez (ver ipGuardarFronterasActivas). Los demás scripts no usan
+  // esto -- arrancan vacíos como siempre.
+  IP_FRONTERAS_ACTIVAS = id === 'aenc_balances' ? ipLeerFronterasGuardadas() : [];
   ipDetenerPoll();
   document.querySelectorAll('.ip-tab-btn').forEach(b => b.classList.toggle('active', b.dataset.id === id));
   ipRenderPanel();
@@ -8030,6 +8036,21 @@ async function ipGuardarMapaFronteras(mapa){
   IP_CONFIG.aenc_mapa_fronteras = JSON.stringify(mapa);
   try{ await apiPut('/api/indice-perdidas/config', {valores: {aenc_mapa_fronteras: IP_CONFIG.aenc_mapa_fronteras}}); }
   catch(e){ /* no crítico -- si falla, se vuelve a intentar guardar en el próximo agregado */ }
+}
+
+// Lista completa de fronteras activas (código + usuario_id), NO solo el
+// mapeo -- pedido explícito ("se debe almacenar la frontera para poderla
+// buscar después ya que eso hay que hacerlo casi diario"): así al volver
+// a entrar (otro día) ya aparecen las mismas 6 fronteras cargadas, listas
+// para apretar "▶ Ejecutar" de una, sin tener que re-escribirlas/
+// re-buscarlas a mano.
+function ipLeerFronterasGuardadas(){
+  try{ return JSON.parse(IP_CONFIG.aenc_fronteras_guardadas || '[]'); }catch(e){ return []; }
+}
+async function ipGuardarFronterasActivas(){
+  IP_CONFIG.aenc_fronteras_guardadas = JSON.stringify(IP_FRONTERAS_ACTIVAS);
+  try{ await apiPut('/api/indice-perdidas/config', {valores: {aenc_fronteras_guardadas: IP_CONFIG.aenc_fronteras_guardadas}}); }
+  catch(e){ /* no crítico -- si falla, se vuelve a intentar guardar en el próximo cambio */ }
 }
 
 function ipRenderFronterasLista(){
@@ -8170,10 +8191,12 @@ async function ipAgregarFrontera(){
   }
   inputFrontera.value = ''; inputUsuario.value = '';
   ipRenderFronterasLista();
+  await ipGuardarFronterasActivas();
 }
 function ipQuitarFrontera(i){
   IP_FRONTERAS_ACTIVAS.splice(i, 1);
   ipRenderFronterasLista();
+  ipGuardarFronterasActivas();
 }
 
 function ipEscapar(txt){
