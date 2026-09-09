@@ -897,13 +897,19 @@ tfoot td:first-child{text-align:left}
    arriba, como la pestaña activa de una hoja de Excel; las inactivas
    quedan un escalón atrás (--bg3, texto atenuado). Solo en Pérdidas
    Técnicas por ahora -- .be-modo-btn en el resto de la app no se toca. */
-.pt-tabs{display:flex;gap:3px;border-bottom:1px solid var(--border);margin-bottom:18px}
+.pt-tabs{display:flex;gap:3px;border-bottom:1px solid var(--border);margin-bottom:0}
 .pt-tab-btn{position:relative;top:1px;margin-bottom:-1px;padding:9px 18px 8px;border:1px solid var(--border);
   border-bottom:1px solid var(--border);border-radius:7px 7px 0 0;background:var(--bg3);color:var(--text3);
   font-size:12.5px;font-weight:700;cursor:pointer}
 .pt-tab-btn:hover{color:var(--text)}
 .pt-tab-btn.activo{background:var(--card-bg);color:var(--text);border-color:var(--border);
   border-bottom-color:var(--card-bg);border-top:3px solid var(--accent);padding-top:7px;z-index:1}
+/* La pestaña activa queda pegada (margin-bottom:0 en .pt-tabs) al panel
+   de abajo -- sin esto, las esquinas redondeadas de .card dejaban ver un
+   triangulito de fondo justo debajo de la pestaña (pedido explícito: "que
+   no se vea el fondo"). Solo en las 2 pestañas cuyo panel arranca
+   directo en .card (Mapa tiene su propio encabezado antes, no aplica). */
+#perdidas-tab-totales>.card:first-child, #perdidas-tab-detalle>.card:first-child{border-top-left-radius:0;border-top-right-radius:0}
 /* Diagrama Unifilar -- símbolos SVG (currentColor toma el color de estas
    clases, así los íconos ya son theme-aware sin nada extra). */
 .bd-elemento{color:var(--text);cursor:move}
@@ -1380,27 +1386,32 @@ tfoot td:first-child{text-align:left}
           <div class="chart-wrap" style="height:380px"><canvas id="ch-pt-totales-zona"></canvas></div>
         </div>
       </div>
-    </div>
 
-    <!-- Tarjetas -- pedido explícito ("deben mostrar entrada salida,
-         pérdida técnica, pérdida gestionable, tanto en porcentaje y
-         energía, te puedes basar en las tarjetas de alimentadores" +
-         "más pequeñas" + "falta una tarjeta que diga la pérdida total" +
-         "no está mostrando el valor de la pérdida técnica" -- Pérdida
-         Técnica y Pérdida Total son 2 tarjetas DISTINTAS, no hay que
-         confundirlas: Técnica = perdida_tecnica_kwh (solo la técnica);
-         Total = perdida_kwh = Técnica + Gestionable, ver AlimentadorMensual
-         -- coincide con la tarjeta "Pérdida" de Alimentadores). Mismo
-         componente (_alim3Tarjeta) y misma fuente (ALIM_FILAS = Resumen
-         de Alimentadores, ya cacheado) que usa el módulo Alimentadores --
-         para que el número coincida. Grid más angosto (minmax 140px,
-         igual que #alim3-tarjetas) -- pedido explícito "más pequeñas".
-         Sin título de sección (pedido explícito: "las tarjetas no deben
-         tener esto 'Entrada / Salida / Pérdida del mes'"). Sin selector
-         de mes propio (igual que Alimentadores: siempre el último mes
-         disponible) -- dinámicas vía el filtro Zona de arriba. -->
-    <div class="card" style="margin-top:18px">
-      <div class="inicio-dash-fila" id="pt-tot-cards" style="margin-bottom:0;grid-template-columns:repeat(auto-fit,minmax(140px,1fr))"></div>
+      <!-- Tarjetas -- pedido explícito ("deben mostrar entrada salida,
+           pérdida técnica, pérdida gestionable, tanto en porcentaje y
+           energía, te puedes basar en las tarjetas de alimentadores" +
+           "más pequeñas" + "falta una tarjeta que diga la pérdida total" +
+           "no está mostrando el valor de la pérdida técnica" -- Pérdida
+           Técnica y Pérdida Total son 2 tarjetas DISTINTAS, no hay que
+           confundirlas: Técnica = perdida_tecnica_kwh (solo la técnica);
+           Total = perdida_kwh = Técnica + Gestionable, ver AlimentadorMensual
+           -- coincide con la tarjeta "Pérdida" de Alimentadores). Mismo
+           componente (_alim3Tarjeta) y misma fuente (ALIM_FILAS = Resumen
+           de Alimentadores, ya cacheado) que usa el módulo Alimentadores --
+           para que el número coincida. Grid más angosto (minmax 140px,
+           igual que #alim3-tarjetas) -- pedido explícito "más pequeñas".
+           Sin título de sección (pedido explícito: "las tarjetas no deben
+           tener esto 'Entrada / Salida / Pérdida del mes'"). Sin selector
+           de mes propio (igual que Alimentadores: siempre el último mes
+           disponible) -- dinámicas vía el filtro Zona de arriba.
+           Todo en UNA sola tarjeta con las gráficas de arriba (pedido
+           explícito: "que quede todo como un bloquesito", "no se
+           desperdicie ese espacio, que no se vea el fondo") -- un
+           separador (border-top) en vez de una 2da tarjeta aparte, que
+           dejaba un hueco de fondo visible entre las 2. -->
+      <div style="border-top:1px solid var(--border);margin:18px -22px 0;padding:18px 22px 0">
+        <div class="inicio-dash-fila" id="pt-tot-cards" style="margin-bottom:0;grid-template-columns:repeat(auto-fit,minmax(140px,1fr))"></div>
+      </div>
     </div>
   </div>
 
@@ -24429,9 +24440,10 @@ function _ptTotalesActualizarTitulos(){
   const zonaSel = mselValores('msel-pt-tot-zona');
   const nivelSel = mselValores('msel-pt-tot-nivel');
   const zonaTxt = zonaSel.length ? `Zona: ${zonaSel.join(', ')}` : 'Todas las zonas';
-  document.getElementById('pt-tot-titulo-nivel').textContent = 'Pérdida por Nivel -- ' + zonaTxt;
+  const nivelTxt = nivelSel.length ? `, Nivel: ${nivelSel.join(', ')}` : '';
+  document.getElementById('pt-tot-titulo-nivel').textContent = 'Pérdida por Nivel -- ' + zonaTxt + nivelTxt;
   document.getElementById('pt-tot-titulo-zona').textContent =
-    'Pérdida (%) y Entrada/Salida por Zona -- ' + zonaTxt + (nivelSel.length ? `, Nivel: ${nivelSel.join(', ')}` : '');
+    'Pérdida (%) y Entrada/Salida por Zona -- ' + zonaTxt + nivelTxt;
 }
 
 async function cargarGraficasApiladas(){
@@ -24442,14 +24454,19 @@ async function cargarGraficasApiladas(){
   const desde = document.getElementById('pt-tot-desde').value;
   const hasta = document.getElementById('pt-tot-hasta').value;
 
+  // Pedido explícito ("tengo seleccionado Nivel 2 y la gráfica de Nivel
+  // no muestra solo Nivel 2"): Nivel también acota el desglose de esta
+  // gráfica (si el usuario eligió 1+ niveles, solo esos aparecen -- ver
+  // docstring de /perdidas-por-nivel), no solo la de Zona.
   const qsNivel = new URLSearchParams();
   if(desde) qsNivel.set('desde', `${desde}-01`);
   if(hasta) qsNivel.set('hasta', `${hasta}-01`);
   zonaSel.forEach(z=>qsNivel.append('zona', z));
+  nivelSel.forEach(n=>qsNivel.append('nivel', n));
 
-  // Nivel acota AMBAS gráficas -- la de Zona nunca la filtra por zona en
-  // el servidor (agrega todas para poder compararlas), esa parte del
-  // filtro se aplica en el cliente dentro de renderPtTotalesZona().
+  // La de Zona nunca filtra por zona en el servidor (agrega todas para
+  // poder compararlas), ese recorte se aplica en el cliente dentro de
+  // renderPtTotalesZona().
   const qsZona = new URLSearchParams();
   if(desde) qsZona.set('desde', `${desde}-01`);
   if(hasta) qsZona.set('hasta', `${hasta}-01`);
@@ -24541,18 +24558,52 @@ function renderPtTotalesZona(datos){
 
   // Sobrepuesto en doble eje -- pedido explícito ("que se sobreponga en
   // doble eje la entrada y salida"): totales sumados sobre las zonas
-  // visibles, en líneas punteadas (mismo criterio de color y trazo que el
-  // modo Entrada/Salida de Balance diario), eje yKwh a la izq., orden 2
-  // (se dibujan antes que las líneas de % por zona, que quedan encima).
+  // visibles, eje yKwh a la izq. Entrada/Salida quedaban muy pegadas
+  // (pedido explícito: "mejora un poco el eje Y en kWh ya que se ven muy
+  // juntos los datos") -- mismo arreglo que ya usa Balance diario para
+  // este mismo problema: en vez de 2 líneas sueltas, Salida se sombrea
+  // contra Entrada (fill:0) para que la brecha (=la pérdida) se vea como
+  // banda, no como 2 trazos casi encimados.
   const entradaTotal = labels.map((_,i)=> series.reduce((s,z)=>s+((z.entradas_kwh||[])[i]||0), 0));
   const salidaTotal = labels.map((_,i)=> series.reduce((s,z)=>s+((z.entradas_kwh||[])[i]||0)-((z.valores||[])[i]||0), 0));
+
+  // Pedido explícito ("no se ve la pérdida total en kWh/mes y la pérdida
+  // técnica en kWh/mes"): 2 líneas más, aparte de Entrada/Salida --
+  // ninguna de las 2 existe en /perdidas-por-zona (esa fuente solo trae
+  // UN número de pérdida sin desglosar) así que se calculan igual que en
+  // ptTotalesRenderCards(), desde ALIM_FILAS y sumadas sobre las MISMAS
+  // zonas visibles, para que el valor coincida con el de las tarjetas de
+  // abajo. No respetan el filtro de Nivel (ALIM_FILAS no tiene un
+  // "nivel 1-4" limpio para filtrar).
+  const porMesAlim = new Map();
+  (ALIM_FILAS || []).forEach(f => {
+    if(zonaSel.length && !zonaSel.includes(f.zona)) return;
+    const clave = alimN21Clave(f.anio, f.mes);
+    if(!porMesAlim.has(clave)) porMesAlim.set(clave, {total:0, tecnica:0});
+    const g = porMesAlim.get(clave);
+    g.total += f.perdida_kwh || 0;
+    g.tecnica += f.perdida_tecnica_kwh != null ? f.perdida_tecnica_kwh : (f.perdida_kwh || 0) - (f.gestionable_kwh || 0);
+  });
+  const perdidaTotalKwh = (datos.meses || []).map(m => porMesAlim.has(m) ? porMesAlim.get(m).total : null);
+  const perdidaTecnicaKwh = (datos.meses || []).map(m => porMesAlim.has(m) ? porMesAlim.get(m).tecnica : null);
+
   const datasetsKwh = [
     {type:'line', label:'Entrada', data: entradaTotal, yAxisID:'yKwh', order:2,
-      borderColor:'#00B050', backgroundColor:'transparent', borderWidth:2, borderDash:[6,3],
+      borderColor:'#00B050', backgroundColor:'transparent', borderWidth:2,
       pointRadius:0, tension:0, spanGaps:true},
-    {type:'line', label:'Salida', data: salidaTotal, yAxisID:'yKwh', order:2,
-      borderColor:'#C00000', backgroundColor:'transparent', borderWidth:2, borderDash:[6,3],
+    {type:'line', label:'Salida', data: salidaTotal, yAxisID:'yKwh', order:2, fill:0,
+      borderColor:'#C00000', backgroundColor:'rgba(192,0,0,.15)', borderWidth:2,
       pointRadius:0, tension:0, spanGaps:true},
+    {type:'line', label:'Pérdida Total (kWh)', data: perdidaTotalKwh, yAxisID:'yKwh', order:1,
+      borderColor:'#7030A0', backgroundColor:'transparent', borderWidth:2, borderDash:[5,3],
+      pointRadius:2, pointHoverRadius:4, tension:0, spanGaps:true,
+      datalabels:{display:true, anchor:'end', align:'bottom', offset:4,
+        formatter:v=>v==null?'':fmtGwh(v), font:{size:9,weight:'700'}, color:'#7030A0'}},
+    {type:'line', label:'Pérdida Técnica (kWh)', data: perdidaTecnicaKwh, yAxisID:'yKwh', order:1,
+      borderColor:'#00B0F0', backgroundColor:'transparent', borderWidth:2, borderDash:[5,3],
+      pointRadius:2, pointHoverRadius:4, tension:0, spanGaps:true,
+      datalabels:{display:true, anchor:'end', align:'bottom', offset:4,
+        formatter:v=>v==null?'':fmtGwh(v), font:{size:9,weight:'700'}, color:'#00B0F0'}},
   ];
 
   if(chPtTotalesZona) chPtTotalesZona.destroy();
@@ -24575,10 +24626,13 @@ function renderPtTotalesZona(datos){
       },
       scales:{
         x:{grid:{display:false}, offset:true, ticks:{color:tickC, font:{size:11}}},
-        yKwh:{position:'left', beginAtZero:true, grid:{color:gridC},
+        // grace: da un poco de aire arriba/abajo -- pedido explícito
+        // ("mejora el eje Y en kWh, se ven muy juntos") -- antes las
+        // líneas quedaban pegadas al techo del eje.
+        yKwh:{position:'left', beginAtZero:true, grace:'10%', grid:{color:gridC},
           ticks:{color:tickC, font:{size:11}, callback:v=>fmtGwh(v)},
-          title:{display:true, text:'Entrada / Salida (kWh)', color:tickC, font:{size:11}}},
-        yPct:{position:'right', beginAtZero:true, grid:{drawOnChartArea:false},
+          title:{display:true, text:'Entrada / Salida / Pérdida (kWh)', color:tickC, font:{size:11}}},
+        yPct:{position:'right', beginAtZero:true, grace:'10%', grid:{drawOnChartArea:false},
           ticks:{color:tickC, font:{size:11}, callback:v=>v.toFixed(0)+'%'},
           title:{display:true, text:'Pérdida (%)', color:tickC, font:{size:11}}},
       },
