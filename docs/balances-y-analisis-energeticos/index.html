@@ -14805,7 +14805,18 @@ async function _alimAsegurarDatosCargados(){
   const hoy = new Date();
   const idx = hoy.getFullYear()*12 + hoy.getMonth() - 29;
   const desde = `${Math.floor(idx/12)}-${String(idx%12+1).padStart(2,'0')}`;
-  ALIM_FILAS = DEMO ? [] : (await apiGet(`/api/alimentadores?desde=${desde}`, AUTH_TIMEOUT_MS)).filas;
+  const filas = DEMO ? [] : (await apiGet(`/api/alimentadores?desde=${desde}`, AUTH_TIMEOUT_MS)).filas;
+  // Los circuitos tipo "Comp" (compactos/compensación, ej. "COMPACTO HOBO
+  // - ROSALES (Piscícola...)") NO son alimentadores reales -- son entradas
+  // de compensación/ajuste (varias con Pérdida NEGATIVA y Entrada=0,
+  // imposible para un circuito real) que no deben sumarse en ningún total
+  // de zona/indicador. Se filtran ACÁ (una sola vez, para TODOS los
+  // consumidores de ALIM_FILAS -- mapa, tarjetas, comparativo por zona,
+  // tablas, informes) -- pedido explícito tras detectar que el Indicador
+  // N2-1 no coincidía con Power BI (ZN julio-2026: 18.38% con "Comp"
+  // incluido vs. 19.28% real en Power BI -- excluirlos da el número
+  // exacto, "necesito que coincida").
+  ALIM_FILAS = filas.filter(f => f.tipo !== 'Comp');
   return ALIM_FILAS;
 }
 
