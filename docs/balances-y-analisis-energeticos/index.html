@@ -543,6 +543,11 @@ canvas[id^="ch-tride-"]:active{cursor:grabbing}
 .tbl-compacta table{width:auto;font-size:11px}
 .tbl-compacta thead th,.tbl-compacta tbody td,.tbl-compacta tfoot td{padding:4px 6px;border-right:1px solid var(--border)}
 .tbl-compacta thead th:last-child,.tbl-compacta tbody td:last-child,.tbl-compacta tfoot td:last-child{border-right:none}
+/* Más compacta todavía -- pedido explícito ("la tabla me gusta la
+   posición pero más compacta") -- solo esta tabla, .tbl-compacta se
+   comparte con otras que no pidieron achicarse más. */
+#circvar-tbl-wrap table{font-size:9.5px}
+#circvar-tbl-wrap thead th,#circvar-tbl-wrap tbody td{padding:2px 5px}
 .alim3-th-flecha{font-size:9px}
 .circvar-fila{cursor:pointer}
 .circvar-fila:hover td{background:var(--accent)14}
@@ -596,10 +601,13 @@ tfoot td:first-child{text-align:left}
 .zc-rows>div b{color:#1a252f;font-weight:800}
 
 /* RECONOCIMIENTO CREG POR NIVEL */
-.creg-tbl{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)}
-.creg-tbl .creg-item{display:flex;align-items:center;gap:6px;padding:5px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg)}
-.creg-tbl .creg-item label{font-size:11px;font-weight:700;color:var(--text2);white-space:nowrap}
-.creg-tbl .creg-item input{width:60px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-weight:700;text-align:right;color:var(--text);background:var(--bg2)}
+/* Más compacto -- pedido explícito ("coloca más pequeño eso del
+   reconocimiento CREG") al pasar a compartir fila con Zona/Nivel/
+   Alimentador en Detalle por Circuito. */
+.creg-tbl{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)}
+.creg-tbl .creg-item{display:flex;align-items:center;gap:4px;padding:3px 7px;border:1px solid var(--border);border-radius:7px;background:var(--bg)}
+.creg-tbl .creg-item label{font-size:9.5px;font-weight:700;color:var(--text2);white-space:nowrap}
+.creg-tbl .creg-item input{width:42px;padding:2px 4px;border:1px solid var(--border);border-radius:5px;font-size:11px;font-weight:700;text-align:right;color:var(--text);background:var(--bg2)}
 .creg-tbl .creg-st{font-size:10px;color:var(--text3);min-width:14px}
 
 /* PARAMETRIZACIÓN -- color por zona */
@@ -5006,7 +5014,11 @@ let BE_EDITAR_ID = null;
 let chBalanceEstructura = null;  // un solo chart/canvas para los 3 modos de "Ver Balance" -- se destruye y recrea al cambiar de modo
 let META = {zonas:[], niveles:[], meses:[]};
 let RESUMEN = null;
-let RESUMEN_POR_NIVEL = null;
+// "Pérdida por Balance" -- pedido explícito ("debe traerlo desde allá
+// [Balances por Estructura]"): comparación oficial-vs-balance-manual de
+// la Estructura vinculada al Alimentador filtrado, si tiene una (ver
+// aplicarFiltros() y renderPrincipalLineas()). null si no aplica.
+let RESUMEN_BALANCE = null;
 let RANGO = {start:0, end:0};
 let showProjection = false;
 
@@ -23822,25 +23834,32 @@ async function aplicarFiltros(){
 
   RESUMEN = await apiGet(`/api/resumen?${qs.toString()}`);
 
-  // Con exactamente 1 Nivel filtrado, RESUMEN solo (ya acotado a ese nivel)
-  // alcanza -- así se confirma que el filtro realmente aplica. Con 0 o 2+
-  // niveles, la gráfica principal desglosa por nivel de tensión (así se
-  // calculan realmente las pérdidas técnicas); si se eligieron 2+, el
-  // desglose se acota solo a esos (no muestra los que no se seleccionaron).
-  RESUMEN_POR_NIVEL = null;
-  // Con un Alimentador puntual filtrado tampoco hace falta el desglose por
-  // nivel (ver renderPrincipal() -- un alimentador ya usa la vista de una
-  // sola serie, igual que 1 Nivel), así que no vale la pena pedirlo.
-  if(!nivelUnico && !alimentador.length){
-    const qsNivel = new URLSearchParams();
-    zona.forEach(z=>qsNivel.append('zona', z));
-    alimentador.forEach(a=>qsNivel.append('alimentador', a));
-    nivel.forEach(n=>qsNivel.append('nivel', n));
-    if(META.meses && META.meses.length){
-      qsNivel.set('desde', `${META.meses[RANGO.start] || META.meses[0]}-01`);
-      qsNivel.set('hasta', `${META.meses[RANGO.end] || META.meses[META.meses.length-1]}-01`);
+  // "Pérdida por Balance" -- pedido explícito ("la gráfica ... quiero que
+  // sea como la de Balance por Estructuras ... que muestre entrada y
+  // salida (debe traerlo desde allá) y pérdida técnica y pérdida por
+  // balance"): solo tiene sentido con UN Alimentador puntual (una
+  // Estructura de Balances por Estructura se vincula a mano a UN solo
+  // circuito -- ver EstructuraBalance.circuito_id). Se busca si tiene una
+  // vinculada y, si la tiene, se trae su comparación oficial-vs-balance-
+  // manual -- ver renderPrincipalLineas(). Si no hay vinculación (o falla
+  // la consulta), la gráfica sigue mostrando lo oficial nomás, sin esa
+  // serie -- no es bloqueante.
+  RESUMEN_BALANCE = null;
+  if(alimentador.length===1){
+    try{
+      const {estructura_id} = await apiGet(`/api/balances-estructura/por-circuito?nemonico=${encodeURIComponent(alimentador[0])}`);
+      if(estructura_id){
+        const qsBalance = new URLSearchParams();
+        if(META.meses && META.meses.length){
+          qsBalance.set('desde', `${META.meses[RANGO.start] || META.meses[0]}-01`);
+          qsBalance.set('hasta', `${META.meses[RANGO.end] || META.meses[META.meses.length-1]}-01`);
+        }
+        const comparacion = await apiGet(`/api/balances-estructura/${estructura_id}/comparacion?${qsBalance.toString()}`);
+        if(comparacion.vinculado && comparacion.meses.length) RESUMEN_BALANCE = comparacion;
+      }
+    }catch(e){
+      // Complemento -- ver comentario de arriba.
     }
-    RESUMEN_POR_NIVEL = await apiGet(`/api/perdidas-por-nivel?${qsNivel.toString()}`);
   }
 
   renderPrincipal();
@@ -24211,75 +24230,71 @@ function fmtGwh(v){
   return g.toFixed(Math.abs(g)>=1?2:3)+' GWh';
 }
 
-function renderPrincipal(){
-  if(!RESUMEN) return;
-  const nivel = mselValores('msel-nivel');
-  const alimentador = mselValores('msel-alimentador');
-  const projBtn = document.getElementById('proj-btn');
-  const projSel = document.getElementById('proj-method');
-
-  // Pedido explícito ("debo seleccionar un alimentador y me muestra la
-  // pérdida técnica y entrada y salida del mes, con una línea punteada
-  // mostrando el límite [CREG] que se tiene"): un Alimentador puntual usa
-  // la misma vista de una sola serie que 1 Nivel -- ya trae Entrada,
-  // Pérdida Técnica, Pérdida Técnica % y la "Senda Regulatoria" (línea
-  // punteada = reconocimiento CREG del nivel de ESE alimentador,
-  // ver /api/resumen) -- no hace falta elegir también un Nivel.
-  if(nivel.length===1 || alimentador.length || !RESUMEN_POR_NIVEL){
-    // Un nivel puntual filtrado (o sin datos de desglose): la vista clásica
-    // de una sola serie -- esto es lo que confirma que el filtro de Nivel
-    // realmente funciona (Entradas/PT/PT% quedan acotados a ese nivel).
-    projBtn.style.display = 'flex';
-    renderPrincipalUnNivel();
-  } else {
-    // Sin filtro de Nivel: las pérdidas técnicas se calculan por nivel de
-    // tensión, así que se desglosan las 4 (barras PT + líneas PT%). La
-    // Proyección es de una sola serie -- no aplica acá, se oculta.
-    projBtn.style.display = 'none';
-    projSel.style.display = 'none';
-    document.getElementById('kpi-notes-row').innerHTML = '';
-    renderPrincipalMultiNivel();
-  }
-}
-
 function hexA(hex, alpha){
   const h = (hex||'').replace('#','');
   const r = parseInt(h.substring(0,2),16), g = parseInt(h.substring(2,4),16), b = parseInt(h.substring(4,6),16);
   return `rgba(${r},${g},${b},${alpha})`;
 }
 
-function renderPrincipalUnNivel(){
+// Gráfica principal de "Detalle por Circuito" -- pedido explícito ("está
+// muy saturada, quiero que sea como la de Balance por Estructuras: líneas
+// que muestren entrada y salida (debe traerlo desde allá) y pérdida
+// técnica y pérdida por balance"). SIEMPRE en líneas (se quitó el
+// desglose por nivel en barras, que era la otra fuente de saturación) --
+// mismos colores que ya usa esa gráfica (ver
+// renderChartComparacionEstructura): Entrada verde, Pérdida Técnica
+// celeste, Pérdida por Balance roja, Pérdida % naranja punteada; Salida
+// en morado cuando hay Pérdida por Balance (para no repetir el rojo),
+// rojo cuando no la hay. "Pérdida por Balance" solo aparece con un
+// Alimentador puntual vinculado a una Estructura de Balances por
+// Estructura (ver RESUMEN_BALANCE, cargada en aplicarFiltros()). La
+// "Senda Regulatoria" (línea gris punteada) sigue siendo el límite CREG
+// reconocido, ya ponderado por circuito -- ver /api/resumen.
+function renderPrincipal(){
+  if(!RESUMEN) return;
   const ctx = document.getElementById('ch-principal');
   const dark = document.documentElement.getAttribute('data-theme')==='dark';
   const tickC = dark ? '#ffffff' : '#000000';
   const tickXFuerte = dark ? '#ffffff' : '#000000';
   const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
 
-  // Si hay UNA sola zona filtrada, la gráfica adopta SU color (el mismo
-  // que se le asignó en Parametrización) -- así se confirma de un vistazo
-  // que se está viendo esa zona, consistente con el resto de la app. Con
-  // 2+ zonas ya no aplica un único color, así que vuelve a los de siempre.
-  const zonasFiltro = mselValores('msel-zona');
-  const zonaFiltro = zonasFiltro.length===1 ? zonasFiltro[0] : null;
-  const colorZona = zonaFiltro ? colorParaZona(zonaFiltro) : null;
-  const colorKwh = colorZona ? hexA(colorZona, .85) : 'rgba(192,0,0,.85)';
-  const colorPct = colorZona || '#ED7D31';
+  const tieneBalance = !!RESUMEN_BALANCE;
+  const projBtn = document.getElementById('proj-btn');
+  const projSel = document.getElementById('proj-method');
+  // La Proyección es una regresión sobre la serie OFICIAL (RESUMEN) --
+  // no aplica cuando se muestra la comparación contra un balance
+  // vinculado (esa sirve para verificar que el balance manual se parezca
+  // a lo oficial, no para proyectar el futuro) -- mismo criterio que
+  // antes ocultaba el botón en el desglose por nivel.
+  projBtn.style.display = tieneBalance ? 'none' : 'flex';
+  if(tieneBalance){ projSel.style.display = 'none'; document.getElementById('kpi-notes-row').innerHTML = ''; }
 
   let labels = RESUMEN.meses.map(labelMes);
   let entV = RESUMEN.entradas_kwh.slice();
-  let kwhV = RESUMEN.perdidas_kwh.map((v,i)=> v>0 ? v : null);
-  // Salida -- pedido explícito ("me muestra la pérdida técnica y entrada
-  // y salida del mes"): no viene de /api/resumen (solo trae entradas y
-  // pérdidas), se deriva igual que en el resto de la app -- Salida =
-  // Entrada - Pérdida.
+  let kwhV = RESUMEN.perdidas_kwh.map(v=> v>0 ? v : null);
+  // Salida -- pedido explícito ("que muestre entrada y salida"): no viene
+  // de /api/resumen (solo trae entradas y pérdidas), se deriva igual que
+  // en el resto de la app -- Salida = Entrada - Pérdida.
   let salV = entV.map((e,i)=> e - (RESUMEN.perdidas_kwh[i]||0));
   let pctV = RESUMEN.perdidas_pct.map((v,i)=> RESUMEN.entradas_kwh[i]>0 && RESUMEN.perdidas_kwh[i]>0 ? v : null);
   const cregVal = RESUMEN.senda_creg_pct || 0;
 
-  updateKpiNotes();
+  // "Pérdida por Balance" -- se alinea al MISMO eje de meses que RESUMEN
+  // (pueden no coincidir 1 a 1: el balance manual puede arrancar/terminar
+  // en otro mes que el oficial).
+  let balV = null;
+  if(tieneBalance){
+    const posPorMes = new Map(RESUMEN_BALANCE.meses.map((m,i)=>[m, i]));
+    balV = RESUMEN.meses.map(m=>{
+      const i = posPorMes.get(m);
+      return i==null ? null : RESUMEN_BALANCE.perdida_balance_kwh[i];
+    });
+  }
+
+  if(!tieneBalance) updateKpiNotes();
 
   let projDatasets = [];
-  if(showProjection){
+  if(showProjection && !tieneBalance){
     const idx=[], ent=[], kwh=[];
     RESUMEN.meses.forEach((m,i)=>{
       if(RESUMEN.perdidas_kwh[i]>0 && RESUMEN.entradas_kwh[i]>0){ idx.push(i); ent.push(RESUMEN.entradas_kwh[i]); kwh.push(RESUMEN.perdidas_kwh[i]); }
@@ -24292,23 +24307,26 @@ function renderPrincipalUnNivel(){
       const nextX = idx[idx.length-1]+1;
       const nextPct = Math.max(0, fitPct.predict(nextX));
       const nextEnt = Math.max(0, fitEnt.predict(nextX));
+      const nextKwh = Math.round(nextEnt*nextPct/100);
       labels = labels.concat([labelMesSiguiente(RESUMEN.meses[RESUMEN.meses.length-1])]);
       const lastValid = idx[idx.length-1];
-      const projKwh = labels.map((l,i)=> i===labels.length-1 ? Math.round(nextEnt*nextPct/100) : null);
-      const projEnt = labels.map((l,i)=> i===labels.length-1 ? Math.round(nextEnt) : null);
-      const projPct = labels.map((l,i)=> i===lastValid ? pctV[lastValid] : (i===labels.length-1 ? nextPct : null));
-      entV = entV.concat([0]); kwhV = kwhV.concat([null]); pctV = pctV.concat([null]); salV = salV.concat([null]);
+      // Continúa cada línea real con un tramo punteado hasta el punto
+      // proyectado -- mismo criterio (mismo valor en el último punto real
+      // Y en el proyectado) que ya usaba "Proyección PT%" antes de este
+      // rediseño, ahora aplicado también a Entrada/Salida/Pérdida Técnica.
+      const proyectar = (base, valorSiguiente) => base.map((v,i)=>
+        i===lastValid ? base[lastValid] : (i===labels.length-1 ? valorSiguiente : null));
+      entV = entV.concat([null]); kwhV = kwhV.concat([null]); pctV = pctV.concat([null]); salV = salV.concat([null]);
       projDatasets = [
-        {type:'bar', label:'Proyección PT kWh ('+method+')', data:projKwh,
-          backgroundColor:'rgba(192,0,0,.18)', borderColor:'rgba(192,0,0,.7)', borderWidth:2, borderRadius:5,
-          yAxisID:'yKwh', order:3, stack:'kwh', barPercentage:.7, categoryPercentage:.8},
-        {type:'bar', label:'Proyección Entradas', data:projEnt,
-          backgroundColor:'rgba(0,180,216,.18)', borderColor:'rgba(0,180,216,.7)', borderWidth:2, borderRadius:5,
-          yAxisID:'yEnt', order:3, stack:'ent', barPercentage:.7, categoryPercentage:.8},
-        {type:'line', label:'Proyección PT%', data:projPct,
-          borderColor:'rgba(237,125,49,.65)', backgroundColor:'rgba(237,125,49,.04)', borderWidth:2.5, borderDash:[7,5],
-          pointRadius:5, pointBackgroundColor:'rgba(237,125,49,.65)', pointBorderColor:'#fff', pointBorderWidth:1.5,
-          tension:0, fill:false, yAxisID:'yPct', order:1, spanGaps:false},
+        {type:'line', label:'Proyección Entrada', data: proyectar(entV, Math.round(nextEnt)),
+          borderColor:'#00B050', backgroundColor:'transparent', borderWidth:2, borderDash:[6,4],
+          pointRadius:4, pointStyle:'rectRot', tension:0, spanGaps:true, yAxisID:'y'},
+        {type:'line', label:`Proyección Pérdida Técnica (${method})`, data: proyectar(kwhV, nextKwh),
+          borderColor:'#00B0F0', backgroundColor:'transparent', borderWidth:2, borderDash:[6,4],
+          pointRadius:4, pointStyle:'rectRot', tension:0, spanGaps:true, yAxisID:'y'},
+        {type:'line', label:'Proyección Pérdida %', data: proyectar(pctV, nextPct),
+          borderColor:'#ED7D31', backgroundColor:'transparent', borderWidth:2, borderDash:[6,4],
+          pointRadius:4, pointStyle:'rectRot', tension:0, spanGaps:true, yAxisID:'yPct'},
       ];
     }
   }
@@ -24318,26 +24336,23 @@ function renderPrincipalUnNivel(){
     data:{
       labels,
       datasets:[
-        {type:'bar', label:'Entradas', data:entV, backgroundColor:'rgba(0,180,216,.88)', borderColor:'rgba(0,180,216,.88)', borderWidth:1, borderRadius:5,
-          yAxisID:'yEnt', order:3, stack:'ent', barPercentage:.7, categoryPercentage:.8,
-          datalabels:{display:ctx2=>ctx2.dataset.data[ctx2.dataIndex]>0 && labels.length<=24, anchor:'center', align:'center',
-            formatter:v=>(v||0).toLocaleString('es-CO',{maximumFractionDigits:0}), font:{size:13,weight:'bold'}, color:'#fff', rotation:-90}},
-        {type:'bar', label:'Salidas', data:salV, backgroundColor:'rgba(192,0,0,.85)', borderColor:'rgba(192,0,0,.85)', borderWidth:1, borderRadius:5,
-          yAxisID:'yEnt', order:3, stack:'sal', barPercentage:.7, categoryPercentage:.8,
-          datalabels:{display:ctx2=>ctx2.dataset.data[ctx2.dataIndex]>0 && labels.length<=24, anchor:'center', align:'center',
-            formatter:v=>(v||0).toLocaleString('es-CO',{maximumFractionDigits:0}), font:{size:13,weight:'bold'}, color:'#fff', rotation:-90}},
-        {type:'bar', label:'Pérdidas Técnicas kWh', data:kwhV, backgroundColor:colorKwh, borderColor:colorKwh, borderWidth:1, borderRadius:5,
-          yAxisID:'yKwh', order:3, stack:'kwh', barPercentage:.7, categoryPercentage:.8,
-          datalabels:{display:ctx2=>ctx2.dataset.data[ctx2.dataIndex]>0 && labels.length<=24, anchor:'center', align:'center',
-            formatter:v=>(v||0).toLocaleString('es-CO',{maximumFractionDigits:0}), font:{size:13,weight:'bold'}, color:'#fff', rotation:-90}},
-        {type:'line', label:'Pérdidas Técnicas %', data:pctV, borderColor:colorPct, backgroundColor:hexA(colorZona||'#ED7D31',.08),
-          borderWidth:3, pointRadius:6, pointBackgroundColor:colorPct, pointBorderColor:'#fff', pointBorderWidth:2,
-          tension:0, fill:false, yAxisID:'yPct', order:1, spanGaps:false,
-          datalabels:{display:labels.length<=24, anchor:'end', align:'top', offset:16,
-            formatter:v=>(v||0).toFixed(2)+'%', font:{size:13,weight:'800'}, color:colorPct,}},
+        {type:'line', label:'Entrada', data:entV, borderColor:'#00B050', backgroundColor:'transparent',
+          borderWidth:2.5, pointRadius:3, tension:0, spanGaps:true, yAxisID:'y'},
+        {type:'line', label:'Salida', data:salV, borderColor: tieneBalance ? '#8064A2' : '#C00000',
+          backgroundColor:'transparent', borderWidth:2.5, pointRadius:3, tension:0, spanGaps:true, yAxisID:'y'},
+        {type:'line', label:'Pérdida Técnica', data:kwhV, borderColor:'#00B0F0', backgroundColor:'transparent',
+          borderWidth:2.5, pointRadius:3, tension:0, spanGaps:true, yAxisID:'y',
+          datalabels:{display:labels.length<=24, anchor:'end', align:'bottom', offset:8,
+            formatter:v=>v==null?'':v.toLocaleString('es-CO',{maximumFractionDigits:0}), font:{size:10,weight:'700'}, color:'#00B0F0'}},
+        ...(tieneBalance ? [{type:'line', label:'Pérdida por Balance', data:balV, borderColor:'#C00000',
+          backgroundColor:'transparent', borderWidth:2.5, pointRadius:3, tension:0, spanGaps:true, yAxisID:'y',
+          datalabels:{display:labels.length<=24, anchor:'end', align:'top', offset:8,
+            formatter:v=>v==null?'':v.toLocaleString('es-CO',{maximumFractionDigits:0}), font:{size:10,weight:'700'}, color:'#C00000'}}] : []),
+        {type:'line', label:'Pérdida Técnica %', data:pctV, borderColor:'#ED7D31', backgroundColor:'transparent',
+          borderWidth:2, borderDash:[6,3], pointRadius:2, tension:0, spanGaps:true, yAxisID:'yPct'},
         {type:'line', label:'Senda Regulatoria', data:labels.map(()=>cregVal),
           borderColor:'rgba(120,120,120,.7)', backgroundColor:'transparent', borderWidth:2, borderDash:[7,5],
-          pointRadius:0, pointHoverRadius:3, tension:0, fill:false, yAxisID:'yPct', order:4},
+          pointRadius:0, pointHoverRadius:3, tension:0, fill:false, yAxisID:'yPct'},
         ...projDatasets,
       ],
     },
@@ -24348,123 +24363,19 @@ function renderPrincipalUnNivel(){
       plugins:{
         legend:{display:true, position:'bottom', labels:{boxWidth:14, font:{size:11}, color:tickC, padding:14}},
         tooltip:{callbacks:{label:c=>{
-          const v=c.raw;
-          if(c.dataset.label==='Entradas') return 'Entradas: '+fmtGwh(v);
-          if(c.dataset.label==='Salidas') return 'Salidas: '+fmtGwh(v);
-          if((c.dataset.label||'').indexOf('kWh')>=0) return 'PT: '+fmtGwh(v||0);
-          if((c.dataset.label||'').indexOf('%')>=0) return 'PT %: '+parseFloat(v||0).toFixed(4)+'%';
-          return c.dataset.label+': '+v;
+          const v=c.raw; if(v==null) return null;
+          if((c.dataset.label||'').indexOf('%')>=0) return c.dataset.label+': '+parseFloat(v).toFixed(2)+'%';
+          return c.dataset.label+': '+v.toLocaleString('es-CO',{maximumFractionDigits:0})+' kWh';
         }}},
       },
       scales:{
         x:{grid:{display:false}, ticks:{color:tickXFuerte, font:{size:12}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
-        yEnt:{type:'linear', position:'left', beginAtZero:true, grid:{color:gridC},
-          ticks:{color:tickC, font:{size:13}, callback:v=>fmtGwh(v)},
-          title:{display:true, text:'Entradas (GWh)', color:tickC, font:{size:12}}},
-        yKwh:{type:'linear', position:'right', beginAtZero:true, grid:{drawOnChartArea:false},
-          ticks:{color:colorPct, font:{size:13}, callback:v=>fmtGwh(v)},
-          afterFit:ax=>{ax.width=Math.max(ax.width,96)},
-          title:{display:true, text:'PT (GWh)', color:colorPct, font:{size:12}}},
-        yPct:{type:'linear', position:'right', beginAtZero:true, grid:{drawOnChartArea:false},
-          ticks:{color:colorPct, font:{size:13}, callback:v=>v.toFixed(1)+'%'},
-          afterFit:ax=>{ax.width=Math.max(ax.width,86)},
-          title:{display:true, text:'Pérd. Técnicas %', color:colorPct, font:{size:12}},
-          offset:true},
-      },
-    },
-  });
-}
-
-function renderPrincipalMultiNivel(){
-  const ctx = document.getElementById('ch-principal');
-  const dark = document.documentElement.getAttribute('data-theme')==='dark';
-  const tickC = dark ? '#ffffff' : '#000000';
-  const tickXFuerte = dark ? '#ffffff' : '#000000';
-  const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
-
-  const datos = RESUMEN_POR_NIVEL || {meses:[], series:[]};
-  const labels = datos.meses.map(labelMes);
-  const niveles = datos.series.map(s=>s.clave);
-  // Las Entradas por nivel solo se ven al filtrar un Alimentador puntual
-  // (ahí sí interesa su contexto); con todo el operador junto, 4 barras de
-  // PT + 4 de Entradas sería demasiado ruido.
-  const alimentador = mselValores('msel-alimentador');
-  const mostrarEntrada = alimentador.length>0;
-
-  // Con muchas series (4 niveles, a veces 8 barras con Entradas) suele haber
-  // barras muy chicas -- ej. al filtrar un solo alimentador que casi no pesa
-  // en un nivel. La etiqueta rotada de adentro no cabe ahí y se sale por
-  // abajo, encima de los meses. Por eso solo se muestra si la barra
-  // renderizada mide lo suficiente como para contenerla.
-  const barLoSuficientementeAlta = ctx2 => {
-    const meta = ctx2.chart.getDatasetMeta(ctx2.datasetIndex);
-    const el = meta.data[ctx2.dataIndex];
-    return el && el.height >= 26;
-  };
-  const datasetsPT = datos.series.map(s=>({
-    type:'bar', label:`PT Nivel ${s.clave}`, data: s.valores.map(v=>v>0?v:null),
-    backgroundColor: colorParaNivel(s.clave, niveles), borderColor: colorParaNivel(s.clave, niveles), borderWidth:1, borderRadius:4, yAxisID:'yKwh',
-    barPercentage:.85, categoryPercentage:.85,
-    datalabels:{display:ctx2=>ctx2.dataset.data[ctx2.dataIndex]>0 && labels.length<=24 && barLoSuficientementeAlta(ctx2),
-      anchor:'center', align:'center', rotation:-90,
-      formatter:v=>v>0 ? fmtGwh(v) : '', font:{size:12,weight:'800'}, color:'#fff'},
-  }));
-  const datasetsEnt = mostrarEntrada ? datos.series.map(s=>({
-    type:'bar', label:`Entradas Nivel ${s.clave}`, data: s.entradas_kwh,
-    backgroundColor: colorParaNivel(s.clave, niveles)+'55', borderColor: colorParaNivel(s.clave, niveles)+'55', borderWidth:1, borderRadius:4, yAxisID:'yEnt',
-    barPercentage:.85, categoryPercentage:.85,
-    datalabels:{display:ctx2=>ctx2.dataset.data[ctx2.dataIndex]>0 && labels.length<=24 && barLoSuficientementeAlta(ctx2),
-      anchor:'center', align:'center', rotation:-90,
-      formatter:v=>v>0 ? fmtGwh(v) : '', font:{size:12,weight:'800'}, color: dark?'#0d1117':'#1a2a4a'},
-  })) : [];
-  // Un valor por punto (4 niveles × N meses) se amontonaba imposible de leer
-  // aunque se escalonara el offset -- ahora cada línea muestra su % solo en
-  // el último punto (con el nivel incluido en el texto), como la mayoría de
-  // dashboards hacen con series múltiplas muy cercanas entre sí.
-  const datasetsPct = datos.series.map((s,i)=>{
-    const data = s.perdidas_pct.map((v,i2)=> s.entradas_kwh[i2]>0 && s.valores[i2]>0 ? v : null);
-    return {
-      type:'line', label:`PT% Nivel ${s.clave}`, data,
-      borderColor: colorParaNivel(s.clave, niveles), backgroundColor:'transparent', borderWidth:2.5,
-      pointRadius:4, pointBackgroundColor: colorParaNivel(s.clave, niveles), pointBorderColor:'#fff', pointBorderWidth:1.5,
-      tension:0, fill:false, yAxisID:'yPct', spanGaps:false,
-      datalabels:{
-        display:ctx2=> labels.length<=24 && ctx2.dataIndex===data.length-1 && data[ctx2.dataIndex]!=null,
-        anchor:'end', align:'right', offset:4,
-        formatter:v=>`N${s.clave}: ${(v||0).toFixed(2)}%`, font:{size:11,weight:'800'}, color: colorParaNivel(s.clave, niveles),},
-    };
-  });
-
-  if(chPrincipal) chPrincipal.destroy();
-  chPrincipal = new Chart(ctx, {
-    data:{ labels, datasets:[...datasetsEnt, ...datasetsPT, ...datasetsPct] },
-    options:{
-      responsive:true, maintainAspectRatio:false,
-      layout:{padding:{bottom:20, top:20, right:80}},
-      interaction:{mode:'index', intersect:false},
-      plugins:{
-        legend:{display:true, position:'bottom', labels:{boxWidth:14, font:{size:11}, color:tickC, padding:12}},
-        tooltip:{callbacks:{label:c=>{
-          const v=c.raw;
-          if((c.dataset.label||'').startsWith('Entradas')) return c.dataset.label+': '+fmtGwh(v);
-          if((c.dataset.label||'').startsWith('PT%')) return c.dataset.label+': '+parseFloat(v||0).toFixed(2)+'%';
-          return c.dataset.label+': '+fmtGwh(v||0);
-        }}},
-      },
-      scales:{
-        x:{grid:{display:false}, ticks:{color:tickXFuerte, font:{size:12}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
-        yEnt:{type:'linear', position:'left', beginAtZero:true, display:mostrarEntrada, grid:{color:gridC},
-          ticks:{color:tickC, font:{size:13}, callback:v=>fmtGwh(v)},
-          title:{display:true, text:'Entradas (GWh)', color:tickC, font:{size:12}}},
-        yKwh:{type:'linear', position:'right', beginAtZero:true, grid:{drawOnChartArea:false},
-          ticks:{color:tickC, font:{size:13}, callback:v=>fmtGwh(v)},
-          afterFit:ax=>{ax.width=Math.max(ax.width,96)},
-          title:{display:true, text:'PT (GWh)', color:tickC, font:{size:12}}},
-        yPct:{type:'linear', position:'right', beginAtZero:true, grid:{drawOnChartArea:false},
-          ticks:{color:tickC, font:{size:13}, callback:v=>v.toFixed(1)+'%'},
-          afterFit:ax=>{ax.width=Math.max(ax.width,86)},
-          title:{display:true, text:'Pérd. Técnicas %', color:tickC, font:{size:12}},
-          offset:true},
+        y:{type:'linear', position:'left', beginAtZero:true, grid:{color:gridC},
+          ticks:{color:tickC, font:{size:12}, callback:v=>fmtGwh(v)},
+          title:{display:true, text:'Energía (kWh)', color:tickC, font:{size:12}}},
+        yPct:{type:'linear', position:'right', beginAtZero:false, grace:'20%', grid:{drawOnChartArea:false},
+          ticks:{color:tickC, font:{size:12}, callback:v=>v.toFixed(1)+'%'},
+          title:{display:true, text:'Pérdida (%)', color:tickC, font:{size:12}}},
       },
     },
   });
@@ -24516,18 +24427,25 @@ function perdidasIrATab(nombre){
  * (agrega TODAS las zonas para poder compararlas) así que ese recorte se
  * hace acá, en el cliente. Los títulos son dinámicos.
  *
+ * Las columnas de Pérdida Técnica (kWh) salen de la MISMA `series[].
+ * valores` que ya usa la línea de % (ambas de /perdidas-por-zona,
+ * Circuito/BalanceMensual) -- pedido explícito ("las columnas no
+ * coinciden con la sumatoria de la gráfica de Nivel"): antes salían de
+ * ALIM_FILAS (Resumen de Alimentadores), una fuente DISTINTA que por
+ * diseño no siempre coincide con Circuito/BalanceMensual (metodologías
+ * distintas) -- ver ptTotalesRenderCards() más abajo, que sí usa
+ * ALIM_FILAS a propósito para coincidir con Alimentadores.
+ *
  * Mensual / Anual (12M) -- pedido explícito ("debe haber un botón para
  * cambiar a datos anuales" + "debe ser móvil anual como todos los
- * indicadores, no acumulando"): PT_TOT_MODO. _anualizarSerieMensual()/
- * _anualizarMapaMensual() usan EXACTAMENTE el mismo criterio que
- * alimN21Con12Meses (el que ya usan todos los demás indicadores 12M de
- * la app) -- ventana móvil de 12 por POSICIÓN en el arreglo cronológico,
- * los primeros 11 puntos quedan en null. Si no hay 12 meses de historia
- * todavía (hoy: /perdidas-por-nivel y /perdidas-por-zona solo tienen
- * datos desde ene-2026), esas 2 series quedan en null -- "sin datos
- * suficientes", exactamente lo esperado; la columna de Pérdida Técnica
- * (kWh) sale de ALIM_FILAS, que sí trae más historia, así que puede
- * mostrar un 12M real aunque las otras 2 series todavía no puedan.
+ * indicadores, no acumulando"): PT_TOT_MODO. _anualizarSerieMensual()
+ * usa EXACTAMENTE el mismo criterio que alimN21Con12Meses (el que ya
+ * usan todos los demás indicadores 12M de la app) -- ventana móvil de 12
+ * por POSICIÓN en el arreglo cronológico, los primeros 11 puntos quedan
+ * en null. Si no hay 12 meses de historia todavía (hoy: /perdidas-por-
+ * nivel y /perdidas-por-zona solo tienen datos desde ene-2026), las 2
+ * gráficas quedan en null -- "sin datos suficientes", exactamente lo
+ * esperado.
  *
  * BUG real corregido en una versión anterior -- colorParaNivel(n, niveles)
  * necesita el arreglo de niveles como 2do argumento (usa niveles.indexOf(n)
@@ -24590,22 +24508,6 @@ function _anualizarSerieMensual(datos){
       perdidas_pct: valores12.map((v,i)=> (v!=null && entradas12[i]) ? v/entradas12[i]*100 : null)};
   });
   return {meses, series};
-}
-
-// Igual criterio que la de arriba pero para un Map plano mes->valor
-// (Pérdida Técnica desde ALIM_FILAS, ver renderPtTotalesZona) -- se
-// ordena cronológicamente (las claves "YYYY-MM" ordenan bien como texto)
-// y se rueda por posición, igual que alimN21Con12Meses.
-function _anualizarMapaMensual(mapaPorMes){
-  const claves = [...mapaPorMes.keys()].sort();
-  const valores = claves.map(c=>mapaPorMes.get(c)||0);
-  const resultado = new Map();
-  claves.forEach((c,i)=>{
-    if(i<11){ resultado.set(c, null); return; }
-    let s=0; for(let k=i-11;k<=i;k++) s+=valores[k];
-    resultado.set(c, s);
-  });
-  return resultado;
 }
 
 async function cargarGraficasApiladas(){
@@ -24727,29 +24629,26 @@ function renderPtTotalesZona(datos, modoAnual){
   const series = (datos.series || []).filter(s => !zonaSel.length || zonaSel.includes(s.clave));
   const hayDatosPct = series.some(s => (s.perdidas_pct||[]).some(v=>v!=null));
 
-  // Pérdida Técnica (kWh) -- no existe en /perdidas-por-zona (esa fuente
-  // trae UN número de pérdida sin desglosar); se calcula desde ALIM_FILAS
-  // (misma fuente que las tarjetas de abajo, para que coincida) sumada
-  // sobre las MISMAS zonas visibles. No respeta el filtro de Nivel
-  // (ALIM_FILAS no tiene un "nivel 1-4" limpio para filtrar). En Anual
-  // se rueda con el mismo criterio de calendario que las gráficas de
-  // arriba (_anualizarMapaMensual), independiente del colchón de
-  // /perdidas-por-zona -- ALIM_FILAS ya trae 30 meses de historia.
-  const porMesAlim = new Map();
-  (ALIM_FILAS || []).forEach(f => {
-    if(zonaSel.length && !zonaSel.includes(f.zona)) return;
-    const clave = alimN21Clave(f.anio, f.mes);
-    const tecnica = f.perdida_tecnica_kwh != null ? f.perdida_tecnica_kwh : (f.perdida_kwh || 0) - (f.gestionable_kwh || 0);
-    porMesAlim.set(clave, (porMesAlim.get(clave) || 0) + tecnica);
+  // Pedido explícito ("las columnas no coincide el valor con la sumatoria
+  // de la gráfica de Nivel"): antes esta columna salía de ALIM_FILAS
+  // (Resumen de Alimentadores), una fuente DISTINTA de la que arma
+  // "Pérdida por Nivel" (Circuito/BalanceMensual, vía /perdidas-por-zona)
+  // -- por diseño esas 2 fuentes no siempre coinciden (metodologías
+  // distintas). Ahora sale de la MISMA `series[].valores` que ya usa la
+  // línea de % (`s.valores` = perdidas_kwh, el mismo dato que agrega
+  // "Pérdida por Nivel"), sumada sobre las zonas visibles -- así las 2
+  // gráficas de esta pestaña quedan consistentes entre sí (en modo Anual
+  // ya viene rodada, porque `datos` llega anualizado desde
+  // cargarGraficasApiladas()).
+  const perdidaTecnicaKwh = (datos.meses || []).map((_,i)=>{
+    const valoresMes = series.map(z=>(z.valores||[])[i]);
+    return valoresMes.every(v=>v==null) ? null : valoresMes.reduce((s,v)=>s+(v||0), 0);
   });
-  const mapaTecnica = modoAnual ? _anualizarMapaMensual(porMesAlim) : porMesAlim;
-  const perdidaTecnicaKwh = (datos.meses || []).map(m => mapaTecnica.has(m) ? mapaTecnica.get(m) : null);
-  const hayDatosTecnica = perdidaTecnicaKwh.some(v=>v!=null);
 
   // Pedido explícito ("como todavía no hay un dato anual arrojaría sin
-  // datos suficientes"): si en Anual NINGUNA de las 2 series pudo rodar
-  // 12 meses completos, se avisa en vez de un gráfico vacío/roto.
-  if(modoAnual && !hayDatosPct && !hayDatosTecnica){
+  // datos suficientes"): si en Anual NINGUNA serie pudo rodar 12 meses
+  // completos, se avisa en vez de un gráfico vacío/roto.
+  if(modoAnual && !hayDatosPct){
     if(chPtTotalesZona){ chPtTotalesZona.destroy(); chPtTotalesZona=null; }
     if(vacio) vacio.classList.remove('hidden');
     ctx.classList.add('hidden');
@@ -24788,19 +24687,21 @@ function renderPtTotalesZona(datos, modoAnual){
   // Columna, no línea (pedido explícito: "mejor coloca en columnas ...
   // ajustando el eje Y para que se vea") -- sin Entrada/Salida
   // compitiendo por el mismo eje, esta columna ya usa el alto completo
-  // del eje kWh. Azul -- pedido explícito ("las columnas deberían ser
-  // azules"); mismo #4472C4 que usa "Pérdida Total kWh" en el propio
-  // módulo Alimentadores (libre de reusar acá -- esta gráfica ya no
-  // tiene "Pérdida Total"). Etiqueta DENTRO de la columna, vertical y con
-  // el kWh completo (pedido explícito: "ese valor superior en GWh no se
-  // ve, que sea dentro de la columna" + "quiero que muestre vertical el
-  // dato completo, en kWh/mes") -- fmtGwh() redondeaba a GWh (ej. "0.297
-  // GWh"), perdiendo precisión; rotation:-90 lo deja legible adentro.
+  // del eje kWh. Azul claro #00B0F0 -- pedido explícito ("no es el mismo
+  // azul claro que está en Balances por Estructura para pérdida
+  // técnica"): es el mismo color que usa esa gráfica (ver
+  // renderChartComparacionEstructura) para "Pérdida técnica". Etiqueta
+  // DENTRO de la columna, vertical, abajo y más grande (pedido explícito:
+  // "el dato vertical está centrado, no se ve, muy pequeño, que sea
+  // inferior y más grande") -- anchor:'start' + align:'top' la ancla
+  // cerca de la base en vez del centro, donde las líneas de % la tapaban
+  // al cruzar. kWh completo, no fmtGwh() (redondeaba a GWh, ej. "0.297
+  // GWh", perdiendo precisión).
   const datasetTecnica = {
     type:'bar', label:'Pérdida Técnica (kWh)', data: perdidaTecnicaKwh, yAxisID:'yKwh', order:2,
-    backgroundColor:'rgba(68,114,196,.85)', borderColor:'#4472C4', borderWidth:1, borderRadius:3,
-    datalabels:{display:v=>v.dataset.data[v.dataIndex]!=null, anchor:'center', align:'center', rotation:-90,
-      formatter:v=>v==null?'':`${Math.round(v).toLocaleString('es-CO')} kWh`, font:{size:10,weight:'700'}, color:'#fff'},
+    backgroundColor:'rgba(0,176,240,.85)', borderColor:'#00B0F0', borderWidth:1, borderRadius:3,
+    datalabels:{display:v=>v.dataset.data[v.dataIndex]!=null, anchor:'start', align:'top', offset:6, rotation:-90,
+      formatter:v=>v==null?'':`${Math.round(v).toLocaleString('es-CO')} kWh`, font:{size:13,weight:'700'}, color:'#fff'},
   };
 
   if(chPtTotalesZona) chPtTotalesZona.destroy();
