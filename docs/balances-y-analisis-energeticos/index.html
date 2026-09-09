@@ -1346,38 +1346,55 @@ tfoot td:first-child{text-align:left}
         <input type="month" id="pt-tot-desde" onchange="cargarGraficasApiladas()">
         <label>Hasta</label>
         <input type="month" id="pt-tot-hasta" onchange="cargarGraficasApiladas()">
-        <!-- Pedido explícito ("un botón que permita cambiar las gráficas
-             a entradas y salidas por zona") -- solo afecta la gráfica DE
-             ZONA (la de Nivel siempre queda en Pérdida). -->
-        <label style="margin-left:16px">Mostrar (zona)</label>
-        <button type="button" class="be-modo-btn activo" id="pt-tot-btn-metrica-perdida" onclick="ptTotalesMetrica('perdida')">📉 Pérdida</button>
-        <button type="button" class="be-modo-btn" id="pt-tot-btn-metrica-es" onclick="ptTotalesMetrica('es')">⚡ Entrada y Salida</button>
       </div>
-      <!-- Pedido explícito ("deben ser solo dos gráficas") -- Nivel y
-           Zona, ambas en barras/kWh, sin la de líneas en % (se sacó). -->
+      <!-- Pedido explícito ("que en esa misma [gráfica de zona] muestre la
+           entrada, salida y gestionable en líneas"): en vez de un toggle
+           de 2 (Pérdida/Entrada y Salida) que cambiaba entre barras, ahora
+           4 métricas -- SIEMPRE en líneas -- que comparten la misma
+           gráfica de la derecha, una por vez (mezclar % con kWh en el
+           mismo eje no tiene sentido). Solo afecta la gráfica de Zona --
+           la de Nivel siempre queda en Pérdida/kWh/barras. -->
+      <div class="fbar" style="margin-bottom:14px">
+        <label>Zona -- mostrar</label>
+        <button type="button" class="be-modo-btn activo" id="pt-tot-btn-metrica-perdida" onclick="ptTotalesMetrica('perdida')">📉 Pérdida %</button>
+        <button type="button" class="be-modo-btn" id="pt-tot-btn-metrica-entrada" onclick="ptTotalesMetrica('entrada')">⬇️ Entrada</button>
+        <button type="button" class="be-modo-btn" id="pt-tot-btn-metrica-salida" onclick="ptTotalesMetrica('salida')">⬆️ Salida</button>
+        <button type="button" class="be-modo-btn" id="pt-tot-btn-metrica-gestionable" onclick="ptTotalesMetrica('gestionable')">⚙️ Gestionable</button>
+      </div>
+      <!-- Pedido explícito ("deben ser solo dos gráficas") -- Nivel
+           (barras/kWh) y Zona (líneas, la métrica elegida arriba). Los
+           títulos son dinámicos (pedido explícito: "deben decir qué zona
+           [o nivel] estoy mostrando"). -->
       <div class="split-wrap">
         <div>
-          <div class="card-title" style="text-align:center">Pérdida por Nivel</div>
+          <div class="card-title" style="text-align:center" id="pt-tot-titulo-nivel">Pérdida por Nivel</div>
           <div class="chart-wrap" style="height:380px"><canvas id="ch-pt-totales-nivel"></canvas></div>
         </div>
         <div>
-          <div class="card-title" style="text-align:center" id="pt-tot-titulo-zona-kwh">Pérdida por Zona</div>
-          <div class="chart-wrap" style="height:380px"><canvas id="ch-pt-totales-zona-kwh"></canvas></div>
+          <div class="card-title" style="text-align:center" id="pt-tot-titulo-zona">Pérdida (%) por Zona</div>
+          <div class="chart-wrap" style="height:380px"><canvas id="ch-pt-totales-zona"></canvas></div>
         </div>
       </div>
     </div>
 
     <!-- Tarjetas -- pedido explícito ("deben mostrar entrada salida,
          pérdida técnica, pérdida gestionable, tanto en porcentaje y
-         energía, te puedes basar en las tarjetas de alimentadores"):
+         energía, te puedes basar en las tarjetas de alimentadores" +
+         "más pequeñas" + "falta una tarjeta que diga la pérdida total"):
          mismo componente (_alim3Tarjeta) y misma fuente (ALIM_FILAS =
          Resumen de Alimentadores, ya cacheado) que usa el módulo
-         Alimentadores -- para que el número coincida. Sin selector de mes
+         Alimentadores -- para que el número coincida. "Pérdida Total" es
+         el mismo dato que antes se llamaba "Pérdida Técnica" acá (ojo:
+         perdida_kwh = Pérdida Técnica + Gestionable, ver AlimentadorMensual
+         -- por eso el nombre correcto es "Total", no "Técnica"; coincide
+         con la tarjeta "Pérdida" de Alimentadores). Grid más angosto
+         (minmax 140px, igual que #alim3-tarjetas) en vez del de Inicio
+         (230px) -- pedido explícito "más pequeñas". Sin selector de mes
          propio (igual que Alimentadores: siempre el último mes
          disponible) -- dinámicas vía el filtro Zona de arriba. -->
     <div class="card" style="margin-top:18px">
       <div class="card-title" style="margin-bottom:10px">Entrada / Salida / Pérdida del mes</div>
-      <div class="inicio-dash-fila" id="pt-tot-cards" style="margin-bottom:0"></div>
+      <div class="inicio-dash-fila" id="pt-tot-cards" style="margin-bottom:0;grid-template-columns:repeat(auto-fit,minmax(140px,1fr))"></div>
     </div>
   </div>
 
@@ -24369,29 +24386,41 @@ function perdidasIrATab(nombre){
   if(nombre==='mapa' && typeof _mcMap!=='undefined' && _mcMap) setTimeout(() => _mcMap.invalidateSize(), 0);
 }
 
-/* ---- "Pérdidas Técnicas Totales" -- SOLO 2 gráficas (pedido explícito,
- * corrigiendo una versión anterior que había quedado con 3): "Pérdida por
- * Nivel" y "Pérdida por Zona", barras en kWh, SIEMPRE juntas, cada una
- * con su propio filtro multiselect independiente (Zona acota Nivel;
- * Nivel de tensión acota Zona) -- seleccionable de a varios (1,2,3,4 o
- * varias zonas a la vez). Un botón "Mostrar (zona)" cambia SOLO la
- * gráfica de Zona entre Pérdida y Entrada/Salida (pedido explícito) -- la
- * de Nivel siempre queda en Pérdida. Totalmente independiente de los
- * filtros de Zona/Alimentador/Nivel y del Rango de "Detalle por Circuito".
+/* ---- "Pérdidas Técnicas Totales" -- SOLO 2 gráficas: "Pérdida por
+ * Nivel" (barras, kWh) y "[Métrica] por Zona" (líneas) -- cada una con su
+ * propio filtro multiselect independiente (Zona acota Nivel; Nivel de
+ * tensión acota Zona), seleccionable de a varios (1,2,3,4 o varias zonas
+ * a la vez). La de Zona tiene 4 métricas posibles (Pérdida %/Entrada/
+ * Salida/Gestionable, pedido explícito -- "en esa misma [gráfica] muestre
+ * la entrada, salida y gestionable en líneas"), una por vez -- mezclar %
+ * con kWh en el mismo eje no tiene sentido, así que es un selector, no un
+ * overlay. Los títulos de las 2 gráficas son dinámicos (pedido explícito:
+ * "deben decir qué zona [o nivel] estoy mostrando").
  *
- * BUG real corregido acá -- colorParaNivel(n, niveles) necesita el
- * arreglo de niveles como 2do argumento (usa niveles.indexOf(n) para
- * elegir el color); llamarla con uno solo tiraba un TypeError que la
+ * Gestionable no existe en /perdidas-por-zona (esa viene de BalanceMensual/
+ * Circuito, que no tiene esa columna) -- se saca de ALIM_FILAS (Resumen de
+ * Alimentadores, la misma fuente que ya usan las tarjetas de abajo),
+ * agregado por zona/mes; por eso esa métrica puntual no respeta el filtro
+ * de Nivel (esa fuente no tiene un "nivel 1-4" limpio para filtrar).
+ *
+ * BUG real corregido en la versión anterior -- colorParaNivel(n, niveles)
+ * necesita el arreglo de niveles como 2do argumento (usa niveles.indexOf(n)
+ * para elegir el color); llamarla con uno solo tiraba un TypeError que la
  * captura genérica de cargarGraficasApiladas() se tragaba en silencio --
  * ninguna de las 2 gráficas dibujaba nada, sin ningún error visible. */
-let PT_TOT_METRICA = 'perdida';   // 'perdida' | 'es' -- solo afecta la gráfica de zona
-let chPtTotalesNivel = null, chPtTotalesZonaKwh = null;
+let PT_TOT_METRICA = 'perdida';   // 'perdida' | 'entrada' | 'salida' | 'gestionable' -- solo afecta la gráfica de zona
+let chPtTotalesNivel = null, chPtTotalesZona = null;
+const PT_TOT_METRICA_INFO = {
+  perdida: {nombre:'Pérdida (%)', unidad:'%'},
+  entrada: {nombre:'Entrada', unidad:'kWh'},
+  salida: {nombre:'Salida', unidad:'kWh'},
+  gestionable: {nombre:'Pérdida Gestionable', unidad:'kWh'},
+};
 
 function ptTotalesMetrica(m){
   PT_TOT_METRICA = m;
-  document.getElementById('pt-tot-btn-metrica-perdida').classList.toggle('activo', m==='perdida');
-  document.getElementById('pt-tot-btn-metrica-es').classList.toggle('activo', m==='es');
-  document.getElementById('pt-tot-titulo-zona-kwh').textContent = m==='perdida' ? 'Pérdida por Zona' : 'Entrada y Salida por Zona';
+  ['perdida','entrada','salida','gestionable'].forEach(x =>
+    document.getElementById(`pt-tot-btn-metrica-${x}`).classList.toggle('activo', x===m));
   cargarGraficasApiladas();
 }
 
@@ -24405,7 +24434,20 @@ function _ptTotalesInitFiltros(){
     cargarGraficasApiladas);
 }
 
+// Títulos dinámicos -- pedido explícito ("deben decir qué zona [o nivel]
+// estoy mostrando").
+function _ptTotalesActualizarTitulos(){
+  const zonaSel = mselValores('msel-pt-tot-zona');
+  const nivelSel = mselValores('msel-pt-tot-nivel');
+  document.getElementById('pt-tot-titulo-nivel').textContent =
+    'Pérdida por Nivel -- ' + (zonaSel.length ? `Zona: ${zonaSel.join(', ')}` : 'Todas las zonas');
+  document.getElementById('pt-tot-titulo-zona').textContent =
+    `${PT_TOT_METRICA_INFO[PT_TOT_METRICA].nombre} por Zona -- ` + (nivelSel.length ? `Nivel: ${nivelSel.join(', ')}` : 'Todos los niveles');
+}
+
 async function cargarGraficasApiladas(){
+  await _alimAsegurarDatosCargados();   // lo necesita la métrica Gestionable -- se resuelve al toque si ya estaba cacheado
+  _ptTotalesActualizarTitulos();
   const zonaSel = mselValores('msel-pt-tot-zona');
   const nivelSel = mselValores('msel-pt-tot-nivel');
   const desde = document.getElementById('pt-tot-desde').value;
@@ -24427,15 +24469,15 @@ async function cargarGraficasApiladas(){
       apiGet(`/api/perdidas-por-zona?${qsZona.toString()}`),
     ]);
     renderPtTotalesNivel(porNivel);
-    renderPtTotalesZonaKwh(porZona);
+    renderPtTotalesZona(porZona);
   }catch(e){
     // Estas gráficas son un complemento -- si fallan no deben tumbar el resto de la vista.
   }
   ptTotalesRenderCards();   // pedido explícito: dinámicas, reaccionan a los mismos filtros
 }
 
-// "Pérdida por Nivel" -- SIEMPRE en Pérdida (kWh), el botón "Mostrar
-// (zona)" no la toca.
+// "Pérdida por Nivel" -- SIEMPRE en Pérdida (kWh, barras), la métrica de
+// la gráfica de Zona no la toca.
 function renderPtTotalesNivel(datos){
   const ctx = document.getElementById('ch-pt-totales-nivel');
   if(!ctx) return;
@@ -24477,59 +24519,73 @@ function renderPtTotalesNivel(datos){
   });
 }
 
-// "Pérdida por Zona" / "Entrada y Salida por Zona" -- barras apiladas.
-// En modo Entrada/Salida se apila la ENTRADA por zona (kWh) y se agrega
-// una 2da línea de referencia "Salida Total" (además de "Entrada Total")
-// -- Salida = Entrada - Pérdida, no hace falta pedirla aparte.
-function renderPtTotalesZonaKwh(datos){
-  const ctx = document.getElementById('ch-pt-totales-zona-kwh');
+// {zona: [valor_por_mes alineado a `meses`]} de Gestionable -- sale de
+// ALIM_FILAS, no de /perdidas-por-zona (ver docstring de arriba).
+function _ptTotalesGestionablePorZona(zonas, meses){
+  const porZonaMes = {};
+  zonas.forEach(z => { porZonaMes[z] = {}; });
+  (ALIM_FILAS || []).forEach(f => {
+    if(!(f.zona in porZonaMes)) return;
+    const clave = alimN21Clave(f.anio, f.mes);
+    porZonaMes[f.zona][clave] = (porZonaMes[f.zona][clave] || 0) + (f.gestionable_kwh || 0);
+  });
+  const resultado = {};
+  zonas.forEach(z => { resultado[z] = meses.map(m => porZonaMes[z][m] ?? null); });
+  return resultado;
+}
+
+// "[Métrica] por Zona" -- SIEMPRE en líneas, una por zona; la métrica
+// (Pérdida %/Entrada/Salida/Gestionable) la elige el toggle de arriba.
+function renderPtTotalesZona(datos){
+  const ctx = document.getElementById('ch-pt-totales-zona');
   if(!ctx) return;
   const dark = document.documentElement.getAttribute('data-theme')==='dark';
   const tickC = dark ? '#ffffff' : '#000000';
   const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
   const series = datos.series || [];
   const labels = (datos.meses || []).map(labelMes);
-  const esModo = PT_TOT_METRICA === 'es';
-  const campo = esModo ? 'entradas_kwh' : 'valores';
+  const infoM = PT_TOT_METRICA_INFO[PT_TOT_METRICA];
+  const esPct = PT_TOT_METRICA === 'perdida';
 
-  const datasets = series.map(s=>({
-    type:'bar', label: s.clave, data: s[campo] || [],
-    backgroundColor: colorParaZona(s.clave), borderColor: colorParaZona(s.clave), borderWidth:1, stack:'total', borderRadius:2,
-    datalabels:{display:v=>v.dataset.data[v.dataIndex]>0, anchor:'center', align:'center', rotation:0,
-      formatter:v=>v>0 ? fmtGwh(v) : '', font:{size:11,weight:'700'}, color:'#fff'},
-  }));
+  let gestionablePorZona = null;
+  if(PT_TOT_METRICA === 'gestionable') gestionablePorZona = _ptTotalesGestionablePorZona(series.map(s=>s.clave), datos.meses || []);
 
-  const totalesEntrada = labels.map((_,i)=> series.reduce((s,serie)=>s+((serie[campo]||[])[i]||0),0));
-  datasets.push({
-    type:'line', label: esModo ? 'Entrada Total' : 'Total', data: totalesEntrada, borderWidth:0, pointRadius:0, pointHoverRadius:0,
-    backgroundColor:'transparent', borderColor:'transparent', fill:false,
-    datalabels:{display:true, anchor:'end', align:'top', offset: esModo ? 22 : 10,
-      formatter:v=>fmtGwh(v), font:{size:12,weight:'800'}, color:tickC},
-  });
-  if(esModo){
-    const totalesSalida = labels.map((_,i)=> series.reduce((s,serie)=>{
-      const e = (serie.entradas_kwh||[])[i]||0, p = (serie.valores||[])[i]||0;
-      return s + (e-p);
-    }, 0));
-    datasets.push({
-      type:'line', label:'Salida Total', data: totalesSalida, borderWidth:0, pointRadius:0, pointHoverRadius:0,
-      backgroundColor:'transparent', borderColor:'transparent', fill:false,
+  const datasets = series.map(s=>{
+    const color = colorParaZona(s.clave);
+    let data;
+    if(PT_TOT_METRICA === 'perdida') data = s.perdidas_pct || [];
+    else if(PT_TOT_METRICA === 'entrada') data = s.entradas_kwh || [];
+    else if(PT_TOT_METRICA === 'salida') data = (s.entradas_kwh||[]).map((e,i)=> e - ((s.valores||[])[i]||0));
+    else data = gestionablePorZona[s.clave];
+    return {
+      type:'line', label: s.clave, data,
+      borderColor: color, backgroundColor: color, borderWidth:2, pointRadius:2, pointHoverRadius:4, tension:0, spanGaps:true,
       datalabels:{display:true, anchor:'end', align:'top', offset:2,
-        formatter:v=>fmtGwh(v), font:{size:12,weight:'800',style:'italic'}, color:'#6c757d'},
-    });
-  }
+        formatter:v=>v==null?'':(esPct ? v.toFixed(1)+'%' : fmtGwh(v)), font:{size:10,weight:'700'}, color},
+    };
+  });
 
-  if(chPtTotalesZonaKwh) chPtTotalesZonaKwh.destroy();
-  chPtTotalesZonaKwh = new Chart(ctx, {
+  if(chPtTotalesZona) chPtTotalesZona.destroy();
+  chPtTotalesZona = new Chart(ctx, {
     data:{labels, datasets},
     options:{
       responsive:true, maintainAspectRatio:false,
-      layout:{padding:{top:24}},
-      plugins:{legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:10}, color:tickC,
-        filter:item=>item.text!=='Total' && item.text!=='Entrada Total' && item.text!=='Salida Total'}}},
+      // Pedido explícito ("la gráfica de líneas están muy pegadas al eje
+      // Y en ambos lados"): offset:true en el eje X.
+      layout:{padding:{top:24, left:8, right:8}},
+      interaction:{mode:'index', intersect:false},
+      plugins:{
+        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:10}, color:tickC}},
+        tooltip:{callbacks:{label:c=>{
+          if(c.raw==null) return null;
+          return esPct ? `${c.dataset.label}: ${c.raw.toFixed(2)}%` : `${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`;
+        }}},
+      },
       scales:{
-        x:{stacked:true, grid:{display:false}, ticks:{color:tickC, font:{size:11}}},
-        y:{stacked:true, beginAtZero:true, grid:{color:gridC}, ticks:{color:tickC, font:{size:11}, callback:v=>fmtGwh(v)}},
+        x:{grid:{display:false}, offset:true, ticks:{color:tickC, font:{size:11}}},
+        y:{beginAtZero:true, grid:{color:gridC},
+          ticks:{color:tickC, font:{size:11}, callback:v=>esPct ? v.toFixed(0)+'%' : fmtGwh(v)},
+          title:{display:true, text: infoM.unidad==='%' ? 'Pérdida (%)' : 'Energía (kWh)', color:tickC, font:{size:11}}},
       },
     },
   });
@@ -24580,7 +24636,7 @@ async function ptTotalesRenderCards(){
   cont.innerHTML =
     _alim3Tarjeta('pt-tot-c-ent', '⬇️', 'Entrada', actual.entrada, actual12?actual12.entrada12:null, fmtKwh) +
     _alim3Tarjeta('pt-tot-c-sal', '⬆️', 'Salida', actual.salida, actual12?actual12.salida12:null, fmtKwh) +
-    _alim3Tarjeta('pt-tot-c-per', '⚡', 'Pérdida Técnica',
+    _alim3Tarjeta('pt-tot-c-per', '⚡', 'Pérdida Total',
       fmtConPct(actual.perdida, actual.pct), actual12 ? fmtConPct(actual12.perdida12, actual12.pct12) : '--', v=>v) +
     _alim3Tarjeta('pt-tot-c-gest', '⚙️', 'Pérdida Gestionable',
       fmtGest(actual.gestionable, actual.perdida), actual12 ? fmtGest(actual12.gestionable12, actual12.perdida12) : '--', v=>v);
