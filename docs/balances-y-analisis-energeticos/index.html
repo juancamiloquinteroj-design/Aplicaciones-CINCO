@@ -1347,12 +1347,14 @@ tfoot td:first-child{text-align:left}
         <label>Hasta</label>
         <input type="month" id="pt-tot-hasta" onchange="cargarGraficasApiladas()">
         <!-- Pedido explícito ("un botón que permita cambiar las gráficas
-             a entradas y salidas por zona") -- solo afecta las 2 gráficas
-             DE ZONA (la de Nivel siempre queda en Pérdida). -->
+             a entradas y salidas por zona") -- solo afecta la gráfica DE
+             ZONA (la de Nivel siempre queda en Pérdida). -->
         <label style="margin-left:16px">Mostrar (zona)</label>
         <button type="button" class="be-modo-btn activo" id="pt-tot-btn-metrica-perdida" onclick="ptTotalesMetrica('perdida')">📉 Pérdida</button>
         <button type="button" class="be-modo-btn" id="pt-tot-btn-metrica-es" onclick="ptTotalesMetrica('es')">⚡ Entrada y Salida</button>
       </div>
+      <!-- Pedido explícito ("deben ser solo dos gráficas") -- Nivel y
+           Zona, ambas en barras/kWh, sin la de líneas en % (se sacó). -->
       <div class="split-wrap">
         <div>
           <div class="card-title" style="text-align:center">Pérdida por Nivel</div>
@@ -1362,27 +1364,19 @@ tfoot td:first-child{text-align:left}
           <div class="card-title" style="text-align:center" id="pt-tot-titulo-zona-kwh">Pérdida por Zona</div>
           <div class="chart-wrap" style="height:380px"><canvas id="ch-pt-totales-zona-kwh"></canvas></div>
         </div>
-        <div>
-          <div class="card-title" style="text-align:center" id="pt-tot-titulo-zona-linea">Pérdida (%) por Zona</div>
-          <div class="chart-wrap" style="height:380px"><canvas id="ch-pt-totales-zona-linea"></canvas></div>
-        </div>
       </div>
     </div>
 
-    <!-- Tarjetas de Entrada/Salida del mes -- pedido explícito ("tarjetas
-         bonitas y pequeñas... entrada y salida del último mes... debe
-         coincidir la entrada con lo demás módulos"): sale de "Resumen de
-         Alimentadores" (ALIM_FILAS, ya cacheado -- lo usa el módulo
-         Alimentadores), NO de perdidas-por-nivel/zona (fuente distinta,
-         puede no coincidir) -- así el número es el mismo que en
-         Alimentadores. Dinámicas: reaccionan al filtro Zona de arriba y
-         al selector de mes propio (arranca en el último mes del rango). -->
+    <!-- Tarjetas -- pedido explícito ("deben mostrar entrada salida,
+         pérdida técnica, pérdida gestionable, tanto en porcentaje y
+         energía, te puedes basar en las tarjetas de alimentadores"):
+         mismo componente (_alim3Tarjeta) y misma fuente (ALIM_FILAS =
+         Resumen de Alimentadores, ya cacheado) que usa el módulo
+         Alimentadores -- para que el número coincida. Sin selector de mes
+         propio (igual que Alimentadores: siempre el último mes
+         disponible) -- dinámicas vía el filtro Zona de arriba. -->
     <div class="card" style="margin-top:18px">
-      <div class="fbar" style="margin-bottom:10px">
-        <div class="card-title" style="margin:0">Entrada / Salida del mes</div>
-        <label style="margin-left:auto">Mes</label>
-        <input type="month" id="pt-tot-cards-mes" onchange="ptTotalesRenderCards()">
-      </div>
+      <div class="card-title" style="margin-bottom:10px">Entrada / Salida / Pérdida del mes</div>
       <div class="inicio-dash-fila" id="pt-tot-cards" style="margin-bottom:0"></div>
     </div>
   </div>
@@ -24375,32 +24369,35 @@ function perdidasIrATab(nombre){
   if(nombre==='mapa' && typeof _mcMap!=='undefined' && _mcMap) setTimeout(() => _mcMap.invalidateSize(), 0);
 }
 
-/* ---- "Pérdidas Técnicas Totales" -- las 2 gráficas de siempre (Nivel y
- * Zona, kWh) SIEMPRE juntas + al lado la gráfica de líneas en % -- pedido
- * explícito ("quitar el toggle, mostrar las 2 gráficas siempre juntas").
- * 2 filtros independientes: Zona acota "Pérdida por Nivel"; Nivel de
- * tensión acota "Pérdida por Zona" Y "Pérdida (%) por Zona" (comparten
- * filtro -- antes la de % no lo tenía en cuenta, pedido explícito
- * corrigiéndolo: "esta gráfica no cambia los valores cuando selecciono
- * un nivel de tensión"). Un botón "Mostrar (zona)" cambia las 2 gráficas
- * DE ZONA entre Pérdida y Entrada/Salida (pedido explícito) -- la de
- * Nivel siempre queda en Pérdida. Totalmente independiente de los
- * filtros de Zona/Alimentador/Nivel y del Rango de "Detalle por Circuito". */
-let PT_TOT_METRICA = 'perdida';   // 'perdida' | 'es' -- solo afecta las 2 gráficas de zona
-let chPtTotalesNivel = null, chPtTotalesZonaKwh = null, chPtTotalesZonaLinea = null;
+/* ---- "Pérdidas Técnicas Totales" -- SOLO 2 gráficas (pedido explícito,
+ * corrigiendo una versión anterior que había quedado con 3): "Pérdida por
+ * Nivel" y "Pérdida por Zona", barras en kWh, SIEMPRE juntas, cada una
+ * con su propio filtro multiselect independiente (Zona acota Nivel;
+ * Nivel de tensión acota Zona) -- seleccionable de a varios (1,2,3,4 o
+ * varias zonas a la vez). Un botón "Mostrar (zona)" cambia SOLO la
+ * gráfica de Zona entre Pérdida y Entrada/Salida (pedido explícito) -- la
+ * de Nivel siempre queda en Pérdida. Totalmente independiente de los
+ * filtros de Zona/Alimentador/Nivel y del Rango de "Detalle por Circuito".
+ *
+ * BUG real corregido acá -- colorParaNivel(n, niveles) necesita el
+ * arreglo de niveles como 2do argumento (usa niveles.indexOf(n) para
+ * elegir el color); llamarla con uno solo tiraba un TypeError que la
+ * captura genérica de cargarGraficasApiladas() se tragaba en silencio --
+ * ninguna de las 2 gráficas dibujaba nada, sin ningún error visible. */
+let PT_TOT_METRICA = 'perdida';   // 'perdida' | 'es' -- solo afecta la gráfica de zona
+let chPtTotalesNivel = null, chPtTotalesZonaKwh = null;
 
 function ptTotalesMetrica(m){
   PT_TOT_METRICA = m;
   document.getElementById('pt-tot-btn-metrica-perdida').classList.toggle('activo', m==='perdida');
   document.getElementById('pt-tot-btn-metrica-es').classList.toggle('activo', m==='es');
   document.getElementById('pt-tot-titulo-zona-kwh').textContent = m==='perdida' ? 'Pérdida por Zona' : 'Entrada y Salida por Zona';
-  document.getElementById('pt-tot-titulo-zona-linea').textContent = m==='perdida' ? 'Pérdida (%) por Zona' : 'Entrada y Salida (kWh) por Zona';
   cargarGraficasApiladas();
 }
 
-// Se inician UNA sola vez (ya no cambian de dimensión con un toggle) --
-// pedido explícito ("seleccionable que yo pueda seleccionar 1,2,3,4 y
-// para zonas también"): multiselect en vez de <select> de a uno.
+// Se inician UNA sola vez -- pedido explícito ("seleccionable que yo
+// pueda seleccionar 1,2,3,4 y para zonas también"): multiselect en vez
+// de <select> de a uno.
 function _ptTotalesInitFiltros(){
   mselInit('msel-pt-tot-zona', 'Zona', 'Todas', (META.zonas||[]).map(z=>({value:z, label:z})),
     cargarGraficasApiladas);
@@ -24431,7 +24428,6 @@ async function cargarGraficasApiladas(){
     ]);
     renderPtTotalesNivel(porNivel);
     renderPtTotalesZonaKwh(porZona);
-    renderPtTotalesZonaLinea(porZona);
   }catch(e){
     // Estas gráficas son un complemento -- si fallan no deben tumbar el resto de la vista.
   }
@@ -24447,11 +24443,12 @@ function renderPtTotalesNivel(datos){
   const tickC = dark ? '#ffffff' : '#000000';
   const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
   const series = datos.series || [];
+  const claves = series.map(s=>s.clave);
   const labels = (datos.meses || []).map(labelMes);
 
   const datasets = series.map(s=>({
     type:'bar', label: `Nivel ${s.clave}`, data: s.valores,
-    backgroundColor: colorParaNivel(s.clave), borderColor: colorParaNivel(s.clave), borderWidth:1, stack:'total', borderRadius:2,
+    backgroundColor: colorParaNivel(s.clave, claves), borderColor: colorParaNivel(s.clave, claves), borderWidth:1, stack:'total', borderRadius:2,
     datalabels:{display:v=>v.dataset.data[v.dataIndex]>0, anchor:'center', align:'center', rotation:0,
       formatter:v=>v>0 ? fmtGwh(v) : '', font:{size:11,weight:'700'}, color:'#fff'},
   }));
@@ -24481,8 +24478,9 @@ function renderPtTotalesNivel(datos){
 }
 
 // "Pérdida por Zona" / "Entrada y Salida por Zona" -- barras apiladas.
-// En modo Entrada/Salida se apila la ENTRADA por zona (la Salida se ve
-// mejor en la gráfica de líneas de al lado, comparada contra la Entrada).
+// En modo Entrada/Salida se apila la ENTRADA por zona (kWh) y se agrega
+// una 2da línea de referencia "Salida Total" (además de "Entrada Total")
+// -- Salida = Entrada - Pérdida, no hace falta pedirla aparte.
 function renderPtTotalesZonaKwh(datos){
   const ctx = document.getElementById('ch-pt-totales-zona-kwh');
   if(!ctx) return;
@@ -24491,7 +24489,8 @@ function renderPtTotalesZonaKwh(datos){
   const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
   const series = datos.series || [];
   const labels = (datos.meses || []).map(labelMes);
-  const campo = PT_TOT_METRICA === 'perdida' ? 'valores' : 'entradas_kwh';
+  const esModo = PT_TOT_METRICA === 'es';
+  const campo = esModo ? 'entradas_kwh' : 'valores';
 
   const datasets = series.map(s=>({
     type:'bar', label: s.clave, data: s[campo] || [],
@@ -24500,13 +24499,25 @@ function renderPtTotalesZonaKwh(datos){
       formatter:v=>v>0 ? fmtGwh(v) : '', font:{size:11,weight:'700'}, color:'#fff'},
   }));
 
-  const totales = labels.map((_,i)=> series.reduce((s,serie)=>s+((serie[campo]||[])[i]||0),0));
+  const totalesEntrada = labels.map((_,i)=> series.reduce((s,serie)=>s+((serie[campo]||[])[i]||0),0));
   datasets.push({
-    type:'line', label:'Total', data: totales, borderWidth:0, pointRadius:0, pointHoverRadius:0,
+    type:'line', label: esModo ? 'Entrada Total' : 'Total', data: totalesEntrada, borderWidth:0, pointRadius:0, pointHoverRadius:0,
     backgroundColor:'transparent', borderColor:'transparent', fill:false,
-    datalabels:{display:true, anchor:'end', align:'top', offset:10,
+    datalabels:{display:true, anchor:'end', align:'top', offset: esModo ? 22 : 10,
       formatter:v=>fmtGwh(v), font:{size:12,weight:'800'}, color:tickC},
   });
+  if(esModo){
+    const totalesSalida = labels.map((_,i)=> series.reduce((s,serie)=>{
+      const e = (serie.entradas_kwh||[])[i]||0, p = (serie.valores||[])[i]||0;
+      return s + (e-p);
+    }, 0));
+    datasets.push({
+      type:'line', label:'Salida Total', data: totalesSalida, borderWidth:0, pointRadius:0, pointHoverRadius:0,
+      backgroundColor:'transparent', borderColor:'transparent', fill:false,
+      datalabels:{display:true, anchor:'end', align:'top', offset:2,
+        formatter:v=>fmtGwh(v), font:{size:12,weight:'800',style:'italic'}, color:'#6c757d'},
+    });
+  }
 
   if(chPtTotalesZonaKwh) chPtTotalesZonaKwh.destroy();
   chPtTotalesZonaKwh = new Chart(ctx, {
@@ -24515,7 +24526,7 @@ function renderPtTotalesZonaKwh(datos){
       responsive:true, maintainAspectRatio:false,
       layout:{padding:{top:24}},
       plugins:{legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:10}, color:tickC,
-        filter:item=>item.text!=='Total'}}},
+        filter:item=>item.text!=='Total' && item.text!=='Entrada Total' && item.text!=='Salida Total'}}},
       scales:{
         x:{stacked:true, grid:{display:false}, ticks:{color:tickC, font:{size:11}}},
         y:{stacked:true, beginAtZero:true, grid:{color:gridC}, ticks:{color:tickC, font:{size:11}, callback:v=>fmtGwh(v)}},
@@ -24524,83 +24535,14 @@ function renderPtTotalesZonaKwh(datos){
   });
 }
 
-// "Pérdida (%) por Zona" / "Entrada y Salida (kWh) por Zona" -- líneas.
-// En modo Pérdida: 1 línea por zona (% de pérdida). En modo Entrada/
-// Salida: 2 líneas por zona (Entrada sólida, Salida punteada, mismo
-// color) -- Salida = Entrada - Pérdida (no hace falta pedirla aparte,
-// el backend ya trae las dos).
-function renderPtTotalesZonaLinea(datos){
-  const ctx = document.getElementById('ch-pt-totales-zona-linea');
-  if(!ctx) return;
-  const dark = document.documentElement.getAttribute('data-theme')==='dark';
-  const tickC = dark ? '#ffffff' : '#000000';
-  const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
-  const series = datos.series || [];
-  const labels = (datos.meses || []).map(labelMes);
-
-  let datasets;
-  if(PT_TOT_METRICA === 'perdida'){
-    datasets = series.map(s=>{
-      const color = colorParaZona(s.clave);
-      return {
-        type:'line', label: s.clave, data: s.perdidas_pct || [],
-        borderColor: color, backgroundColor: color, borderWidth:2, pointRadius:2, pointHoverRadius:4, tension:0, spanGaps:true,
-        datalabels:{display:true, anchor:'end', align:'top', offset:2,
-          formatter:v=>v==null?'':v.toFixed(1)+'%', font:{size:10,weight:'700'}, color},
-      };
-    });
-  }else{
-    datasets = [];
-    series.forEach(s=>{
-      const color = colorParaZona(s.clave);
-      const entradas = s.entradas_kwh || [];
-      const salidas = entradas.map((e,i)=> e - ((s.valores||[])[i]||0));
-      datasets.push({
-        type:'line', label:`${s.clave} · Entrada`, data: entradas,
-        borderColor: color, backgroundColor: color, borderWidth:2, pointRadius:2, pointHoverRadius:4, tension:0, spanGaps:true,
-      });
-      datasets.push({
-        type:'line', label:`${s.clave} · Salida`, data: salidas,
-        borderColor: color, backgroundColor: color, borderWidth:2, borderDash:[6,3], pointRadius:2, pointHoverRadius:4, tension:0, spanGaps:true,
-      });
-    });
-  }
-
-  if(chPtTotalesZonaLinea) chPtTotalesZonaLinea.destroy();
-  chPtTotalesZonaLinea = new Chart(ctx, {
-    data:{labels, datasets},
-    options:{
-      responsive:true, maintainAspectRatio:false,
-      // Pedido explícito ("la gráfica de líneas están muy pegadas al eje
-      // Y en ambos lados"): offset:true en el eje X deja medio espacio de
-      // categoría antes del primer punto y después del último.
-      layout:{padding:{top:24, left:8, right:8}},
-      interaction:{mode:'index', intersect:false},
-      plugins:{
-        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:10}, color:tickC}},
-        tooltip:{callbacks:{label:c=>{
-          if(c.raw==null) return null;
-          return PT_TOT_METRICA==='perdida'
-            ? `${c.dataset.label}: ${c.raw.toFixed(2)}%`
-            : `${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`;
-        }}},
-      },
-      scales:{
-        x:{grid:{display:false}, offset:true, ticks:{color:tickC, font:{size:11}}},
-        y:{beginAtZero:true, grid:{color:gridC},
-          ticks:{color:tickC, font:{size:11}, callback:v=>PT_TOT_METRICA==='perdida' ? v.toFixed(0)+'%' : fmtGwh(v)},
-          title:{display:true, text: PT_TOT_METRICA==='perdida' ? 'Pérdida (%)' : 'Energía (kWh)', color:tickC, font:{size:11}}},
-      },
-    },
-  });
-}
-
-// Tarjetas Entrada/Salida del mes -- pedido explícito ("tarjetas bonitas
-// y pequeñas... debe coincidir la entrada con lo demás módulos"): sale de
-// ALIM_FILAS ("Resumen de Alimentadores", ya cacheado, lo usa el módulo
-// Alimentadores), NO de perdidas-por-nivel/zona -- así el número siempre
-// coincide con Alimentadores. Dinámicas: respeta el filtro Zona de arriba
-// y el selector de mes propio (arranca en "Hasta" o el último mes real).
+// Tarjetas -- pedido explícito ("deben mostrar entrada salida, pérdida
+// técnica, pérdida gestionable, tanto en porcentaje y energía, te puedes
+// basar en las tarjetas de alimentadores"): mismo componente
+// (_alim3Tarjeta, ya definido para el módulo Alimentadores) y misma
+// fuente (ALIM_FILAS = Resumen de Alimentadores, ya cacheado) -- para que
+// el número coincida con Alimentadores. Sin selector de mes propio,
+// igual que Alimentadores (siempre Mensual = el último mes disponible +
+// Anual 12M) -- dinámicas vía el filtro Zona de arriba.
 async function ptTotalesRenderCards(){
   const cont = document.getElementById('pt-tot-cards');
   if(!cont) return;
@@ -24608,32 +24550,49 @@ async function ptTotalesRenderCards(){
   try{ filas = await _alimAsegurarDatosCargados(); }catch(e){ cont.innerHTML = ''; return; }
   if(!filas || !filas.length){ cont.innerHTML = ''; return; }
 
-  const mesInput = document.getElementById('pt-tot-cards-mes');
-  if(!mesInput.value){
-    const hasta = document.getElementById('pt-tot-hasta').value;
-    const claves = [...new Set(filas.map(f=>`${f.anio}-${String(f.mes).padStart(2,'0')}`))].sort();
-    mesInput.value = (hasta && claves.includes(hasta)) ? hasta : claves[claves.length-1];
-  }
-  const mes = mesInput.value;
-  if(!mes){ cont.innerHTML = ''; return; }
-  const [anio, mesNum] = mes.split('-').map(Number);
-
   const zonaSel = mselValores('msel-pt-tot-zona');
-  const filasMes = filas.filter(f => f.anio===anio && f.mes===mesNum && (!zonaSel.length || zonaSel.includes(f.zona)));
-  const entrada = filasMes.reduce((s,f)=>s+(f.entrada_total||0), 0);
-  const salida = filasMes.reduce((s,f)=>s+(f.salida_total||0), 0);
-  const fmtKwh = v => `${Math.round(v).toLocaleString('es-CO')} kWh`;
+  const filasFiltradas = filas.filter(f => !zonaSel.length || zonaSel.includes(f.zona));
 
-  cont.innerHTML = `
-    <div class="card inicio-dash-card" style="padding:10px 12px">
-      <div class="card-title" style="font-size:10.5px">⬇️ Entrada</div>
-      <div style="font-size:16px;font-weight:800;color:var(--text);margin-top:4px">${fmtKwh(entrada)}</div>
-    </div>
-    <div class="card inicio-dash-card" style="padding:10px 12px">
-      <div class="card-title" style="font-size:10.5px">⬆️ Salida</div>
-      <div style="font-size:16px;font-weight:800;color:var(--text);margin-top:4px">${fmtKwh(salida)}</div>
-    </div>
-  `;
+  const porMes = new Map();
+  filasFiltradas.forEach(f=>{
+    const clave = alimN21Clave(f.anio, f.mes);
+    if(!porMes.has(clave)) porMes.set(clave, {anio:f.anio, mes:f.mes, clave, entrada:0, salida:0, perdida:0, gestionable:0});
+    const g = porMes.get(clave);
+    g.entrada += f.entrada_total || 0;
+    g.salida += f.salida_total || 0;
+    g.perdida += f.perdida_kwh || 0;
+    g.gestionable += f.gestionable_kwh || 0;
+  });
+  const serieBase = [...porMes.values()].sort((a,b)=>(a.anio*12+a.mes)-(b.anio*12+b.mes))
+    .map(f => ({...f, pct: f.entrada ? f.perdida/f.entrada*100 : null}));
+  if(serieBase.length < 2){ cont.innerHTML = ''; return; }
+
+  const anual = alimN21Con12Meses(serieBase);
+  const actual = serieBase[serieBase.length-1];
+  const anterior = serieBase[serieBase.length-2];
+  const actual12 = anual.find(f=>f.clave===actual.clave && f.pct12!=null) || null;
+  const anterior12 = anual.find(f=>f.clave===anterior.clave && f.pct12!=null) || null;
+
+  const fmtKwh = v => v==null ? '--' : `${Math.round(v).toLocaleString('es-CO')} kWh`;
+  const fmtConPct = (kwh, pct) => kwh==null ? '--' : `${Math.round(kwh).toLocaleString('es-CO')} kWh${pct!=null?` (${pct.toFixed(1)}%)`:''}`;
+  const fmtGest = (kwh, perdida) => kwh==null ? '--' : `${Math.round(kwh).toLocaleString('es-CO')} kWh${perdida?` (${(kwh/perdida*100).toFixed(1)}%)`:''}`;
+
+  cont.innerHTML =
+    _alim3Tarjeta('pt-tot-c-ent', '⬇️', 'Entrada', actual.entrada, actual12?actual12.entrada12:null, fmtKwh) +
+    _alim3Tarjeta('pt-tot-c-sal', '⬆️', 'Salida', actual.salida, actual12?actual12.salida12:null, fmtKwh) +
+    _alim3Tarjeta('pt-tot-c-per', '⚡', 'Pérdida Técnica',
+      fmtConPct(actual.perdida, actual.pct), actual12 ? fmtConPct(actual12.perdida12, actual12.pct12) : '--', v=>v) +
+    _alim3Tarjeta('pt-tot-c-gest', '⚙️', 'Pérdida Gestionable',
+      fmtGest(actual.gestionable, actual.perdida), actual12 ? fmtGest(actual12.gestionable12, actual12.perdida12) : '--', v=>v);
+
+  _iniRenderVariacionKwh('pt-tot-c-ent-var-m', anterior.entrada, actual.entrada, false);
+  _iniRenderVariacionKwh('pt-tot-c-ent-var-a', anterior12?anterior12.entrada12:null, actual12?actual12.entrada12:null, false);
+  _iniRenderVariacionKwh('pt-tot-c-sal-var-m', anterior.salida, actual.salida, false);
+  _iniRenderVariacionKwh('pt-tot-c-sal-var-a', anterior12?anterior12.salida12:null, actual12?actual12.salida12:null, false);
+  _iniRenderVariacionKwh('pt-tot-c-per-var-m', anterior.perdida, actual.perdida, true);
+  _iniRenderVariacionKwh('pt-tot-c-per-var-a', anterior12?anterior12.perdida12:null, actual12?actual12.perdida12:null, true);
+  _iniRenderVariacionKwh('pt-tot-c-gest-var-m', anterior.gestionable, actual.gestionable, true);
+  _iniRenderVariacionKwh('pt-tot-c-gest-var-a', anterior12?anterior12.gestionable12:null, actual12?actual12.gestionable12:null, true);
 }
 
 function exportChartPNG(){
