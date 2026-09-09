@@ -8193,8 +8193,8 @@ async function ipSugerirUsuarioId(){
     const r = await apiGet(`/api/indice-perdidas/aenc-sugerir?frontera=${encodeURIComponent(frontera)}`);
     const chip = c => `
       <div class="be-buscador-opt" style="display:inline-block;margin:2px 6px 2px 0;padding:4px 9px;border:1px solid ${c.score>=1 ? '#06d6a0' : 'var(--border)'};border-radius:7px;cursor:pointer"
-        onclick="document.getElementById('ip-frontera-usuario-id').value='${ipEscapar(c.usuario_id).replace(/'/g,"\\'")}'">
-        ${c.score>=1 ? '✅ ' : ''}${ipEscapar(c.nombre||c.usuario_id)} <span style="color:var(--text3)">(usuario_id: ${ipEscapar(c.usuario_id)}${c.score>=1 ? ' -- coincide exacto con el código SIC' : ' · ' + Math.round(c.score*100) + '% parecido por nombre'})</span>
+        onclick="document.getElementById('ip-frontera-usuario-id').value='${ipEscapar(c.usuario_id).replace(/'/g,"\\'")}';${c.canal ? `document.getElementById('ip-frontera-canal').value='${c.canal}';` : ''}">
+        ${c.score>=1 ? '✅ ' : ''}${ipEscapar(c.nombre||c.usuario_id)} <span style="color:var(--text3)">(usuario_id: ${ipEscapar(c.usuario_id)} -- ${ipEscapar(c.motivo || (Math.round(c.score*100) + '% parecido por nombre'))})</span>
       </div>`;
     // Diagnóstico -- pedido implícito tras un caso real: "no sale nada"
     // llevó a pensar (mal) que AENC no trae el nombre, cuando el problema
@@ -8210,17 +8210,20 @@ async function ipSugerirUsuarioId(){
     const encabezado = r.nombre_aenc
       ? `<div style="margin-bottom:4px">En AENC esta frontera se llama <b>"${ipEscapar(r.nombre_aenc)}"</b> -- coincidencia(s) en Usuarios Telemedidos:</div>`
       : `<div style="margin-bottom:4px">No encontré el nombre de esta frontera en AENC, pero sí un usuario_id idéntico al código SIC en Usuarios Telemedidos:</div>`;
-    // Rol histórico (Importación/Exportación) -- pedido explícito ("eso
-    // debería poder discriminar aunque C3 es exportación y canal 1
-    // importación"): AENC plano sí trae esa bandera (Novedades CGM no) --
-    // se usa como sugerencia y precarga sola el selector de canal de
-    // abajo, el usuario la puede corregir si no aplica.
+    // Canal sugerido -- pedido explícito ("eso debería poder discriminar
+    // aunque C3 es exportación y canal 1 importación"): prioridad a la
+    // hoja "Revisión" de Novedades CGM (columna C=código SIC, D=Punto de
+    // Medida, E=Canal -- FUENTE DEFINITIVA, ni adivina ni depende de que
+    // el AENC plano exista); si no está ahí, cae a la bandera IMPO-EXPO
+    // del AENC plano como respaldo más débil (ver motivo_canal). También
+    // se pre-aplica automático en "Ejecutar" -- esto solo lo muestra en
+    // pantalla y deja corregirlo si hiciera falta.
     let avisoCanal = '';
     if(r.canal_sugerido){
       const selCanal = document.getElementById('ip-frontera-canal');
       if(selCanal && !selCanal.value) selCanal.value = r.canal_sugerido;
-      const etiquetaRol = r.impo_expo === 'E' ? 'Exportación' : 'Importación';
-      avisoCanal = `<div style="margin-top:4px;color:var(--text2)">📌 En AENC esta frontera históricamente es de <b>${etiquetaRol}</b> -- precargué "Canal a completar" con <b>${ipEscapar(IP_CANAL_ETIQUETA[r.canal_sugerido] || r.canal_sugerido)}</b>, corregilo si no aplica.</div>`;
+      const esDefinitivo = (r.motivo_canal || '').includes('Revisión');
+      avisoCanal = `<div style="margin-top:4px;color:var(--text2)">${esDefinitivo ? '✅' : '📌'} ${ipEscapar(r.motivo_canal || '')} -- precargué "Canal a completar" con <b>${ipEscapar(IP_CANAL_ETIQUETA[r.canal_sugerido] || r.canal_sugerido)}</b>${esDefinitivo ? '' : ', corregilo si no aplica'}.</div>`;
     }
     sug.innerHTML = encabezado + r.candidatos.map(chip).join('') + avisoCanal + diag;
   }catch(e){
