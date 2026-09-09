@@ -1462,9 +1462,14 @@ tfoot td:first-child{text-align:left}
            type="month"> son ahora el control visible, se traducen al
            mismo índice de META.meses y llaman _applyRange() -- ver
            detalleSyncRango(). -->
-      <!-- Zona, Nivel de tensión y Alimentador en una sola fila -- pedido
-           explícito ("los filtros zona, nivel de tensión y alimentador en
-           una sola fila igual que las fechas"). -->
+      <!-- Zona, Nivel de tensión, Alimentador Y el Reconocimiento CREG en
+           una sola fila -- pedido explícito ("los filtros zona, nivel de
+           tensión y alimentador en una sola fila igual que las fechas" +
+           "el reconocimiento de la CREG que sea en la primera fila donde
+           está zona, nivel de tensión y alimentador"). #creg-tbl pierde
+           su borde/margen superior (los tenía para separarse de la fila
+           de arriba cuando iba debajo) al pasar a ser un ítem más de este
+           mismo .fbar. -->
       <div class="fbar" style="margin-bottom:14px">
         <label>Zona</label>
         <div class="msel" id="msel-zona"></div>
@@ -1472,6 +1477,7 @@ tfoot td:first-child{text-align:left}
         <div class="msel" id="msel-nivel"></div>
         <label style="margin-left:16px">Alimentador</label>
         <div class="msel" id="msel-alimentador"></div>
+        <div class="creg-tbl" id="creg-tbl" style="margin:0;padding:0;border-top:none"></div>
         <button class="btn-theme" style="width:auto;padding:0 14px;margin-left:auto" onclick="descargarCSV()" id="btn-descargar" title="Descargar el detalle mensual en CSV">⬇ Descargar CSV</button>
       </div>
       <div class="fbar" style="margin-bottom:0">
@@ -1480,8 +1486,6 @@ tfoot td:first-child{text-align:left}
         <label>Hasta</label>
         <input type="month" id="det-hasta" onchange="detalleSyncRango()">
       </div>
-
-      <div class="creg-tbl" id="creg-tbl"></div>
 
       <div class="range-wrap hidden">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
@@ -23824,7 +23828,10 @@ async function aplicarFiltros(){
   // calculan realmente las pérdidas técnicas); si se eligieron 2+, el
   // desglose se acota solo a esos (no muestra los que no se seleccionaron).
   RESUMEN_POR_NIVEL = null;
-  if(!nivelUnico){
+  // Con un Alimentador puntual filtrado tampoco hace falta el desglose por
+  // nivel (ver renderPrincipal() -- un alimentador ya usa la vista de una
+  // sola serie, igual que 1 Nivel), así que no vale la pena pedirlo.
+  if(!nivelUnico && !alimentador.length){
     const qsNivel = new URLSearchParams();
     zona.forEach(z=>qsNivel.append('zona', z));
     alimentador.forEach(a=>qsNivel.append('alimentador', a));
@@ -24207,10 +24214,18 @@ function fmtGwh(v){
 function renderPrincipal(){
   if(!RESUMEN) return;
   const nivel = mselValores('msel-nivel');
+  const alimentador = mselValores('msel-alimentador');
   const projBtn = document.getElementById('proj-btn');
   const projSel = document.getElementById('proj-method');
 
-  if(nivel.length===1 || !RESUMEN_POR_NIVEL){
+  // Pedido explícito ("debo seleccionar un alimentador y me muestra la
+  // pérdida técnica y entrada y salida del mes, con una línea punteada
+  // mostrando el límite [CREG] que se tiene"): un Alimentador puntual usa
+  // la misma vista de una sola serie que 1 Nivel -- ya trae Entrada,
+  // Pérdida Técnica, Pérdida Técnica % y la "Senda Regulatoria" (línea
+  // punteada = reconocimiento CREG del nivel de ESE alimentador,
+  // ver /api/resumen) -- no hace falta elegir también un Nivel.
+  if(nivel.length===1 || alimentador.length || !RESUMEN_POR_NIVEL){
     // Un nivel puntual filtrado (o sin datos de desglose): la vista clásica
     // de una sola serie -- esto es lo que confirma que el filtro de Nivel
     // realmente funciona (Entradas/PT/PT% quedan acotados a ese nivel).
@@ -24253,6 +24268,11 @@ function renderPrincipalUnNivel(){
   let labels = RESUMEN.meses.map(labelMes);
   let entV = RESUMEN.entradas_kwh.slice();
   let kwhV = RESUMEN.perdidas_kwh.map((v,i)=> v>0 ? v : null);
+  // Salida -- pedido explícito ("me muestra la pérdida técnica y entrada
+  // y salida del mes"): no viene de /api/resumen (solo trae entradas y
+  // pérdidas), se deriva igual que en el resto de la app -- Salida =
+  // Entrada - Pérdida.
+  let salV = entV.map((e,i)=> e - (RESUMEN.perdidas_kwh[i]||0));
   let pctV = RESUMEN.perdidas_pct.map((v,i)=> RESUMEN.entradas_kwh[i]>0 && RESUMEN.perdidas_kwh[i]>0 ? v : null);
   const cregVal = RESUMEN.senda_creg_pct || 0;
 
@@ -24277,7 +24297,7 @@ function renderPrincipalUnNivel(){
       const projKwh = labels.map((l,i)=> i===labels.length-1 ? Math.round(nextEnt*nextPct/100) : null);
       const projEnt = labels.map((l,i)=> i===labels.length-1 ? Math.round(nextEnt) : null);
       const projPct = labels.map((l,i)=> i===lastValid ? pctV[lastValid] : (i===labels.length-1 ? nextPct : null));
-      entV = entV.concat([0]); kwhV = kwhV.concat([null]); pctV = pctV.concat([null]);
+      entV = entV.concat([0]); kwhV = kwhV.concat([null]); pctV = pctV.concat([null]); salV = salV.concat([null]);
       projDatasets = [
         {type:'bar', label:'Proyección PT kWh ('+method+')', data:projKwh,
           backgroundColor:'rgba(192,0,0,.18)', borderColor:'rgba(192,0,0,.7)', borderWidth:2, borderRadius:5,
@@ -24300,6 +24320,10 @@ function renderPrincipalUnNivel(){
       datasets:[
         {type:'bar', label:'Entradas', data:entV, backgroundColor:'rgba(0,180,216,.88)', borderColor:'rgba(0,180,216,.88)', borderWidth:1, borderRadius:5,
           yAxisID:'yEnt', order:3, stack:'ent', barPercentage:.7, categoryPercentage:.8,
+          datalabels:{display:ctx2=>ctx2.dataset.data[ctx2.dataIndex]>0 && labels.length<=24, anchor:'center', align:'center',
+            formatter:v=>(v||0).toLocaleString('es-CO',{maximumFractionDigits:0}), font:{size:13,weight:'bold'}, color:'#fff', rotation:-90}},
+        {type:'bar', label:'Salidas', data:salV, backgroundColor:'rgba(192,0,0,.85)', borderColor:'rgba(192,0,0,.85)', borderWidth:1, borderRadius:5,
+          yAxisID:'yEnt', order:3, stack:'sal', barPercentage:.7, categoryPercentage:.8,
           datalabels:{display:ctx2=>ctx2.dataset.data[ctx2.dataIndex]>0 && labels.length<=24, anchor:'center', align:'center',
             formatter:v=>(v||0).toLocaleString('es-CO',{maximumFractionDigits:0}), font:{size:13,weight:'bold'}, color:'#fff', rotation:-90}},
         {type:'bar', label:'Pérdidas Técnicas kWh', data:kwhV, backgroundColor:colorKwh, borderColor:colorKwh, borderWidth:1, borderRadius:5,
@@ -24326,6 +24350,7 @@ function renderPrincipalUnNivel(){
         tooltip:{callbacks:{label:c=>{
           const v=c.raw;
           if(c.dataset.label==='Entradas') return 'Entradas: '+fmtGwh(v);
+          if(c.dataset.label==='Salidas') return 'Salidas: '+fmtGwh(v);
           if((c.dataset.label||'').indexOf('kWh')>=0) return 'PT: '+fmtGwh(v||0);
           if((c.dataset.label||'').indexOf('%')>=0) return 'PT %: '+parseFloat(v||0).toFixed(4)+'%';
           return c.dataset.label+': '+v;
@@ -24763,16 +24788,19 @@ function renderPtTotalesZona(datos, modoAnual){
   // Columna, no línea (pedido explícito: "mejor coloca en columnas ...
   // ajustando el eje Y para que se vea") -- sin Entrada/Salida
   // compitiendo por el mismo eje, esta columna ya usa el alto completo
-  // del eje kWh. Mismo naranja que ya usa el propio módulo Alimentadores
-  // para esta serie (misma fuente, ALIM_FILAS) -- colores unificados. La
-  // etiqueta va DENTRO de la columna (pedido explícito: "ese valor
-  // superior en GWh no se ve, que sea dentro de la columna") -- mismo
-  // criterio que ya usa "Pérdida por Nivel" para sus propias barras.
+  // del eje kWh. Azul -- pedido explícito ("las columnas deberían ser
+  // azules"); mismo #4472C4 que usa "Pérdida Total kWh" en el propio
+  // módulo Alimentadores (libre de reusar acá -- esta gráfica ya no
+  // tiene "Pérdida Total"). Etiqueta DENTRO de la columna, vertical y con
+  // el kWh completo (pedido explícito: "ese valor superior en GWh no se
+  // ve, que sea dentro de la columna" + "quiero que muestre vertical el
+  // dato completo, en kWh/mes") -- fmtGwh() redondeaba a GWh (ej. "0.297
+  // GWh"), perdiendo precisión; rotation:-90 lo deja legible adentro.
   const datasetTecnica = {
     type:'bar', label:'Pérdida Técnica (kWh)', data: perdidaTecnicaKwh, yAxisID:'yKwh', order:2,
-    backgroundColor:'rgba(237,125,49,.75)', borderColor:'#ED7D31', borderWidth:1, borderRadius:3,
-    datalabels:{display:v=>v.dataset.data[v.dataIndex]!=null, anchor:'center', align:'center',
-      formatter:v=>v==null?'':fmtGwh(v), font:{size:10,weight:'700'}, color:'#fff'},
+    backgroundColor:'rgba(68,114,196,.85)', borderColor:'#4472C4', borderWidth:1, borderRadius:3,
+    datalabels:{display:v=>v.dataset.data[v.dataIndex]!=null, anchor:'center', align:'center', rotation:-90,
+      formatter:v=>v==null?'':`${Math.round(v).toLocaleString('es-CO')} kWh`, font:{size:10,weight:'700'}, color:'#fff'},
   };
 
   if(chPtTotalesZona) chPtTotalesZona.destroy();
