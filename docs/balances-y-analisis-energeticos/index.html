@@ -24492,13 +24492,17 @@ function perdidasIrATab(nombre){
  * hace acá, en el cliente. Los títulos son dinámicos.
  *
  * Mensual / Anual (12M) -- pedido explícito ("debe haber un botón para
- * cambiar a datos anuales"): PT_TOT_MODO. En Anual se pide 11 meses
- * extra hacia atrás como colchón (_restarMeses) y se rueda con
- * _anualizarSerieMensual()/_anualizarMapaMensual() -- por CALENDARIO, no
- * por posición en el arreglo, para no romperse si el fetch trae menos
- * meses de historia de los pedidos. Si no hay 12 meses de historia
- * (hoy: solo hay datos desde ene-2026), el punto queda en null -- "sin
- * datos suficientes", exactamente lo que el usuario esperaba por ahora.
+ * cambiar a datos anuales" + "debe ser móvil anual como todos los
+ * indicadores, no acumulando"): PT_TOT_MODO. _anualizarSerieMensual()/
+ * _anualizarMapaMensual() usan EXACTAMENTE el mismo criterio que
+ * alimN21Con12Meses (el que ya usan todos los demás indicadores 12M de
+ * la app) -- ventana móvil de 12 por POSICIÓN en el arreglo cronológico,
+ * los primeros 11 puntos quedan en null. Si no hay 12 meses de historia
+ * todavía (hoy: /perdidas-por-nivel y /perdidas-por-zona solo tienen
+ * datos desde ene-2026), esas 2 series quedan en null -- "sin datos
+ * suficientes", exactamente lo esperado; la columna de Pérdida Técnica
+ * (kWh) sale de ALIM_FILAS, que sí trae más historia, así que puede
+ * mostrar un 12M real aunque las otras 2 series todavía no puedan.
  *
  * BUG real corregido en una versión anterior -- colorParaNivel(n, niveles)
  * necesita el arreglo de niveles como 2do argumento (usa niveles.indexOf(n)
@@ -24538,58 +24542,43 @@ function _ptTotalesActualizarTitulos(){
     'Pérdida Técnica por Zona' + modoTxt + ' -- ' + zonaTxt + nivelTxt;
 }
 
-// YYYY-MM menos n meses (para pedir el colchón de historia que necesita
-// el modo Anual).
-function _restarMeses(mesStr, n){
-  const [a, m] = mesStr.split('-').map(Number);
-  const idx = a*12 + (m-1) - n;
-  return `${Math.floor(idx/12)}-${String(idx%12+1).padStart(2,'0')}`;
-}
-
 // {meses, series:[{clave,valores,entradas_kwh,...}]} mensual -> mismo
-// formato pero "Anual 12M": para cada mes de mesesVisibles, suma los 12
-// meses CALENDARIO que terminan ahí (índice a*12+m, no la posición en el
-// arreglo -- así no importa si el fetch trajo menos meses de historia de
-// los pedidos); si falta alguno de esos 12 en el medio, el punto queda
-// en null. perdidas_pct se recalcula desde los kWh ya rodados.
-function _anualizarSerieMensual(datos, mesesVisibles){
-  const idxDeMes = m => { const [a,mm] = m.split('-').map(Number); return a*12+(mm-1); };
-  const posPorIdx = new Map((datos.meses||[]).map((m,i)=>[idxDeMes(m), i]));
+// formato pero "Anual 12M" -- MISMO criterio que alimN21Con12Meses (el
+// que ya usan todos los demás indicadores 12M de la app: Alimentadores,
+// N2-1, las tarjetas de abajo): ventana móvil de 12 por POSICIÓN en el
+// arreglo, no acumulado (pedido explícito: "debe ser móvil anual como
+// todos los indicadores, no acumulando"). Los primeros 11 puntos del
+// arreglo quedan en null -- "sin datos suficientes" mientras no haya 12
+// meses reales cargados. perdidas_pct se recalcula desde los kWh ya
+// rodados.
+function _anualizarSerieMensual(datos){
+  const meses = datos.meses || [];
+  const rodar = arr => meses.map((_,i)=>{
+    if(i<11) return null;
+    let s=0; for(let k=i-11;k<=i;k++) s += arr[k]||0;
+    return s;
+  });
   const series = (datos.series||[]).map(s=>{
-    const valores12 = [], entradas12 = [];
-    mesesVisibles.forEach(m=>{
-      const idx = idxDeMes(m);
-      let sV=0, sE=0, completo=true;
-      for(let k=idx-11;k<=idx;k++){
-        const pos = posPorIdx.get(k);
-        if(pos==null){ completo=false; break; }
-        sV += s.valores[pos] || 0;
-        sE += (s.entradas_kwh||[])[pos] || 0;
-      }
-      valores12.push(completo?sV:null);
-      entradas12.push(completo?sE:null);
-    });
+    const valores12 = rodar(s.valores||[]);
+    const entradas12 = rodar(s.entradas_kwh||[]);
     return {...s, valores:valores12, entradas_kwh:entradas12,
       perdidas_pct: valores12.map((v,i)=> (v!=null && entradas12[i]) ? v/entradas12[i]*100 : null)};
   });
-  return {meses: mesesVisibles, series};
+  return {meses, series};
 }
 
-// Igual idea que la de arriba pero para un Map plano mes->valor (Pérdida
-// Técnica desde ALIM_FILAS, ver renderPtTotalesZona).
+// Igual criterio que la de arriba pero para un Map plano mes->valor
+// (Pérdida Técnica desde ALIM_FILAS, ver renderPtTotalesZona) -- se
+// ordena cronológicamente (las claves "YYYY-MM" ordenan bien como texto)
+// y se rueda por posición, igual que alimN21Con12Meses.
 function _anualizarMapaMensual(mapaPorMes){
-  const idxDeMes = m => { const [a,mm] = m.split('-').map(Number); return a*12+(mm-1); };
-  const mesPorIdx = new Map([...mapaPorMes.keys()].map(m=>[idxDeMes(m), m]));
+  const claves = [...mapaPorMes.keys()].sort();
+  const valores = claves.map(c=>mapaPorMes.get(c)||0);
   const resultado = new Map();
-  mapaPorMes.forEach((_, mes)=>{
-    const idx = idxDeMes(mes);
-    let s=0, completo=true;
-    for(let k=idx-11;k<=idx;k++){
-      const claveMes = mesPorIdx.get(k);
-      if(claveMes==null){ completo=false; break; }
-      s += mapaPorMes.get(claveMes) || 0;
-    }
-    resultado.set(mes, completo?s:null);
+  claves.forEach((c,i)=>{
+    if(i<11){ resultado.set(c, null); return; }
+    let s=0; for(let k=i-11;k<=i;k++) s+=valores[k];
+    resultado.set(c, s);
   });
   return resultado;
 }
@@ -24599,19 +24588,16 @@ async function cargarGraficasApiladas(){
   _ptTotalesActualizarTitulos();
   const zonaSel = mselValores('msel-pt-tot-zona');
   const nivelSel = mselValores('msel-pt-tot-nivel');
-  const desdeUsuario = document.getElementById('pt-tot-desde').value;
+  const desde = document.getElementById('pt-tot-desde').value;
   const hasta = document.getElementById('pt-tot-hasta').value;
   const modoAnual = PT_TOT_MODO === 'anual';
-  // Anual pide 11 meses extra hacia atrás como colchón para poder rodar
-  // el primer punto visible -- ver _anualizarSerieMensual().
-  const desdeFetch = (modoAnual && desdeUsuario) ? _restarMeses(desdeUsuario, 11) : desdeUsuario;
 
   // Pedido explícito ("tengo seleccionado Nivel 2 y la gráfica de Nivel
   // no muestra solo Nivel 2"): Nivel también acota el desglose de esta
   // gráfica (si el usuario eligió 1+ niveles, solo esos aparecen -- ver
   // docstring de /perdidas-por-nivel), no solo la de Zona.
   const qsNivel = new URLSearchParams();
-  if(desdeFetch) qsNivel.set('desde', `${desdeFetch}-01`);
+  if(desde) qsNivel.set('desde', `${desde}-01`);
   if(hasta) qsNivel.set('hasta', `${hasta}-01`);
   zonaSel.forEach(z=>qsNivel.append('zona', z));
   nivelSel.forEach(n=>qsNivel.append('nivel', n));
@@ -24620,7 +24606,7 @@ async function cargarGraficasApiladas(){
   // poder compararlas), ese recorte se aplica en el cliente dentro de
   // renderPtTotalesZona().
   const qsZona = new URLSearchParams();
-  if(desdeFetch) qsZona.set('desde', `${desdeFetch}-01`);
+  if(desde) qsZona.set('desde', `${desde}-01`);
   if(hasta) qsZona.set('hasta', `${hasta}-01`);
   nivelSel.forEach(n=>qsZona.append('nivel', n));
 
@@ -24630,9 +24616,8 @@ async function cargarGraficasApiladas(){
       apiGet(`/api/perdidas-por-zona?${qsZona.toString()}`),
     ]);
     if(modoAnual){
-      const visible = m => !desdeUsuario || m >= desdeUsuario;
-      porNivel = _anualizarSerieMensual(porNivel, (porNivel.meses||[]).filter(visible));
-      porZona = _anualizarSerieMensual(porZona, (porZona.meses||[]).filter(visible));
+      porNivel = _anualizarSerieMensual(porNivel);
+      porZona = _anualizarSerieMensual(porZona);
     }
     renderPtTotalesNivel(porNivel, modoAnual);
     renderPtTotalesZona(porZona, modoAnual);
@@ -24764,10 +24749,14 @@ function renderPtTotalesZona(datos, modoAnual){
       // identidad DE LA ZONA (colorParaZona -- el mismo que usa el Mapa),
       // no un color semántico, por eso puede coincidir con cualquier
       // tono, incluido el azul.
+      // 2 decimales -- pedido explícito ("la línea azul está mostrando el
+      // mismo valor en todos los meses"): la pérdida técnica % se mueve
+      // en un rango angosto (1.4%-1.6%) y con 1 solo decimal varios
+      // meses redondeaban al mismo texto aunque la línea sí se moviera.
       type:'line', label: `Pérdida Técnica % -- ${s.clave}`, data: s.perdidas_pct || [], yAxisID:'yPct', order:1,
       borderColor: color, backgroundColor: color, borderWidth:2, pointRadius:2, pointHoverRadius:4, tension:0, spanGaps:true,
       datalabels:{display:true, anchor:'end', align:'top', offset:2,
-        formatter:v=>v==null?'':v.toFixed(1)+'%', font:{size:10,weight:'700'}, color},
+        formatter:v=>v==null?'':v.toFixed(2)+'%', font:{size:10,weight:'700'}, color},
     };
   });
 
@@ -24775,12 +24764,15 @@ function renderPtTotalesZona(datos, modoAnual){
   // ajustando el eje Y para que se vea") -- sin Entrada/Salida
   // compitiendo por el mismo eje, esta columna ya usa el alto completo
   // del eje kWh. Mismo naranja que ya usa el propio módulo Alimentadores
-  // para esta serie (misma fuente, ALIM_FILAS) -- colores unificados.
+  // para esta serie (misma fuente, ALIM_FILAS) -- colores unificados. La
+  // etiqueta va DENTRO de la columna (pedido explícito: "ese valor
+  // superior en GWh no se ve, que sea dentro de la columna") -- mismo
+  // criterio que ya usa "Pérdida por Nivel" para sus propias barras.
   const datasetTecnica = {
     type:'bar', label:'Pérdida Técnica (kWh)', data: perdidaTecnicaKwh, yAxisID:'yKwh', order:2,
-    backgroundColor:'rgba(237,125,49,.55)', borderColor:'#ED7D31', borderWidth:1, borderRadius:3,
-    datalabels:{display:v=>v.dataset.data[v.dataIndex]!=null, anchor:'end', align:'top', offset:2,
-      formatter:v=>v==null?'':fmtGwh(v), font:{size:9,weight:'700'}, color:'#ED7D31'},
+    backgroundColor:'rgba(237,125,49,.75)', borderColor:'#ED7D31', borderWidth:1, borderRadius:3,
+    datalabels:{display:v=>v.dataset.data[v.dataIndex]!=null, anchor:'center', align:'center',
+      formatter:v=>v==null?'':fmtGwh(v), font:{size:10,weight:'700'}, color:'#fff'},
   };
 
   if(chPtTotalesZona) chPtTotalesZona.destroy();
