@@ -1309,28 +1309,28 @@ tfoot td:first-child{text-align:left}
 <div id="vista-perdidas" class="vista-modulo hidden">
 
   <!-- Pestañas del módulo -- pedido explícito ("quiero pestañas en la
-       parte superior, van a haber varias"): por ahora 2 -- "Pérdidas
-       Técnicas Totales" (las 2 gráficas apiladas de Nivel/Zona, pedido
-       explícito de cuál va primero) y "Detalle por Circuito" (todo lo
-       demás que ya existía acá -- filtros/CREG, variación por circuito,
-       gráfica principal con proyección, valuación económica y el mapa),
-       agrupado así de provisorio hasta que se indiquen más pestañas. -->
+       parte superior, van a haber varias"): por ahora 3 -- "Pérdidas
+       Técnicas Totales" (la gráfica apilada que ya estaba + al lado la
+       nueva gráfica de líneas en %, ambas con el mismo toggle "Ver por"),
+       "Detalle por Circuito" (filtros/CREG, variación por circuito,
+       gráfica principal con proyección y valuación económica) y "Mapa"
+       (el mapa de pérdidas por zona, independiente). -->
   <div class="fbar" style="margin-bottom:14px">
     <button type="button" class="be-modo-btn activo" id="perdidas-tab-btn-totales" onclick="perdidasIrATab('totales')">Pérdidas Técnicas Totales</button>
     <button type="button" class="be-modo-btn" id="perdidas-tab-btn-detalle" onclick="perdidasIrATab('detalle')">Detalle por Circuito</button>
+    <button type="button" class="be-modo-btn" id="perdidas-tab-btn-mapa" onclick="perdidasIrATab('mapa')">Mapa</button>
   </div>
 
   <div id="perdidas-tab-totales">
     <div class="card">
-      <!-- Pedido explícito: 1 sola gráfica totalmente dinámica (reemplaza
-           las 2 barras apiladas de antes) -- un toggle "Ver por" decide la
-           dimensión que se desglosa (Nivel de tensión o Zona) y el otro
-           select acota por la dimensión contraria (misma relación que
-           tenían los 2 filtros viejos: Zona acotaba "Pérdida por Nivel",
-           Nivel acotaba "Pérdida por Zona") -- ahora en UNA sola línea por
-           categoría, en % (no kWh). Nombres de filtro cortos (pedido
-           explícito, "ZONA y Nivel de tensión" en vez del texto largo de
-           antes). -->
+      <!-- Un solo toggle "Ver por" maneja las 2 gráficas de abajo a la vez
+           (antes eran 2 gráficas con 2 filtros independientes) -- decide
+           la dimensión que se desglosa (Nivel de tensión o Zona); el
+           select de al lado acota por la dimensión contraria (misma
+           relación que tenían los 2 filtros viejos: Zona acotaba "Pérdida
+           por Nivel", Nivel acotaba "Pérdida por Zona"). Nombres de
+           filtro cortos (pedido explícito, "ZONA y Nivel de tensión" en
+           vez del texto largo de antes). -->
       <div class="fbar" style="margin-bottom:14px">
         <label>Ver por</label>
         <button type="button" class="be-modo-btn activo" id="pt-tot-btn-nivel" onclick="ptTotalesVerPor('nivel')">Nivel de tensión</button>
@@ -1348,9 +1348,25 @@ tfoot td:first-child{text-align:left}
         <label>Hasta</label>
         <input type="month" id="pt-tot-hasta" onchange="cargarGraficasApiladas()">
       </div>
-      <div class="chart-wrap" style="height:380px"><canvas id="ch-pt-totales"></canvas></div>
+      <!-- Pedido explícito ("quiero la gráfica que ya estaba y al lado de
+           esa gráfica la gráfica de líneas en porcentaje"): la apilada
+           (kWh) que ya existía queda tal cual, a la izquierda; la nueva
+           de líneas en % va a la derecha -- las dos siguen el mismo "Ver
+           por"/filtro/rango de arriba. -->
+      <div class="split-wrap">
+        <div>
+          <div class="card-title" style="text-align:center" id="pt-tot-titulo-kwh">Pérdida por Nivel</div>
+          <div class="chart-wrap" style="height:380px"><canvas id="ch-pt-totales-kwh"></canvas></div>
+        </div>
+        <div>
+          <div class="card-title" style="text-align:center">Pérdida (%)</div>
+          <div class="chart-wrap" style="height:380px"><canvas id="ch-pt-totales-pct"></canvas></div>
+        </div>
+      </div>
     </div>
+  </div>
 
+  <div id="perdidas-tab-mapa" class="hidden">
     <div id="bloque-mapa-zonas" class="hidden">
       <div class="sec-hdr">
         <div class="sec-title">Mapa de Pérdidas Técnicas por Zona</div>
@@ -24323,37 +24339,39 @@ function labelMesSiguiente(m){
 function perdidasIrATab(nombre){
   document.getElementById('perdidas-tab-totales').classList.toggle('hidden', nombre!=='totales');
   document.getElementById('perdidas-tab-detalle').classList.toggle('hidden', nombre!=='detalle');
+  document.getElementById('perdidas-tab-mapa').classList.toggle('hidden', nombre!=='mapa');
   document.getElementById('perdidas-tab-btn-totales').classList.toggle('activo', nombre==='totales');
   document.getElementById('perdidas-tab-btn-detalle').classList.toggle('activo', nombre==='detalle');
+  document.getElementById('perdidas-tab-btn-mapa').classList.toggle('activo', nombre==='mapa');
   // Los gráficos de Chart.js de la pestaña que estaba oculta (display:none)
   // se dibujaron con tamaño 0 -- sin esto quedan rotos hasta que la
   // ventana cambie de tamaño a mano. Un resize sintético, ya con el DOM
   // actualizado, les hace recalcular el tamaño real apenas quedan visibles.
   setTimeout(() => window.dispatchEvent(new Event('resize')), 0);
-  // El mapa de Leaflet (bloque-mapa-zonas) vive en "totales" -- mismo
-  // problema que los Chart.js, pero Leaflet no escucha el resize de la
-  // ventana, necesita su propio invalidateSize().
-  if(nombre==='totales' && typeof _mcMap!=='undefined' && _mcMap) setTimeout(() => _mcMap.invalidateSize(), 0);
+  // El mapa de Leaflet (bloque-mapa-zonas) vive en su propia pestaña --
+  // mismo problema que los Chart.js, pero Leaflet no escucha el resize de
+  // la ventana, necesita su propio invalidateSize().
+  if(nombre==='mapa' && typeof _mcMap!=='undefined' && _mcMap) setTimeout(() => _mcMap.invalidateSize(), 0);
 }
 
-/* ---- "Pérdidas Técnicas Totales" -- 1 sola gráfica dinámica, en líneas
- * y en % ----
- * Pedido explícito ("se requiere una sola gráfica que sea totalmente
- * dinámica"... "reemplaza [Pérdida por Nivel] y colócala en líneas pero
- * en %"): reemplaza las 2 barras apiladas (Pérdida por Nivel / Pérdida
- * por Zona, en kWh) por UNA sola, cuya dimensión desglosada (Nivel de
- * tensión o Zona) se elige con el toggle "Ver por" -- el select de al
- * lado acota por la dimensión contraria (mismo criterio que tenían los 2
- * filtros viejos: Zona acotaba "Pérdida por Nivel", Nivel acotaba
- * "Pérdida por Zona"). Totalmente independiente de los filtros de
- * Zona/Alimentador/Nivel y del Rango de la pestaña "Detalle por Circuito". */
+/* ---- "Pérdidas Técnicas Totales" -- la apilada (kWh) que ya estaba +
+ * al lado la nueva de líneas en % ----
+ * Pedido explícito ("quiero la gráfica que ya estaba y al lado de esa
+ * gráfica la gráfica de líneas en porcentaje"): las 2 gráficas comparten
+ * un solo toggle "Ver por" (Nivel de tensión/Zona, antes eran 2 filtros
+ * independientes) -- el select de al lado acota por la dimensión
+ * contraria (mismo criterio que tenían los 2 filtros viejos: Zona acotaba
+ * "Pérdida por Nivel", Nivel acotaba "Pérdida por Zona"). Totalmente
+ * independiente de los filtros de Zona/Alimentador/Nivel y del Rango de
+ * la pestaña "Detalle por Circuito". */
 let PT_TOT_VER_POR = 'nivel';   // 'nivel' | 'zona'
-let chPtTotales = null;
+let chPtTotalesKwh = null, chPtTotalesPct = null;
 
 function ptTotalesVerPor(v){
   PT_TOT_VER_POR = v;
   document.getElementById('pt-tot-btn-nivel').classList.toggle('activo', v==='nivel');
   document.getElementById('pt-tot-btn-zona').classList.toggle('activo', v==='zona');
+  document.getElementById('pt-tot-titulo-kwh').textContent = v==='nivel' ? 'Pérdida por Nivel' : 'Pérdida por Zona';
   _ptTotalesPoblarFiltro();
   cargarGraficasApiladas();
 }
@@ -24386,17 +24404,64 @@ async function cargarGraficasApiladas(){
   else{ if(filtro) qs.set('nivel', filtro); }
 
   const endpoint = PT_TOT_VER_POR === 'nivel' ? 'perdidas-por-nivel' : 'perdidas-por-zona';
+  const formatEtiqueta = PT_TOT_VER_POR === 'nivel' ? c=>`Nivel ${c}` : c=>c;
+  const getColor = PT_TOT_VER_POR === 'nivel' ? colorParaNivel : (c)=>colorParaZona(c);
   try{
     const datos = await apiGet(`/api/${endpoint}?${qs.toString()}`);
-    if(PT_TOT_VER_POR === 'nivel') renderPtTotales(datos, c=>`Nivel ${c}`, colorParaNivel);
-    else renderPtTotales(datos, c=>c, c=>colorParaZona(c));
+    renderPtTotalesKwh(datos, formatEtiqueta, getColor);
+    renderPtTotalesPct(datos, formatEtiqueta, getColor);
   }catch(e){
-    // Esta gráfica es un complemento -- si falla no debe tumbar el resto de la vista.
+    // Estas gráficas son un complemento -- si fallan no deben tumbar el resto de la vista.
   }
 }
 
-function renderPtTotales(datos, formatEtiqueta, getColor){
-  const ctx = document.getElementById('ch-pt-totales');
+// Barras apiladas en kWh -- la gráfica original ("la que ya estaba"),
+// ahora con UN solo dataset a la vez (nivel o zona, según el toggle) en
+// vez de siempre nivel + siempre zona por separado.
+function renderPtTotalesKwh(datos, formatEtiqueta, getColor){
+  const ctx = document.getElementById('ch-pt-totales-kwh');
+  if(!ctx) return;
+  const dark = document.documentElement.getAttribute('data-theme')==='dark';
+  const tickC = dark ? '#ffffff' : '#000000';
+  const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
+  const series = datos.series || [];
+  const claves = series.map(s=>s.clave);
+  const labels = (datos.meses || []).map(labelMes);
+
+  const datasets = series.map(s=>({
+    type:'bar', label: formatEtiqueta(s.clave), data: s.valores,
+    backgroundColor: getColor(s.clave, claves), borderColor: getColor(s.clave, claves), borderWidth:1, stack:'total', borderRadius:2,
+    datalabels:{display:v=>v.dataset.data[v.dataIndex]>0, anchor:'center', align:'center', rotation:0,
+      formatter:v=>v>0 ? fmtGwh(v) : '', font:{size:11,weight:'700'}, color:'#fff'},
+  }));
+
+  const totales = labels.map((_,i)=> series.reduce((s,serie)=>s+(serie.valores[i]||0),0));
+  datasets.push({
+    type:'line', label:'Total', data: totales, borderWidth:0, pointRadius:0, pointHoverRadius:0,
+    backgroundColor:'transparent', borderColor:'transparent', fill:false,
+    datalabels:{display:true, anchor:'end', align:'top', offset:10,
+      formatter:v=>fmtGwh(v), font:{size:12,weight:'800'}, color:tickC},
+  });
+
+  if(chPtTotalesKwh) chPtTotalesKwh.destroy();
+  chPtTotalesKwh = new Chart(ctx, {
+    data:{labels, datasets},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      layout:{padding:{top:24}},
+      plugins:{legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:10}, color:tickC,
+        filter:item=>item.text!=='Total'}}},
+      scales:{
+        x:{stacked:true, grid:{display:false}, ticks:{color:tickC, font:{size:11}}},
+        y:{stacked:true, beginAtZero:true, grid:{color:gridC}, ticks:{color:tickC, font:{size:11}, callback:v=>fmtGwh(v)}},
+      },
+    },
+  });
+}
+
+// Líneas en % -- la gráfica nueva, al lado de la de arriba.
+function renderPtTotalesPct(datos, formatEtiqueta, getColor){
+  const ctx = document.getElementById('ch-pt-totales-pct');
   if(!ctx) return;
   const dark = document.documentElement.getAttribute('data-theme')==='dark';
   const tickC = dark ? '#ffffff' : '#000000';
@@ -24415,8 +24480,8 @@ function renderPtTotales(datos, formatEtiqueta, getColor){
     };
   });
 
-  if(chPtTotales) chPtTotales.destroy();
-  chPtTotales = new Chart(ctx, {
+  if(chPtTotalesPct) chPtTotalesPct.destroy();
+  chPtTotalesPct = new Chart(ctx, {
     data:{labels, datasets},
     options:{
       responsive:true, maintainAspectRatio:false,
