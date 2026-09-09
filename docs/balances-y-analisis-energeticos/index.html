@@ -1322,35 +1322,50 @@ tfoot td:first-child{text-align:left}
 
   <div id="perdidas-tab-totales">
     <div class="card">
+      <!-- Pedido explícito: 1 sola gráfica totalmente dinámica (reemplaza
+           las 2 barras apiladas de antes) -- un toggle "Ver por" decide la
+           dimensión que se desglosa (Nivel de tensión o Zona) y el otro
+           select acota por la dimensión contraria (misma relación que
+           tenían los 2 filtros viejos: Zona acotaba "Pérdida por Nivel",
+           Nivel acotaba "Pérdida por Zona") -- ahora en UNA sola línea por
+           categoría, en % (no kWh). Nombres de filtro cortos (pedido
+           explícito, "ZONA y Nivel de tensión" en vez del texto largo de
+           antes). -->
       <div class="fbar" style="margin-bottom:14px">
-        <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text3)">Filtros propios de estas dos gráficas:</span>
-        <label>Zona (acota "Pérdida por Nivel")</label>
-        <select id="fm-zona2" onchange="cargarGraficasApiladas()"><option value="">Todas</option></select>
-        <label>Nivel (acota "Pérdida por Zona")</label>
-        <select id="fm-nivel2" onchange="cargarGraficasApiladas()"><option value="">Todos</option></select>
+        <label>Ver por</label>
+        <button type="button" class="be-modo-btn activo" id="pt-tot-btn-nivel" onclick="ptTotalesVerPor('nivel')">Nivel de tensión</button>
+        <button type="button" class="be-modo-btn" id="pt-tot-btn-zona" onclick="ptTotalesVerPor('zona')">Zona</button>
+        <label id="pt-tot-label-filtro" style="margin-left:16px">Zona</label>
+        <select id="pt-tot-filtro" onchange="cargarGraficasApiladas()"><option value="">Todas</option></select>
       </div>
-      <div class="range-wrap" style="margin-top:0;margin-bottom:14px">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-          <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text3)">Rango (independiente de los filtros de arriba)</span>
-          <select id="range-start-sel2" onchange="syncRangeFromSel2()"></select>
-          <span style="font-size:11px;color:var(--text3)">→</span>
-          <select id="range-end-sel2" onchange="syncRangeFromSel2()"></select>
-        </div>
-        <div class="range-track-row">
-          <div id="range-track2"></div>
-          <div id="range-fill2"></div>
-          <input type="range" id="rs2" min="0" value="0" oninput="updateRange2()">
-          <input type="range" id="re2" min="0" value="0" oninput="updateRange2()">
-        </div>
+      <!-- Rango como filtro de mes/año escribible -- pedido explícito
+           ("el slider de rango no se requiere, que el filtro de fechas
+           sea como las demás, mes y año, que se pueda escribir"), mismo
+           <input type="month"> que ya se usa en otros módulos. -->
+      <div class="fbar" style="margin-bottom:14px">
+        <label>Desde</label>
+        <input type="month" id="pt-tot-desde" onchange="cargarGraficasApiladas()">
+        <label>Hasta</label>
+        <input type="month" id="pt-tot-hasta" onchange="cargarGraficasApiladas()">
       </div>
-      <div class="split-wrap">
-        <div>
-          <div class="card-title" style="text-align:center">Pérdida por Nivel</div>
-          <div class="chart-wrap" style="height:320px"><canvas id="ch-nivel-apilado"></canvas></div>
-        </div>
-        <div>
-          <div class="card-title" style="text-align:center">Pérdida por Zona</div>
-          <div class="chart-wrap" style="height:320px"><canvas id="ch-zona-apilado"></canvas></div>
+      <div class="chart-wrap" style="height:380px"><canvas id="ch-pt-totales"></canvas></div>
+    </div>
+
+    <div id="bloque-mapa-zonas" class="hidden">
+      <div class="sec-hdr">
+        <div class="sec-title">Mapa de Pérdidas Técnicas por Zona</div>
+        <div class="sec-sub" id="mapa-sub">—</div>
+      </div>
+      <div class="card">
+        <div id="mapa-zonas-leaflet" style="height:600px;width:100%;border-radius:10px;overflow:hidden"></div>
+        <div style="display:flex;align-items:center;flex-wrap:wrap;gap:14px;padding:12px 4px 0">
+          <span style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:var(--text3)">PT%</span>
+          <div style="display:flex;align-items:center;gap:6px">
+            <span id="mapa-leg-min" style="font-size:11px;font-weight:700;color:var(--text2);min-width:28px;text-align:right">—</span>
+            <div style="width:180px;height:14px;border-radius:6px;background:linear-gradient(to right,#1a9850,#91cf60,#fee04c,#fc8d59,#d73027);border:1px solid var(--border)"></div>
+            <span id="mapa-leg-max" style="font-size:11px;font-weight:700;color:var(--text2)">—</span>
+          </div>
+          <div id="mapa-leg-zonas" style="display:flex;gap:8px;flex-wrap:wrap"></div>
         </div>
       </div>
     </div>
@@ -1480,25 +1495,6 @@ tfoot td:first-child{text-align:left}
           <tbody id="tb-valuacion"></tbody>
           <tfoot id="tf-valuacion"></tfoot>
         </table>
-      </div>
-    </div>
-
-    <div id="bloque-mapa-zonas" class="hidden">
-      <div class="sec-hdr">
-        <div class="sec-title">Mapa de Pérdidas Técnicas por Zona</div>
-        <div class="sec-sub" id="mapa-sub">—</div>
-      </div>
-      <div class="card">
-        <div id="mapa-zonas-leaflet" style="height:600px;width:100%;border-radius:10px;overflow:hidden"></div>
-        <div style="display:flex;align-items:center;flex-wrap:wrap;gap:14px;padding:12px 4px 0">
-          <span style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:var(--text3)">PT%</span>
-          <div style="display:flex;align-items:center;gap:6px">
-            <span id="mapa-leg-min" style="font-size:11px;font-weight:700;color:var(--text2);min-width:28px;text-align:right">—</span>
-            <div style="width:180px;height:14px;border-radius:6px;background:linear-gradient(to right,#1a9850,#91cf60,#fee04c,#fc8d59,#d73027);border:1px solid var(--border)"></div>
-            <span id="mapa-leg-max" style="font-size:11px;font-weight:700;color:var(--text2)">—</span>
-          </div>
-          <div id="mapa-leg-zonas" style="display:flex;gap:8px;flex-wrap:wrap"></div>
-        </div>
       </div>
     </div>
   </div>
@@ -4899,7 +4895,6 @@ let META = {zonas:[], niveles:[], meses:[]};
 let RESUMEN = null;
 let RESUMEN_POR_NIVEL = null;
 let RANGO = {start:0, end:0};
-let RANGO2 = {start:0, end:0};
 let showProjection = false;
 
 // Las etiquetas flotantes sobre barras/puntos son opt-in por dataset -- si no,
@@ -23533,17 +23528,10 @@ async function cargarMeta(){
   if(!META.niveles) META.niveles = [];
   if(!META.zonas) META.zonas = [];
 
-  const selZona2 = document.getElementById('fm-zona2');
-  const selNivel2 = document.getElementById('fm-nivel2');
   const selMes = document.getElementById('fm-mes');
   const selStart = document.getElementById('range-start-sel');
   const selEnd = document.getElementById('range-end-sel');
-  const selStart2 = document.getElementById('range-start-sel2');
-  const selEnd2 = document.getElementById('range-end-sel2');
 
-  // Zona/Alimentador/Nivel (filtros "primarios") ahora son multiselect --
-  // Zona2/Nivel2 (los propios de las 2 gráficas apiladas independientes)
-  // se quedan como <select> de una sola opción, sin cambios.
   mselInit('msel-zona', 'Zona', 'Todas', META.zonas.map(z=>({value:z, label:z})),
     ()=>{ cargarAlimentadores(); aplicarFiltros(); cargarCircuitosVariacion(); });
   mselInit('msel-nivel', 'Nivel', 'Todos', META.niveles.map(n=>({value:String(n), label:'Nivel '+n})),
@@ -23551,10 +23539,12 @@ async function cargarMeta(){
   mselInit('msel-alimentador', 'Alimentador', 'Todos', [],
     ()=>{ aplicarFiltrosDebounced(); circVarRenderTabla(); });
 
-  const opcionesZona = '<option value="">Todas</option>' + META.zonas.map(z=>`<option value="${z}">${z}</option>`).join('');
-  const opcionesNivel = '<option value="">Todos</option>' + META.niveles.map(n=>`<option value="${n}">Nivel ${n}</option>`).join('');
-  selZona2.innerHTML = opcionesZona;
-  selNivel2.innerHTML = opcionesNivel;
+  // "Pérdidas Técnicas Totales" -- el filtro que acota (Zona o Nivel,
+  // según "Ver por") se puebla acá; el rango es directo mes/año escribible
+  // (pedido explícito, ver HTML) -- arranca cubriendo todo META.meses.
+  _ptTotalesPoblarFiltro();
+  document.getElementById('pt-tot-desde').value = META.meses[0];
+  document.getElementById('pt-tot-hasta').value = META.meses[META.meses.length-1];
 
   selMes.innerHTML = META.meses.map(m=>`<option value="${m}">${labelMes(m)}</option>`).join('');
   selMes.value = META.meses[META.meses.length-1];
@@ -23564,11 +23554,6 @@ async function cargarMeta(){
   document.getElementById('rs').max = META.meses.length-1;
   document.getElementById('re').max = META.meses.length-1;
   _applyRange(0, META.meses.length-1);
-
-  selStart2.innerHTML = opcionesRango; selEnd2.innerHTML = opcionesRango;
-  document.getElementById('rs2').max = META.meses.length-1;
-  document.getElementById('re2').max = META.meses.length-1;
-  _applyRange2(0, META.meses.length-1);
 
   await cargarAlimentadores();
   await cargarReconocimiento();
@@ -23660,35 +23645,6 @@ async function syncRangeFromSel(){
   _applyRange(s, e);
   await aplicarFiltros();
   await cargarCircuitosVariacion();
-}
-
-/* ---- Rango independiente para "Pérdida por Nivel / Zona" ---- */
-function _applyRange2(s, e){
-  RANGO2.start = s; RANGO2.end = e;
-  document.getElementById('rs2').value = s;
-  document.getElementById('re2').value = e;
-  document.getElementById('range-start-sel2').value = s;
-  document.getElementById('range-end-sel2').value = e;
-  const total = META.meses.length>1 ? META.meses.length-1 : 1;
-  document.getElementById('range-fill2').style.left = (s/total*100)+'%';
-  document.getElementById('range-fill2').style.right = ((1-e/total)*100)+'%';
-}
-
-async function updateRange2(){
-  let s = parseInt(document.getElementById('rs2').value);
-  let e = parseInt(document.getElementById('re2').value);
-  if(s>e){ const tmp=s; s=e; e=tmp; }
-  _applyRange2(s, e);
-  await cargarGraficasApiladas();
-}
-
-async function syncRangeFromSel2(){
-  let s = parseInt(document.getElementById('range-start-sel2').value||0);
-  let e = parseInt(document.getElementById('range-end-sel2').value||0);
-  if(isNaN(s)) s=0; if(isNaN(e)) e=META.meses.length-1;
-  if(s>e){ const tmp=s; s=e; e=tmp; }
-  _applyRange2(s, e);
-  await cargarGraficasApiladas();
 }
 
 let _debounceAlim = null;
@@ -24374,77 +24330,106 @@ function perdidasIrATab(nombre){
   // ventana cambie de tamaño a mano. Un resize sintético, ya con el DOM
   // actualizado, les hace recalcular el tamaño real apenas quedan visibles.
   setTimeout(() => window.dispatchEvent(new Event('resize')), 0);
+  // El mapa de Leaflet (bloque-mapa-zonas) vive en "totales" -- mismo
+  // problema que los Chart.js, pero Leaflet no escucha el resize de la
+  // ventana, necesita su propio invalidateSize().
+  if(nombre==='totales' && typeof _mcMap!=='undefined' && _mcMap) setTimeout(() => _mcMap.invalidateSize(), 0);
 }
 
-/* ---- Pérdida por Nivel / Pérdida por Zona (barras apiladas) ----
- * Totalmente independientes de los filtros de Zona/Alimentador/Nivel y del
- * Rango de arriba -- tienen su propio slider de rango (RANGO2). */
-const ChartsApilados = {nivel:null, zona:null};
+/* ---- "Pérdidas Técnicas Totales" -- 1 sola gráfica dinámica, en líneas
+ * y en % ----
+ * Pedido explícito ("se requiere una sola gráfica que sea totalmente
+ * dinámica"... "reemplaza [Pérdida por Nivel] y colócala en líneas pero
+ * en %"): reemplaza las 2 barras apiladas (Pérdida por Nivel / Pérdida
+ * por Zona, en kWh) por UNA sola, cuya dimensión desglosada (Nivel de
+ * tensión o Zona) se elige con el toggle "Ver por" -- el select de al
+ * lado acota por la dimensión contraria (mismo criterio que tenían los 2
+ * filtros viejos: Zona acotaba "Pérdida por Nivel", Nivel acotaba
+ * "Pérdida por Zona"). Totalmente independiente de los filtros de
+ * Zona/Alimentador/Nivel y del Rango de la pestaña "Detalle por Circuito". */
+let PT_TOT_VER_POR = 'nivel';   // 'nivel' | 'zona'
+let chPtTotales = null;
+
+function ptTotalesVerPor(v){
+  PT_TOT_VER_POR = v;
+  document.getElementById('pt-tot-btn-nivel').classList.toggle('activo', v==='nivel');
+  document.getElementById('pt-tot-btn-zona').classList.toggle('activo', v==='zona');
+  _ptTotalesPoblarFiltro();
+  cargarGraficasApiladas();
+}
+
+// El select de al lado del toggle acota por la dimensión CONTRARIA a la
+// que se está desglosando -- se repuebla (etiqueta + opciones correctas)
+// cada vez que cambia "Ver por". El filtro se resetea a "Todas/Todos"
+// porque las opciones no son las mismas de un lado al otro.
+function _ptTotalesPoblarFiltro(){
+  const label = document.getElementById('pt-tot-label-filtro');
+  const sel = document.getElementById('pt-tot-filtro');
+  if(PT_TOT_VER_POR === 'nivel'){
+    label.textContent = 'Zona';
+    sel.innerHTML = '<option value="">Todas</option>' + (META.zonas||[]).map(z=>`<option value="${z}">${z}</option>`).join('');
+  }else{
+    label.textContent = 'Nivel de tensión';
+    sel.innerHTML = '<option value="">Todos</option>' + (META.niveles||[]).map(n=>`<option value="${n}">Nivel ${n}</option>`).join('');
+  }
+  sel.value = '';
+}
 
 async function cargarGraficasApiladas(){
-  const zona2 = document.getElementById('fm-zona2').value;
-  const nivel2 = document.getElementById('fm-nivel2').value;
-  const base = () => {
-    const qs = new URLSearchParams();
-    if(META.meses && META.meses.length){
-      qs.set('desde', `${META.meses[RANGO2.start] || META.meses[0]}-01`);
-      qs.set('hasta', `${META.meses[RANGO2.end] || META.meses[META.meses.length-1]}-01`);
-    }
-    return qs;
-  };
-  // Zona acota "Pérdida por Nivel" (no tiene sentido filtrar por Nivel ahí,
-  // esa es la dimensión que se desglosa); Nivel acota "Pérdida por Zona".
-  const qsNivel = base(); if(zona2) qsNivel.set('zona', zona2);
-  const qsZona = base(); if(nivel2) qsZona.set('nivel', nivel2);
+  const filtro = document.getElementById('pt-tot-filtro').value;
+  const qs = new URLSearchParams();
+  const desde = document.getElementById('pt-tot-desde').value;
+  const hasta = document.getElementById('pt-tot-hasta').value;
+  if(desde) qs.set('desde', `${desde}-01`);
+  if(hasta) qs.set('hasta', `${hasta}-01`);
+  if(PT_TOT_VER_POR === 'nivel'){ if(filtro) qs.set('zona', filtro); }
+  else{ if(filtro) qs.set('nivel', filtro); }
 
+  const endpoint = PT_TOT_VER_POR === 'nivel' ? 'perdidas-por-nivel' : 'perdidas-por-zona';
   try{
-    const [porNivel, porZona] = await Promise.all([
-      apiGet(`/api/perdidas-por-nivel?${qsNivel.toString()}`),
-      apiGet(`/api/perdidas-por-zona?${qsZona.toString()}`),
-    ]);
-    renderApilado('nivel', 'ch-nivel-apilado', porNivel, c=>`Nivel ${c}`, colorParaNivel);
-    renderApilado('zona', 'ch-zona-apilado', porZona, c=>c, (c)=>colorParaZona(c));
+    const datos = await apiGet(`/api/${endpoint}?${qs.toString()}`);
+    if(PT_TOT_VER_POR === 'nivel') renderPtTotales(datos, c=>`Nivel ${c}`, colorParaNivel);
+    else renderPtTotales(datos, c=>c, c=>colorParaZona(c));
   }catch(e){
-    // Estas dos gráficas son un complemento -- si fallan no debe tumbar el resto de la vista.
+    // Esta gráfica es un complemento -- si falla no debe tumbar el resto de la vista.
   }
 }
 
-function renderApilado(key, canvasId, datos, formatEtiqueta, getColor){
-  const ctx = document.getElementById(canvasId);
+function renderPtTotales(datos, formatEtiqueta, getColor){
+  const ctx = document.getElementById('ch-pt-totales');
+  if(!ctx) return;
   const dark = document.documentElement.getAttribute('data-theme')==='dark';
   const tickC = dark ? '#ffffff' : '#000000';
-  const tickXFuerte = dark ? '#ffffff' : '#000000';
   const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
   const series = datos.series || [];
   const claves = series.map(s=>s.clave);
   const labels = (datos.meses || []).map(labelMes);
 
-  const datasets = series.map(s=>({
-    type:'bar', label: formatEtiqueta(s.clave), data: s.valores,
-    backgroundColor: getColor(s.clave, claves), borderColor: getColor(s.clave, claves), borderWidth:1, stack:'total', borderRadius:2,
-    datalabels:{display:v=>v.dataset.data[v.dataIndex]>0, anchor:'center', align:'center', rotation:0,
-      formatter:v=>v>0 ? fmtGwh(v) : '', font:{size:11,weight:'700'}, color:'#fff'},
-  }));
-
-  const totales = labels.map((_,i)=> series.reduce((s,serie)=>s+(serie.valores[i]||0),0));
-  datasets.push({
-    type:'line', label:'Total', data: totales, borderWidth:0, pointRadius:0, pointHoverRadius:0,
-    backgroundColor:'transparent', borderColor:'transparent', fill:false,
-    datalabels:{display:true, anchor:'end', align:'top', offset:10,
-      formatter:v=>fmtGwh(v), font:{size:12,weight:'800'}, color:tickC},
+  const datasets = series.map(s=>{
+    const color = getColor(s.clave, claves);
+    return {
+      type:'line', label: formatEtiqueta(s.clave), data: s.perdidas_pct || [],
+      borderColor: color, backgroundColor: color, borderWidth:2, pointRadius:2, pointHoverRadius:4, tension:0, spanGaps:true,
+      datalabels:{display:true, anchor:'end', align:'top', offset:2,
+        formatter:v=>v==null?'':v.toFixed(1)+'%', font:{size:10,weight:'700'}, color},
+    };
   });
 
-  if(ChartsApilados[key]) ChartsApilados[key].destroy();
-  ChartsApilados[key] = new Chart(ctx, {
+  if(chPtTotales) chPtTotales.destroy();
+  chPtTotales = new Chart(ctx, {
     data:{labels, datasets},
     options:{
       responsive:true, maintainAspectRatio:false,
       layout:{padding:{top:24}},
-      plugins:{legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:10}, color:tickC,
-        filter:item=>item.text!=='Total'}}},
+      interaction:{mode:'index', intersect:false},
+      plugins:{
+        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:10}, color:tickC}},
+        tooltip:{callbacks:{label:c=>c.raw==null?null:`${c.dataset.label}: ${c.raw.toFixed(2)}%`}},
+      },
       scales:{
-        x:{stacked:true, grid:{display:false}, ticks:{color:tickXFuerte, font:{size:11}}},
-        y:{stacked:true, beginAtZero:true, grid:{color:gridC}, ticks:{color:tickC, font:{size:11}, callback:v=>fmtGwh(v)}},
+        x:{grid:{display:false}, ticks:{color:tickC, font:{size:11}}},
+        y:{beginAtZero:true, grid:{color:gridC}, ticks:{color:tickC, font:{size:11}, callback:v=>v.toFixed(0)+'%'},
+          title:{display:true, text:'Pérdida (%)', color:tickC, font:{size:11}}},
       },
     },
   });
