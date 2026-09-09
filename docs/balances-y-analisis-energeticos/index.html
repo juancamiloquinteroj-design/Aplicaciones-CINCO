@@ -6900,6 +6900,18 @@ function _iniCalcularPanelesN21(zonaSet){
 // no se rompa si cambia el set de zonas.
 const INI_N21_ORDEN_ZONAS = ['ZE', 'ZN', 'ZS', 'ZC', 'ZO'];
 
+// Click en una tarjeta de "Indicador N2-1" de Inicio -- pedido explícito
+// ("si doy click en alguna de estas me lleve al detalle... con los
+// filtros aplicados a la zona correspondiente o si es total"): navega al
+// módulo Indicador N2-1 y aplica el mismo filtro de chips de zona que ahí
+// arriba (ALIM_N21_ZONAS_SEL) -- zona=null limpia el filtro (Total).
+async function iniIrAN21(zona){
+  await mostrarVista('alim-n21');
+  ALIM_N21_ZONAS_SEL = zona ? new Set([zona]) : new Set();
+  alimN21RenderZonasChips();
+  alimN21RenderTodo();
+}
+
 async function cargarDashboardN21Zonas(){
   const cont = document.getElementById('ini-n21-zonas');
   if(!cont) return;
@@ -6913,8 +6925,13 @@ async function cargarDashboardN21Zonas(){
       ...zonasReales.filter(z => !INI_N21_ORDEN_ZONAS.includes(z)).sort(),
     ];
 
-    const tarjeta = (pref, titulo, color) => `
-      <div class="card inicio-dash-card" style="border-left:4px solid ${color}">
+    // Click en la tarjeta -- pedido explícito ("si doy click en alguna de
+    // estas me lleve al detalle... módulo de Indicador N2-1 con los
+    // filtros aplicados a la zona correspondiente o si es total"): navega
+    // al módulo y aplica el mismo filtro de zona que los chips de arriba
+    // (ver iniIrAN21).
+    const tarjeta = (pref, titulo, color, zona) => `
+      <div class="card inicio-dash-card" style="border-left:4px solid ${color};cursor:pointer" onclick="iniIrAN21(${zona ? `'${zona}'` : 'null'})" title="Ver el detalle en Indicador N2-1">
         <div class="card-title">⚡ ${titulo}</div>
         <div class="inicio-dash-grid">
           <div class="inicio-mes-panel">
@@ -6930,8 +6947,8 @@ async function cargarDashboardN21Zonas(){
         </div>
       </div>`;
 
-    cont.innerHTML = tarjeta('ini-n21-tot', 'Indicador N2-1 -- Total', 'var(--accent)')
-      + zonas.map(zona => tarjeta(`ini-n21-z-${zona}`, `Indicador N2-1 · 📍 ${zona}`, colorParaZona(zona))).join('');
+    cont.innerHTML = tarjeta('ini-n21-tot', 'Indicador N2-1 -- Total', 'var(--accent)', null)
+      + zonas.map(zona => tarjeta(`ini-n21-z-${zona}`, `Indicador N2-1 · 📍 ${zona}`, colorParaZona(zona), zona)).join('');
 
     const fmtPct = v => v==null ? 'Sin datos' : `${v.toFixed(2)}%`;
     const pintar = (pref, zonaSet) => {
