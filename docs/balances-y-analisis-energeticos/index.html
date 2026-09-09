@@ -1383,6 +1383,11 @@ tfoot td:first-child{text-align:left}
         <label style="margin-left:16px">Vista</label>
         <button type="button" class="be-modo-btn activo" id="pt-tot-btn-modo-mensual" onclick="ptTotalesModo('mensual')">Mensual</button>
         <button type="button" class="be-modo-btn" id="pt-tot-btn-modo-anual" onclick="ptTotalesModo('anual')">Anual (12M)</button>
+        <!-- Pedido explícito ("las tarjetas que no muestren variaciones,
+             debe haber un botón que habilite las variaciones en la
+             gráfica"): se movió de las tarjetas a acá -- ver
+             ptTotalesToggleVariacion(). -->
+        <button type="button" class="be-modo-btn" id="pt-tot-btn-variacion" onclick="ptTotalesToggleVariacion()" title="Muestra la variación mes a mes en las etiquetas de la gráfica de Zona" style="margin-left:16px">📊 Variación</button>
       </div>
       <!-- Pedido explícito ("deben ser solo dos gráficas") -- Nivel
            (barras/kWh) y Zona (línea de Pérdida Técnica % + columna de
@@ -1438,12 +1443,13 @@ tfoot td:first-child{text-align:left}
              que la de Alimentadores, que se sigue usando tal cual en su
              propio módulo). -->
         <div class="inicio-dash-fila" id="pt-tot-cards" style="flex:1;min-width:280px;margin-bottom:0;grid-template-columns:repeat(auto-fit,minmax(110px,1fr))"></div>
-        <!-- Nota explicativa -- pedido explícito ("al lado de las
-             tarjetas una pequeña nota explicativa diciendo variaciones
-             de acuerdo con los filtros que tenga activo"). -->
-        <div style="flex:0 0 200px;font-size:10.5px;line-height:1.5;color:var(--text3);background:var(--bg);border:1px solid var(--border);border-radius:9px;padding:8px 10px;display:flex;align-items:center;gap:6px">
-          <span style="font-size:14px">ℹ️</span>
-          <span>Las variaciones (▲▼) se calculan según los filtros de Zona, Nivel y fecha que tengas activos arriba.</span>
+        <!-- Nota de ANÁLISIS -- pedido explícito ("no quiero un disclaimer
+             de filtros, quiero una nota que analice resultados de
+             pérdidas técnicas de la respectiva zona") -- se arma en JS
+             (ver ptTotalesRenderCards()), no es texto fijo. -->
+        <div style="flex:0 0 220px;font-size:10.5px;line-height:1.5;color:var(--text2);background:var(--bg);border:1px solid var(--border);border-radius:9px;padding:8px 10px;display:flex;align-items:center;gap:6px">
+          <span style="font-size:14px">📊</span>
+          <span id="pt-tot-nota-analisis">Cargando análisis…</span>
         </div>
       </div>
     </div>
@@ -18745,18 +18751,21 @@ function _alim3Tarjeta(pref, icono, titulo, mensualAct, anualAct, fmt){
 }
 
 // Copia chica de _alim3Tarjeta -- pedido explícito ("las tarjetas las
-// quiero más compactas") solo para "Pérdidas Técnicas Totales"; la de
-// Alimentadores no se toca (se usa tal cual en su propio módulo).
+// quiero más compactas ... que no muestre variaciones") solo para
+// "Pérdidas Técnicas Totales"; la de Alimentadores no se toca (se usa
+// tal cual en su propio módulo, con su ▲▼ de variación). Acá SIN badge
+// de variación -- ver ptTotalesToggleVariacion() para dónde se movió
+// esa información (a la gráfica, con su propio botón).
 function _ptTotTarjetaCompacta(pref, icono, titulo, mensualAct, anualAct, fmt){
   return `<div class="card inicio-dash-card" style="padding:6px 8px">
     <div class="card-title" style="font-size:9px">${icono} ${titulo}</div>
     <div style="display:flex;justify-content:space-between;align-items:center;font-size:8.5px;color:var(--text3);margin-top:3px">
       <span>Mensual</span>
-      <span style="display:flex;align-items:center;gap:4px"><b style="color:var(--text);font-size:10.5px">${fmt(mensualAct)}</b><span id="${pref}-var-m" class="inicio-variacion"></span></span>
+      <b style="color:var(--text);font-size:10.5px">${fmt(mensualAct)}</b>
     </div>
     <div style="display:flex;justify-content:space-between;align-items:center;font-size:8.5px;color:var(--text3);margin-top:2px">
       <span>Anual (12M)</span>
-      <span style="display:flex;align-items:center;gap:4px"><b style="color:var(--text);font-size:10.5px">${fmt(anualAct)}</b><span id="${pref}-var-a" class="inicio-variacion"></span></span>
+      <b style="color:var(--text);font-size:10.5px">${fmt(anualAct)}</b>
     </div>
   </div>`;
 }
@@ -24393,7 +24402,13 @@ function renderPrincipal(){
           datalabels:{display:labels.length<=24, anchor:'end', align:'top', offset:8,
             formatter:v=>v==null?'':v.toLocaleString('es-CO',{maximumFractionDigits:0}), font:{size:10,weight:'700'}, color:'#C00000'}}] : []),
         {type:'line', label:'Pérdida Técnica %', data:pctV, borderColor:'#ED7D31', backgroundColor:'transparent',
-          borderWidth:2, borderDash:[6,3], pointRadius:2, tension:0, spanGaps:true, yAxisID:'yPct'},
+          borderWidth:2, borderDash:[6,3], pointRadius:2, tension:0, spanGaps:true, yAxisID:'yPct',
+          // Pedido explícito ("en la gráfica no muestra los valores de %
+          // de pérdida técnica") -- se armó esta línea sin datalabels
+          // por descuido; el resto de líneas de esta gráfica sí tienen.
+          datalabels:{display:labels.length<=24, anchor:'end', align:'top', offset:6,
+            formatter:v=>v==null?'':v.toFixed(2)+'%', font:{size:10,weight:'700'}, color:'#ED7D31',
+            textStrokeColor: dark?'#000000':'#ffffff', textStrokeWidth:3}},
         {type:'line', label:'Senda Regulatoria', data:labels.map(()=>cregVal),
           borderColor:'rgba(120,120,120,.7)', backgroundColor:'transparent', borderWidth:2, borderDash:[7,5],
           pointRadius:0, pointHoverRadius:3, tension:0, fill:false, yAxisID:'yPct'},
@@ -24531,6 +24546,17 @@ function ptTotalesModo(m){
   PT_TOT_MODO = m;
   document.getElementById('pt-tot-btn-modo-mensual').classList.toggle('activo', m==='mensual');
   document.getElementById('pt-tot-btn-modo-anual').classList.toggle('activo', m==='anual');
+  cargarGraficasApiladas();
+}
+
+// Pedido explícito ("las tarjetas que no muestren variaciones, debe
+// haber un botón que habilite las variaciones en la gráfica"): en vez
+// del ▲▼ de las tarjetas, un toggle que agrega la variación mes a mes a
+// las etiquetas de "Pérdida Técnica por Zona" -- ver renderPtTotalesZona().
+let PT_TOT_MOSTRAR_VAR = false;
+function ptTotalesToggleVariacion(){
+  PT_TOT_MOSTRAR_VAR = !PT_TOT_MOSTRAR_VAR;
+  document.getElementById('pt-tot-btn-variacion').classList.toggle('activo', PT_TOT_MOSTRAR_VAR);
   cargarGraficasApiladas();
 }
 
@@ -24741,6 +24767,20 @@ function renderPtTotalesZona(datos, modoAnual){
   // oscuro) lo hace legible sin importar qué tono le toque.
   const contornoEtiqueta = dark ? '#000000' : '#ffffff';
 
+  // Variación mes a mes -- pedido explícito ("debe haber un botón que
+  // habilite las variaciones en la gráfica"): con PT_TOT_MOSTRAR_VAR
+  // activo, se le agrega a la etiqueta el delta contra el punto anterior
+  // DEL MISMO dataset (ctx2.dataset.data trae los valores ya calculados,
+  // incluida la fila anterior -- no hace falta recalcular nada aparte).
+  const conVariacion = (ctx2, esPct) => {
+    if(!PT_TOT_MOSTRAR_VAR || ctx2.dataIndex===0) return '';
+    const actual = ctx2.dataset.data[ctx2.dataIndex], anterior = ctx2.dataset.data[ctx2.dataIndex-1];
+    if(actual==null || anterior==null) return '';
+    const delta = actual - anterior;
+    const flecha = Math.abs(delta) < (esPct?0.005:0.5) ? '■' : (delta>0 ? '▲' : '▼');
+    return esPct ? ` (${flecha}${Math.abs(delta).toFixed(2)}pp)` : ` (${flecha}${Math.round(Math.abs(delta)).toLocaleString('es-CO')})`;
+  };
+
   const datasetsPct = series.map(s => {
     const color = colorParaZona(s.clave);
     return {
@@ -24759,7 +24799,7 @@ function renderPtTotalesZona(datos, modoAnual){
       type:'line', label: `Pérdida Técnica % -- ${s.clave}`, data: s.perdidas_pct || [], yAxisID:'yPct', order:1,
       borderColor: color, backgroundColor: color, borderWidth:2, pointRadius:2, pointHoverRadius:4, tension:0, spanGaps:true,
       datalabels:{display:true, anchor:'end', align:'top', offset:2,
-        formatter:v=>v==null?'':v.toFixed(2)+'%', font:{size:11,weight:'800'}, color,
+        formatter:(v,ctx2)=>v==null?'':v.toFixed(2)+'%'+conVariacion(ctx2,true), font:{size:11,weight:'800'}, color,
         textStrokeColor:contornoEtiqueta, textStrokeWidth:3},
     };
   });
@@ -24778,7 +24818,7 @@ function renderPtTotalesZona(datos, modoAnual){
     type:'line', label:'Pérdida Técnica (kWh)', data: perdidaTecnicaKwh, yAxisID:'yKwh', order:2,
     borderColor:'#00B0F0', backgroundColor:'transparent', borderWidth:2.5, pointRadius:3, pointHoverRadius:5, tension:0, spanGaps:true,
     datalabels:{display:true, anchor:'end', align:'top', offset:6,
-      formatter:v=>v==null?'':`${Math.round(v).toLocaleString('es-CO')} kWh`, font:{size:11,weight:'800'}, color:'#00B0F0',
+      formatter:(v,ctx2)=>v==null?'':`${Math.round(v).toLocaleString('es-CO')} kWh`+conVariacion(ctx2,false), font:{size:11,weight:'800'}, color:'#00B0F0',
       textStrokeColor:contornoEtiqueta, textStrokeWidth:3},
   };
 
@@ -24883,16 +24923,27 @@ async function ptTotalesRenderCards(){
     _ptTotTarjetaCompacta('pt-tot-c-per', '⚡', 'Pérdida Total',
       fmtConPct(actual.perdida, actual.pct), actual12 ? fmtConPct(actual12.perdida12, actual12.pct12) : '--', v=>v);
 
-  _iniRenderVariacionKwh('pt-tot-c-ent-var-m', anterior.entrada, actual.entrada, false);
-  _iniRenderVariacionKwh('pt-tot-c-ent-var-a', anterior12?anterior12.entrada12:null, actual12?actual12.entrada12:null, false);
-  _iniRenderVariacionKwh('pt-tot-c-sal-var-m', anterior.salida, actual.salida, false);
-  _iniRenderVariacionKwh('pt-tot-c-sal-var-a', anterior12?anterior12.salida12:null, actual12?actual12.salida12:null, false);
-  _iniRenderVariacionKwh('pt-tot-c-tec-var-m', anterior.tecnica, actual.tecnica, true);
-  _iniRenderVariacionKwh('pt-tot-c-tec-var-a', anteriorTec12?anteriorTec12.tecnica12:null, actualTec12?actualTec12.tecnica12:null, true);
-  _iniRenderVariacionKwh('pt-tot-c-gest-var-m', anterior.gestionable, actual.gestionable, true);
-  _iniRenderVariacionKwh('pt-tot-c-gest-var-a', anterior12?anterior12.gestionable12:null, actual12?actual12.gestionable12:null, true);
-  _iniRenderVariacionKwh('pt-tot-c-per-var-m', anterior.perdida, actual.perdida, true);
-  _iniRenderVariacionKwh('pt-tot-c-per-var-a', anterior12?anterior12.perdida12:null, actual12?actual12.perdida12:null, true);
+  // Nota de análisis -- pedido explícito ("quiero una nota que analice
+  // resultados de pérdidas técnicas de la respectiva zona" -- NO un
+  // disclaimer genérico de "las variaciones dependen de los filtros").
+  // Arma una lectura en una frase: pérdida técnica % del mes actual, si
+  // subió o bajó contra el mes anterior, y el acumulado anual si ya hay.
+  const notaEl = document.getElementById('pt-tot-nota-analisis');
+  if(notaEl){
+    const zonaTxt = zonaSel.length ? `Zona ${zonaSel.join(', ')}` : 'Todas las zonas';
+    const mesTxt = labelMes(actual.clave);
+    const pctActual = actual.pctTecnica;
+    let frase = `${zonaTxt} -- Pérdida Técnica: ${pctActual!=null ? pctActual.toFixed(2)+'%' : 'sin dato'} en ${mesTxt} (${fmtKwh(actual.tecnica)}).`;
+    if(pctActual!=null && anterior.pctTecnica!=null){
+      const delta = pctActual - anterior.pctTecnica;
+      const signo = Math.abs(delta)<0.005 ? 'se mantuvo estable' : (delta>0 ? `subió ▲ ${delta.toFixed(2)} pp` : `bajó ▼ ${Math.abs(delta).toFixed(2)} pp`);
+      frase += ` ${signo} respecto a ${labelMes(anterior.clave)}.`;
+    }
+    if(actualTec12 && actualTec12.pctTecnica12!=null){
+      frase += ` Acumulado anual (12M): ${actualTec12.pctTecnica12.toFixed(2)}%.`;
+    }
+    notaEl.textContent = frase;
+  }
 }
 
 /* ---- Valuación económica de Pérdidas Técnicas por Zona ----
