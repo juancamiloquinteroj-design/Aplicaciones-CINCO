@@ -1431,8 +1431,20 @@ tfoot td:first-child{text-align:left}
            desperdicie ese espacio, que no se vea el fondo") -- un
            separador (border-top) en vez de una 2da tarjeta aparte, que
            dejaba un hueco de fondo visible entre las 2. -->
-      <div style="border-top:1px solid var(--border);margin:18px -22px 0;padding:18px 22px 0">
-        <div class="inicio-dash-fila" id="pt-tot-cards" style="margin-bottom:0;grid-template-columns:repeat(auto-fit,minmax(140px,1fr))"></div>
+      <div style="border-top:1px solid var(--border);margin:18px -22px 0;padding:18px 22px 0;display:flex;gap:12px;align-items:stretch;flex-wrap:wrap">
+        <!-- Más compactas -- pedido explícito ("las tarjetas las quiero
+             más compactas") -- ver _ptTotTarjetaCompacta() (copia chica
+             de _alim3Tarjeta, esta usa tamaños de fuente/padding menores
+             que la de Alimentadores, que se sigue usando tal cual en su
+             propio módulo). -->
+        <div class="inicio-dash-fila" id="pt-tot-cards" style="flex:1;min-width:280px;margin-bottom:0;grid-template-columns:repeat(auto-fit,minmax(110px,1fr))"></div>
+        <!-- Nota explicativa -- pedido explícito ("al lado de las
+             tarjetas una pequeña nota explicativa diciendo variaciones
+             de acuerdo con los filtros que tenga activo"). -->
+        <div style="flex:0 0 200px;font-size:10.5px;line-height:1.5;color:var(--text3);background:var(--bg);border:1px solid var(--border);border-radius:9px;padding:8px 10px;display:flex;align-items:center;gap:6px">
+          <span style="font-size:14px">ℹ️</span>
+          <span>Las variaciones (▲▼) se calculan según los filtros de Zona, Nivel y fecha que tengas activos arriba.</span>
+        </div>
       </div>
     </div>
   </div>
@@ -1528,6 +1540,15 @@ tfoot td:first-child{text-align:left}
             <div id="chart-titulo" style="font-size:16px;font-weight:800;letter-spacing:1.5px;color:var(--text);text-transform:uppercase">Pérdidas Técnicas Total</div>
           </div>
           <div style="display:flex;gap:8px;flex-shrink:0">
+            <!-- Pedido explícito ("quita los datos de entrada y salida,
+                 que haya un botón si uno lo quiere añadir o no, si uno lo
+                 añade queda con triple eje"): oculto por defecto, se
+                 agrega en un 3er eje aparte (mucha más magnitud que
+                 Pérdida) solo cuando se activa -- ver renderPrincipal(). -->
+            <button id="det-es-btn" onclick="detalleToggleEntradaSalida()" title="Sobreponer Entrada y Salida (en un eje aparte)"
+              style="display:flex;align-items:center;gap:6px;padding:6px 14px;background:transparent;color:var(--accent);border:1px solid var(--accent);border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">
+              ➕ Entrada/Salida
+            </button>
             <button id="proj-btn" onclick="toggleProjection()" title="Proyectar PT kWh basado en entradas futuras"
               style="display:flex;align-items:center;gap:6px;padding:6px 14px;background:transparent;color:var(--accent);border:1px solid var(--accent);border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">
               📈 Proyección
@@ -1541,10 +1562,10 @@ tfoot td:first-child{text-align:left}
               <option value="arima">🔁 ARIMA AR(1)</option>
               <option value="sarima">🌊 SARIMA</option>
             </select>
-            <button onclick="exportChartPNG()" title="Exportar gráfica como PNG"
-              style="display:flex;align-items:center;gap:6px;padding:6px 14px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">
-              ⬇ Exportar PNG
-            </button>
+            <!-- "⬇ Exportar PNG" se quitó -- pedido explícito ("ya existe
+                 una forma más sencilla"): el botón que se inyecta solo en
+                 TODO .chart-wrap de la app (ver más abajo, "exportar
+                 Imagen/Excel"). -->
           </div>
         </div>
         <div class="chart-wrap" style="height:420px"><canvas id="ch-principal"></canvas></div>
@@ -5021,6 +5042,10 @@ let RESUMEN = null;
 let RESUMEN_BALANCE = null;
 let RANGO = {start:0, end:0};
 let showProjection = false;
+// Pedido explícito ("quita los datos de entrada y salida, que haya un
+// botón si uno lo quiere añadir"): apagado por defecto -- ver
+// detalleToggleEntradaSalida() y renderPrincipal().
+let DET_MOSTRAR_ES = false;
 
 // Las etiquetas flotantes sobre barras/puntos son opt-in por dataset -- si no,
 // el plugin las dibuja por defecto en TODOS los charts (incluidos zona/dona).
@@ -18719,6 +18744,23 @@ function _alim3Tarjeta(pref, icono, titulo, mensualAct, anualAct, fmt){
   </div>`;
 }
 
+// Copia chica de _alim3Tarjeta -- pedido explícito ("las tarjetas las
+// quiero más compactas") solo para "Pérdidas Técnicas Totales"; la de
+// Alimentadores no se toca (se usa tal cual en su propio módulo).
+function _ptTotTarjetaCompacta(pref, icono, titulo, mensualAct, anualAct, fmt){
+  return `<div class="card inicio-dash-card" style="padding:6px 8px">
+    <div class="card-title" style="font-size:9px">${icono} ${titulo}</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;font-size:8.5px;color:var(--text3);margin-top:3px">
+      <span>Mensual</span>
+      <span style="display:flex;align-items:center;gap:4px"><b style="color:var(--text);font-size:10.5px">${fmt(mensualAct)}</b><span id="${pref}-var-m" class="inicio-variacion"></span></span>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;font-size:8.5px;color:var(--text3);margin-top:2px">
+      <span>Anual (12M)</span>
+      <span style="display:flex;align-items:center;gap:4px"><b style="color:var(--text);font-size:10.5px">${fmt(anualAct)}</b><span id="${pref}-var-a" class="inicio-variacion"></span></span>
+    </div>
+  </div>`;
+}
+
 function alim3RenderTarjetas(filasConClave){
   const cont = document.getElementById('alim3-tarjetas');
   if(!cont) return;
@@ -24242,14 +24284,16 @@ function hexA(hex, alpha){
 // técnica y pérdida por balance"). SIEMPRE en líneas (se quitó el
 // desglose por nivel en barras, que era la otra fuente de saturación) --
 // mismos colores que ya usa esa gráfica (ver
-// renderChartComparacionEstructura): Entrada verde, Pérdida Técnica
-// celeste, Pérdida por Balance roja, Pérdida % naranja punteada; Salida
-// en morado cuando hay Pérdida por Balance (para no repetir el rojo),
-// rojo cuando no la hay. "Pérdida por Balance" solo aparece con un
-// Alimentador puntual vinculado a una Estructura de Balances por
-// Estructura (ver RESUMEN_BALANCE, cargada en aplicarFiltros()). La
-// "Senda Regulatoria" (línea gris punteada) sigue siendo el límite CREG
-// reconocido, ya ponderado por circuito -- ver /api/resumen.
+// renderChartComparacionEstructura): Pérdida Técnica celeste, Pérdida por
+// Balance roja, Pérdida % naranja punteada. "Pérdida por Balance" solo
+// aparece con un Alimentador puntual vinculado a una Estructura de
+// Balances por Estructura (ver RESUMEN_BALANCE, cargada en
+// aplicarFiltros()). La "Senda Regulatoria" (línea gris punteada) sigue
+// siendo el límite CREG reconocido, ya ponderado por circuito -- ver
+// /api/resumen. Entrada/Salida quedan OCULTAS por defecto (pedido
+// explícito: "quita los datos de entrada y salida, que haya un botón si
+// uno lo quiere añadir") -- DET_MOSTRAR_ES las agrega en un 3er eje
+// aparte ("uno lo añade, queda con triple eje", aceptado explícitamente).
 function renderPrincipal(){
   if(!RESUMEN) return;
   const ctx = document.getElementById('ch-principal');
@@ -24317,10 +24361,8 @@ function renderPrincipal(){
       const proyectar = (base, valorSiguiente) => base.map((v,i)=>
         i===lastValid ? base[lastValid] : (i===labels.length-1 ? valorSiguiente : null));
       entV = entV.concat([null]); kwhV = kwhV.concat([null]); pctV = pctV.concat([null]); salV = salV.concat([null]);
+      if(balV) balV = balV.concat([null]);
       projDatasets = [
-        {type:'line', label:'Proyección Entrada', data: proyectar(entV, Math.round(nextEnt)),
-          borderColor:'#00B050', backgroundColor:'transparent', borderWidth:2, borderDash:[6,4],
-          pointRadius:4, pointStyle:'rectRot', tension:0, spanGaps:true, yAxisID:'y'},
         {type:'line', label:`Proyección Pérdida Técnica (${method})`, data: proyectar(kwhV, nextKwh),
           borderColor:'#00B0F0', backgroundColor:'transparent', borderWidth:2, borderDash:[6,4],
           pointRadius:4, pointStyle:'rectRot', tension:0, spanGaps:true, yAxisID:'y'},
@@ -24328,6 +24370,12 @@ function renderPrincipal(){
           borderColor:'#ED7D31', backgroundColor:'transparent', borderWidth:2, borderDash:[6,4],
           pointRadius:4, pointStyle:'rectRot', tension:0, spanGaps:true, yAxisID:'yPct'},
       ];
+      // La proyección de Entrada solo suma ruido si Entrada/Salida ni
+      // siquiera se están mostrando.
+      if(DET_MOSTRAR_ES) projDatasets.push(
+        {type:'line', label:'Proyección Entrada', data: proyectar(entV, Math.round(nextEnt)),
+          borderColor:'#00B050', backgroundColor:'transparent', borderWidth:2, borderDash:[6,4],
+          pointRadius:4, pointStyle:'rectRot', tension:0, spanGaps:true, yAxisID:'yVolumen'});
     }
   }
 
@@ -24336,10 +24384,6 @@ function renderPrincipal(){
     data:{
       labels,
       datasets:[
-        {type:'line', label:'Entrada', data:entV, borderColor:'#00B050', backgroundColor:'transparent',
-          borderWidth:2.5, pointRadius:3, tension:0, spanGaps:true, yAxisID:'y'},
-        {type:'line', label:'Salida', data:salV, borderColor: tieneBalance ? '#8064A2' : '#C00000',
-          backgroundColor:'transparent', borderWidth:2.5, pointRadius:3, tension:0, spanGaps:true, yAxisID:'y'},
         {type:'line', label:'Pérdida Técnica', data:kwhV, borderColor:'#00B0F0', backgroundColor:'transparent',
           borderWidth:2.5, pointRadius:3, tension:0, spanGaps:true, yAxisID:'y',
           datalabels:{display:labels.length<=24, anchor:'end', align:'bottom', offset:8,
@@ -24353,6 +24397,16 @@ function renderPrincipal(){
         {type:'line', label:'Senda Regulatoria', data:labels.map(()=>cregVal),
           borderColor:'rgba(120,120,120,.7)', backgroundColor:'transparent', borderWidth:2, borderDash:[7,5],
           pointRadius:0, pointHoverRadius:3, tension:0, fill:false, yAxisID:'yPct'},
+        // Entrada/Salida -- ocultas salvo que se activen con el botón
+        // "➕ Entrada/Salida" (pedido explícito), en su propio eje
+        // ('yVolumen') porque su magnitud no tiene nada que ver con la de
+        // Pérdida Técnica/Balance -- compartir el eje "y" las aplastaría.
+        ...(DET_MOSTRAR_ES ? [
+          {type:'line', label:'Entrada', data:entV, borderColor:'#00B050', backgroundColor:'transparent',
+            borderWidth:2.5, pointRadius:3, tension:0, spanGaps:true, yAxisID:'yVolumen'},
+          {type:'line', label:'Salida', data:salV, borderColor: tieneBalance ? '#8064A2' : '#C00000',
+            backgroundColor:'transparent', borderWidth:2.5, pointRadius:3, tension:0, spanGaps:true, yAxisID:'yVolumen'},
+        ] : []),
         ...projDatasets,
       ],
     },
@@ -24372,13 +24426,31 @@ function renderPrincipal(){
         x:{grid:{display:false}, ticks:{color:tickXFuerte, font:{size:12}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
         y:{type:'linear', position:'left', beginAtZero:true, grid:{color:gridC},
           ticks:{color:tickC, font:{size:12}, callback:v=>fmtGwh(v)},
-          title:{display:true, text:'Energía (kWh)', color:tickC, font:{size:12}}},
+          title:{display:true, text:'Pérdida (kWh)', color:tickC, font:{size:12}}},
         yPct:{type:'linear', position:'right', beginAtZero:false, grace:'20%', grid:{drawOnChartArea:false},
           ticks:{color:tickC, font:{size:12}, callback:v=>v.toFixed(1)+'%'},
           title:{display:true, text:'Pérdida (%)', color:tickC, font:{size:12}}},
+        // Triple eje -- solo existe si el botón "➕ Entrada/Salida" está
+        // activo (pedido explícito, aceptado así por el usuario: "si uno
+        // lo añade queda con triple eje").
+        ...(DET_MOSTRAR_ES ? {yVolumen:{type:'linear', position:'right', beginAtZero:true, grid:{drawOnChartArea:false},
+          ticks:{color:tickC, font:{size:12}, callback:v=>fmtGwh(v)},
+          afterFit:ax=>{ax.width=Math.max(ax.width,90)},
+          title:{display:true, text:'Entrada/Salida (kWh)', color:tickC, font:{size:12}}}} : {}),
       },
     },
   });
+}
+
+// Pedido explícito ("quita los datos de entrada y salida, que haya un
+// botón si uno lo quiere añadir").
+function detalleToggleEntradaSalida(){
+  DET_MOSTRAR_ES = !DET_MOSTRAR_ES;
+  const btn = document.getElementById('det-es-btn');
+  btn.style.background = DET_MOSTRAR_ES ? 'var(--accent)' : 'transparent';
+  btn.style.color = DET_MOSTRAR_ES ? '#fff' : 'var(--accent)';
+  btn.textContent = DET_MOSTRAR_ES ? '✕ Quitar Entrada/Salida' : '➕ Entrada/Salida';
+  renderPrincipal();
 }
 
 function labelMesSiguiente(m){
@@ -24662,6 +24734,13 @@ function renderPtTotalesZona(datos, modoAnual){
   const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
   const labels = (datos.meses || []).map(labelMes);
 
+  // Halo de contorno en las etiquetas -- pedido explícito ("el color
+  // amarillo en pérdida no se ve"): colorParaZona puede tocarle a una
+  // zona un tono claro (dorado/amarillo) que se pierde contra el fondo
+  // blanco; un contorno del color opuesto (negro en claro, blanco en
+  // oscuro) lo hace legible sin importar qué tono le toque.
+  const contornoEtiqueta = dark ? '#000000' : '#ffffff';
+
   const datasetsPct = series.map(s => {
     const color = colorParaZona(s.clave);
     return {
@@ -24680,28 +24759,27 @@ function renderPtTotalesZona(datos, modoAnual){
       type:'line', label: `Pérdida Técnica % -- ${s.clave}`, data: s.perdidas_pct || [], yAxisID:'yPct', order:1,
       borderColor: color, backgroundColor: color, borderWidth:2, pointRadius:2, pointHoverRadius:4, tension:0, spanGaps:true,
       datalabels:{display:true, anchor:'end', align:'top', offset:2,
-        formatter:v=>v==null?'':v.toFixed(2)+'%', font:{size:10,weight:'700'}, color},
+        formatter:v=>v==null?'':v.toFixed(2)+'%', font:{size:11,weight:'800'}, color,
+        textStrokeColor:contornoEtiqueta, textStrokeWidth:3},
     };
   });
 
-  // Columna, no línea (pedido explícito: "mejor coloca en columnas ...
-  // ajustando el eje Y para que se vea") -- sin Entrada/Salida
-  // compitiendo por el mismo eje, esta columna ya usa el alto completo
-  // del eje kWh. Azul claro #00B0F0 -- pedido explícito ("no es el mismo
-  // azul claro que está en Balances por Estructura para pérdida
-  // técnica"): es el mismo color que usa esa gráfica (ver
-  // renderChartComparacionEstructura) para "Pérdida técnica". Etiqueta
-  // DENTRO de la columna, vertical, abajo y más grande (pedido explícito:
-  // "el dato vertical está centrado, no se ve, muy pequeño, que sea
-  // inferior y más grande") -- anchor:'start' + align:'top' la ancla
-  // cerca de la base en vez del centro, donde las líneas de % la tapaban
-  // al cruzar. kWh completo, no fmtGwh() (redondeaba a GWh, ej. "0.297
-  // GWh", perdiendo precisión).
+  // Línea, no columna -- pedido explícito ("quita las barras y mejor
+  // coloca línea, que sea líneas"): vuelve a línea después de pasar por
+  // columna (el problema de fondo era la etiqueta, no la forma de la
+  // marca -- ya resuelto con anchor 'end'/align 'top' + color tickC, ver
+  // debajo). Azul claro #00B0F0, el mismo que usa "Balances por
+  // Estructura" para "Pérdida Técnica" (ver
+  // renderChartComparacionEstructura) -- pedido explícito de la ronda
+  // anterior. kWh completo, no fmtGwh() (redondeaba a GWh, ej. "0.297
+  // GWh", perdiendo precisión); halo de contorno para que se lea bien
+  // encima de las líneas de % que cruzan por el mismo espacio.
   const datasetTecnica = {
-    type:'bar', label:'Pérdida Técnica (kWh)', data: perdidaTecnicaKwh, yAxisID:'yKwh', order:2,
-    backgroundColor:'rgba(0,176,240,.85)', borderColor:'#00B0F0', borderWidth:1, borderRadius:3,
-    datalabels:{display:v=>v.dataset.data[v.dataIndex]!=null, anchor:'start', align:'top', offset:6, rotation:-90,
-      formatter:v=>v==null?'':`${Math.round(v).toLocaleString('es-CO')} kWh`, font:{size:13,weight:'700'}, color:'#fff'},
+    type:'line', label:'Pérdida Técnica (kWh)', data: perdidaTecnicaKwh, yAxisID:'yKwh', order:2,
+    borderColor:'#00B0F0', backgroundColor:'transparent', borderWidth:2.5, pointRadius:3, pointHoverRadius:5, tension:0, spanGaps:true,
+    datalabels:{display:true, anchor:'end', align:'top', offset:6,
+      formatter:v=>v==null?'':`${Math.round(v).toLocaleString('es-CO')} kWh`, font:{size:11,weight:'800'}, color:'#00B0F0',
+      textStrokeColor:contornoEtiqueta, textStrokeWidth:3},
   };
 
   if(chPtTotalesZona) chPtTotalesZona.destroy();
@@ -24796,13 +24874,13 @@ async function ptTotalesRenderCards(){
   const fmtGest = (kwh, perdida) => kwh==null ? '--' : `${Math.round(kwh).toLocaleString('es-CO')} kWh${perdida?` (${(kwh/perdida*100).toFixed(1)}%)`:''}`;
 
   cont.innerHTML =
-    _alim3Tarjeta('pt-tot-c-ent', '⬇️', 'Entrada', actual.entrada, actual12?actual12.entrada12:null, fmtKwh) +
-    _alim3Tarjeta('pt-tot-c-sal', '⬆️', 'Salida', actual.salida, actual12?actual12.salida12:null, fmtKwh) +
-    _alim3Tarjeta('pt-tot-c-tec', '📉', 'Pérdida Técnica',
+    _ptTotTarjetaCompacta('pt-tot-c-ent', '⬇️', 'Entrada', actual.entrada, actual12?actual12.entrada12:null, fmtKwh) +
+    _ptTotTarjetaCompacta('pt-tot-c-sal', '⬆️', 'Salida', actual.salida, actual12?actual12.salida12:null, fmtKwh) +
+    _ptTotTarjetaCompacta('pt-tot-c-tec', '📉', 'Pérdida Técnica',
       fmtConPct(actual.tecnica, actual.pctTecnica), actualTec12 ? fmtConPct(actualTec12.tecnica12, actualTec12.pctTecnica12) : '--', v=>v) +
-    _alim3Tarjeta('pt-tot-c-gest', '⚙️', 'Pérdida Gestionable',
+    _ptTotTarjetaCompacta('pt-tot-c-gest', '⚙️', 'Pérdida Gestionable',
       fmtGest(actual.gestionable, actual.perdida), actual12 ? fmtGest(actual12.gestionable12, actual12.perdida12) : '--', v=>v) +
-    _alim3Tarjeta('pt-tot-c-per', '⚡', 'Pérdida Total',
+    _ptTotTarjetaCompacta('pt-tot-c-per', '⚡', 'Pérdida Total',
       fmtConPct(actual.perdida, actual.pct), actual12 ? fmtConPct(actual12.perdida12, actual12.pct12) : '--', v=>v);
 
   _iniRenderVariacionKwh('pt-tot-c-ent-var-m', anterior.entrada, actual.entrada, false);
@@ -24815,54 +24893,6 @@ async function ptTotalesRenderCards(){
   _iniRenderVariacionKwh('pt-tot-c-gest-var-a', anterior12?anterior12.gestionable12:null, actual12?actual12.gestionable12:null, true);
   _iniRenderVariacionKwh('pt-tot-c-per-var-m', anterior.perdida, actual.perdida, true);
   _iniRenderVariacionKwh('pt-tot-c-per-var-a', anterior12?anterior12.perdida12:null, actual12?actual12.perdida12:null, true);
-}
-
-function exportChartPNG(){
-  if(!chPrincipal) return;
-  chPrincipal.options.devicePixelRatio = 3;
-  chPrincipal.update('none');
-  const srcCanvas = chPrincipal.canvas;
-  const cW = srcCanvas.width, cH = srcCanvas.height;
-
-  const pad=48, headerH=90, footerH=44;
-  const tmp = document.createElement('canvas');
-  tmp.width = cW+pad*2; tmp.height = cH+headerH+footerH+pad;
-  const g = tmp.getContext('2d');
-
-  g.fillStyle = '#ffffff';
-  g.fillRect(0,0,tmp.width,tmp.height);
-
-  const grad = g.createLinearGradient(0,0,tmp.width,0);
-  grad.addColorStop(0,'#00B0F0'); grad.addColorStop(1,'#C00000');
-  g.fillStyle = grad; g.fillRect(0,0,tmp.width,8);
-
-  g.fillStyle = '#1a2a4a';
-  g.font = 'bold 28px "Segoe UI",Arial,sans-serif';
-  g.fillText((OPERADOR && OPERADOR.nombre) || 'CINCO S.A.S.', pad, pad+32);
-
-  g.fillStyle = '#4b5e7a';
-  g.font = '16px "Segoe UI",Arial,sans-serif';
-  const rango = RESUMEN && RESUMEN.meses.length ? `${labelMes(RESUMEN.meses[0])} → ${labelMes(RESUMEN.meses[RESUMEN.meses.length-1])}` : '';
-  g.fillText('Pérdidas Técnicas'+(rango?' · '+rango:''), pad, pad+58);
-
-  g.drawImage(srcCanvas, pad, headerH+pad-10);
-
-  g.fillStyle = grad; g.fillRect(0, tmp.height-footerH-4, tmp.width, 3);
-
-  g.fillStyle = '#A5A5A5';
-  g.font = '13px "Segoe UI",Arial,sans-serif';
-  const now = new Date().toLocaleDateString('es-CO', {year:'numeric', month:'long', day:'numeric'});
-  g.fillText('Generado: '+now, pad, tmp.height-16);
-  g.textAlign = 'right';
-  g.fillText('CINCO S.A.S. · Análisis de Pérdidas Técnicas', tmp.width-pad, tmp.height-16);
-
-  chPrincipal.options.devicePixelRatio = window.devicePixelRatio || 1;
-  chPrincipal.update('none');
-
-  const a = document.createElement('a');
-  a.download = `${(OPERADOR&&OPERADOR.slug)||'perdidas'}_perdidas_tecnicas.png`;
-  a.href = tmp.toDataURL('image/png', 1.0);
-  a.click();
 }
 
 /* ---- Valuación económica de Pérdidas Técnicas por Zona ----
