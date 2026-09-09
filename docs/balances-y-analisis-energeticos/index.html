@@ -1367,24 +1367,37 @@ tfoot td:first-child{text-align:left}
         <input type="month" id="pt-tot-desde" onchange="cargarGraficasApiladas()">
         <label>Hasta</label>
         <input type="month" id="pt-tot-hasta" onchange="cargarGraficasApiladas()">
+        <!-- Pedido explícito ("debe haber un botón para cambiar a datos
+             anuales"): 12M rodante -- ver PT_TOT_MODO. Con la historia
+             actual (menos de 12 meses cargados) va a mostrar "sin datos
+             suficientes" en las 2 gráficas, tal como se esperaba al
+             pedirlo. -->
+        <label style="margin-left:16px">Vista</label>
+        <button type="button" class="be-modo-btn activo" id="pt-tot-btn-modo-mensual" onclick="ptTotalesModo('mensual')">Mensual</button>
+        <button type="button" class="be-modo-btn" id="pt-tot-btn-modo-anual" onclick="ptTotalesModo('anual')">Anual (12M)</button>
       </div>
       <!-- Pedido explícito ("deben ser solo dos gráficas") -- Nivel
-           (barras/kWh) y Zona (líneas de Pérdida % + Entrada/Salida
-           sobrepuestas en doble eje, pedido explícito: "que se sobreponga
-           en doble eje la entrada y salida" -- ya no hay selector de
-           métrica, la gráfica de Zona muestra siempre las 3 cosas
-           juntas). Los títulos son dinámicos (pedido explícito: "deben
-           decir qué zona [o nivel] estoy mostrando") y ambas reaccionan
-           a los 2 filtros de arriba (pedido explícito: "cuando elijo
-           zona o nivel no cambia la gráfica de Zona, debería cambiar"). -->
+           (barras/kWh) y Zona (línea de Pérdida Técnica % + columna de
+           Pérdida Técnica kWh -- ya sin Entrada/Salida ni Pérdida Total,
+           pedido explícito: "quita los datos de entrada y salida" +
+           "quita esa pérdida total en kWh"). Los títulos son dinámicos y
+           ambas reaccionan a los 2 filtros de arriba. Los divs "-vacio"
+           se muestran en vez del canvas cuando Anual no tiene 12 meses
+           de historia todavía. -->
       <div class="split-wrap">
         <div>
           <div class="card-title" style="text-align:center" id="pt-tot-titulo-nivel">Pérdida por Nivel</div>
-          <div class="chart-wrap" style="height:380px"><canvas id="ch-pt-totales-nivel"></canvas></div>
+          <div class="chart-wrap" style="height:380px;position:relative">
+            <canvas id="ch-pt-totales-nivel"></canvas>
+            <div id="pt-tot-nivel-vacio" class="hidden" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;color:var(--text3);font-size:12px;padding:24px">Sin datos suficientes en ese rango.</div>
+          </div>
         </div>
         <div>
-          <div class="card-title" style="text-align:center" id="pt-tot-titulo-zona">Pérdida (%) y Entrada/Salida por Zona</div>
-          <div class="chart-wrap" style="height:380px"><canvas id="ch-pt-totales-zona"></canvas></div>
+          <div class="card-title" style="text-align:center" id="pt-tot-titulo-zona">Pérdida Técnica por Zona</div>
+          <div class="chart-wrap" style="height:380px;position:relative">
+            <canvas id="ch-pt-totales-zona"></canvas>
+            <div id="pt-tot-zona-vacio" class="hidden" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;color:var(--text3);font-size:12px;padding:24px">Sin datos suficientes en ese rango.</div>
+          </div>
         </div>
       </div>
 
@@ -1449,22 +1462,23 @@ tfoot td:first-child{text-align:left}
            type="month"> son ahora el control visible, se traducen al
            mismo índice de META.meses y llaman _applyRange() -- ver
            detalleSyncRango(). -->
+      <!-- Zona, Nivel de tensión y Alimentador en una sola fila -- pedido
+           explícito ("los filtros zona, nivel de tensión y alimentador en
+           una sola fila igual que las fechas"). -->
       <div class="fbar" style="margin-bottom:14px">
         <label>Zona</label>
         <div class="msel" id="msel-zona"></div>
         <label style="margin-left:16px">Nivel de tensión</label>
         <div class="msel" id="msel-nivel"></div>
+        <label style="margin-left:16px">Alimentador</label>
+        <div class="msel" id="msel-alimentador"></div>
+        <button class="btn-theme" style="width:auto;padding:0 14px;margin-left:auto" onclick="descargarCSV()" id="btn-descargar" title="Descargar el detalle mensual en CSV">⬇ Descargar CSV</button>
       </div>
-      <div class="fbar" style="margin-bottom:14px">
+      <div class="fbar" style="margin-bottom:0">
         <label>Desde</label>
         <input type="month" id="det-desde" onchange="detalleSyncRango()">
         <label>Hasta</label>
         <input type="month" id="det-hasta" onchange="detalleSyncRango()">
-      </div>
-      <div class="fbar" style="margin-bottom:0">
-        <label>Alimentador</label>
-        <div class="msel" id="msel-alimentador"></div>
-        <button class="btn-theme" style="width:auto;padding:0 14px;margin-left:auto" onclick="descargarCSV()" id="btn-descargar" title="Descargar el detalle mensual en CSV">⬇ Descargar CSV</button>
       </div>
 
       <div class="creg-tbl" id="creg-tbl"></div>
@@ -1485,64 +1499,68 @@ tfoot td:first-child{text-align:left}
       </div>
     </div>
 
-    <!-- Variación de pérdida técnica por circuito, mes contra mes -- pedido
-         explícito ("una tabla de variación de pérdida técnica de los
-         circuitos de un mes a otro y si doy click en uno lo grafique en la
-         gráfica Pérdidas Técnicas"). El mes "actual" es el último mes visible
-         del Rango de arriba (así queda ligada a lo que ya se está mirando);
-         clic en una fila fija el filtro Alimentador a ese circuito -- mismo
-         mecanismo que ya usan las flechas ▲▼ de Usuarios Telemedidos
-         (mselSetSeleccion), así la gráfica principal se actualiza sola. -->
-    <div class="card">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:8px">
-        <div class="card-title" style="margin-bottom:0">Variación de Pérdida Técnica por Circuito</div>
-        <div id="circvar-caption" style="font-size:11px;color:var(--text3);font-weight:700"></div>
+    <!-- Gráfica + tabla de variación, una al lado de la otra -- pedido
+         explícito ("debajo colocar la gráfica ... y al lado de esa
+         gráfica la tabla de variación de pérdida técnica por circuito").
+         Ambas siguen dinámicas con los mismos filtros de arriba (Zona/
+         Nivel/Alimentador/Desde/Hasta -- aplicarFiltros() y
+         cargarCircuitosVariacion() ya se llaman juntas desde cada
+         onChange, sin cambios acá). Clic en una fila de la tabla fija el
+         filtro Alimentador a ese circuito -- mismo mecanismo que ya usan
+         las flechas ▲▼ de Usuarios Telemedidos (mselSetSeleccion), así
+         la gráfica se actualiza sola. -->
+    <div class="split-wrap">
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;flex-wrap:wrap;gap:8px">
+          <div style="flex:1;text-align:center">
+            <div id="chart-titulo" style="font-size:16px;font-weight:800;letter-spacing:1.5px;color:var(--text);text-transform:uppercase">Pérdidas Técnicas Total</div>
+          </div>
+          <div style="display:flex;gap:8px;flex-shrink:0">
+            <button id="proj-btn" onclick="toggleProjection()" title="Proyectar PT kWh basado en entradas futuras"
+              style="display:flex;align-items:center;gap:6px;padding:6px 14px;background:transparent;color:var(--accent);border:1px solid var(--accent);border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">
+              📈 Proyección
+            </button>
+            <select id="proj-method" onchange="renderPrincipal()"
+              style="display:none;padding:5px 10px;border:1px solid var(--accent);border-radius:8px;font-size:11px;font-weight:600;color:var(--accent);background:var(--bg);cursor:pointer">
+              <option value="lineal">📏 Lineal</option>
+              <option value="polinomica">📐 Polinómica</option>
+              <option value="logaritmica">📉 Logarítmica</option>
+              <option value="media_movil">〰️ Media Móvil</option>
+              <option value="arima">🔁 ARIMA AR(1)</option>
+              <option value="sarima">🌊 SARIMA</option>
+            </select>
+            <button onclick="exportChartPNG()" title="Exportar gráfica como PNG"
+              style="display:flex;align-items:center;gap:6px;padding:6px 14px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">
+              ⬇ Exportar PNG
+            </button>
+          </div>
+        </div>
+        <div class="chart-wrap" style="height:420px"><canvas id="ch-principal"></canvas></div>
+        <div id="kpi-notes-row" style="margin-top:14px"></div>
       </div>
-      <div class="tbl-wrap tbl-compacta alim3-tabla-sticky" id="circvar-tbl-wrap" style="max-height:420px;overflow-y:auto">
-        <table>
-          <thead><tr>
-            <th style="text-align:left;cursor:pointer" onclick="circVarOrdenar('nemonico')" title="Click para ordenar">Circuito <span id="circvar-th-nemonico" class="alim3-th-flecha"></span></th>
-            <th style="cursor:pointer" onclick="circVarOrdenar('zona')" title="Click para ordenar">Zona <span id="circvar-th-zona" class="alim3-th-flecha"></span></th>
-            <th style="cursor:pointer" onclick="circVarOrdenar('nivel_tension')" title="Click para ordenar">Nivel <span id="circvar-th-nivel_tension" class="alim3-th-flecha"></span></th>
-            <th style="cursor:pointer" onclick="circVarOrdenar('perdidaAnterior')" title="Click para ordenar">Pérdida Mes Anterior (kWh) <span id="circvar-th-perdidaAnterior" class="alim3-th-flecha"></span></th>
-            <th style="cursor:pointer" onclick="circVarOrdenar('perdidaActual')" title="Click para ordenar">Pérdida Mes Actual (kWh) <span id="circvar-th-perdidaActual" class="alim3-th-flecha"></span></th>
-            <th style="cursor:pointer" onclick="circVarOrdenar('deltaKwh')" title="Click para ordenar">Δ kWh <span id="circvar-th-deltaKwh" class="alim3-th-flecha"></span></th>
-            <th style="cursor:pointer" onclick="circVarOrdenar('deltaKwhPct')" title="Click para ordenar -- crecimiento real del kWh vs. el mes anterior">Var. Pérdida % <span id="circvar-th-deltaKwhPct" class="alim3-th-flecha"></span></th>
-            <th style="cursor:pointer" onclick="circVarOrdenar('pctActual')" title="Click para ordenar">Pérdida % Actual <span id="circvar-th-pctActual" class="alim3-th-flecha"></span></th>
-            <th style="cursor:pointer" onclick="circVarOrdenar('deltaPp')" title="Click para ordenar">Δ pp <span id="circvar-th-deltaPp" class="alim3-th-flecha"></span></th>
-          </tr></thead>
-          <tbody id="circvar-tbody"></tbody>
-        </table>
-      </div>
-    </div>
 
-    <div class="card">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;flex-wrap:wrap;gap:8px">
-        <div style="flex:1;text-align:center">
-          <div id="chart-titulo" style="font-size:16px;font-weight:800;letter-spacing:1.5px;color:var(--text);text-transform:uppercase">Pérdidas Técnicas Total</div>
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:8px">
+          <div class="card-title" style="margin-bottom:0">Variación de Pérdida Técnica por Circuito</div>
+          <div id="circvar-caption" style="font-size:11px;color:var(--text3);font-weight:700"></div>
         </div>
-        <div style="display:flex;gap:8px;flex-shrink:0">
-          <button id="proj-btn" onclick="toggleProjection()" title="Proyectar PT kWh basado en entradas futuras"
-            style="display:flex;align-items:center;gap:6px;padding:6px 14px;background:transparent;color:var(--accent);border:1px solid var(--accent);border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">
-            📈 Proyección
-          </button>
-          <select id="proj-method" onchange="renderPrincipal()"
-            style="display:none;padding:5px 10px;border:1px solid var(--accent);border-radius:8px;font-size:11px;font-weight:600;color:var(--accent);background:var(--bg);cursor:pointer">
-            <option value="lineal">📏 Lineal</option>
-            <option value="polinomica">📐 Polinómica</option>
-            <option value="logaritmica">📉 Logarítmica</option>
-            <option value="media_movil">〰️ Media Móvil</option>
-            <option value="arima">🔁 ARIMA AR(1)</option>
-            <option value="sarima">🌊 SARIMA</option>
-          </select>
-          <button onclick="exportChartPNG()" title="Exportar gráfica como PNG"
-            style="display:flex;align-items:center;gap:6px;padding:6px 14px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">
-            ⬇ Exportar PNG
-          </button>
+        <div class="tbl-wrap tbl-compacta alim3-tabla-sticky" id="circvar-tbl-wrap" style="max-height:420px;overflow-y:auto">
+          <table>
+            <thead><tr>
+              <th style="text-align:left;cursor:pointer" onclick="circVarOrdenar('nemonico')" title="Click para ordenar">Circuito <span id="circvar-th-nemonico" class="alim3-th-flecha"></span></th>
+              <th style="cursor:pointer" onclick="circVarOrdenar('zona')" title="Click para ordenar">Zona <span id="circvar-th-zona" class="alim3-th-flecha"></span></th>
+              <th style="cursor:pointer" onclick="circVarOrdenar('nivel_tension')" title="Click para ordenar">Nivel <span id="circvar-th-nivel_tension" class="alim3-th-flecha"></span></th>
+              <th style="cursor:pointer" onclick="circVarOrdenar('perdidaAnterior')" title="Click para ordenar">Pérdida Mes Anterior (kWh) <span id="circvar-th-perdidaAnterior" class="alim3-th-flecha"></span></th>
+              <th style="cursor:pointer" onclick="circVarOrdenar('perdidaActual')" title="Click para ordenar">Pérdida Mes Actual (kWh) <span id="circvar-th-perdidaActual" class="alim3-th-flecha"></span></th>
+              <th style="cursor:pointer" onclick="circVarOrdenar('deltaKwh')" title="Click para ordenar">Δ kWh <span id="circvar-th-deltaKwh" class="alim3-th-flecha"></span></th>
+              <th style="cursor:pointer" onclick="circVarOrdenar('deltaKwhPct')" title="Click para ordenar -- crecimiento real del kWh vs. el mes anterior">Var. Pérdida % <span id="circvar-th-deltaKwhPct" class="alim3-th-flecha"></span></th>
+              <th style="cursor:pointer" onclick="circVarOrdenar('pctActual')" title="Click para ordenar">Pérdida % Actual <span id="circvar-th-pctActual" class="alim3-th-flecha"></span></th>
+              <th style="cursor:pointer" onclick="circVarOrdenar('deltaPp')" title="Click para ordenar">Δ pp <span id="circvar-th-deltaPp" class="alim3-th-flecha"></span></th>
+            </tr></thead>
+            <tbody id="circvar-tbody"></tbody>
+          </table>
         </div>
       </div>
-      <div class="chart-wrap" style="height:420px"><canvas id="ch-principal"></canvas></div>
-      <div id="kpi-notes-row" style="margin-top:14px"></div>
     </div>
   </div>
 
@@ -24460,18 +24478,27 @@ function perdidasIrATab(nombre){
 }
 
 /* ---- "Pérdidas Técnicas Totales" -- SOLO 2 gráficas: "Pérdida por
- * Nivel" (barras, kWh) y "Pérdida (%) y Entrada/Salida por Zona" (líneas
- * de % por zona + Entrada/Salida sobrepuestas en doble eje, pedido
- * explícito -- "quiero que se sobreponga en doble eje la entrada y
- * salida"). Ya no hay selector de métrica: las 3 cosas se muestran
- * siempre juntas (mismo patrón dual-axis yKwh/yPct que usa el resto de
- * la app, ver Balance diario). Ambos filtros (Zona, Nivel de tensión)
- * son multiselect (1,2,3,4 o varias zonas a la vez) y afectan a las 2
- * gráficas -- pedido explícito: "cuando elijo zona o nivel no cambia la
- * gráfica de Zona, debería cambiar". /perdidas-por-zona nunca filtra por
- * zona server-side (agrega TODAS las zonas para poder compararlas) así
- * que ese recorte se hace acá, en el cliente. Los títulos son dinámicos
- * (pedido explícito: "deben decir qué zona estoy mostrando").
+ * Nivel" (barras, kWh) y "Pérdida Técnica por Zona" (líneas de Pérdida
+ * Técnica % por zona + columnas de Pérdida Técnica en kWh -- pedido
+ * explícito: "quita los datos de entrada y salida" + "quita esa pérdida
+ * total en kWh del gráfico y mejor coloca en columnas la pérdida
+ * técnica"; antes tenía Entrada/Salida/Pérdida Total sobrepuestos, se
+ * quitaron todos -- de paso resuelve la queja del eje Y, que antes tenía
+ * que compartirse con números 15-20x más grandes). Ambos filtros (Zona,
+ * Nivel de tensión) son multiselect y afectan a las 2 gráficas -- pedido
+ * explícito: "cuando elijo zona o nivel no cambia la gráfica de Zona,
+ * debería cambiar". /perdidas-por-zona nunca filtra por zona server-side
+ * (agrega TODAS las zonas para poder compararlas) así que ese recorte se
+ * hace acá, en el cliente. Los títulos son dinámicos.
+ *
+ * Mensual / Anual (12M) -- pedido explícito ("debe haber un botón para
+ * cambiar a datos anuales"): PT_TOT_MODO. En Anual se pide 11 meses
+ * extra hacia atrás como colchón (_restarMeses) y se rueda con
+ * _anualizarSerieMensual()/_anualizarMapaMensual() -- por CALENDARIO, no
+ * por posición en el arreglo, para no romperse si el fetch trae menos
+ * meses de historia de los pedidos. Si no hay 12 meses de historia
+ * (hoy: solo hay datos desde ene-2026), el punto queda en null -- "sin
+ * datos suficientes", exactamente lo que el usuario esperaba por ahora.
  *
  * BUG real corregido en una versión anterior -- colorParaNivel(n, niveles)
  * necesita el arreglo de niveles como 2do argumento (usa niveles.indexOf(n)
@@ -24479,6 +24506,14 @@ function perdidasIrATab(nombre){
  * captura genérica de cargarGraficasApiladas() se tragaba en silencio --
  * ninguna de las 2 gráficas dibujaba nada, sin ningún error visible. */
 let chPtTotalesNivel = null, chPtTotalesZona = null;
+let PT_TOT_MODO = 'mensual';   // 'mensual' | 'anual' (12M rodante)
+
+function ptTotalesModo(m){
+  PT_TOT_MODO = m;
+  document.getElementById('pt-tot-btn-modo-mensual').classList.toggle('activo', m==='mensual');
+  document.getElementById('pt-tot-btn-modo-anual').classList.toggle('activo', m==='anual');
+  cargarGraficasApiladas();
+}
 
 // Se inician UNA sola vez -- pedido explícito ("seleccionable que yo
 // pueda seleccionar 1,2,3,4 y para zonas también"): multiselect en vez
@@ -24497,9 +24532,66 @@ function _ptTotalesActualizarTitulos(){
   const nivelSel = mselValores('msel-pt-tot-nivel');
   const zonaTxt = zonaSel.length ? `Zona: ${zonaSel.join(', ')}` : 'Todas las zonas';
   const nivelTxt = nivelSel.length ? `, Nivel: ${nivelSel.join(', ')}` : '';
-  document.getElementById('pt-tot-titulo-nivel').textContent = 'Pérdida por Nivel -- ' + zonaTxt + nivelTxt;
+  const modoTxt = PT_TOT_MODO==='anual' ? ' (Anual 12M)' : '';
+  document.getElementById('pt-tot-titulo-nivel').textContent = 'Pérdida por Nivel' + modoTxt + ' -- ' + zonaTxt + nivelTxt;
   document.getElementById('pt-tot-titulo-zona').textContent =
-    'Pérdida (%) y Entrada/Salida por Zona -- ' + zonaTxt + nivelTxt;
+    'Pérdida Técnica por Zona' + modoTxt + ' -- ' + zonaTxt + nivelTxt;
+}
+
+// YYYY-MM menos n meses (para pedir el colchón de historia que necesita
+// el modo Anual).
+function _restarMeses(mesStr, n){
+  const [a, m] = mesStr.split('-').map(Number);
+  const idx = a*12 + (m-1) - n;
+  return `${Math.floor(idx/12)}-${String(idx%12+1).padStart(2,'0')}`;
+}
+
+// {meses, series:[{clave,valores,entradas_kwh,...}]} mensual -> mismo
+// formato pero "Anual 12M": para cada mes de mesesVisibles, suma los 12
+// meses CALENDARIO que terminan ahí (índice a*12+m, no la posición en el
+// arreglo -- así no importa si el fetch trajo menos meses de historia de
+// los pedidos); si falta alguno de esos 12 en el medio, el punto queda
+// en null. perdidas_pct se recalcula desde los kWh ya rodados.
+function _anualizarSerieMensual(datos, mesesVisibles){
+  const idxDeMes = m => { const [a,mm] = m.split('-').map(Number); return a*12+(mm-1); };
+  const posPorIdx = new Map((datos.meses||[]).map((m,i)=>[idxDeMes(m), i]));
+  const series = (datos.series||[]).map(s=>{
+    const valores12 = [], entradas12 = [];
+    mesesVisibles.forEach(m=>{
+      const idx = idxDeMes(m);
+      let sV=0, sE=0, completo=true;
+      for(let k=idx-11;k<=idx;k++){
+        const pos = posPorIdx.get(k);
+        if(pos==null){ completo=false; break; }
+        sV += s.valores[pos] || 0;
+        sE += (s.entradas_kwh||[])[pos] || 0;
+      }
+      valores12.push(completo?sV:null);
+      entradas12.push(completo?sE:null);
+    });
+    return {...s, valores:valores12, entradas_kwh:entradas12,
+      perdidas_pct: valores12.map((v,i)=> (v!=null && entradas12[i]) ? v/entradas12[i]*100 : null)};
+  });
+  return {meses: mesesVisibles, series};
+}
+
+// Igual idea que la de arriba pero para un Map plano mes->valor (Pérdida
+// Técnica desde ALIM_FILAS, ver renderPtTotalesZona).
+function _anualizarMapaMensual(mapaPorMes){
+  const idxDeMes = m => { const [a,mm] = m.split('-').map(Number); return a*12+(mm-1); };
+  const mesPorIdx = new Map([...mapaPorMes.keys()].map(m=>[idxDeMes(m), m]));
+  const resultado = new Map();
+  mapaPorMes.forEach((_, mes)=>{
+    const idx = idxDeMes(mes);
+    let s=0, completo=true;
+    for(let k=idx-11;k<=idx;k++){
+      const claveMes = mesPorIdx.get(k);
+      if(claveMes==null){ completo=false; break; }
+      s += mapaPorMes.get(claveMes) || 0;
+    }
+    resultado.set(mes, completo?s:null);
+  });
+  return resultado;
 }
 
 async function cargarGraficasApiladas(){
@@ -24507,15 +24599,19 @@ async function cargarGraficasApiladas(){
   _ptTotalesActualizarTitulos();
   const zonaSel = mselValores('msel-pt-tot-zona');
   const nivelSel = mselValores('msel-pt-tot-nivel');
-  const desde = document.getElementById('pt-tot-desde').value;
+  const desdeUsuario = document.getElementById('pt-tot-desde').value;
   const hasta = document.getElementById('pt-tot-hasta').value;
+  const modoAnual = PT_TOT_MODO === 'anual';
+  // Anual pide 11 meses extra hacia atrás como colchón para poder rodar
+  // el primer punto visible -- ver _anualizarSerieMensual().
+  const desdeFetch = (modoAnual && desdeUsuario) ? _restarMeses(desdeUsuario, 11) : desdeUsuario;
 
   // Pedido explícito ("tengo seleccionado Nivel 2 y la gráfica de Nivel
   // no muestra solo Nivel 2"): Nivel también acota el desglose de esta
   // gráfica (si el usuario eligió 1+ niveles, solo esos aparecen -- ver
   // docstring de /perdidas-por-nivel), no solo la de Zona.
   const qsNivel = new URLSearchParams();
-  if(desde) qsNivel.set('desde', `${desde}-01`);
+  if(desdeFetch) qsNivel.set('desde', `${desdeFetch}-01`);
   if(hasta) qsNivel.set('hasta', `${hasta}-01`);
   zonaSel.forEach(z=>qsNivel.append('zona', z));
   nivelSel.forEach(n=>qsNivel.append('nivel', n));
@@ -24524,17 +24620,22 @@ async function cargarGraficasApiladas(){
   // poder compararlas), ese recorte se aplica en el cliente dentro de
   // renderPtTotalesZona().
   const qsZona = new URLSearchParams();
-  if(desde) qsZona.set('desde', `${desde}-01`);
+  if(desdeFetch) qsZona.set('desde', `${desdeFetch}-01`);
   if(hasta) qsZona.set('hasta', `${hasta}-01`);
   nivelSel.forEach(n=>qsZona.append('nivel', n));
 
   try{
-    const [porNivel, porZona] = await Promise.all([
+    let [porNivel, porZona] = await Promise.all([
       apiGet(`/api/perdidas-por-nivel?${qsNivel.toString()}`),
       apiGet(`/api/perdidas-por-zona?${qsZona.toString()}`),
     ]);
-    renderPtTotalesNivel(porNivel);
-    renderPtTotalesZona(porZona);
+    if(modoAnual){
+      const visible = m => !desdeUsuario || m >= desdeUsuario;
+      porNivel = _anualizarSerieMensual(porNivel, (porNivel.meses||[]).filter(visible));
+      porZona = _anualizarSerieMensual(porZona, (porZona.meses||[]).filter(visible));
+    }
+    renderPtTotalesNivel(porNivel, modoAnual);
+    renderPtTotalesZona(porZona, modoAnual);
   }catch(e){
     // Estas gráficas son un complemento -- si fallan no deben tumbar el resto de la vista.
   }
@@ -24543,13 +24644,27 @@ async function cargarGraficasApiladas(){
 
 // "Pérdida por Nivel" -- SIEMPRE en Pérdida (kWh, barras), la métrica de
 // la gráfica de Zona no la toca.
-function renderPtTotalesNivel(datos){
+function renderPtTotalesNivel(datos, modoAnual){
   const ctx = document.getElementById('ch-pt-totales-nivel');
   if(!ctx) return;
+  const vacio = document.getElementById('pt-tot-nivel-vacio');
+  const series = datos.series || [];
+  // Pedido explícito ("como todavía no hay un dato anual arrojaría sin
+  // datos suficientes"): si en modo Anual NINGÚN punto pudo rodar 12
+  // meses completos, se avisa en vez de mostrar un gráfico vacío/roto.
+  const hayDatos = series.some(s => (s.valores||[]).some(v=>v!=null));
+  if(modoAnual && !hayDatos){
+    if(chPtTotalesNivel){ chPtTotalesNivel.destroy(); chPtTotalesNivel=null; }
+    if(vacio) vacio.classList.remove('hidden');
+    ctx.classList.add('hidden');
+    return;
+  }
+  if(vacio) vacio.classList.add('hidden');
+  ctx.classList.remove('hidden');
+
   const dark = document.documentElement.getAttribute('data-theme')==='dark';
   const tickC = dark ? '#ffffff' : '#000000';
   const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
-  const series = datos.series || [];
   const claves = series.map(s=>s.clave);
   const labels = (datos.meses || []).map(labelMes);
 
@@ -24584,111 +24699,95 @@ function renderPtTotalesNivel(datos){
   });
 }
 
-// "Pérdida (%) y Entrada/Salida por Zona" -- SIEMPRE juntas: una línea de
-// % por zona (eje izq. yPct... en realidad yPct queda a la derecha, ver
-// abajo) + Entrada y Salida sobrepuestas en barras (eje kWh) sumadas
-// sobre las zonas que queden visibles. El filtro Zona recorta acá qué
-// líneas se dibujan y sobre qué subconjunto se suman Entrada/Salida
-// (pedido explícito: "cuando elijo zona no cambia esta gráfica, debería
-// cambiar" -- /perdidas-por-zona siempre trae TODAS las zonas).
-function renderPtTotalesZona(datos){
+// "Pérdida Técnica por Zona" -- una línea de Pérdida Técnica % por zona
+// (recortadas por el filtro Zona -- pedido explícito: "cuando elijo zona
+// no cambia esta gráfica, debería cambiar"; /perdidas-por-zona siempre
+// trae TODAS las zonas) + una columna de Pérdida Técnica (kWh), sumada
+// sobre esas mismas zonas visibles. Pedido explícito ("quita los datos
+// de entrada y salida" + "quita esa pérdida total en kWh del gráfico y
+// mejor coloca en columnas la pérdida técnica"): ya no hay Entrada/
+// Salida ni Pérdida Total acá -- eso de paso resuelve la queja del eje Y
+// (antes competía con números 15-20x más grandes).
+function renderPtTotalesZona(datos, modoAnual){
   const ctx = document.getElementById('ch-pt-totales-zona');
   if(!ctx) return;
+  const vacio = document.getElementById('pt-tot-zona-vacio');
+
+  const zonaSel = mselValores('msel-pt-tot-zona');
+  const series = (datos.series || []).filter(s => !zonaSel.length || zonaSel.includes(s.clave));
+  const hayDatosPct = series.some(s => (s.perdidas_pct||[]).some(v=>v!=null));
+
+  // Pérdida Técnica (kWh) -- no existe en /perdidas-por-zona (esa fuente
+  // trae UN número de pérdida sin desglosar); se calcula desde ALIM_FILAS
+  // (misma fuente que las tarjetas de abajo, para que coincida) sumada
+  // sobre las MISMAS zonas visibles. No respeta el filtro de Nivel
+  // (ALIM_FILAS no tiene un "nivel 1-4" limpio para filtrar). En Anual
+  // se rueda con el mismo criterio de calendario que las gráficas de
+  // arriba (_anualizarMapaMensual), independiente del colchón de
+  // /perdidas-por-zona -- ALIM_FILAS ya trae 30 meses de historia.
+  const porMesAlim = new Map();
+  (ALIM_FILAS || []).forEach(f => {
+    if(zonaSel.length && !zonaSel.includes(f.zona)) return;
+    const clave = alimN21Clave(f.anio, f.mes);
+    const tecnica = f.perdida_tecnica_kwh != null ? f.perdida_tecnica_kwh : (f.perdida_kwh || 0) - (f.gestionable_kwh || 0);
+    porMesAlim.set(clave, (porMesAlim.get(clave) || 0) + tecnica);
+  });
+  const mapaTecnica = modoAnual ? _anualizarMapaMensual(porMesAlim) : porMesAlim;
+  const perdidaTecnicaKwh = (datos.meses || []).map(m => mapaTecnica.has(m) ? mapaTecnica.get(m) : null);
+  const hayDatosTecnica = perdidaTecnicaKwh.some(v=>v!=null);
+
+  // Pedido explícito ("como todavía no hay un dato anual arrojaría sin
+  // datos suficientes"): si en Anual NINGUNA de las 2 series pudo rodar
+  // 12 meses completos, se avisa en vez de un gráfico vacío/roto.
+  if(modoAnual && !hayDatosPct && !hayDatosTecnica){
+    if(chPtTotalesZona){ chPtTotalesZona.destroy(); chPtTotalesZona=null; }
+    if(vacio) vacio.classList.remove('hidden');
+    ctx.classList.add('hidden');
+    return;
+  }
+  if(vacio) vacio.classList.add('hidden');
+  ctx.classList.remove('hidden');
+
   const dark = document.documentElement.getAttribute('data-theme')==='dark';
   const tickC = dark ? '#ffffff' : '#000000';
   const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
   const labels = (datos.meses || []).map(labelMes);
 
-  const zonaSel = mselValores('msel-pt-tot-zona');
-  const series = (datos.series || []).filter(s => !zonaSel.length || zonaSel.includes(s.clave));
-
   const datasetsPct = series.map(s => {
     const color = colorParaZona(s.clave);
     return {
-      // Pedido explícito ("no sé qué es ZO(%) que es azul"): el color de
-      // esta línea es el color de identidad DE LA ZONA (colorParaZona --
-      // el mismo que usa el Mapa y cualquier otra gráfica que compare
-      // zonas), no un color semántico -- por eso puede coincidir con
-      // cualquier tono, incluido el azul, sin relación con Entrada/
-      // Salida/Pérdida de abajo. La etiqueta "Pérdida % -- Zona" en vez
-      // de solo la sigla ayuda a que se lea sin tener que adivinar.
-      type:'line', label: `Pérdida % -- ${s.clave}`, data: s.perdidas_pct || [], yAxisID:'yPct', order:1,
+      // Pedido explícito ("esa pérdida en azul, es la técnica? debe
+      // decir pérdida técnica %"): sí -- /perdidas-por-zona viene de
+      // Circuito/BalanceMensual, la fuente propia de este módulo de
+      // Pérdidas TÉCNICAS, así que esta línea siempre es técnica; la
+      // etiqueta ahora lo dice explícito. El color sigue siendo la
+      // identidad DE LA ZONA (colorParaZona -- el mismo que usa el Mapa),
+      // no un color semántico, por eso puede coincidir con cualquier
+      // tono, incluido el azul.
+      type:'line', label: `Pérdida Técnica % -- ${s.clave}`, data: s.perdidas_pct || [], yAxisID:'yPct', order:1,
       borderColor: color, backgroundColor: color, borderWidth:2, pointRadius:2, pointHoverRadius:4, tension:0, spanGaps:true,
       datalabels:{display:true, anchor:'end', align:'top', offset:2,
         formatter:v=>v==null?'':v.toFixed(1)+'%', font:{size:10,weight:'700'}, color},
     };
   });
 
-  // Sobrepuesto en doble eje -- pedido explícito ("que se sobreponga en
-  // doble eje la entrada y salida"): totales sumados sobre las zonas
-  // visibles, eje yKwh a la izq. Entrada/Salida quedaban muy pegadas
-  // (pedido explícito: "mejora un poco el eje Y en kWh ya que se ven muy
-  // juntos los datos") -- mismo arreglo que ya usa Balance diario para
-  // este mismo problema: en vez de 2 líneas sueltas, Salida se sombrea
-  // contra Entrada (fill:0) para que la brecha (=la pérdida) se vea como
-  // banda, no como 2 trazos casi encimados.
-  const entradaTotal = labels.map((_,i)=> series.reduce((s,z)=>s+((z.entradas_kwh||[])[i]||0), 0));
-  const salidaTotal = labels.map((_,i)=> series.reduce((s,z)=>s+((z.entradas_kwh||[])[i]||0)-((z.valores||[])[i]||0), 0));
-
-  // Pedido explícito ("no se ve la pérdida total en kWh/mes y la pérdida
-  // técnica en kWh/mes"): 2 líneas más, aparte de Entrada/Salida --
-  // ninguna de las 2 existe en /perdidas-por-zona (esa fuente solo trae
-  // UN número de pérdida sin desglosar) así que se calculan igual que en
-  // ptTotalesRenderCards(), desde ALIM_FILAS y sumadas sobre las MISMAS
-  // zonas visibles, para que el valor coincida con el de las tarjetas de
-  // abajo. No respetan el filtro de Nivel (ALIM_FILAS no tiene un
-  // "nivel 1-4" limpio para filtrar).
-  const porMesAlim = new Map();
-  (ALIM_FILAS || []).forEach(f => {
-    if(zonaSel.length && !zonaSel.includes(f.zona)) return;
-    const clave = alimN21Clave(f.anio, f.mes);
-    if(!porMesAlim.has(clave)) porMesAlim.set(clave, {total:0, tecnica:0});
-    const g = porMesAlim.get(clave);
-    g.total += f.perdida_kwh || 0;
-    g.tecnica += f.perdida_tecnica_kwh != null ? f.perdida_tecnica_kwh : (f.perdida_kwh || 0) - (f.gestionable_kwh || 0);
-  });
-  const perdidaTotalKwh = (datos.meses || []).map(m => porMesAlim.has(m) ? porMesAlim.get(m).total : null);
-  const perdidaTecnicaKwh = (datos.meses || []).map(m => porMesAlim.has(m) ? porMesAlim.get(m).tecnica : null);
-
-  // Colores unificados con el resto de la app (pedido explícito: "eso
-  // debe estar unificado") -- Entrada/Salida verde/rojo se usan IGUAL en
-  // decenas de gráficas de toda la app (Balance diario, Alimentadores,
-  // N2-1, etc.), es el estándar ya establecido. Para Pérdida Técnica se
-  // reusa el mismo naranja (#ED7D31) que ya usa el propio módulo
-  // Alimentadores en su gráfica "Pérdida Total kWh / Pérdida Técnica kWh"
-  // (misma fuente de datos, ALIM_FILAS); Pérdida Total va en un naranja
-  // más oscuro de la MISMA familia (mismo tono, más oscuro = "el total",
-  // más claro = "la parte técnica" -- lectura intuitiva) en vez de azul
-  // (que sí se usa en esa gráfica de Alimentadores, pero ACÁ ya está
-  // tomado por colorParaZona -- ver comentario de datasetsPct arriba) o
-  // de cualquier otro color de PALETA_ZONAS/PALETA_NIVELES, para no
-  // repetir por casualidad el color de identidad de alguna zona.
-  const datasetsKwh = [
-    {type:'line', label:'Entrada', data: entradaTotal, yAxisID:'yKwh', order:2,
-      borderColor:'#00B050', backgroundColor:'transparent', borderWidth:2,
-      pointRadius:0, tension:0, spanGaps:true},
-    {type:'line', label:'Salida', data: salidaTotal, yAxisID:'yKwh', order:2, fill:0,
-      borderColor:'#C00000', backgroundColor:'rgba(192,0,0,.15)', borderWidth:2,
-      pointRadius:0, tension:0, spanGaps:true},
-    {type:'line', label:'Pérdida Total (kWh)', data: perdidaTotalKwh, yAxisID:'yKwh', order:1,
-      borderColor:'#9E480E', backgroundColor:'transparent', borderWidth:2, borderDash:[5,3],
-      pointRadius:2, pointHoverRadius:4, tension:0, spanGaps:true,
-      datalabels:{display:true, anchor:'end', align:'bottom', offset:4,
-        formatter:v=>v==null?'':fmtGwh(v), font:{size:9,weight:'700'}, color:'#9E480E'}},
-    {type:'line', label:'Pérdida Técnica (kWh)', data: perdidaTecnicaKwh, yAxisID:'yKwh', order:1,
-      borderColor:'#ED7D31', backgroundColor:'transparent', borderWidth:2, borderDash:[5,3],
-      pointRadius:2, pointHoverRadius:4, tension:0, spanGaps:true,
-      datalabels:{display:true, anchor:'end', align:'bottom', offset:4,
-        formatter:v=>v==null?'':fmtGwh(v), font:{size:9,weight:'700'}, color:'#ED7D31'}},
-  ];
+  // Columna, no línea (pedido explícito: "mejor coloca en columnas ...
+  // ajustando el eje Y para que se vea") -- sin Entrada/Salida
+  // compitiendo por el mismo eje, esta columna ya usa el alto completo
+  // del eje kWh. Mismo naranja que ya usa el propio módulo Alimentadores
+  // para esta serie (misma fuente, ALIM_FILAS) -- colores unificados.
+  const datasetTecnica = {
+    type:'bar', label:'Pérdida Técnica (kWh)', data: perdidaTecnicaKwh, yAxisID:'yKwh', order:2,
+    backgroundColor:'rgba(237,125,49,.55)', borderColor:'#ED7D31', borderWidth:1, borderRadius:3,
+    datalabels:{display:v=>v.dataset.data[v.dataIndex]!=null, anchor:'end', align:'top', offset:2,
+      formatter:v=>v==null?'':fmtGwh(v), font:{size:9,weight:'700'}, color:'#ED7D31'},
+  };
 
   if(chPtTotalesZona) chPtTotalesZona.destroy();
   chPtTotalesZona = new Chart(ctx, {
-    data:{labels, datasets:[...datasetsKwh, ...datasetsPct]},
+    data:{labels, datasets:[datasetTecnica, ...datasetsPct]},
     options:{
       responsive:true, maintainAspectRatio:false,
-      // Pedido explícito ("la gráfica de líneas están muy pegadas al eje
-      // Y en ambos lados"): offset:true en el eje X.
       layout:{padding:{top:24, left:8, right:8}},
       interaction:{mode:'index', intersect:false},
       plugins:{
@@ -24702,22 +24801,18 @@ function renderPtTotalesZona(datos){
       },
       scales:{
         x:{grid:{display:false}, offset:true, ticks:{color:tickC, font:{size:11}}},
-        // grace: da un poco de aire arriba/abajo -- pedido explícito
-        // ("mejora el eje Y en kWh, se ven muy juntos") -- antes las
-        // líneas quedaban pegadas al techo del eje.
-        yKwh:{position:'left', beginAtZero:true, grace:'10%', grid:{color:gridC},
+        yKwh:{position:'left', beginAtZero:true, grace:'15%', grid:{color:gridC},
           ticks:{color:tickC, font:{size:11}, callback:v=>fmtGwh(v)},
-          title:{display:true, text:'Entrada / Salida / Pérdida (kWh)', color:tickC, font:{size:11}}},
+          title:{display:true, text:'Pérdida Técnica (kWh)', color:tickC, font:{size:11}}},
         // SIN beginAtZero -- pedido explícito ("no hay una buena
-        // distribución del eje Y"): la pérdida % de un circuito se mueve
-        // en un rango angosto (acá 1.4%-1.7%); forzar el 0 como piso
-        // apachurraba todo el movimiento real contra el techo del eje, y
-        // los ticks enteros (0%/1%/2%) ni siquiera distinguían 1.5% de
-        // 1.6%. Con grace y un decimal en los ticks, la línea usa el
-        // alto completo del eje y las variaciones mes a mes se notan.
+        // distribución del eje Y"): la pérdida % se mueve en un rango
+        // angosto; forzar el 0 como piso apachurraba todo el movimiento
+        // real contra el techo del eje, y los ticks enteros ni siquiera
+        // distinguían 1.5% de 1.6%. Con grace y un decimal en los ticks,
+        // la línea usa el alto completo del eje.
         yPct:{position:'right', beginAtZero:false, grace:'25%', grid:{drawOnChartArea:false},
           ticks:{color:tickC, font:{size:11}, callback:v=>v.toFixed(1)+'%'},
-          title:{display:true, text:'Pérdida (%)', color:tickC, font:{size:11}}},
+          title:{display:true, text:'Pérdida Técnica (%)', color:tickC, font:{size:11}}},
       },
     },
   });
