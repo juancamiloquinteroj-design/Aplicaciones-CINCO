@@ -18552,6 +18552,7 @@ function alim3RenderTarjetas(filasConClave){
   const serieBase = filasConClave.map(f => ({
     anio: f.anio, mes: f.mes, clave: f.clave,
     entrada: f.entrada_total, salida: f.salida_total, perdida: f.perdida_kwh, pct: f.perdida_pct,
+    gestionable: f.gestionable_kwh,
   })).filter(f => f.pct != null);
   if(serieBase.length < 2){ cont.innerHTML = ''; return; }
   const anual = alimN21Con12Meses(serieBase);
@@ -18562,11 +18563,23 @@ function alim3RenderTarjetas(filasConClave){
 
   const fmtKwh = v => v==null ? '--' : `${Math.round(v).toLocaleString('es-CO')} kWh`;
   const fmtPct = v => v==null ? '--' : `${v.toFixed(2)}%`;
+  // Pérdida Gestionable -- pedido explícito ("quiero que también aparezca
+  // la gestionable... en porcentaje y en kWh"): una sola tarjeta con las
+  // dos unidades juntas -- kWh y, entre paréntesis, qué % de la Pérdida
+  // total es gestionable (misma fórmula que "Gestionable % Top" de Top
+  // Alimentadores más abajo en este mismo módulo, para no inventar una
+  // segunda definición de "% gestionable").
+  const fmtGest = (kwh, perdida) => kwh==null ? '--'
+    : `${Math.round(kwh).toLocaleString('es-CO')} kWh${perdida ? ` (${(kwh/perdida*100).toFixed(1)}%)` : ''}`;
 
   cont.innerHTML =
     _alim3Tarjeta('alim3-t-ent', '⬇️', 'Entrada', actual.entrada, actual12?actual12.entrada12:null, fmtKwh) +
     _alim3Tarjeta('alim3-t-sal', '⬆️', 'Salida', actual.salida, actual12?actual12.salida12:null, fmtKwh) +
     _alim3Tarjeta('alim3-t-per', '⚡', 'Pérdida', actual.perdida, actual12?actual12.perdida12:null, fmtKwh) +
+    _alim3Tarjeta('alim3-t-gest', '⚙️', 'Pérdida Gestionable',
+      fmtGest(actual.gestionable, actual.perdida),
+      actual12 ? fmtGest(actual12.gestionable12, actual12.perdida12) : '--',
+      v => v) +
     _alim3Tarjeta('alim3-t-pct', '📉', 'Pérdida %', actual.pct, actual12?actual12.pct12:null, fmtPct);
 
   _iniRenderVariacionKwh('alim3-t-ent-var-m', anterior.entrada, actual.entrada, false);
@@ -18575,6 +18588,8 @@ function alim3RenderTarjetas(filasConClave){
   _iniRenderVariacionKwh('alim3-t-sal-var-a', anterior12?anterior12.salida12:null, actual12?actual12.salida12:null, false);
   _iniRenderVariacionKwh('alim3-t-per-var-m', anterior.perdida, actual.perdida, true);
   _iniRenderVariacionKwh('alim3-t-per-var-a', anterior12?anterior12.perdida12:null, actual12?actual12.perdida12:null, true);
+  _iniRenderVariacionKwh('alim3-t-gest-var-m', anterior.gestionable, actual.gestionable, true);
+  _iniRenderVariacionKwh('alim3-t-gest-var-a', anterior12?anterior12.gestionable12:null, actual12?actual12.gestionable12:null, true);
   _iniRenderVariacion('alim3-t-pct-var-m', anterior.pct, actual.pct);
   _iniRenderVariacion('alim3-t-pct-var-a', anterior12?anterior12.pct12:null, actual12?actual12.pct12:null);
 }
@@ -19892,12 +19907,16 @@ function alimN21AgregarMensual(zonas){
 // ya ordenada -- null mientras no haya 12 meses de historia disponibles.
 function alimN21Con12Meses(mensual){
   return mensual.map((f,i) => {
-    if(i < 11) return {...f, entrada12:null, salida12:null, perdida12:null, pct12:null};
+    if(i < 11) return {...f, entrada12:null, salida12:null, perdida12:null, pct12:null, gestionable12:null};
     const ventana = mensual.slice(i-11, i+1);
     const entrada12 = ventana.reduce((s,x)=>s+x.entrada, 0);
     const salida12 = ventana.reduce((s,x)=>s+x.salida, 0);
     const perdida12 = ventana.reduce((s,x)=>s+x.perdida, 0);
-    return {...f, entrada12, salida12, perdida12, pct12: entrada12 ? perdida12/entrada12*100 : null};
+    // gestionable -- opcional (solo lo trae alim3RenderTarjetas); si algún
+    // mes de la ventana no lo tiene, no se suma a medias (null).
+    const gestionable12 = ventana.every(x => x.gestionable != null)
+      ? ventana.reduce((s,x)=>s+x.gestionable, 0) : null;
+    return {...f, entrada12, salida12, perdida12, gestionable12, pct12: entrada12 ? perdida12/entrada12*100 : null};
   });
 }
 
