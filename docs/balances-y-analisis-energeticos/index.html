@@ -1323,20 +1323,21 @@ tfoot td:first-child{text-align:left}
 
   <div id="perdidas-tab-totales">
     <div class="card">
-      <!-- Un solo toggle "Ver por" maneja las 2 gráficas de abajo a la vez
-           (antes eran 2 gráficas con 2 filtros independientes) -- decide
-           la dimensión que se desglosa (Nivel de tensión o Zona); el
-           select de al lado acota por la dimensión contraria (misma
-           relación que tenían los 2 filtros viejos: Zona acotaba "Pérdida
-           por Nivel", Nivel acotaba "Pérdida por Zona"). Nombres de
-           filtro cortos (pedido explícito, "ZONA y Nivel de tensión" en
-           vez del texto largo de antes). -->
+      <!-- Un solo toggle "Ver por" maneja la gráfica de kWh de la
+           izquierda -- decide la dimensión que se desglosa (Nivel de
+           tensión o Zona); el multiselect de al lado acota por la
+           dimensión contraria (misma relación que tenían los 2 filtros
+           viejos: Zona acotaba "Pérdida por Nivel", Nivel acotaba
+           "Pérdida por Zona") -- pedido explícito: seleccionable de a
+           varios (1,2,3,4 o varias zonas a la vez), no de a uno. Nombres
+           de filtro cortos ("ZONA y Nivel de tensión" en vez del texto
+           largo de antes). -->
       <div class="fbar" style="margin-bottom:14px">
         <label>Ver por</label>
         <button type="button" class="be-modo-btn activo" id="pt-tot-btn-nivel" onclick="ptTotalesVerPor('nivel')">Nivel de tensión</button>
         <button type="button" class="be-modo-btn" id="pt-tot-btn-zona" onclick="ptTotalesVerPor('zona')">Zona</button>
         <label id="pt-tot-label-filtro" style="margin-left:16px">Zona</label>
-        <select id="pt-tot-filtro" onchange="cargarGraficasApiladas()"><option value="">Todas</option></select>
+        <div class="msel" id="msel-pt-tot-filtro"></div>
       </div>
       <!-- Rango como filtro de mes/año escribible -- pedido explícito
            ("el slider de rango no se requiere, que el filtro de fechas
@@ -1350,16 +1351,18 @@ tfoot td:first-child{text-align:left}
       </div>
       <!-- Pedido explícito ("quiero la gráfica que ya estaba y al lado de
            esa gráfica la gráfica de líneas en porcentaje"): la apilada
-           (kWh) que ya existía queda tal cual, a la izquierda; la nueva
-           de líneas en % va a la derecha -- las dos siguen el mismo "Ver
-           por"/filtro/rango de arriba. -->
+           (kWh) que ya existía queda tal cual, a la izquierda, siguiendo
+           "Ver por"/filtro/rango de arriba. La de la derecha (%) es
+           SIEMPRE por zona (pedido explícito: "debe ser pérdida % por
+           zona, debe mostrarme el porcentaje total de las zonas") --
+           independiente del toggle, no se desglosa más por nivel. -->
       <div class="split-wrap">
         <div>
           <div class="card-title" style="text-align:center" id="pt-tot-titulo-kwh">Pérdida por Nivel</div>
           <div class="chart-wrap" style="height:380px"><canvas id="ch-pt-totales-kwh"></canvas></div>
         </div>
         <div>
-          <div class="card-title" style="text-align:center">Pérdida (%)</div>
+          <div class="card-title" style="text-align:center">Pérdida (%) por Zona</div>
           <div class="chart-wrap" style="height:380px"><canvas id="ch-pt-totales-pct"></canvas></div>
         </div>
       </div>
@@ -24376,40 +24379,53 @@ function ptTotalesVerPor(v){
   cargarGraficasApiladas();
 }
 
-// El select de al lado del toggle acota por la dimensión CONTRARIA a la
-// que se está desglosando -- se repuebla (etiqueta + opciones correctas)
-// cada vez que cambia "Ver por". El filtro se resetea a "Todas/Todos"
-// porque las opciones no son las mismas de un lado al otro.
+// El multiselect de al lado del toggle acota por la dimensión CONTRARIA a
+// la que se está desglosando -- se repuebla (etiqueta + opciones
+// correctas) cada vez que cambia "Ver por". Pedido explícito
+// ("seleccionable que yo pueda seleccionar 1,2,3,4 y para zonas
+// también"): de a varios a la vez, no de a uno -- msel en vez de <select>.
 function _ptTotalesPoblarFiltro(){
   const label = document.getElementById('pt-tot-label-filtro');
-  const sel = document.getElementById('pt-tot-filtro');
   if(PT_TOT_VER_POR === 'nivel'){
     label.textContent = 'Zona';
-    sel.innerHTML = '<option value="">Todas</option>' + (META.zonas||[]).map(z=>`<option value="${z}">${z}</option>`).join('');
+    mselInit('msel-pt-tot-filtro', 'Zona', 'Todas', (META.zonas||[]).map(z=>({value:z, label:z})),
+      cargarGraficasApiladas);
   }else{
     label.textContent = 'Nivel de tensión';
-    sel.innerHTML = '<option value="">Todos</option>' + (META.niveles||[]).map(n=>`<option value="${n}">Nivel ${n}</option>`).join('');
+    mselInit('msel-pt-tot-filtro', 'Nivel', 'Todos', (META.niveles||[]).map(n=>({value:String(n), label:'Nivel '+n})),
+      cargarGraficasApiladas);
   }
-  sel.value = '';
 }
 
 async function cargarGraficasApiladas(){
-  const filtro = document.getElementById('pt-tot-filtro').value;
-  const qs = new URLSearchParams();
+  const filtro = mselValores('msel-pt-tot-filtro');
   const desde = document.getElementById('pt-tot-desde').value;
   const hasta = document.getElementById('pt-tot-hasta').value;
-  if(desde) qs.set('desde', `${desde}-01`);
-  if(hasta) qs.set('hasta', `${hasta}-01`);
-  if(PT_TOT_VER_POR === 'nivel'){ if(filtro) qs.set('zona', filtro); }
-  else{ if(filtro) qs.set('nivel', filtro); }
 
-  const endpoint = PT_TOT_VER_POR === 'nivel' ? 'perdidas-por-nivel' : 'perdidas-por-zona';
+  const qsKwh = new URLSearchParams();
+  if(desde) qsKwh.set('desde', `${desde}-01`);
+  if(hasta) qsKwh.set('hasta', `${hasta}-01`);
+  if(PT_TOT_VER_POR === 'nivel'){ filtro.forEach(z=>qsKwh.append('zona', z)); }
+  else{ filtro.forEach(n=>qsKwh.append('nivel', n)); }
+  const endpointKwh = PT_TOT_VER_POR === 'nivel' ? 'perdidas-por-nivel' : 'perdidas-por-zona';
   const formatEtiqueta = PT_TOT_VER_POR === 'nivel' ? c=>`Nivel ${c}` : c=>c;
   const getColor = PT_TOT_VER_POR === 'nivel' ? colorParaNivel : (c)=>colorParaZona(c);
+
+  // La de % es SIEMPRE por zona, con el total de cada una (sin acotar por
+  // nivel) -- pedido explícito ("debe ser pérdida % por zona, debe
+  // mostrarme el porcentaje total de las zonas"), independiente del
+  // toggle "Ver por" de la gráfica de al lado.
+  const qsPct = new URLSearchParams();
+  if(desde) qsPct.set('desde', `${desde}-01`);
+  if(hasta) qsPct.set('hasta', `${hasta}-01`);
+
   try{
-    const datos = await apiGet(`/api/${endpoint}?${qs.toString()}`);
-    renderPtTotalesKwh(datos, formatEtiqueta, getColor);
-    renderPtTotalesPct(datos, formatEtiqueta, getColor);
+    const [datosKwh, datosPct] = await Promise.all([
+      apiGet(`/api/${endpointKwh}?${qsKwh.toString()}`),
+      apiGet(`/api/perdidas-por-zona?${qsPct.toString()}`),
+    ]);
+    renderPtTotalesKwh(datosKwh, formatEtiqueta, getColor);
+    renderPtTotalesPct(datosPct, c=>c, c=>colorParaZona(c));
   }catch(e){
     // Estas gráficas son un complemento -- si fallan no deben tumbar el resto de la vista.
   }
@@ -24485,14 +24501,18 @@ function renderPtTotalesPct(datos, formatEtiqueta, getColor){
     data:{labels, datasets},
     options:{
       responsive:true, maintainAspectRatio:false,
-      layout:{padding:{top:24}},
+      // Pedido explícito ("la gráfica de líneas están muy pegadas al eje
+      // Y en ambos lados"): offset:true en el eje X deja medio espacio de
+      // categoría antes del primer punto y después del último, en vez de
+      // quedar pegados a los bordes del área del gráfico.
+      layout:{padding:{top:24, left:8, right:8}},
       interaction:{mode:'index', intersect:false},
       plugins:{
         legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:10}, color:tickC}},
         tooltip:{callbacks:{label:c=>c.raw==null?null:`${c.dataset.label}: ${c.raw.toFixed(2)}%`}},
       },
       scales:{
-        x:{grid:{display:false}, ticks:{color:tickC, font:{size:11}}},
+        x:{grid:{display:false}, offset:true, ticks:{color:tickC, font:{size:11}}},
         y:{beginAtZero:true, grid:{color:gridC}, ticks:{color:tickC, font:{size:11}, callback:v=>v.toFixed(0)+'%'},
           title:{display:true, text:'Pérdida (%)', color:tickC, font:{size:11}}},
       },
