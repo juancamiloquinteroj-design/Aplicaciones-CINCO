@@ -3559,6 +3559,15 @@ tfoot td:first-child{text-align:left}
         <button type="button" class="be-modo-btn activo" id="temp-entrada-btn-var-temperatura" onclick="tempEntradaToggleVariable('temperatura')">🌡️ Temperatura</button>
         <button type="button" class="be-modo-btn" id="temp-entrada-btn-var-precipitacion" onclick="tempEntradaToggleVariable('precipitacion')">🌧️ Precipitación</button>
         <button type="button" class="be-modo-btn" id="temp-entrada-btn-var-humedad" onclick="tempEntradaToggleVariable('humedad')">💧 Humedad</button>
+        <!-- Fuente -- pedido explícito ("un botón para cambiar, pero que
+             siempre muestre primero la que yo descargué"). Solo tiene
+             sentido para Temperatura (Precipitación/Humedad no tienen
+             archivo local, siempre son API) -- se oculta para esas dos
+             en tempEntradaToggleVariable. -->
+        <span id="temp-entrada-fuente-grupo" style="margin-left:auto;display:flex;gap:6px">
+          <button type="button" class="be-modo-btn activo" id="temp-entrada-btn-fuente-archivo" onclick="tempEntradaToggleFuente('archivo')" title="Tu archivo descargado (Temperatura Maxima/Minima.csv)">🗂️ Mi archivo</button>
+          <button type="button" class="be-modo-btn" id="temp-entrada-btn-fuente-api" onclick="tempEntradaToggleFuente('api')" title="API pública del IDEAM en vivo -- menos historia (~2 años)">🌐 API IDEAM</button>
+        </span>
       </div>
       <div class="fbar" style="margin-bottom:6px">
         <label>Rango</label>
@@ -19080,6 +19089,13 @@ let TEMP_ENTRADA_DIAS = [];   // [{fecha, temp_promedio, temp_max, temp_min}, ..
 let TEMP_ENTRADA_ESTACION = null;
 let TEMP_ENTRADA_VARIABLE = 'temperatura';   // 'temperatura' | 'precipitacion' | 'humedad'
 let TEMP_ENTRADA_UNIDAD = '°C';
+// 'archivo' | 'api' -- pedido explícito ("un botón para cambiar, pero que
+// siempre muestre primero la [temperatura] que yo descargué"): arranca
+// SIEMPRE en 'archivo' (el CSV que subió el operador) -- el backend ya
+// tiene el mismo default, esto es solo para que el botón nazca marcado
+// igual. Solo aplica a variable='temperatura' (precipitación/humedad
+// siempre vienen de la API, no hay archivo local para esas).
+let TEMP_ENTRADA_FUENTE = 'archivo';
 const TEMP_ENTRADA_COLOR_VARIABLE = {temperatura:'#C00000', precipitacion:'#00B0F0', humedad:'#8338ec'};
 let TEMP_ENTRADA_METRICA = 'promedio';   // 'min' | 'max' | 'promedio'
 let TEMP_ENTRADA_GRANULARIDAD = 'diario';   // 'diario' | 'mensual'
@@ -19113,11 +19129,28 @@ function tempEntradaToggleVariable(v){
   TEMP_ENTRADA_VARIABLE = v;
   ['temperatura','precipitacion','humedad'].forEach(x =>
     document.getElementById(`temp-entrada-btn-var-${x}`).classList.toggle('activo', x===v));
+  // El botón Fuente (Mi archivo/API IDEAM) solo aplica a Temperatura --
+  // Precipitación/Humedad no tienen archivo local, siempre son API.
+  document.getElementById('temp-entrada-fuente-grupo').classList.toggle('hidden', v!=='temperatura');
   // La ventana de historia disponible cambia mucho entre variables (ver
   // VARIABLES_CLIMA en el backend -- Precipitación son 20 días, Humedad
   // 60, Temperatura 365) -- si se conserva un Rango elegido a mano de OTRA
   // variable, puede quedar fuera del rango nuevo y no mostrar nada. Se
   // limpia para que tempEntradaCargar() vuelva a calcular el default.
+  document.getElementById('temp-entrada-desde').value = '';
+  document.getElementById('temp-entrada-hasta').value = '';
+  _tempEntradaCargarDatos();
+}
+
+// Pedido explícito ("un botón para cambiar, pero que siempre muestre
+// primero la que yo descargué"): alterna entre el archivo propio del
+// operador y la API del IDEAM en vivo para Temperatura -- ver
+// _tempEntradaCargarDatos (manda ?fuente=... al backend) y el default
+// TEMP_ENTRADA_FUENTE='archivo'.
+function tempEntradaToggleFuente(f){
+  TEMP_ENTRADA_FUENTE = f;
+  document.getElementById('temp-entrada-btn-fuente-archivo').classList.toggle('activo', f==='archivo');
+  document.getElementById('temp-entrada-btn-fuente-api').classList.toggle('activo', f==='api');
   document.getElementById('temp-entrada-desde').value = '';
   document.getElementById('temp-entrada-hasta').value = '';
   _tempEntradaCargarDatos();
@@ -19194,10 +19227,19 @@ async function _tempEntradaCargarDatos(){
     return false;
   }
   try{
-    const resp = await apiGet(`/api/ideam/temperatura?variable=${TEMP_ENTRADA_VARIABLE}`, CLIMA_TIMEOUT_MS);
+    const qs = TEMP_ENTRADA_VARIABLE==='temperatura' ? `&fuente=${TEMP_ENTRADA_FUENTE}` : '';
+    const resp = await apiGet(`/api/ideam/temperatura?variable=${TEMP_ENTRADA_VARIABLE}${qs}`, CLIMA_TIMEOUT_MS);
     TEMP_ENTRADA_ESTACION = resp.estacion;
     TEMP_ENTRADA_DIAS = resp.filas || [];
     TEMP_ENTRADA_UNIDAD = resp.unidad || infoVar.unidadFallback;
+    // El backend puede haber pedido "archivo" y caído a "api" igual (no
+    // había CSV) -- sincroniza el botón con lo que de verdad se usó, para
+    // no dejarlo marcado en "Mi archivo" mostrando datos de la API.
+    if(TEMP_ENTRADA_VARIABLE==='temperatura' && resp.fuente && resp.fuente!==TEMP_ENTRADA_FUENTE){
+      TEMP_ENTRADA_FUENTE = resp.fuente;
+      document.getElementById('temp-entrada-btn-fuente-archivo').classList.toggle('activo', resp.fuente==='archivo');
+      document.getElementById('temp-entrada-btn-fuente-api').classList.toggle('activo', resp.fuente==='api');
+    }
   }catch(e){
     vacio.classList.remove('hidden'); contenido.classList.add('hidden');
     vacio.querySelector('div').textContent = e.message || 'No se pudo cargar los datos -- elige una estación en Parametrización.';
