@@ -1308,181 +1308,197 @@ tfoot td:first-child{text-align:left}
 <!-- ---------------- PÉRDIDAS TÉCNICAS ---------------- -->
 <div id="vista-perdidas" class="vista-modulo hidden">
 
-  <div class="card">
-    <div class="fbar" style="margin-bottom:14px">
-      <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text3)">Filtros propios de estas dos gráficas:</span>
-      <label>Zona (acota "Pérdida por Nivel")</label>
-      <select id="fm-zona2" onchange="cargarGraficasApiladas()"><option value="">Todas</option></select>
-      <label>Nivel (acota "Pérdida por Zona")</label>
-      <select id="fm-nivel2" onchange="cargarGraficasApiladas()"><option value="">Todos</option></select>
-    </div>
-    <div class="range-wrap" style="margin-top:0;margin-bottom:14px">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-        <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text3)">Rango (independiente de los filtros de arriba)</span>
-        <select id="range-start-sel2" onchange="syncRangeFromSel2()"></select>
-        <span style="font-size:11px;color:var(--text3)">→</span>
-        <select id="range-end-sel2" onchange="syncRangeFromSel2()"></select>
-      </div>
-      <div class="range-track-row">
-        <div id="range-track2"></div>
-        <div id="range-fill2"></div>
-        <input type="range" id="rs2" min="0" value="0" oninput="updateRange2()">
-        <input type="range" id="re2" min="0" value="0" oninput="updateRange2()">
-      </div>
-    </div>
-    <div class="split-wrap">
-      <div>
-        <div class="card-title" style="text-align:center">Pérdida por Nivel</div>
-        <div class="chart-wrap" style="height:320px"><canvas id="ch-nivel-apilado"></canvas></div>
-      </div>
-      <div>
-        <div class="card-title" style="text-align:center">Pérdida por Zona</div>
-        <div class="chart-wrap" style="height:320px"><canvas id="ch-zona-apilado"></canvas></div>
-      </div>
-    </div>
+  <!-- Pestañas del módulo -- pedido explícito ("quiero pestañas en la
+       parte superior, van a haber varias"): por ahora 2 -- "Pérdidas
+       Técnicas Totales" (las 2 gráficas apiladas de Nivel/Zona, pedido
+       explícito de cuál va primero) y "Detalle por Circuito" (todo lo
+       demás que ya existía acá -- filtros/CREG, variación por circuito,
+       gráfica principal con proyección, valuación económica y el mapa),
+       agrupado así de provisorio hasta que se indiquen más pestañas. -->
+  <div class="fbar" style="margin-bottom:14px">
+    <button type="button" class="be-modo-btn activo" id="perdidas-tab-btn-totales" onclick="perdidasIrATab('totales')">Pérdidas Técnicas Totales</button>
+    <button type="button" class="be-modo-btn" id="perdidas-tab-btn-detalle" onclick="perdidasIrATab('detalle')">Detalle por Circuito</button>
   </div>
 
-  <div class="card">
-    <div class="fbar" style="margin-bottom:0">
-      <label>Zona</label>
-      <div class="msel" id="msel-zona"></div>
-      <label>Alimentador</label>
-      <div class="msel" id="msel-alimentador"></div>
-      <label>Nivel de tensión</label>
-      <div class="msel" id="msel-nivel"></div>
-      <button class="btn-theme" style="width:auto;padding:0 14px;margin-left:auto" onclick="descargarCSV()" id="btn-descargar" title="Descargar el detalle mensual en CSV">⬇ Descargar CSV</button>
-    </div>
-
-    <div class="creg-tbl" id="creg-tbl"></div>
-
-    <div class="range-wrap">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-        <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text3)">Rango</span>
-        <select id="range-start-sel" onchange="syncRangeFromSel()"></select>
-        <span style="font-size:11px;color:var(--text3)">→</span>
-        <select id="range-end-sel" onchange="syncRangeFromSel()"></select>
-      </div>
-      <div class="range-track-row">
-        <div id="range-track"></div>
-        <div id="range-fill"></div>
-        <input type="range" id="rs" min="0" value="0" oninput="updateRange()">
-        <input type="range" id="re" min="0" value="0" oninput="updateRange()">
-      </div>
-    </div>
-  </div>
-
-  <!-- Variación de pérdida técnica por circuito, mes contra mes -- pedido
-       explícito ("una tabla de variación de pérdida técnica de los
-       circuitos de un mes a otro y si doy click en uno lo grafique en la
-       gráfica Pérdidas Técnicas"). El mes "actual" es el último mes visible
-       del Rango de arriba (así queda ligada a lo que ya se está mirando);
-       clic en una fila fija el filtro Alimentador a ese circuito -- mismo
-       mecanismo que ya usan las flechas ▲▼ de Usuarios Telemedidos
-       (mselSetSeleccion), así la gráfica principal se actualiza sola. -->
-  <div class="card">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:8px">
-      <div class="card-title" style="margin-bottom:0">Variación de Pérdida Técnica por Circuito</div>
-      <div id="circvar-caption" style="font-size:11px;color:var(--text3);font-weight:700"></div>
-    </div>
-    <div class="tbl-wrap tbl-compacta alim3-tabla-sticky" id="circvar-tbl-wrap" style="max-height:420px;overflow-y:auto">
-      <table>
-        <thead><tr>
-          <th style="text-align:left;cursor:pointer" onclick="circVarOrdenar('nemonico')" title="Click para ordenar">Circuito <span id="circvar-th-nemonico" class="alim3-th-flecha"></span></th>
-          <th style="cursor:pointer" onclick="circVarOrdenar('zona')" title="Click para ordenar">Zona <span id="circvar-th-zona" class="alim3-th-flecha"></span></th>
-          <th style="cursor:pointer" onclick="circVarOrdenar('nivel_tension')" title="Click para ordenar">Nivel <span id="circvar-th-nivel_tension" class="alim3-th-flecha"></span></th>
-          <th style="cursor:pointer" onclick="circVarOrdenar('perdidaAnterior')" title="Click para ordenar">Pérdida Mes Anterior (kWh) <span id="circvar-th-perdidaAnterior" class="alim3-th-flecha"></span></th>
-          <th style="cursor:pointer" onclick="circVarOrdenar('perdidaActual')" title="Click para ordenar">Pérdida Mes Actual (kWh) <span id="circvar-th-perdidaActual" class="alim3-th-flecha"></span></th>
-          <th style="cursor:pointer" onclick="circVarOrdenar('deltaKwh')" title="Click para ordenar">Δ kWh <span id="circvar-th-deltaKwh" class="alim3-th-flecha"></span></th>
-          <th style="cursor:pointer" onclick="circVarOrdenar('deltaKwhPct')" title="Click para ordenar -- crecimiento real del kWh vs. el mes anterior">Var. Pérdida % <span id="circvar-th-deltaKwhPct" class="alim3-th-flecha"></span></th>
-          <th style="cursor:pointer" onclick="circVarOrdenar('pctActual')" title="Click para ordenar">Pérdida % Actual <span id="circvar-th-pctActual" class="alim3-th-flecha"></span></th>
-          <th style="cursor:pointer" onclick="circVarOrdenar('deltaPp')" title="Click para ordenar">Δ pp <span id="circvar-th-deltaPp" class="alim3-th-flecha"></span></th>
-        </tr></thead>
-        <tbody id="circvar-tbody"></tbody>
-      </table>
-    </div>
-  </div>
-
-  <div class="card">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;flex-wrap:wrap;gap:8px">
-      <div style="flex:1;text-align:center">
-        <div id="chart-titulo" style="font-size:16px;font-weight:800;letter-spacing:1.5px;color:var(--text);text-transform:uppercase">Pérdidas Técnicas Total</div>
-      </div>
-      <div style="display:flex;gap:8px;flex-shrink:0">
-        <button id="proj-btn" onclick="toggleProjection()" title="Proyectar PT kWh basado en entradas futuras"
-          style="display:flex;align-items:center;gap:6px;padding:6px 14px;background:transparent;color:var(--accent);border:1px solid var(--accent);border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">
-          📈 Proyección
-        </button>
-        <select id="proj-method" onchange="renderPrincipal()"
-          style="display:none;padding:5px 10px;border:1px solid var(--accent);border-radius:8px;font-size:11px;font-weight:600;color:var(--accent);background:var(--bg);cursor:pointer">
-          <option value="lineal">📏 Lineal</option>
-          <option value="polinomica">📐 Polinómica</option>
-          <option value="logaritmica">📉 Logarítmica</option>
-          <option value="media_movil">〰️ Media Móvil</option>
-          <option value="arima">🔁 ARIMA AR(1)</option>
-          <option value="sarima">🌊 SARIMA</option>
-        </select>
-        <button onclick="exportChartPNG()" title="Exportar gráfica como PNG"
-          style="display:flex;align-items:center;gap:6px;padding:6px 14px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">
-          ⬇ Exportar PNG
-        </button>
-      </div>
-    </div>
-    <div class="chart-wrap" style="height:420px"><canvas id="ch-principal"></canvas></div>
-    <div id="kpi-notes-row" style="margin-top:14px"></div>
-  </div>
-
-  <div class="card">
-    <div class="valuacion-hdr">
-      <div>
-        <div class="card-title" style="margin-bottom:2px">💰 Valuación Económica de Pérdidas Técnicas · por Zona</div>
-        <div class="card-sub" id="tbl-sub" style="margin-bottom:0">—</div>
-      </div>
-      <div class="valuacion-hdr-controles">
-        <label style="font-size:12px;color:var(--text3);white-space:nowrap">Mes:</label>
-        <select id="fm-mes" onchange="cargarZonas()"></select>
-        <button id="btn-contraer-zonas" onclick="toggleZonasContraidas()"
-          style="padding:5px 11px;border:1px solid var(--accent);border-radius:7px;font-size:11px;font-weight:600;background:transparent;color:var(--accent);cursor:pointer;white-space:nowrap">
-          ▴ Contraer por zona
-        </button>
-        <label style="font-size:12px;color:var(--text3);white-space:nowrap">Costo kWh/mes (G+T+R):</label>
-        <div style="display:flex;align-items:center;gap:4px">
-          <span style="font-size:12px;color:var(--text3)">$</span>
-          <input type="number" id="costo-kwh" value="0" step="1" min="0" oninput="renderValuacionZonas()"
-            style="padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12px;font-weight:700;color:var(--accent);background:var(--bg);width:110px;text-align:right">
-        </div>
-      </div>
-    </div>
-    <div class="tbl-wrap">
-      <table style="min-width:1020px">
-        <thead>
-          <tr>
-            <th>Zona</th><th>Nivel</th><th>Reconocimiento<br>CREG (%)</th><th>Entradas<br>(kWh/mes)</th>
-            <th>Pérd. Técnicas<br>Calculadas (kWh/mes)</th><th>Pérd. Técnicas<br>Calculadas (%)</th>
-            <th>Pérd.<br>Reconocida (kWh/mes)</th><th>Pérd. No<br>Reconocida (kWh/mes)</th>
-            <th>Costo<br>Reconocido ($/mes)</th><th>Costo No<br>Reconocido ($/mes)</th>
-          </tr>
-        </thead>
-        <tbody id="tb-valuacion"></tbody>
-        <tfoot id="tf-valuacion"></tfoot>
-      </table>
-    </div>
-  </div>
-
-  <div id="bloque-mapa-zonas" class="hidden">
-    <div class="sec-hdr">
-      <div class="sec-title">Mapa de Pérdidas Técnicas por Zona</div>
-      <div class="sec-sub" id="mapa-sub">—</div>
-    </div>
+  <div id="perdidas-tab-totales">
     <div class="card">
-      <div id="mapa-zonas-leaflet" style="height:600px;width:100%;border-radius:10px;overflow:hidden"></div>
-      <div style="display:flex;align-items:center;flex-wrap:wrap;gap:14px;padding:12px 4px 0">
-        <span style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:var(--text3)">PT%</span>
-        <div style="display:flex;align-items:center;gap:6px">
-          <span id="mapa-leg-min" style="font-size:11px;font-weight:700;color:var(--text2);min-width:28px;text-align:right">—</span>
-          <div style="width:180px;height:14px;border-radius:6px;background:linear-gradient(to right,#1a9850,#91cf60,#fee04c,#fc8d59,#d73027);border:1px solid var(--border)"></div>
-          <span id="mapa-leg-max" style="font-size:11px;font-weight:700;color:var(--text2)">—</span>
+      <div class="fbar" style="margin-bottom:14px">
+        <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text3)">Filtros propios de estas dos gráficas:</span>
+        <label>Zona (acota "Pérdida por Nivel")</label>
+        <select id="fm-zona2" onchange="cargarGraficasApiladas()"><option value="">Todas</option></select>
+        <label>Nivel (acota "Pérdida por Zona")</label>
+        <select id="fm-nivel2" onchange="cargarGraficasApiladas()"><option value="">Todos</option></select>
+      </div>
+      <div class="range-wrap" style="margin-top:0;margin-bottom:14px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+          <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text3)">Rango (independiente de los filtros de arriba)</span>
+          <select id="range-start-sel2" onchange="syncRangeFromSel2()"></select>
+          <span style="font-size:11px;color:var(--text3)">→</span>
+          <select id="range-end-sel2" onchange="syncRangeFromSel2()"></select>
         </div>
-        <div id="mapa-leg-zonas" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+        <div class="range-track-row">
+          <div id="range-track2"></div>
+          <div id="range-fill2"></div>
+          <input type="range" id="rs2" min="0" value="0" oninput="updateRange2()">
+          <input type="range" id="re2" min="0" value="0" oninput="updateRange2()">
+        </div>
+      </div>
+      <div class="split-wrap">
+        <div>
+          <div class="card-title" style="text-align:center">Pérdida por Nivel</div>
+          <div class="chart-wrap" style="height:320px"><canvas id="ch-nivel-apilado"></canvas></div>
+        </div>
+        <div>
+          <div class="card-title" style="text-align:center">Pérdida por Zona</div>
+          <div class="chart-wrap" style="height:320px"><canvas id="ch-zona-apilado"></canvas></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="perdidas-tab-detalle" class="hidden">
+    <div class="card">
+      <div class="fbar" style="margin-bottom:0">
+        <label>Zona</label>
+        <div class="msel" id="msel-zona"></div>
+        <label>Alimentador</label>
+        <div class="msel" id="msel-alimentador"></div>
+        <label>Nivel de tensión</label>
+        <div class="msel" id="msel-nivel"></div>
+        <button class="btn-theme" style="width:auto;padding:0 14px;margin-left:auto" onclick="descargarCSV()" id="btn-descargar" title="Descargar el detalle mensual en CSV">⬇ Descargar CSV</button>
+      </div>
+
+      <div class="creg-tbl" id="creg-tbl"></div>
+
+      <div class="range-wrap">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+          <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text3)">Rango</span>
+          <select id="range-start-sel" onchange="syncRangeFromSel()"></select>
+          <span style="font-size:11px;color:var(--text3)">→</span>
+          <select id="range-end-sel" onchange="syncRangeFromSel()"></select>
+        </div>
+        <div class="range-track-row">
+          <div id="range-track"></div>
+          <div id="range-fill"></div>
+          <input type="range" id="rs" min="0" value="0" oninput="updateRange()">
+          <input type="range" id="re" min="0" value="0" oninput="updateRange()">
+        </div>
+      </div>
+    </div>
+
+    <!-- Variación de pérdida técnica por circuito, mes contra mes -- pedido
+         explícito ("una tabla de variación de pérdida técnica de los
+         circuitos de un mes a otro y si doy click en uno lo grafique en la
+         gráfica Pérdidas Técnicas"). El mes "actual" es el último mes visible
+         del Rango de arriba (así queda ligada a lo que ya se está mirando);
+         clic en una fila fija el filtro Alimentador a ese circuito -- mismo
+         mecanismo que ya usan las flechas ▲▼ de Usuarios Telemedidos
+         (mselSetSeleccion), así la gráfica principal se actualiza sola. -->
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:8px">
+        <div class="card-title" style="margin-bottom:0">Variación de Pérdida Técnica por Circuito</div>
+        <div id="circvar-caption" style="font-size:11px;color:var(--text3);font-weight:700"></div>
+      </div>
+      <div class="tbl-wrap tbl-compacta alim3-tabla-sticky" id="circvar-tbl-wrap" style="max-height:420px;overflow-y:auto">
+        <table>
+          <thead><tr>
+            <th style="text-align:left;cursor:pointer" onclick="circVarOrdenar('nemonico')" title="Click para ordenar">Circuito <span id="circvar-th-nemonico" class="alim3-th-flecha"></span></th>
+            <th style="cursor:pointer" onclick="circVarOrdenar('zona')" title="Click para ordenar">Zona <span id="circvar-th-zona" class="alim3-th-flecha"></span></th>
+            <th style="cursor:pointer" onclick="circVarOrdenar('nivel_tension')" title="Click para ordenar">Nivel <span id="circvar-th-nivel_tension" class="alim3-th-flecha"></span></th>
+            <th style="cursor:pointer" onclick="circVarOrdenar('perdidaAnterior')" title="Click para ordenar">Pérdida Mes Anterior (kWh) <span id="circvar-th-perdidaAnterior" class="alim3-th-flecha"></span></th>
+            <th style="cursor:pointer" onclick="circVarOrdenar('perdidaActual')" title="Click para ordenar">Pérdida Mes Actual (kWh) <span id="circvar-th-perdidaActual" class="alim3-th-flecha"></span></th>
+            <th style="cursor:pointer" onclick="circVarOrdenar('deltaKwh')" title="Click para ordenar">Δ kWh <span id="circvar-th-deltaKwh" class="alim3-th-flecha"></span></th>
+            <th style="cursor:pointer" onclick="circVarOrdenar('deltaKwhPct')" title="Click para ordenar -- crecimiento real del kWh vs. el mes anterior">Var. Pérdida % <span id="circvar-th-deltaKwhPct" class="alim3-th-flecha"></span></th>
+            <th style="cursor:pointer" onclick="circVarOrdenar('pctActual')" title="Click para ordenar">Pérdida % Actual <span id="circvar-th-pctActual" class="alim3-th-flecha"></span></th>
+            <th style="cursor:pointer" onclick="circVarOrdenar('deltaPp')" title="Click para ordenar">Δ pp <span id="circvar-th-deltaPp" class="alim3-th-flecha"></span></th>
+          </tr></thead>
+          <tbody id="circvar-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;flex-wrap:wrap;gap:8px">
+        <div style="flex:1;text-align:center">
+          <div id="chart-titulo" style="font-size:16px;font-weight:800;letter-spacing:1.5px;color:var(--text);text-transform:uppercase">Pérdidas Técnicas Total</div>
+        </div>
+        <div style="display:flex;gap:8px;flex-shrink:0">
+          <button id="proj-btn" onclick="toggleProjection()" title="Proyectar PT kWh basado en entradas futuras"
+            style="display:flex;align-items:center;gap:6px;padding:6px 14px;background:transparent;color:var(--accent);border:1px solid var(--accent);border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">
+            📈 Proyección
+          </button>
+          <select id="proj-method" onchange="renderPrincipal()"
+            style="display:none;padding:5px 10px;border:1px solid var(--accent);border-radius:8px;font-size:11px;font-weight:600;color:var(--accent);background:var(--bg);cursor:pointer">
+            <option value="lineal">📏 Lineal</option>
+            <option value="polinomica">📐 Polinómica</option>
+            <option value="logaritmica">📉 Logarítmica</option>
+            <option value="media_movil">〰️ Media Móvil</option>
+            <option value="arima">🔁 ARIMA AR(1)</option>
+            <option value="sarima">🌊 SARIMA</option>
+          </select>
+          <button onclick="exportChartPNG()" title="Exportar gráfica como PNG"
+            style="display:flex;align-items:center;gap:6px;padding:6px 14px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">
+            ⬇ Exportar PNG
+          </button>
+        </div>
+      </div>
+      <div class="chart-wrap" style="height:420px"><canvas id="ch-principal"></canvas></div>
+      <div id="kpi-notes-row" style="margin-top:14px"></div>
+    </div>
+
+    <div class="card">
+      <div class="valuacion-hdr">
+        <div>
+          <div class="card-title" style="margin-bottom:2px">💰 Valuación Económica de Pérdidas Técnicas · por Zona</div>
+          <div class="card-sub" id="tbl-sub" style="margin-bottom:0">—</div>
+        </div>
+        <div class="valuacion-hdr-controles">
+          <label style="font-size:12px;color:var(--text3);white-space:nowrap">Mes:</label>
+          <select id="fm-mes" onchange="cargarZonas()"></select>
+          <button id="btn-contraer-zonas" onclick="toggleZonasContraidas()"
+            style="padding:5px 11px;border:1px solid var(--accent);border-radius:7px;font-size:11px;font-weight:600;background:transparent;color:var(--accent);cursor:pointer;white-space:nowrap">
+            ▴ Contraer por zona
+          </button>
+          <label style="font-size:12px;color:var(--text3);white-space:nowrap">Costo kWh/mes (G+T+R):</label>
+          <div style="display:flex;align-items:center;gap:4px">
+            <span style="font-size:12px;color:var(--text3)">$</span>
+            <input type="number" id="costo-kwh" value="0" step="1" min="0" oninput="renderValuacionZonas()"
+              style="padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12px;font-weight:700;color:var(--accent);background:var(--bg);width:110px;text-align:right">
+          </div>
+        </div>
+      </div>
+      <div class="tbl-wrap">
+        <table style="min-width:1020px">
+          <thead>
+            <tr>
+              <th>Zona</th><th>Nivel</th><th>Reconocimiento<br>CREG (%)</th><th>Entradas<br>(kWh/mes)</th>
+              <th>Pérd. Técnicas<br>Calculadas (kWh/mes)</th><th>Pérd. Técnicas<br>Calculadas (%)</th>
+              <th>Pérd.<br>Reconocida (kWh/mes)</th><th>Pérd. No<br>Reconocida (kWh/mes)</th>
+              <th>Costo<br>Reconocido ($/mes)</th><th>Costo No<br>Reconocido ($/mes)</th>
+            </tr>
+          </thead>
+          <tbody id="tb-valuacion"></tbody>
+          <tfoot id="tf-valuacion"></tfoot>
+        </table>
+      </div>
+    </div>
+
+    <div id="bloque-mapa-zonas" class="hidden">
+      <div class="sec-hdr">
+        <div class="sec-title">Mapa de Pérdidas Técnicas por Zona</div>
+        <div class="sec-sub" id="mapa-sub">—</div>
+      </div>
+      <div class="card">
+        <div id="mapa-zonas-leaflet" style="height:600px;width:100%;border-radius:10px;overflow:hidden"></div>
+        <div style="display:flex;align-items:center;flex-wrap:wrap;gap:14px;padding:12px 4px 0">
+          <span style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:var(--text3)">PT%</span>
+          <div style="display:flex;align-items:center;gap:6px">
+            <span id="mapa-leg-min" style="font-size:11px;font-weight:700;color:var(--text2);min-width:28px;text-align:right">—</span>
+            <div style="width:180px;height:14px;border-radius:6px;background:linear-gradient(to right,#1a9850,#91cf60,#fee04c,#fc8d59,#d73027);border:1px solid var(--border)"></div>
+            <span id="mapa-leg-max" style="font-size:11px;font-weight:700;color:var(--text2)">—</span>
+          </div>
+          <div id="mapa-leg-zonas" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -24341,6 +24357,23 @@ function labelMesSiguiente(m){
   const d = new Date(y, mo, 1); // mo (sin -1) ya avanza un mes
   const t = d.toLocaleDateString('es-CO', {month:'short'}).replace(/\./g,'').trim();
   return t.charAt(0).toUpperCase()+t.slice(1)+' '+d.getFullYear();
+}
+
+// Pestañas de "Pérdidas Técnicas" -- pedido explícito ("quiero pestañas
+// en la parte superior, van a haber varias"). "detalle" agrupa (por
+// ahora, provisorio) todo lo que no es las 2 gráficas apiladas -- filtros/
+// CREG, variación por circuito, gráfica principal con proyección,
+// valuación económica y el mapa.
+function perdidasIrATab(nombre){
+  document.getElementById('perdidas-tab-totales').classList.toggle('hidden', nombre!=='totales');
+  document.getElementById('perdidas-tab-detalle').classList.toggle('hidden', nombre!=='detalle');
+  document.getElementById('perdidas-tab-btn-totales').classList.toggle('activo', nombre==='totales');
+  document.getElementById('perdidas-tab-btn-detalle').classList.toggle('activo', nombre==='detalle');
+  // Los gráficos de Chart.js de la pestaña que estaba oculta (display:none)
+  // se dibujaron con tamaño 0 -- sin esto quedan rotos hasta que la
+  // ventana cambie de tamaño a mano. Un resize sintético, ya con el DOM
+  // actualizado, les hace recalcular el tamaño real apenas quedan visibles.
+  setTimeout(() => window.dispatchEvent(new Event('resize')), 0);
 }
 
 /* ---- Pérdida por Nivel / Pérdida por Zona (barras apiladas) ----
