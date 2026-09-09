@@ -601,13 +601,14 @@ tfoot td:first-child{text-align:left}
 .zc-rows>div b{color:#1a252f;font-weight:800}
 
 /* RECONOCIMIENTO CREG POR NIVEL */
-/* Más compacto -- pedido explícito ("coloca más pequeño eso del
-   reconocimiento CREG") al pasar a compartir fila con Zona/Nivel/
-   Alimentador en Detalle por Circuito. */
-.creg-tbl{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)}
-.creg-tbl .creg-item{display:flex;align-items:center;gap:4px;padding:3px 7px;border:1px solid var(--border);border-radius:7px;background:var(--bg)}
+/* Compacto pero legible -- pedido explícito primero ("coloca más pequeño
+   eso del reconocimiento CREG") y después ("se ve amontonado" -- el
+   input de 42px cortaba valores de 2 decimales tipo "9.23"; se subió a
+   54px y se separó el gap para que respire). */
+.creg-tbl{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)}
+.creg-tbl .creg-item{display:flex;align-items:center;gap:5px;padding:4px 8px;border:1px solid var(--border);border-radius:7px;background:var(--bg)}
 .creg-tbl .creg-item label{font-size:9.5px;font-weight:700;color:var(--text2);white-space:nowrap}
-.creg-tbl .creg-item input{width:42px;padding:2px 4px;border:1px solid var(--border);border-radius:5px;font-size:11px;font-weight:700;text-align:right;color:var(--text);background:var(--bg2)}
+.creg-tbl .creg-item input{width:54px;padding:3px 5px;border:1px solid var(--border);border-radius:5px;font-size:11px;font-weight:700;text-align:right;color:var(--text);background:var(--bg2)}
 .creg-tbl .creg-st{font-size:10px;color:var(--text3);min-width:14px}
 
 /* PARAMETRIZACIÓN -- color por zona */
@@ -24427,7 +24428,10 @@ function renderPrincipal(){
     },
     options:{
       responsive:true, maintainAspectRatio:false,
-      layout:{padding:{bottom:20,top:20,right:16}},
+      // left más ancho -- pedido explícito ("el eje Y de la gráfica se
+      // ven los valores sobrepuestos"): el primer punto quedaba pegado
+      // al eje Y y su etiqueta se montaba sobre los ticks.
+      layout:{padding:{bottom:20,top:20,right:16,left:8}},
       interaction:{mode:'index', intersect:false},
       plugins:{
         legend:{display:true, position:'bottom', labels:{boxWidth:14, font:{size:11}, color:tickC, padding:14}},
@@ -24438,7 +24442,10 @@ function renderPrincipal(){
         }}},
       },
       scales:{
-        x:{grid:{display:false}, ticks:{color:tickXFuerte, font:{size:12}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
+        // offset:true -- mismo arreglo que ya se usa en otras gráficas de
+        // este módulo para este mismo problema (líneas/etiquetas pegadas
+        // al borde del eje).
+        x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:12}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
         y:{type:'linear', position:'left', beginAtZero:true, grid:{color:gridC},
           ticks:{color:tickC, font:{size:12}, callback:v=>fmtGwh(v)},
           title:{display:true, text:'Pérdida (kWh)', color:tickC, font:{size:12}}},
@@ -24772,13 +24779,22 @@ function renderPtTotalesZona(datos, modoAnual){
   // activo, se le agrega a la etiqueta el delta contra el punto anterior
   // DEL MISMO dataset (ctx2.dataset.data trae los valores ya calculados,
   // incluida la fila anterior -- no hace falta recalcular nada aparte).
+  // Pedido explícito ("debe mostrar la variación en porcentaje y en
+  // kWh y si subió o bajó"): para la línea de kWh se muestran las 2
+  // unidades juntas -- el Δ kWh (absoluto) Y el % que representa ese
+  // cambio (mismo criterio que ya usa la tabla "Variación de Pérdida
+  // Técnica por Circuito": columnas "Δ kWh" y "Var. Pérdida %" juntas).
+  // Para la línea de %, el delta ya es en puntos porcentuales (pp) --
+  // ahí no aplica un "% del %", así que se deja como está.
   const conVariacion = (ctx2, esPct) => {
     if(!PT_TOT_MOSTRAR_VAR || ctx2.dataIndex===0) return '';
     const actual = ctx2.dataset.data[ctx2.dataIndex], anterior = ctx2.dataset.data[ctx2.dataIndex-1];
     if(actual==null || anterior==null) return '';
     const delta = actual - anterior;
     const flecha = Math.abs(delta) < (esPct?0.005:0.5) ? '■' : (delta>0 ? '▲' : '▼');
-    return esPct ? ` (${flecha}${Math.abs(delta).toFixed(2)}pp)` : ` (${flecha}${Math.round(Math.abs(delta)).toLocaleString('es-CO')})`;
+    if(esPct) return ` (${flecha}${Math.abs(delta).toFixed(2)}pp)`;
+    const deltaPct = anterior ? (delta/anterior*100) : null;
+    return ` (${flecha}${Math.round(Math.abs(delta)).toLocaleString('es-CO')} kWh${deltaPct!=null ? `, ${flecha}${Math.abs(deltaPct).toFixed(1)}%` : ''})`;
   };
 
   const datasetsPct = series.map(s => {
