@@ -1590,11 +1590,11 @@ tfoot td:first-child{text-align:left}
               <th style="text-align:left;cursor:pointer" onclick="circVarOrdenar('nemonico')" title="Click para ordenar">Circuito <span id="circvar-th-nemonico" class="alim3-th-flecha"></span></th>
               <th style="cursor:pointer" onclick="circVarOrdenar('zona')" title="Click para ordenar">Zona <span id="circvar-th-zona" class="alim3-th-flecha"></span></th>
               <th style="cursor:pointer" onclick="circVarOrdenar('nivel_tension')" title="Click para ordenar">Nivel <span id="circvar-th-nivel_tension" class="alim3-th-flecha"></span></th>
-              <th style="cursor:pointer" onclick="circVarOrdenar('perdidaAnterior')" title="Click para ordenar">Pérdida Mes Anterior (kWh) <span id="circvar-th-perdidaAnterior" class="alim3-th-flecha"></span></th>
-              <th style="cursor:pointer" onclick="circVarOrdenar('perdidaActual')" title="Click para ordenar">Pérdida Mes Actual (kWh) <span id="circvar-th-perdidaActual" class="alim3-th-flecha"></span></th>
+              <th style="cursor:pointer" onclick="circVarOrdenar('perdidaAnterior')" title="Click para ordenar">Pérdida Mes<br>Anterior (kWh) <span id="circvar-th-perdidaAnterior" class="alim3-th-flecha"></span></th>
+              <th style="cursor:pointer" onclick="circVarOrdenar('perdidaActual')" title="Click para ordenar">Pérdida Mes<br>Actual (kWh) <span id="circvar-th-perdidaActual" class="alim3-th-flecha"></span></th>
               <th style="cursor:pointer" onclick="circVarOrdenar('deltaKwh')" title="Click para ordenar">Δ kWh <span id="circvar-th-deltaKwh" class="alim3-th-flecha"></span></th>
-              <th style="cursor:pointer" onclick="circVarOrdenar('deltaKwhPct')" title="Click para ordenar -- crecimiento real del kWh vs. el mes anterior">Var. Pérdida % <span id="circvar-th-deltaKwhPct" class="alim3-th-flecha"></span></th>
-              <th style="cursor:pointer" onclick="circVarOrdenar('pctActual')" title="Click para ordenar">Pérdida % Actual <span id="circvar-th-pctActual" class="alim3-th-flecha"></span></th>
+              <th style="cursor:pointer" onclick="circVarOrdenar('deltaKwhPct')" title="Click para ordenar -- crecimiento real del kWh vs. el mes anterior">Var. Pérdida<br>% <span id="circvar-th-deltaKwhPct" class="alim3-th-flecha"></span></th>
+              <th style="cursor:pointer" onclick="circVarOrdenar('pctActual')" title="Click para ordenar">Pérdida %<br>Actual <span id="circvar-th-pctActual" class="alim3-th-flecha"></span></th>
               <th style="cursor:pointer" onclick="circVarOrdenar('deltaPp')" title="Click para ordenar">Δ pp <span id="circvar-th-deltaPp" class="alim3-th-flecha"></span></th>
             </tr></thead>
             <tbody id="circvar-tbody"></tbody>
@@ -5042,11 +5042,6 @@ let BE_EDITAR_ID = null;
 let chBalanceEstructura = null;  // un solo chart/canvas para los 3 modos de "Ver Balance" -- se destruye y recrea al cambiar de modo
 let META = {zonas:[], niveles:[], meses:[]};
 let RESUMEN = null;
-// "Pérdida por Balance" -- pedido explícito ("debe traerlo desde allá
-// [Balances por Estructura]"): comparación oficial-vs-balance-manual de
-// la Estructura vinculada al Alimentador filtrado, si tiene una (ver
-// aplicarFiltros() y renderPrincipalLineas()). null si no aplica.
-let RESUMEN_BALANCE = null;
 let RANGO = {start:0, end:0};
 let showProjection = false;
 // Pedido explícito ("quita los datos de entrada y salida, que haya un
@@ -23886,34 +23881,6 @@ async function aplicarFiltros(){
 
   RESUMEN = await apiGet(`/api/resumen?${qs.toString()}`);
 
-  // "Pérdida por Balance" -- pedido explícito ("la gráfica ... quiero que
-  // sea como la de Balance por Estructuras ... que muestre entrada y
-  // salida (debe traerlo desde allá) y pérdida técnica y pérdida por
-  // balance"): solo tiene sentido con UN Alimentador puntual (una
-  // Estructura de Balances por Estructura se vincula a mano a UN solo
-  // circuito -- ver EstructuraBalance.circuito_id). Se busca si tiene una
-  // vinculada y, si la tiene, se trae su comparación oficial-vs-balance-
-  // manual -- ver renderPrincipalLineas(). Si no hay vinculación (o falla
-  // la consulta), la gráfica sigue mostrando lo oficial nomás, sin esa
-  // serie -- no es bloqueante.
-  RESUMEN_BALANCE = null;
-  if(alimentador.length===1){
-    try{
-      const {estructura_id} = await apiGet(`/api/balances-estructura/por-circuito?nemonico=${encodeURIComponent(alimentador[0])}`);
-      if(estructura_id){
-        const qsBalance = new URLSearchParams();
-        if(META.meses && META.meses.length){
-          qsBalance.set('desde', `${META.meses[RANGO.start] || META.meses[0]}-01`);
-          qsBalance.set('hasta', `${META.meses[RANGO.end] || META.meses[META.meses.length-1]}-01`);
-        }
-        const comparacion = await apiGet(`/api/balances-estructura/${estructura_id}/comparacion?${qsBalance.toString()}`);
-        if(comparacion.vinculado && comparacion.meses.length) RESUMEN_BALANCE = comparacion;
-      }
-    }catch(e){
-      // Complemento -- ver comentario de arriba.
-    }
-  }
-
   renderPrincipal();
   await cargarZonas();
 }
@@ -24288,22 +24255,39 @@ function hexA(hex, alpha){
   return `rgba(${r},${g},${b},${alpha})`;
 }
 
-// Gráfica principal de "Detalle por Circuito" -- pedido explícito ("está
-// muy saturada, quiero que sea como la de Balance por Estructuras: líneas
-// que muestren entrada y salida (debe traerlo desde allá) y pérdida
-// técnica y pérdida por balance"). SIEMPRE en líneas (se quitó el
-// desglose por nivel en barras, que era la otra fuente de saturación) --
-// mismos colores que ya usa esa gráfica (ver
-// renderChartComparacionEstructura): Pérdida Técnica celeste, Pérdida por
-// Balance roja, Pérdida % naranja punteada. "Pérdida por Balance" solo
-// aparece con un Alimentador puntual vinculado a una Estructura de
-// Balances por Estructura (ver RESUMEN_BALANCE, cargada en
-// aplicarFiltros()). La "Senda Regulatoria" (línea gris punteada) sigue
-// siendo el límite CREG reconocido, ya ponderado por circuito -- ver
-// /api/resumen. Entrada/Salida quedan OCULTAS por defecto (pedido
-// explícito: "quita los datos de entrada y salida, que haya un botón si
-// uno lo quiere añadir") -- DET_MOSTRAR_ES las agrega en un 3er eje
-// aparte ("uno lo añade, queda con triple eje", aceptado explícitamente).
+// % de Reconocimiento CREG "de acuerdo con el nivel de tensión" -- pedido
+// explícito ("debe salir el % de reconocimiento de acuerdo con nivel de
+// tensión, debe ser una línea constante, este valor depende de lo que se
+// llene arriba"): se lee DIRECTO de los inputs #creg-nivel-N (no del
+// promedio ponderado que calcula el backend en /api/resumen) para que
+// cambie al toque si el usuario edita un valor arriba, sin esperar a
+// guardarlo. Con 1 solo Nivel filtrado (o un Alimentador puntual, cuyo
+// nivel se busca en CIRCVAR.datos), usa ESE valor exacto; si no, promedia
+// los niveles relevantes (los filtrados, o todos si no hay filtro).
+function _detalleReconocimientoConstante(){
+  const nivelSel = mselValores('msel-nivel').map(Number);
+  const alimentador = mselValores('msel-alimentador');
+  let niveles = nivelSel;
+  if(!niveles.length && alimentador.length===1){
+    const c = (CIRCVAR.datos||[]).find(f=>f.nemonico===alimentador[0]);
+    if(c && c.nivel_tension!=null) niveles = [c.nivel_tension];
+  }
+  if(!niveles.length) niveles = META.niveles || [];
+  const valores = niveles
+    .map(n => { const input = document.getElementById(`creg-nivel-${n}`); return input ? parseFloat(input.value) : NaN; })
+    .filter(v => !isNaN(v));
+  if(!valores.length) return null;
+  return valores.reduce((s,v)=>s+v, 0) / valores.length;
+}
+
+// Gráfica principal de "Detalle por Circuito" -- pedido explícito ("solo
+// quiero que salga la pérdida técnica en kWh/mes y la pérdida técnica en
+// %/mes y el % de reconocimiento... una línea constante"): SIEMPRE en
+// líneas -- Pérdida Técnica (celeste, kWh) + Pérdida Técnica % (naranja
+// punteada) + Reconocimiento CREG (gris punteada, constante, ver arriba).
+// Entrada/Salida quedan OCULTAS por defecto (pedido explícito previo:
+// "quita los datos de entrada y salida, que haya un botón si uno lo
+// quiere añadir") -- DET_MOSTRAR_ES las agrega en un 3er eje aparte.
 function renderPrincipal(){
   if(!RESUMEN) return;
   const ctx = document.getElementById('ch-principal');
@@ -24312,43 +24296,20 @@ function renderPrincipal(){
   const tickXFuerte = dark ? '#ffffff' : '#000000';
   const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
 
-  const tieneBalance = !!RESUMEN_BALANCE;
-  const projBtn = document.getElementById('proj-btn');
-  const projSel = document.getElementById('proj-method');
-  // La Proyección es una regresión sobre la serie OFICIAL (RESUMEN) --
-  // no aplica cuando se muestra la comparación contra un balance
-  // vinculado (esa sirve para verificar que el balance manual se parezca
-  // a lo oficial, no para proyectar el futuro) -- mismo criterio que
-  // antes ocultaba el botón en el desglose por nivel.
-  projBtn.style.display = tieneBalance ? 'none' : 'flex';
-  if(tieneBalance){ projSel.style.display = 'none'; document.getElementById('kpi-notes-row').innerHTML = ''; }
-
   let labels = RESUMEN.meses.map(labelMes);
   let entV = RESUMEN.entradas_kwh.slice();
   let kwhV = RESUMEN.perdidas_kwh.map(v=> v>0 ? v : null);
-  // Salida -- pedido explícito ("que muestre entrada y salida"): no viene
-  // de /api/resumen (solo trae entradas y pérdidas), se deriva igual que
-  // en el resto de la app -- Salida = Entrada - Pérdida.
+  // Salida -- se deriva igual que en el resto de la app (no viene de
+  // /api/resumen) -- Salida = Entrada - Pérdida. Solo se dibuja si se
+  // activa con "➕ Entrada/Salida" (ver más abajo).
   let salV = entV.map((e,i)=> e - (RESUMEN.perdidas_kwh[i]||0));
   let pctV = RESUMEN.perdidas_pct.map((v,i)=> RESUMEN.entradas_kwh[i]>0 && RESUMEN.perdidas_kwh[i]>0 ? v : null);
-  const cregVal = RESUMEN.senda_creg_pct || 0;
+  const cregVal = _detalleReconocimientoConstante() || 0;
 
-  // "Pérdida por Balance" -- se alinea al MISMO eje de meses que RESUMEN
-  // (pueden no coincidir 1 a 1: el balance manual puede arrancar/terminar
-  // en otro mes que el oficial).
-  let balV = null;
-  if(tieneBalance){
-    const posPorMes = new Map(RESUMEN_BALANCE.meses.map((m,i)=>[m, i]));
-    balV = RESUMEN.meses.map(m=>{
-      const i = posPorMes.get(m);
-      return i==null ? null : RESUMEN_BALANCE.perdida_balance_kwh[i];
-    });
-  }
-
-  if(!tieneBalance) updateKpiNotes();
+  updateKpiNotes();
 
   let projDatasets = [];
-  if(showProjection && !tieneBalance){
+  if(showProjection){
     const idx=[], ent=[], kwh=[];
     RESUMEN.meses.forEach((m,i)=>{
       if(RESUMEN.perdidas_kwh[i]>0 && RESUMEN.entradas_kwh[i]>0){ idx.push(i); ent.push(RESUMEN.entradas_kwh[i]); kwh.push(RESUMEN.perdidas_kwh[i]); }
@@ -24371,7 +24332,6 @@ function renderPrincipal(){
       const proyectar = (base, valorSiguiente) => base.map((v,i)=>
         i===lastValid ? base[lastValid] : (i===labels.length-1 ? valorSiguiente : null));
       entV = entV.concat([null]); kwhV = kwhV.concat([null]); pctV = pctV.concat([null]); salV = salV.concat([null]);
-      if(balV) balV = balV.concat([null]);
       projDatasets = [
         {type:'line', label:`Proyección Pérdida Técnica (${method})`, data: proyectar(kwhV, nextKwh),
           borderColor:'#00B0F0', backgroundColor:'transparent', borderWidth:2, borderDash:[6,4],
@@ -24398,29 +24358,23 @@ function renderPrincipal(){
           borderWidth:2.5, pointRadius:3, tension:0, spanGaps:true, yAxisID:'y',
           datalabels:{display:labels.length<=24, anchor:'end', align:'bottom', offset:8,
             formatter:v=>v==null?'':v.toLocaleString('es-CO',{maximumFractionDigits:0}), font:{size:10,weight:'700'}, color:'#00B0F0'}},
-        ...(tieneBalance ? [{type:'line', label:'Pérdida por Balance', data:balV, borderColor:'#C00000',
-          backgroundColor:'transparent', borderWidth:2.5, pointRadius:3, tension:0, spanGaps:true, yAxisID:'y',
-          datalabels:{display:labels.length<=24, anchor:'end', align:'top', offset:8,
-            formatter:v=>v==null?'':v.toLocaleString('es-CO',{maximumFractionDigits:0}), font:{size:10,weight:'700'}, color:'#C00000'}}] : []),
         {type:'line', label:'Pérdida Técnica %', data:pctV, borderColor:'#ED7D31', backgroundColor:'transparent',
           borderWidth:2, borderDash:[6,3], pointRadius:2, tension:0, spanGaps:true, yAxisID:'yPct',
-          // Pedido explícito ("en la gráfica no muestra los valores de %
-          // de pérdida técnica") -- se armó esta línea sin datalabels
-          // por descuido; el resto de líneas de esta gráfica sí tienen.
           datalabels:{display:labels.length<=24, anchor:'end', align:'top', offset:6,
             formatter:v=>v==null?'':v.toFixed(2)+'%', font:{size:10,weight:'700'}, color:'#ED7D31',
             textStrokeColor: dark?'#000000':'#ffffff', textStrokeWidth:3}},
-        {type:'line', label:'Senda Regulatoria', data:labels.map(()=>cregVal),
+        // Constante -- pedido explícito ("debe ser una línea constante").
+        {type:'line', label:'Reconocimiento CREG', data:labels.map(()=>cregVal),
           borderColor:'rgba(120,120,120,.7)', backgroundColor:'transparent', borderWidth:2, borderDash:[7,5],
           pointRadius:0, pointHoverRadius:3, tension:0, fill:false, yAxisID:'yPct'},
         // Entrada/Salida -- ocultas salvo que se activen con el botón
         // "➕ Entrada/Salida" (pedido explícito), en su propio eje
         // ('yVolumen') porque su magnitud no tiene nada que ver con la de
-        // Pérdida Técnica/Balance -- compartir el eje "y" las aplastaría.
+        // Pérdida Técnica -- compartir el eje "y" las aplastaría.
         ...(DET_MOSTRAR_ES ? [
           {type:'line', label:'Entrada', data:entV, borderColor:'#00B050', backgroundColor:'transparent',
             borderWidth:2.5, pointRadius:3, tension:0, spanGaps:true, yAxisID:'yVolumen'},
-          {type:'line', label:'Salida', data:salV, borderColor: tieneBalance ? '#8064A2' : '#C00000',
+          {type:'line', label:'Salida', data:salV, borderColor:'#C00000',
             backgroundColor:'transparent', borderWidth:2.5, pointRadius:3, tension:0, spanGaps:true, yAxisID:'yVolumen'},
         ] : []),
         ...projDatasets,
@@ -24774,27 +24728,33 @@ function renderPtTotalesZona(datos, modoAnual){
   // oscuro) lo hace legible sin importar qué tono le toque.
   const contornoEtiqueta = dark ? '#000000' : '#ffffff';
 
-  // Variación mes a mes -- pedido explícito ("debe haber un botón que
-  // habilite las variaciones en la gráfica"): con PT_TOT_MOSTRAR_VAR
-  // activo, se le agrega a la etiqueta el delta contra el punto anterior
-  // DEL MISMO dataset (ctx2.dataset.data trae los valores ya calculados,
-  // incluida la fila anterior -- no hace falta recalcular nada aparte).
-  // Pedido explícito ("debe mostrar la variación en porcentaje y en
-  // kWh y si subió o bajó"): para la línea de kWh se muestran las 2
-  // unidades juntas -- el Δ kWh (absoluto) Y el % que representa ese
-  // cambio (mismo criterio que ya usa la tabla "Variación de Pérdida
-  // Técnica por Circuito": columnas "Δ kWh" y "Var. Pérdida %" juntas).
-  // Para la línea de %, el delta ya es en puntos porcentuales (pp) --
-  // ahí no aplica un "% del %", así que se deja como está.
-  const conVariacion = (ctx2, esPct) => {
-    if(!PT_TOT_MOSTRAR_VAR || ctx2.dataIndex===0) return '';
+  // Variación mes a mes contra el punto anterior DEL MISMO dataset
+  // (ctx2.dataset.data trae los valores ya calculados, incluida la fila
+  // anterior -- no hace falta recalcular nada aparte). Pedido explícito
+  // ("debe mostrar la variación en porcentaje y en kWh y si subió o
+  // bajó"): para la línea de kWh se muestran las 2 unidades juntas -- el
+  // Δ kWh (absoluto) Y el % que representa ese cambio (mismo criterio
+  // que ya usa la tabla "Variación de Pérdida Técnica por Circuito":
+  // columnas "Δ kWh" y "Var. Pérdida %" juntas). Para la línea de %, el
+  // delta ya es en puntos porcentuales (pp) -- ahí no aplica un "% del
+  // %", así que se deja como está. Sin el paréntesis -- lo pone quien
+  // llama, según haga falta (etiqueta permanente vs. tooltip).
+  const _deltaTexto = (ctx2, esPct) => {
+    if(ctx2.dataIndex===0) return '';
     const actual = ctx2.dataset.data[ctx2.dataIndex], anterior = ctx2.dataset.data[ctx2.dataIndex-1];
     if(actual==null || anterior==null) return '';
     const delta = actual - anterior;
     const flecha = Math.abs(delta) < (esPct?0.005:0.5) ? '■' : (delta>0 ? '▲' : '▼');
-    if(esPct) return ` (${flecha}${Math.abs(delta).toFixed(2)}pp)`;
+    if(esPct) return `${flecha}${Math.abs(delta).toFixed(2)}pp`;
     const deltaPct = anterior ? (delta/anterior*100) : null;
-    return ` (${flecha}${Math.round(Math.abs(delta)).toLocaleString('es-CO')} kWh${deltaPct!=null ? `, ${flecha}${Math.abs(deltaPct).toFixed(1)}%` : ''})`;
+    return `${flecha}${Math.round(Math.abs(delta)).toLocaleString('es-CO')} kWh${deltaPct!=null ? `, ${flecha}${Math.abs(deltaPct).toFixed(1)}%` : ''}`;
+  };
+  // Para las etiquetas PERMANENTES (siempre visibles) -- solo si el botón
+  // "📊 Variación" está prendido, si no ensucian la gráfica sin pedirlo.
+  const conVariacion = (ctx2, esPct) => {
+    if(!PT_TOT_MOSTRAR_VAR) return '';
+    const t = _deltaTexto(ctx2, esPct);
+    return t ? ` (${t})` : '';
   };
 
   const datasetsPct = series.map(s => {
@@ -24847,11 +24807,18 @@ function renderPtTotalesZona(datos, modoAnual){
       interaction:{mode:'index', intersect:false},
       plugins:{
         legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:10}, color:tickC}},
+        // Pedido explícito ("cuando coloco el mouse encima no aparece la
+        // variación, quiero que aparezca"): el hover SIEMPRE la muestra
+        // (no depende del botón "📊 Variación", que solo controla la
+        // etiqueta permanente sobre la gráfica).
         tooltip:{callbacks:{label:c=>{
           if(c.raw==null) return null;
-          return c.dataset.yAxisID==='yPct'
+          const esPct = c.dataset.yAxisID==='yPct';
+          const base = esPct
             ? `${c.dataset.label}: ${c.raw.toFixed(2)}%`
             : `${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`;
+          const delta = _deltaTexto(c, esPct);
+          return delta ? `${base} (${delta})` : base;
         }}},
       },
       scales:{
