@@ -909,7 +909,7 @@ tfoot td:first-child{text-align:left}
    triangulito de fondo justo debajo de la pestaña (pedido explícito: "que
    no se vea el fondo"). Solo en las 2 pestañas cuyo panel arranca
    directo en .card (Mapa tiene su propio encabezado antes, no aplica). */
-#perdidas-tab-totales>.card:first-child, #perdidas-tab-detalle>.card:first-child{border-top-left-radius:0;border-top-right-radius:0}
+#perdidas-tab-totales>.card:first-child, #perdidas-tab-detalle>.card:first-child, #perdidas-tab-evaluacion>.card:first-child{border-top-left-radius:0;border-top-right-radius:0}
 /* Diagrama Unifilar -- símbolos SVG (currentColor toma el color de estas
    clases, así los íconos ya son theme-aware sin nada extra). */
 .bd-elemento{color:var(--text);cursor:move}
@@ -1339,6 +1339,7 @@ tfoot td:first-child{text-align:left}
   <div class="pt-tabs">
     <button type="button" class="pt-tab-btn activo" id="perdidas-tab-btn-totales" onclick="perdidasIrATab('totales')">Pérdidas Técnicas Totales</button>
     <button type="button" class="pt-tab-btn" id="perdidas-tab-btn-detalle" onclick="perdidasIrATab('detalle')">Detalle por Circuito</button>
+    <button type="button" class="pt-tab-btn" id="perdidas-tab-btn-evaluacion" onclick="perdidasIrATab('evaluacion')">Evaluación Económica</button>
     <button type="button" class="pt-tab-btn" id="perdidas-tab-btn-mapa" onclick="perdidasIrATab('mapa')">Mapa</button>
   </div>
 
@@ -1438,19 +1439,37 @@ tfoot td:first-child{text-align:left}
 
   <div id="perdidas-tab-detalle" class="hidden">
     <div class="card">
-      <div class="fbar" style="margin-bottom:0">
+      <!-- Mismos filtros que "Pérdidas Técnicas Totales" (Zona, Nivel de
+           tensión, Desde/Hasta mes y año escribible) + Alimentador extra
+           -- pedido explícito ("va a tener los mismos filtros que tiene
+           Pérdidas Técnicas Totales, pero se adiciona el que dice
+           alimentador"). El slider de "Rango" de antes sigue existiendo
+           por dentro (RANGO.start/end -- lo usan Proyección, Valuación y
+           la tabla de variación) pero queda oculto: estos 2 <input
+           type="month"> son ahora el control visible, se traducen al
+           mismo índice de META.meses y llaman _applyRange() -- ver
+           detalleSyncRango(). -->
+      <div class="fbar" style="margin-bottom:14px">
         <label>Zona</label>
         <div class="msel" id="msel-zona"></div>
+        <label style="margin-left:16px">Nivel de tensión</label>
+        <div class="msel" id="msel-nivel"></div>
+      </div>
+      <div class="fbar" style="margin-bottom:14px">
+        <label>Desde</label>
+        <input type="month" id="det-desde" onchange="detalleSyncRango()">
+        <label>Hasta</label>
+        <input type="month" id="det-hasta" onchange="detalleSyncRango()">
+      </div>
+      <div class="fbar" style="margin-bottom:0">
         <label>Alimentador</label>
         <div class="msel" id="msel-alimentador"></div>
-        <label>Nivel de tensión</label>
-        <div class="msel" id="msel-nivel"></div>
         <button class="btn-theme" style="width:auto;padding:0 14px;margin-left:auto" onclick="descargarCSV()" id="btn-descargar" title="Descargar el detalle mensual en CSV">⬇ Descargar CSV</button>
       </div>
 
       <div class="creg-tbl" id="creg-tbl"></div>
 
-      <div class="range-wrap">
+      <div class="range-wrap hidden">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
           <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text3)">Rango</span>
           <select id="range-start-sel" onchange="syncRangeFromSel()"></select>
@@ -1525,7 +1544,14 @@ tfoot td:first-child{text-align:left}
       <div class="chart-wrap" style="height:420px"><canvas id="ch-principal"></canvas></div>
       <div id="kpi-notes-row" style="margin-top:14px"></div>
     </div>
+  </div>
 
+  <!-- Pestaña propia -- pedido explícito ("va a ver otra pestaña que se
+       llame evaluación económica"): antes vivía al final de "Detalle por
+       Circuito", se movió tal cual (mismos ids/funciones -- fm-mes,
+       cargarZonas, renderValuacionZonas, toggleZonasContraidas -- ver
+       perdidasIrATab()). -->
+  <div id="perdidas-tab-evaluacion" class="hidden">
     <div class="card">
       <div class="valuacion-hdr">
         <div>
@@ -23611,6 +23637,10 @@ async function cargarMeta(){
   document.getElementById('pt-tot-desde').value = META.meses[0];
   document.getElementById('pt-tot-hasta').value = META.meses[META.meses.length-1];
 
+  // "Detalle por Circuito" -- mismo criterio de Desde/Hasta escribible
+  // que "Totales" (pedido explícito); det-desde/det-hasta quedan en sync
+  // con RANGO.start/end vía _applyRange() más abajo (ver detalleSyncRango()).
+
   selMes.innerHTML = META.meses.map(m=>`<option value="${m}">${labelMes(m)}</option>`).join('');
   selMes.value = META.meses[META.meses.length-1];
 
@@ -23688,6 +23718,11 @@ function _applyRange(s, e){
   document.getElementById('re').value = e;
   document.getElementById('range-start-sel').value = s;
   document.getElementById('range-end-sel').value = e;
+  // Los <input type="month"> visibles (pedido explícito: "los mismos
+  // filtros que Totales") se mantienen en sync con el índice real,
+  // vengan de donde vengan (detalleSyncRango, limpiarFiltros, etc.).
+  document.getElementById('det-desde').value = META.meses[s] || '';
+  document.getElementById('det-hasta').value = META.meses[e] || '';
   const total = META.meses.length>1 ? META.meses.length-1 : 1;
   document.getElementById('range-fill').style.left = (s/total*100)+'%';
   document.getElementById('range-fill').style.right = ((1-e/total)*100)+'%';
@@ -23706,6 +23741,25 @@ async function syncRangeFromSel(){
   let s = parseInt(document.getElementById('range-start-sel').value||0);
   let e = parseInt(document.getElementById('range-end-sel').value||0);
   if(isNaN(s)) s=0; if(isNaN(e)) e=META.meses.length-1;
+  if(s>e){ const tmp=s; s=e; e=tmp; }
+  _applyRange(s, e);
+  await aplicarFiltros();
+  await cargarCircuitosVariacion();
+}
+
+// "Detalle por Circuito" -- pedido explícito ("los mismos filtros que
+// Pérdidas Técnicas Totales"): Desde/Hasta escribible (mes y año) en vez
+// del slider de "Rango" (que sigue oculto por dentro, sin tocarlo --
+// Proyección/Valuación/tabla de variación dependen de RANGO.start/end).
+// Se traduce el mes elegido al índice correspondiente en META.meses y se
+// reusa _applyRange(), igual que ya hace syncRangeFromSel().
+async function detalleSyncRango(){
+  const desde = document.getElementById('det-desde').value;
+  const hasta = document.getElementById('det-hasta').value;
+  let s = desde ? META.meses.indexOf(desde) : 0;
+  let e = hasta ? META.meses.indexOf(hasta) : META.meses.length-1;
+  if(s<0) s = 0;
+  if(e<0) e = META.meses.length-1;
   if(s>e){ const tmp=s; s=e; e=tmp; }
   _applyRange(s, e);
   await aplicarFiltros();
@@ -24388,9 +24442,11 @@ function labelMesSiguiente(m){
 function perdidasIrATab(nombre){
   document.getElementById('perdidas-tab-totales').classList.toggle('hidden', nombre!=='totales');
   document.getElementById('perdidas-tab-detalle').classList.toggle('hidden', nombre!=='detalle');
+  document.getElementById('perdidas-tab-evaluacion').classList.toggle('hidden', nombre!=='evaluacion');
   document.getElementById('perdidas-tab-mapa').classList.toggle('hidden', nombre!=='mapa');
   document.getElementById('perdidas-tab-btn-totales').classList.toggle('activo', nombre==='totales');
   document.getElementById('perdidas-tab-btn-detalle').classList.toggle('activo', nombre==='detalle');
+  document.getElementById('perdidas-tab-btn-evaluacion').classList.toggle('activo', nombre==='evaluacion');
   document.getElementById('perdidas-tab-btn-mapa').classList.toggle('activo', nombre==='mapa');
   // Los gráficos de Chart.js de la pestaña que estaba oculta (display:none)
   // se dibujaron con tamaño 0 -- sin esto quedan rotos hasta que la
@@ -24549,7 +24605,14 @@ function renderPtTotalesZona(datos){
   const datasetsPct = series.map(s => {
     const color = colorParaZona(s.clave);
     return {
-      type:'line', label: `${s.clave} (%)`, data: s.perdidas_pct || [], yAxisID:'yPct', order:1,
+      // Pedido explícito ("no sé qué es ZO(%) que es azul"): el color de
+      // esta línea es el color de identidad DE LA ZONA (colorParaZona --
+      // el mismo que usa el Mapa y cualquier otra gráfica que compare
+      // zonas), no un color semántico -- por eso puede coincidir con
+      // cualquier tono, incluido el azul, sin relación con Entrada/
+      // Salida/Pérdida de abajo. La etiqueta "Pérdida % -- Zona" en vez
+      // de solo la sigla ayuda a que se lea sin tener que adivinar.
+      type:'line', label: `Pérdida % -- ${s.clave}`, data: s.perdidas_pct || [], yAxisID:'yPct', order:1,
       borderColor: color, backgroundColor: color, borderWidth:2, pointRadius:2, pointHoverRadius:4, tension:0, spanGaps:true,
       datalabels:{display:true, anchor:'end', align:'top', offset:2,
         formatter:v=>v==null?'':v.toFixed(1)+'%', font:{size:10,weight:'700'}, color},
@@ -24587,6 +24650,19 @@ function renderPtTotalesZona(datos){
   const perdidaTotalKwh = (datos.meses || []).map(m => porMesAlim.has(m) ? porMesAlim.get(m).total : null);
   const perdidaTecnicaKwh = (datos.meses || []).map(m => porMesAlim.has(m) ? porMesAlim.get(m).tecnica : null);
 
+  // Colores unificados con el resto de la app (pedido explícito: "eso
+  // debe estar unificado") -- Entrada/Salida verde/rojo se usan IGUAL en
+  // decenas de gráficas de toda la app (Balance diario, Alimentadores,
+  // N2-1, etc.), es el estándar ya establecido. Para Pérdida Técnica se
+  // reusa el mismo naranja (#ED7D31) que ya usa el propio módulo
+  // Alimentadores en su gráfica "Pérdida Total kWh / Pérdida Técnica kWh"
+  // (misma fuente de datos, ALIM_FILAS); Pérdida Total va en un naranja
+  // más oscuro de la MISMA familia (mismo tono, más oscuro = "el total",
+  // más claro = "la parte técnica" -- lectura intuitiva) en vez de azul
+  // (que sí se usa en esa gráfica de Alimentadores, pero ACÁ ya está
+  // tomado por colorParaZona -- ver comentario de datasetsPct arriba) o
+  // de cualquier otro color de PALETA_ZONAS/PALETA_NIVELES, para no
+  // repetir por casualidad el color de identidad de alguna zona.
   const datasetsKwh = [
     {type:'line', label:'Entrada', data: entradaTotal, yAxisID:'yKwh', order:2,
       borderColor:'#00B050', backgroundColor:'transparent', borderWidth:2,
@@ -24595,15 +24671,15 @@ function renderPtTotalesZona(datos){
       borderColor:'#C00000', backgroundColor:'rgba(192,0,0,.15)', borderWidth:2,
       pointRadius:0, tension:0, spanGaps:true},
     {type:'line', label:'Pérdida Total (kWh)', data: perdidaTotalKwh, yAxisID:'yKwh', order:1,
-      borderColor:'#7030A0', backgroundColor:'transparent', borderWidth:2, borderDash:[5,3],
+      borderColor:'#9E480E', backgroundColor:'transparent', borderWidth:2, borderDash:[5,3],
       pointRadius:2, pointHoverRadius:4, tension:0, spanGaps:true,
       datalabels:{display:true, anchor:'end', align:'bottom', offset:4,
-        formatter:v=>v==null?'':fmtGwh(v), font:{size:9,weight:'700'}, color:'#7030A0'}},
+        formatter:v=>v==null?'':fmtGwh(v), font:{size:9,weight:'700'}, color:'#9E480E'}},
     {type:'line', label:'Pérdida Técnica (kWh)', data: perdidaTecnicaKwh, yAxisID:'yKwh', order:1,
-      borderColor:'#00B0F0', backgroundColor:'transparent', borderWidth:2, borderDash:[5,3],
+      borderColor:'#ED7D31', backgroundColor:'transparent', borderWidth:2, borderDash:[5,3],
       pointRadius:2, pointHoverRadius:4, tension:0, spanGaps:true,
       datalabels:{display:true, anchor:'end', align:'bottom', offset:4,
-        formatter:v=>v==null?'':fmtGwh(v), font:{size:9,weight:'700'}, color:'#00B0F0'}},
+        formatter:v=>v==null?'':fmtGwh(v), font:{size:9,weight:'700'}, color:'#ED7D31'}},
   ];
 
   if(chPtTotalesZona) chPtTotalesZona.destroy();
@@ -24632,8 +24708,15 @@ function renderPtTotalesZona(datos){
         yKwh:{position:'left', beginAtZero:true, grace:'10%', grid:{color:gridC},
           ticks:{color:tickC, font:{size:11}, callback:v=>fmtGwh(v)},
           title:{display:true, text:'Entrada / Salida / Pérdida (kWh)', color:tickC, font:{size:11}}},
-        yPct:{position:'right', beginAtZero:true, grace:'10%', grid:{drawOnChartArea:false},
-          ticks:{color:tickC, font:{size:11}, callback:v=>v.toFixed(0)+'%'},
+        // SIN beginAtZero -- pedido explícito ("no hay una buena
+        // distribución del eje Y"): la pérdida % de un circuito se mueve
+        // en un rango angosto (acá 1.4%-1.7%); forzar el 0 como piso
+        // apachurraba todo el movimiento real contra el techo del eje, y
+        // los ticks enteros (0%/1%/2%) ni siquiera distinguían 1.5% de
+        // 1.6%. Con grace y un decimal en los ticks, la línea usa el
+        // alto completo del eje y las variaciones mes a mes se notan.
+        yPct:{position:'right', beginAtZero:false, grace:'25%', grid:{drawOnChartArea:false},
+          ticks:{color:tickC, font:{size:11}, callback:v=>v.toFixed(1)+'%'},
           title:{display:true, text:'Pérdida (%)', color:tickC, font:{size:11}}},
       },
     },
