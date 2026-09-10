@@ -960,6 +960,8 @@ tfoot td:first-child{text-align:left}
 /* IP Nivel 4 -- mismas pestañas .pt-tabs; el panel de cada pestaña
    arranca directo en .card y va pegado a la pestaña activa. */
 #alim-nivel4-tab-ip>.card:first-child, #alim-nivel4-tab-tecnica>.card:first-child, #alim-nivel4-tab-impexp>.card:first-child{border-top-left-radius:0;border-top-right-radius:0}
+#alim-nivel3-tab-ip>.card:first-child, #alim-nivel3-tab-tecnica>.card:first-child, #alim-nivel3-tab-comparativo>.card:first-child{border-top-left-radius:0;border-top-right-radius:0}
+#alim-nivel3-tab-tecnica .split-wrap{align-items:flex-start}
 /* Diagrama Unifilar -- símbolos SVG (currentColor toma el color de estas
    clases, así los íconos ya son theme-aware sin nada extra). */
 .bd-elemento{color:var(--text);cursor:move}
@@ -3019,87 +3021,98 @@ tfoot td:first-child{text-align:left}
   <div id="alim-nivel3-vacio" class="card"><div style="color:var(--text3)">Cargando…</div></div>
 
   <div id="alim-nivel3-contenido" class="hidden">
-    <div class="card">
-      <div class="fbar" style="margin-bottom:14px">
-        <label>Rango</label>
-        <input type="date" id="alim-nivel3-desde" onchange="alimNivel3RenderTodo()">
-        <span style="font-size:11px;color:var(--text3)">→</span>
-        <input type="date" id="alim-nivel3-hasta" onchange="alimNivel3RenderTodo()">
-        <label style="margin-left:10px" title="Filtra el total y las 2 gráficas -- vacío = todas las zonas juntas, sin desglose. El comparativo por zona (chart y tabla de abajo) siempre muestra las 5.">Zona</label>
-        <div id="alim-nivel3-zonas" class="alim-nivel3-zonas-chips" style="display:flex;gap:6px;flex-wrap:wrap"></div>
-        <button type="button" class="btn-theme" style="width:auto;padding:0 14px;margin-left:auto" onclick="alimNivel3DescargarCsv()">⬇ Descargar CSV</button>
-      </div>
-      <div class="fbar" style="justify-content:center;margin-bottom:10px">
-        <button type="button" class="be-modo-btn" id="alim-nivel3-btn-var" onclick="alimNivel3ToggleVariacion()" title="Agrega tarjetas de variación (Δ Entrada, Δ Salida, Δ Pérdida %) vs. el mes anterior">Δ Variación</button>
-        <button type="button" class="be-modo-btn" id="alim-nivel3-btn-relleno" onclick="alimNivel3ToggleRelleno()" title="Quita el sombreado bajo las líneas de Entrada/Salida">▨ Relleno</button>
-      </div>
-      <div class="alim-n21-grid-2">
-        <div>
-          <div style="text-align:center;margin-bottom:8px">
-            <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Índice de Pérdidas Nivel 3 (Mensual %)</div>
-          </div>
-          <div class="chart-wrap" style="height:320px"><canvas id="ch-alim-nivel3-mensual"></canvas></div>
-        </div>
-        <div>
-          <div style="text-align:center;margin-bottom:8px">
-            <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Índice de Pérdidas Nivel 3 (Anual %)</div>
-          </div>
-          <div class="chart-wrap" style="height:320px"><canvas id="ch-alim-nivel3-anual"></canvas></div>
-        </div>
-      </div>
-      <div id="alim-nivel3-tarjetas" class="tarjetas-fila-unica"></div>
+
+    <div class="pt-tabs">
+      <button type="button" class="pt-tab-btn activo" id="alim-nivel3-tab-btn-ip" onclick="alimNivel3IrATab('ip')">Indicador Pérdidas Nivel 3</button>
+      <button type="button" class="pt-tab-btn" id="alim-nivel3-tab-btn-tecnica" onclick="alimNivel3IrATab('tecnica')">Pérdida Técnica Nivel 3</button>
+      <button type="button" class="pt-tab-btn" id="alim-nivel3-tab-btn-comparativo" onclick="alimNivel3IrATab('comparativo')">Comparativo Zonas</button>
     </div>
 
-    <!-- Narrativa (Por qué crece) + Pérdida Total vs Pérdida Técnica en UNA
-         sola tarjeta, mismo tratamiento que Nivel 4 (pedido explícito: "en
-         nivel 3 tambien sube la grafica a esa posición"). La dona
-         "Distribución de Pérdida por Zona" se quitó (pedido explícito) --
-         en su lugar, un filtro de Zona debajo de la gráfica (mismos chips
-         y mismo estado ALIM_NIVEL3_ZONAS_SEL que el filtro de arriba,
-         ver alimNivel3RenderZonasChips) para poder acotar la línea de
-         Pérdida Total por zona sin tener que subir a la tarjeta de Rango. -->
-    <div class="card">
-      <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:28px;align-items:start">
-        <div id="alim-nivel3-narrativa" class="alim-nivel-narrativa-compacta" style="overflow:hidden"></div>
-        <div>
-          <div style="text-align:center;margin-bottom:8px">
-            <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Pérdida Total vs Pérdida Técnica</div>
-          </div>
-          <div class="chart-wrap" style="height:420px"><canvas id="ch-alim-nivel3-tecnica"></canvas></div>
-          <div class="fbar" style="justify-content:center;margin-top:14px">
-            <label>Zona</label>
-            <div id="alim-nivel3-zonas-2" class="alim-nivel3-zonas-chips" style="display:flex;gap:6px;flex-wrap:wrap"></div>
-          </div>
-          <!-- Selector + tarjetas ocultos, mismo motivo que Nivel 4: el
-               <select> lo sigue usando _alimNivelPoblarSelectorAnalisis
-               para fijar el mes de la narrativa de al lado. -->
-          <div class="fbar" style="justify-content:center;margin:16px 0 10px;display:none">
-            <label>Mes a comparar</label>
-            <select id="alim-nivel3-analisis-mes" onchange="alimNivel3RenderTodo()"></select>
-          </div>
-          <div id="alim-nivel3-analisis" class="tarjetas-fila-unica" style="display:none"></div>
+    <!-- Filtro Rango + Zona (desplegable, como Pérdidas Técnicas) + CSV --
+         ÚNICO nodo, alimNivel3IrATab() lo mueve al tope de la pestaña
+         activa. type="month": datos mensuales. -->
+    <div id="alim-nivel3-filtro" class="fbar" style="margin-bottom:12px">
+      <label>Rango</label>
+      <input type="month" id="alim-nivel3-desde" onchange="alimNivel3RenderTodo()">
+      <span style="font-size:11px;color:var(--text3)">→</span>
+      <input type="month" id="alim-nivel3-hasta" onchange="alimNivel3RenderTodo()">
+      <label style="margin-left:10px">Zona</label>
+      <div class="msel" id="msel-alim-nivel3-zona"></div>
+      <button type="button" class="btn-theme" style="width:auto;padding:0 14px;margin-left:auto" onclick="alimNivel3DescargarCsv()">⬇ Descargar CSV</button>
+    </div>
+
+    <!-- ===== PESTAÑA 1 · Indicador de Pérdidas Nivel 3 ===== -->
+    <div id="alim-nivel3-tab-ip">
+      <div class="card">
+        <div class="fbar" style="justify-content:center;margin-bottom:10px">
+          <button type="button" class="be-modo-btn" id="alim-nivel3-btn-var" onclick="alimNivel3ToggleVariacion()" title="Agrega tarjetas de variación (Δ Entrada, Δ Salida, Δ Pérdida %) vs. el mes anterior">Δ Variación</button>
+          <button type="button" class="be-modo-btn" id="alim-nivel3-btn-relleno" onclick="alimNivel3ToggleRelleno()" title="Quita el sombreado bajo las líneas de Entrada/Salida">▨ Relleno</button>
         </div>
+        <div class="alim-n21-grid-2">
+          <div>
+            <div style="text-align:center;margin-bottom:8px">
+              <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Índice de Pérdidas Nivel 3 (Mensual %)</div>
+            </div>
+            <div class="chart-wrap" style="height:320px"><canvas id="ch-alim-nivel3-mensual"></canvas></div>
+          </div>
+          <div>
+            <div style="text-align:center;margin-bottom:8px">
+              <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Índice de Pérdidas Nivel 3 (Anual %)</div>
+            </div>
+            <div class="chart-wrap" style="height:320px"><canvas id="ch-alim-nivel3-anual"></canvas></div>
+          </div>
+        </div>
+        <div id="alim-nivel3-tarjetas" class="tarjetas-fila-unica"></div>
       </div>
     </div>
 
+    <!-- ===== PESTAÑA 2 · Pérdida Técnica Nivel 3 ===== -->
+    <div id="alim-nivel3-tab-tecnica" class="hidden">
+      <div class="card">
+        <div style="display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:20px;align-items:start">
+          <div>
+            <div id="alim-nivel3-narrativa" class="alim-nivel-narrativa-compacta alim-nivel-narrativa-fila" style="overflow:hidden"></div>
+            <div style="margin-top:14px">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+                <label style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--text3)">Análisis del mes</label>
+                <select id="alim-nivel3-analisis-sel" onchange="alimNivel3AnalisisSelCambio()" style="font-size:12px;padding:3px 6px"></select>
+              </div>
+              <textarea id="alim-nivel3-analisis-texto" rows="4" oninput="alimNivel3GuardarAnalisis()" placeholder="Escribe acá el análisis de este mes. Aparecerá en las gráficas al pasar el mouse por el dato de ese mes."
+                style="width:100%;box-sizing:border-box;font-size:12px;line-height:1.5;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);resize:vertical"></textarea>
+            </div>
+          </div>
+          <div>
+            <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:8px;flex-wrap:wrap">
+              <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Pérdida Total vs Pérdida Técnica</div>
+              <div style="display:flex;gap:4px">
+                <button type="button" class="be-modo-btn activo" id="alim-nivel3-tec-btn-mensual" onclick="alimNivel3TecModo('mensual')">Mensual</button>
+                <button type="button" class="be-modo-btn" id="alim-nivel3-tec-btn-anual" onclick="alimNivel3TecModo('anual')">Anual (12M)</button>
+              </div>
+            </div>
+            <div class="chart-wrap" style="height:460px"><canvas id="ch-alim-nivel3-tecnica"></canvas></div>
+            <div id="alim-nivel3-tecnica-vacio" class="hidden" style="text-align:center;color:var(--text3);font-size:12px;padding:10px">Aún no hay 12 meses de historia para el acumulado anual.</div>
+          </div>
+        </div>
+        <div class="fbar" style="justify-content:center;margin:16px 0 10px;display:none">
+          <select id="alim-nivel3-analisis-mes" onchange="alimNivel3RenderTodo()"></select>
+        </div>
+        <div id="alim-nivel3-analisis" class="tarjetas-fila-unica" style="display:none"></div>
+      </div>
+    </div>
+
+    <!-- ===== PESTAÑA 3 · Comparativo Zonas ===== -->
+    <div id="alim-nivel3-tab-comparativo" class="hidden">
     <div class="card">
       <div class="fbar" style="justify-content:center;margin-bottom:8px">
         <button type="button" class="be-modo-btn activo" id="alim-nivel3-zonas-chart-btn-line" onclick="alimNivel3ToggleTipoGraficaZonas('line')">Líneas</button>
         <button type="button" class="be-modo-btn" id="alim-nivel3-zonas-chart-btn-bar" onclick="alimNivel3ToggleTipoGraficaZonas('bar')">Barras</button>
       </div>
-      <!-- Filtro de fechas PROPIO de esta gráfica (independiente del
-           Rango general de arriba, que también maneja Mensual/Anual/
-           tarjetas) -- pedido explícito, arranca en Enero-2026 hasta hoy. -->
       <div class="fbar" style="justify-content:center;margin-bottom:10px">
         <label>Rango</label>
-        <input type="date" id="alim-nivel3-zonas-chart-desde" onchange="alimNivel3RenderChartZonasComparativo()">
+        <input type="month" id="alim-nivel3-zonas-chart-desde" onchange="alimNivel3RenderChartZonasComparativo()">
         <span style="font-size:11px;color:var(--text3)">→</span>
-        <input type="date" id="alim-nivel3-zonas-chart-hasta" onchange="alimNivel3RenderChartZonasComparativo()">
+        <input type="month" id="alim-nivel3-zonas-chart-hasta" onchange="alimNivel3RenderChartZonasComparativo()">
       </div>
-      <!-- Título justo encima de la gráfica, DESPUÉS de todos los
-           filtros -- pedido explícito ("todo filtro quede encima del
-           titulo... para poder recortar y pegar la gráfica que el
-           título corresponda a la gráfica"). -->
       <div style="text-align:center;margin-bottom:8px">
         <div style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Comparativo de Índice de Pérdidas por Zona</div>
       </div>
@@ -3175,6 +3188,8 @@ tfoot td:first-child{text-align:left}
         </div>
       </div>
     </div>
+    </div><!-- /#alim-nivel3-tab-comparativo -->
+
   </div>
 </div>
 
@@ -16671,7 +16686,7 @@ async function alimNivel3Cargar(){
   vacio.classList.add('hidden'); contenido.classList.remove('hidden');
   ALIM_NIVEL3_TECNICA = tecnicaResp;
   ALIM_NIVEL3_ZONAS = [...new Set(filas.map(f => f.estructura).filter(Boolean))].sort();
-  alimNivel3RenderZonasChips();
+  alimNivel3RenderZonasChips();   // ahora arma el desplegable .msel
 
   // Pérdida Técnica por zona (Nivel 3), una consulta por zona -- mismo
   // patrón que Indicador N2-1 (alimN21Cargar), para "Comparativo Mensual
@@ -16695,29 +16710,66 @@ async function alimNivel3Cargar(){
   // (pedido explícito: "todas las graficas").
   _alimNivelPoblarRangoDefecto('alim-nivel3-zonas-chart', claves);
 
-  alimNivel3RenderTodo();
+  alimNivel3IrATab('ip');
 }
 
-// Chip por zona -- mismo patrón visual/color que alimN21RenderZonasChips
-// (colorParaZona parametrizado, relleno si está activa).
+// Filtro de Zona -- ahora un desplegable .msel (pedido explícito: "los
+// mismos filtros de Pérdidas Técnicas, filtro de zonas desplegable").
+// Conserva el nombre viejo (se llama desde alimNivel3Cargar).
 function alimNivel3RenderZonasChips(){
-  const conts = document.querySelectorAll('.alim-nivel3-zonas-chips');
-  if(!conts.length) return;
-  const html = ALIM_NIVEL3_ZONAS.map(z => {
-    const color = colorParaZona(z);
-    const activa = ALIM_NIVEL3_ZONAS_SEL.has(z);
-    const estilo = activa
-      ? `background:${color};border-color:${color};color:#fff`
-      : `border-color:${color};color:${color};background:transparent`;
-    return `<button type="button" class="be-modo-btn" style="${estilo}" onclick="alimNivel3ToggleZona('${z}')">${z}</button>`;
-  }).join('');
-  conts.forEach(cont => cont.innerHTML = html);
+  mselInit('msel-alim-nivel3-zona', 'Zona', 'Todas',
+    (ALIM_NIVEL3_ZONAS||[]).map(z => ({value:z, label:z})),
+    alimNivel3RenderTodo, [...ALIM_NIVEL3_ZONAS_SEL]);
 }
 
-function alimNivel3ToggleZona(zona){
-  if(ALIM_NIVEL3_ZONAS_SEL.has(zona)) ALIM_NIVEL3_ZONAS_SEL.delete(zona); else ALIM_NIVEL3_ZONAS_SEL.add(zona);
-  alimNivel3RenderZonasChips();
+// Pestañas del módulo IP Nivel 3 (mismo patrón que perdidasIrATab).
+function alimNivel3IrATab(nombre){
+  ['ip','tecnica','comparativo'].forEach(t=>{
+    document.getElementById('alim-nivel3-tab-'+t)?.classList.toggle('hidden', t!==nombre);
+    document.getElementById('alim-nivel3-tab-btn-'+t)?.classList.toggle('activo', t===nombre);
+  });
+  const card = document.querySelector('#alim-nivel3-tab-'+nombre+' > .card');
+  const filtro = document.getElementById('alim-nivel3-filtro');
+  if(card && filtro && filtro.parentElement !== card) card.prepend(filtro);
+  if((ALIM_NIVEL3_FILAS||[]).length) alimNivel3RenderTodo();
+}
+
+let ALIM_NIVEL3_TEC_MODO = 'mensual';
+function alimNivel3TecModo(m){
+  ALIM_NIVEL3_TEC_MODO = m;
+  document.getElementById('alim-nivel3-tec-btn-mensual').classList.toggle('activo', m==='mensual');
+  document.getElementById('alim-nivel3-tec-btn-anual').classList.toggle('activo', m==='anual');
   alimNivel3RenderTodo();
+}
+
+// Análisis por mes (pestaña "Pérdida Técnica Nivel 3") -- igual que Nivel 4.
+let ALIM_NIVEL3_ANALISIS = {};
+let ALIM_NIVEL3_ANALISIS_MES = null;
+function _analisisKeyN3(mes){
+  const slug = (OPERADOR && OPERADOR.slug) ? OPERADOR.slug : 'default';
+  return `pt_analisis_n3_${slug}_${mes}`;
+}
+function _cargarAnalisisN3(claves){
+  ALIM_NIVEL3_ANALISIS = {};
+  (claves||[]).forEach(c => { try{ const v = localStorage.getItem(_analisisKeyN3(c)); if(v) ALIM_NIVEL3_ANALISIS[c] = v; }catch(e){} });
+}
+function alimNivel3GuardarAnalisis(){
+  const mes = ALIM_NIVEL3_ANALISIS_MES;
+  const ta = document.getElementById('alim-nivel3-analisis-texto');
+  if(!mes || !ta) return;
+  const txt = ta.value.trim();
+  try{
+    if(txt){ localStorage.setItem(_analisisKeyN3(mes), txt); ALIM_NIVEL3_ANALISIS[mes] = txt; }
+    else { localStorage.removeItem(_analisisKeyN3(mes)); delete ALIM_NIVEL3_ANALISIS[mes]; }
+  }catch(e){}
+  [chAlimNivel3Mensual, chAlimNivel3Anual, chAlimNivel3Tecnica].forEach(c => { if(c) c.update('none'); });
+}
+function alimNivel3AnalisisSelCambio(){
+  const sel = document.getElementById('alim-nivel3-analisis-sel');
+  const ta = document.getElementById('alim-nivel3-analisis-texto');
+  if(!sel || !ta) return;
+  ALIM_NIVEL3_ANALISIS_MES = sel.value;
+  ta.value = ALIM_NIVEL3_ANALISIS[sel.value] || '';
 }
 
 // Filtro Rango acota el total (línea + tarjetas); filtro de chips de Zona
@@ -16763,29 +16815,61 @@ function _alimNivel3TecnicaPorMesFiltrada(zonasSel){
 function alimNivel3RenderTodo(){
   const filas = ALIM_NIVEL3_FILAS || [];
   if(!filas.length) return;
+  // Zona ahora sale del desplegable .msel.
+  ALIM_NIVEL3_ZONAS_SEL = new Set(mselValores('msel-alim-nivel3-zona'));
   const mensualCompleto = _alimNivel34MensualTotal(filas, ALIM_NIVEL3_ZONAS_SEL);
   const datos12Completo = alimN21Con12Meses(mensualCompleto);
   const mensual = _alimNivelVisibles(mensualCompleto, 'alim-nivel3');
   const anual = _alimNivelVisibles(datos12Completo, 'alim-nivel3').filter(f => f.pct12 != null);
   const porZona = _alimNivel34MensualPorZona(filas);
   const tecnicaPorMes = _alimNivel3TecnicaPorMesFiltrada(ALIM_NIVEL3_ZONAS_SEL);
-  const claveAnalisis = _alimNivelPoblarSelectorAnalisis('alim-nivel3', mensualCompleto);
+  let claveAnalisis = _alimNivelPoblarSelectorAnalisis('alim-nivel3', mensualCompleto);
   const claveTabla = _alimNivelPoblarSelectorAnalisis('alim-nivel3-tabla', mensualCompleto);
+  const _hastaMes = (document.getElementById('alim-nivel3-hasta')?.value || '').slice(0,7);
+  const _mesesReales = mensualCompleto.filter(f => f.pct != null).map(f => f.clave);
+  if(_hastaMes && _mesesReales.includes(_hastaMes)) claveAnalisis = _hastaMes;
   document.getElementById('alim-nivel3-btn-var').classList.toggle('activo', ALIM_NIVEL3_VAR);
   document.getElementById('alim-nivel3-btn-relleno').classList.toggle('activo', ALIM_NIVEL3_SIN_RELLENO);
 
+  // Caja de análisis por mes (tooltip de las 3 gráficas) + selector.
+  const _clavesN3 = mensualCompleto.map(f => f.clave);
+  _cargarAnalisisN3(_clavesN3);
+  const _selAn = document.getElementById('alim-nivel3-analisis-sel');
+  if(_selAn){
+    const _prev = _selAn.value;
+    _selAn.innerHTML = _clavesN3.map(c => `<option value="${c}">${labelMesLargo(c)}</option>`).join('');
+    _selAn.value = _clavesN3.includes(_prev) ? _prev : (_clavesN3.includes(claveAnalisis) ? claveAnalisis : _clavesN3[_clavesN3.length-1]);
+  }
+  ALIM_NIVEL3_ANALISIS_MES = _selAn ? _selAn.value : claveAnalisis;
+  const _taAn = document.getElementById('alim-nivel3-analisis-texto');
+  if(_taAn) _taAn.value = ALIM_NIVEL3_ANALISIS[ALIM_NIVEL3_ANALISIS_MES] || '';
+  const _notaPorClave = c => ALIM_NIVEL3_ANALISIS[c] || null;
+
   document.getElementById('alim-nivel3-tarjetas').innerHTML = _alimNivelTarjetasHtml(mensual, ALIM_NIVEL3_VAR);
   document.getElementById('alim-nivel3-analisis').innerHTML = _alimNivelComparativoTarjetasHtml(mensualCompleto, tecnicaPorMes, claveAnalisis);
-  document.getElementById('alim-nivel3-narrativa').innerHTML = _narrativaEntradaSalidaHtml(mensualCompleto, 'Por qué crece el indicador -- Nivel 3', claveAnalisis);
+  document.getElementById('alim-nivel3-narrativa').innerHTML = _narrativaEntradaSalidaHtml(mensualCompleto, '', claveAnalisis, true);
 
   if(chAlimNivel3Mensual) chAlimNivel3Mensual.destroy();
   chAlimNivel3Mensual = _alimNivelConstruirChartMensual(
-    document.getElementById('ch-alim-nivel3-mensual'), mensual, 'Total (Nivel 3)', _alimNivelSeriesZonas(mensual, porZona, ALIM_NIVEL3_ZONAS_SEL), '', ALIM_NIVEL3_SIN_RELLENO);
+    document.getElementById('ch-alim-nivel3-mensual'), mensual, 'Total (Nivel 3)', _alimNivelSeriesZonas(mensual, porZona, ALIM_NIVEL3_ZONAS_SEL), '', ALIM_NIVEL3_SIN_RELLENO, _notaPorClave);
   if(chAlimNivel3Anual) chAlimNivel3Anual.destroy();
   chAlimNivel3Anual = _alimNivelConstruirChartMensual(
-    document.getElementById('ch-alim-nivel3-anual'), anual, 'Total (Nivel 3)', _alimNivelSeriesZonasAnual(anual, porZona, ALIM_NIVEL3_ZONAS_SEL), '12', ALIM_NIVEL3_SIN_RELLENO);
+    document.getElementById('ch-alim-nivel3-anual'), anual, 'Total (Nivel 3)', _alimNivelSeriesZonasAnual(anual, porZona, ALIM_NIVEL3_ZONAS_SEL), '12', ALIM_NIVEL3_SIN_RELLENO, _notaPorClave);
+
   if(chAlimNivel3Tecnica) chAlimNivel3Tecnica.destroy();
-  chAlimNivel3Tecnica = _alimNivelConstruirChartTecnica(document.getElementById('ch-alim-nivel3-tecnica'), mensual, tecnicaPorMes, 'Total (Nivel 3)');
+  const _cvT3 = document.getElementById('ch-alim-nivel3-tecnica');
+  if(ALIM_NIVEL3_TEC_MODO === 'anual'){
+    const m12 = alimN21Con12Meses(mensualCompleto).map(f => ({...f, perdida:f.perdida12, pct:f.pct12, entrada:f.entrada12, salida:f.salida12}));
+    const mensual12 = _alimNivelVisibles(m12, 'alim-nivel3').filter(f => f.pct != null);
+    const tec12 = _alimNivelTecnicaPorMes12M(tecnicaPorMes, mensualCompleto.map(f => f.clave));
+    chAlimNivel3Tecnica = _alimNivelConstruirChartTecnica(_cvT3, mensual12, tec12, 'Nivel 3 · 12M', _notaPorClave);
+  } else {
+    chAlimNivel3Tecnica = _alimNivelConstruirChartTecnica(_cvT3, mensual, tecnicaPorMes, 'Total (Nivel 3)', _notaPorClave);
+  }
+  const _t3Vacio = document.getElementById('alim-nivel3-tecnica-vacio');
+  const _w3 = _cvT3.closest('.chart-wrap');
+  if(_w3) _w3.classList.toggle('hidden', !chAlimNivel3Tecnica);
+  if(_t3Vacio) _t3Vacio.classList.toggle('hidden', !!chAlimNivel3Tecnica);
 
   alimNivel3RenderTablaZonas(porZona, claveTabla);
   alimNivel3RenderChartZonasComparativo();
