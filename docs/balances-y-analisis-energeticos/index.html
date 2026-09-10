@@ -2948,10 +2948,18 @@ tfoot td:first-child{text-align:left}
             <div class="chart-wrap" style="height:320px"><canvas id="ch-alim-nivel4-anual"></canvas></div>
           </div>
         </div>
-        <!-- 6 tarjetas en UNA sola fila (pedido explícito): Indicador
-             Mensual, Variación, Entrada, Salida, Pérdida Técnica,
-             Pérdida Total. -->
-        <div id="alim-nivel4-tarjetas" class="tarjetas-fila-unica"></div>
+        <!-- 2 bloques (Mensual / Anual 12M) igual que Indicador N2-1
+             (pedido explícito). -->
+        <div class="alim-n21-resumen-grupos">
+          <div class="alim-n21-grupo-tarjetas">
+            <div class="be-tabla-creadas-titulo">Mensual</div>
+            <div class="be-resumen-cards" id="alim-nivel4-resumen-mensual"></div>
+          </div>
+          <div class="alim-n21-grupo-tarjetas alim-n21-grupo-anual">
+            <div class="be-tabla-creadas-titulo">Anual (12 Meses Móvil)</div>
+            <div class="be-resumen-cards" id="alim-nivel4-resumen-anual"></div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -3040,7 +3048,7 @@ tfoot td:first-child{text-align:left}
       <span style="font-size:11px;color:var(--text3)">→</span>
       <input type="month" id="alim-nivel3-hasta" onchange="alimNivel3RenderTodo()">
       <label style="margin-left:10px">Zona</label>
-      <div class="msel" id="msel-alim-nivel3-zona"></div>
+      <div id="alim-nivel3-zonas" style="display:flex;gap:6px;flex-wrap:wrap"></div>
       <button type="button" class="btn-theme" style="width:auto;padding:0 14px;margin-left:auto" onclick="alimNivel3DescargarCsv()">⬇ Descargar CSV</button>
     </div>
 
@@ -3065,7 +3073,16 @@ tfoot td:first-child{text-align:left}
             <div class="chart-wrap" style="height:320px"><canvas id="ch-alim-nivel3-anual"></canvas></div>
           </div>
         </div>
-        <div id="alim-nivel3-tarjetas" class="tarjetas-fila-unica"></div>
+        <div class="alim-n21-resumen-grupos">
+          <div class="alim-n21-grupo-tarjetas">
+            <div class="be-tabla-creadas-titulo">Mensual</div>
+            <div class="be-resumen-cards" id="alim-nivel3-resumen-mensual"></div>
+          </div>
+          <div class="alim-n21-grupo-tarjetas alim-n21-grupo-anual">
+            <div class="be-tabla-creadas-titulo">Anual (12 Meses Móvil)</div>
+            <div class="be-resumen-cards" id="alim-nivel3-resumen-anual"></div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -15793,35 +15810,55 @@ function _alimNivelTecnicaPorMes(resumenResp){
   return mapa;
 }
 
-// 6 tarjetas en UNA sola fila (pedido explícito): Indicador Mensual,
-// Variación, Entrada, Salida, Pérdida Técnica, Pérdida Total -- del
-// último mes visible. `datos12` = serie visible; `tecnicaPorMes` = mapa
-// clave -> {perdida,pct}.
+// Tarjetas resumen en 2 bloques (Mensual / Anual 12M) -- mismo formato
+// que Indicador N2-1 (pedido explícito). `datos12` = serie visible con
+// pct y pct12; `tecnicaPorMes` = mapa clave -> {perdida,pct} (se agrega
+// una tarjeta "Pérdida Técnica" al bloque Mensual).
 function _alimNivelRenderResumenGrupos(prefijo, datos12, tecnicaPorMes){
-  const cont = document.getElementById(prefijo+'-tarjetas');
-  if(!cont) return;
-  const reales = (datos12||[]).filter(f => f.pct != null);
-  if(!reales.length){ cont.innerHTML = '<div style="color:var(--text3);font-size:12px">Sin datos para el rango.</div>'; return; }
-  const a = reales[reales.length-1];
-  const p = reales.length >= 2 ? reales[reales.length-2] : null;
-  const mA = labelMesLargo(a.clave);
+  const cM = document.getElementById(prefijo+'-resumen-mensual');
+  const cA = document.getElementById(prefijo+'-resumen-anual');
+  if(!cM || !cA) return;
   const fk = v => v==null ? '--' : Math.round(v).toLocaleString('es-CO') + ' kWh';
-  const tec = (tecnicaPorMes && tecnicaPorMes[a.clave]) ? tecnicaPorMes[a.clave].perdida : null;
-  const dPp = p ? a.pct - p.pct : null;
-  const tile = (etq, val, sub, color) => `<div class="be-resumen-tile">
+  const tile = (etq, val, sub, color, destacada) => `<div class="be-resumen-tile${destacada?' alim-n21-tile-destacada':''}">
     <div class="etiqueta">${etq}</div>
     <div class="valor"${color?` style="color:${color}"`:''}>${val}</div>
     ${sub?`<div class="sub">${sub}</div>`:''}
   </div>`;
-  cont.innerHTML = [
-    tile('Indicador Mensual', a.pct.toFixed(2)+'%', mA),
-    tile('Variación', dPp==null ? '--' : `${dPp>=0?'▲':'▼'} ${Math.abs(dPp).toFixed(2)} pp`,
-      p ? `${labelMes(p.clave)} → ${labelMes(a.clave)}` : '', dPp==null ? null : ipColorVariacion(a.pct, p.pct, 'var(--text2)')),
-    tile('Entrada', fk(a.entrada), mA),
-    tile('Salida', fk(a.salida), mA),
-    tile('Pérdida Técnica', fk(tec), mA),
-    tile('Pérdida Total', fk(a.perdida), mA),
-  ].join('');
+
+  // --- Mensual ---
+  const rM = (datos12||[]).filter(f => f.pct != null);
+  if(rM.length){
+    const a = rM[rM.length-1], p = rM.length >= 2 ? rM[rM.length-2] : null;
+    const mA = labelMes(a.clave);
+    const dPp = p ? a.pct - p.pct : null;
+    const tec = (tecnicaPorMes && tecnicaPorMes[a.clave]) ? tecnicaPorMes[a.clave].perdida : null;
+    cM.innerHTML = [
+      tile('Indicador Mensual', a.pct.toFixed(2)+'%', mA),
+      tile('Variación Mensual', dPp==null ? '--' : `${dPp>=0?'▲':'▼'} ${Math.abs(dPp).toFixed(2)} pp`,
+        p ? `${labelMes(p.clave)} → ${mA}` : '', dPp==null ? null : ipColorVariacion(a.pct, p.pct, 'var(--text2)')),
+      tile('Entrada kWh Mensual', fk(a.entrada), mA),
+      tile('Salida kWh Mensual', fk(a.salida), mA),
+      tile('Pérdida Total Mensual', fk(a.perdida), mA),
+      tile('Pérdida Técnica Mensual', fk(tec), mA),
+    ].join('');
+  } else cM.innerHTML = '<div style="color:var(--text3);font-size:12px">Sin datos para el rango.</div>';
+
+  // --- Anual (12 Meses Móvil) ---
+  const rA = (datos12||[]).filter(f => f.pct12 != null);
+  if(rA.length){
+    const a = rA[rA.length-1];
+    const cards = [tile('Indicador Anual (12M)', a.pct12.toFixed(2)+'%', labelMes(a.clave), null, true)];
+    if(rA.length >= 2){
+      const p = rA[rA.length-2], dPp = a.pct12 - p.pct12;
+      cards.push(tile('Variación Anual', `${dPp>=0?'▲':'▼'} ${Math.abs(dPp).toFixed(2)} pp`, `${labelMes(p.clave)} → ${labelMes(a.clave)}`, ipColorVariacion(a.pct12, p.pct12, 'var(--text2)')));
+    }
+    cards.push(
+      tile('Entrada kWh Anual (12M)', fk(a.entrada12), labelMes(a.clave)),
+      tile('Salida kWh Anual (12M)', fk(a.salida12), labelMes(a.clave)),
+      tile('Pérdida kWh Anual (12M)', fk(a.perdida12), labelMes(a.clave)),
+    );
+    cA.innerHTML = cards.join('');
+  } else cA.innerHTML = '<div style="color:var(--text3);font-size:12px">Aún no hay 12 meses de historia.</div>';
 }
 
 // Fila única de tarjetas (pedido explícito, orden fijo): Entrada, Salida,
@@ -16732,13 +16769,26 @@ async function alimNivel3Cargar(){
   alimNivel3IrATab('ip');
 }
 
-// Filtro de Zona -- ahora un desplegable .msel (pedido explícito: "los
-// mismos filtros de Pérdidas Técnicas, filtro de zonas desplegable").
-// Conserva el nombre viejo (se llama desde alimNivel3Cargar).
+// Filtro de Zona -- BOTONES/chips (pedido explícito: "que sean mejor
+// botones"). Mismo patrón visual que Indicador N2-1 (colorParaZona,
+// relleno si está activa). Estado en ALIM_NIVEL3_ZONAS_SEL.
 function alimNivel3RenderZonasChips(){
-  mselInit('msel-alim-nivel3-zona', 'Zona', 'Todas',
-    (ALIM_NIVEL3_ZONAS||[]).map(z => ({value:z, label:z})),
-    alimNivel3RenderTodo, [...ALIM_NIVEL3_ZONAS_SEL]);
+  const cont = document.getElementById('alim-nivel3-zonas');
+  if(!cont) return;
+  cont.innerHTML = (ALIM_NIVEL3_ZONAS||[]).map(z => {
+    const color = colorParaZona(z);
+    const activa = ALIM_NIVEL3_ZONAS_SEL.has(z);
+    const estilo = activa
+      ? `background:${color};border-color:${color};color:#fff`
+      : `border-color:${color};color:${color};background:transparent`;
+    return `<button type="button" class="be-modo-btn" style="${estilo}" onclick="alimNivel3ToggleZona('${z}')">${z}</button>`;
+  }).join('');
+}
+function alimNivel3ToggleZona(zona){
+  if(ALIM_NIVEL3_ZONAS_SEL.has(zona)) ALIM_NIVEL3_ZONAS_SEL.delete(zona);
+  else ALIM_NIVEL3_ZONAS_SEL.add(zona);
+  alimNivel3RenderZonasChips();
+  alimNivel3RenderTodo();
 }
 
 // Pestañas del módulo IP Nivel 3 (mismo patrón que perdidasIrATab).
@@ -16834,8 +16884,6 @@ function _alimNivel3TecnicaPorMesFiltrada(zonasSel){
 function alimNivel3RenderTodo(){
   const filas = ALIM_NIVEL3_FILAS || [];
   if(!filas.length) return;
-  // Zona ahora sale del desplegable .msel.
-  ALIM_NIVEL3_ZONAS_SEL = new Set(mselValores('msel-alim-nivel3-zona'));
   const mensualCompleto = _alimNivel34MensualTotal(filas, ALIM_NIVEL3_ZONAS_SEL);
   const datos12Completo = alimN21Con12Meses(mensualCompleto);
   const mensual = _alimNivelVisibles(mensualCompleto, 'alim-nivel3');
