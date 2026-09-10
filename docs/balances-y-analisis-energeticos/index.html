@@ -161,6 +161,11 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(
    sobrada en el ancho de la columna.  !important porque el estilo
    inline (flex-wrap:nowrap) pesa más que una clase normal. */
 .alim-nivel-narrativa-compacta > div:nth-child(2){flex-direction:column!important;flex-wrap:nowrap!important;overflow-x:visible!important}
+/* IP Nivel 4 · pestaña "Pérdida Técnica": acá SÍ van las 2 tablas lado a
+   lado (a lo ancho de toda la tarjeta, sin gráfica al costado, así que no
+   se dispara el bug de Chromium que obligaba a apilar). */
+.alim-nivel-narrativa-fila > div{flex-direction:row!important;flex-wrap:wrap!important;overflow-x:auto}
+.alim-nivel-narrativa-fila > div > div{flex:1 1 320px;min-width:0}
 .ip-tabla-compacta table.be-tabla-creadas{font-size:10px;white-space:nowrap}
 .ip-tabla-compacta .be-tabla-creadas th{padding:4px 7px;font-size:9px;text-align:center}
 .ip-tabla-compacta .be-tabla-creadas th.ip-th-mes{background:#20242f;color:#ffffff;position:sticky;left:0;z-index:1}
@@ -2912,22 +2917,22 @@ tfoot td:first-child{text-align:left}
 
   <div id="alim-nivel4-contenido" class="hidden">
 
-    <!-- Filtro compartido por las 3 pestañas (Rango + CSV). Mismo patrón
-         "Excel" que Pérdidas Técnicas (.pt-tabs / .pt-tab-btn). -->
-    <div class="card" style="padding:10px 16px;margin-bottom:8px">
-      <div class="fbar" style="margin-bottom:0">
-        <label>Rango</label>
-        <input type="date" id="alim-nivel4-desde" onchange="alimNivel4RenderTodo()">
-        <span style="font-size:11px;color:var(--text3)">→</span>
-        <input type="date" id="alim-nivel4-hasta" onchange="alimNivel4RenderTodo()">
-        <button type="button" class="btn-theme" style="width:auto;padding:0 14px;margin-left:auto" onclick="alimNivel4DescargarCsv()">⬇ Descargar CSV</button>
-      </div>
-    </div>
-
     <div class="pt-tabs">
       <button type="button" class="pt-tab-btn activo" id="alim-nivel4-tab-btn-ip" onclick="alimNivel4IrATab('ip')">Indicador Pérdidas Nivel 4</button>
       <button type="button" class="pt-tab-btn" id="alim-nivel4-tab-btn-tecnica" onclick="alimNivel4IrATab('tecnica')">Pérdida Técnica Nivel 4</button>
       <button type="button" class="pt-tab-btn" id="alim-nivel4-tab-btn-impexp" onclick="alimNivel4IrATab('impexp')">Importaciones y Exportaciones</button>
+    </div>
+
+    <!-- Filtro Rango + CSV -- ÚNICO nodo en el DOM, alimNivel4IrATab() lo
+         mueve al tope de la tarjeta de la pestaña activa (pedido: "los
+         filtros de fecha deben quedar sobre la misma pestaña donde me
+         encuentro"). type="month": los datos son mensuales, sólo mes/año. -->
+    <div id="alim-nivel4-filtro" class="fbar" style="margin-bottom:12px">
+      <label>Rango</label>
+      <input type="month" id="alim-nivel4-desde" onchange="alimNivel4RenderTodo()">
+      <span style="font-size:11px;color:var(--text3)">→</span>
+      <input type="month" id="alim-nivel4-hasta" onchange="alimNivel4RenderTodo()">
+      <button type="button" class="btn-theme" style="width:auto;padding:0 14px;margin-left:auto" onclick="alimNivel4DescargarCsv()">⬇ Descargar CSV</button>
     </div>
 
     <!-- ===== PESTAÑA 1 · Indicador de Pérdidas Nivel 4 ===== -->
@@ -2956,27 +2961,26 @@ tfoot td:first-child{text-align:left}
     </div>
 
     <!-- ===== PESTAÑA 2 · Pérdida Técnica Nivel 4 ===== -->
-    <!-- Narrativa (Por qué crece) + Pérdida Total vs Pérdida Técnica lado
-         a lado. El grid usa minmax(0,1fr) (NO flex) para acotar de verdad
-         el ancho; el apilado vertical de las 2 tablas de la narrativa lo
-         fuerza ".alim-nivel-narrativa-compacta > div:nth-child(2)". -->
+    <!-- Gráfica arriba a lo ancho; debajo las 2 tablas (Interanual /
+         Mensual) EN UNA FILA y una explicación (pedido explícito: "las
+         tablas en una misma fila ambas y debajo una explicando; quitar
+         eso de 'Por qué crece el indicador'"). -->
     <div id="alim-nivel4-tab-tecnica" class="hidden">
       <div class="card">
-        <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:28px;align-items:start">
-          <div id="alim-nivel4-narrativa" class="alim-nivel-narrativa-compacta" style="overflow:hidden"></div>
-          <div>
-            <div style="text-align:center;margin-bottom:8px">
-              <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Pérdida Total vs Pérdida Técnica</div>
-            </div>
-            <div class="chart-wrap" style="height:420px"><canvas id="ch-alim-nivel4-tecnica"></canvas></div>
-            <!-- Selector oculto: _alimNivelPoblarSelectorAnalisis lo usa
-                 para fijar claveAnalisis (mes que colorea la narrativa). -->
-            <div class="fbar" style="justify-content:center;margin:16px 0 10px;display:none">
-              <label>Mes a comparar</label>
-              <select id="alim-nivel4-analisis-mes" onchange="alimNivel4RenderTodo()"></select>
-            </div>
-            <div id="alim-nivel4-analisis" class="tarjetas-fila-unica" style="display:none"></div>
-          </div>
+        <div style="text-align:center;margin-bottom:8px">
+          <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Pérdida Total vs Pérdida Técnica</div>
+        </div>
+        <div class="chart-wrap" style="height:400px"><canvas id="ch-alim-nivel4-tecnica"></canvas></div>
+        <!-- Selector oculto: _alimNivelPoblarSelectorAnalisis lo usa para
+             fijar claveAnalisis (mes de referencia de la explicación). -->
+        <div class="fbar" style="justify-content:center;margin:16px 0 10px;display:none">
+          <label>Mes a comparar</label>
+          <select id="alim-nivel4-analisis-mes" onchange="alimNivel4RenderTodo()"></select>
+        </div>
+        <div id="alim-nivel4-analisis" class="tarjetas-fila-unica" style="display:none"></div>
+        <div style="border-top:1px solid var(--border);margin:14px -22px 0;padding:16px 22px 0">
+          <div id="alim-nivel4-narrativa" class="alim-nivel-narrativa-compacta alim-nivel-narrativa-fila"></div>
+          <div id="alim-nivel4-tecnica-explica" style="font-size:12.5px;line-height:1.7;color:var(--text2);margin-top:14px"></div>
         </div>
       </div>
     </div>
@@ -14238,7 +14242,7 @@ function _narrativaEntradaSalidaHtml(mensual, titulo, claveActual){
   const datosInteranual = claveActual ? _narrativaEntradaSalidaDatos(mensual, claveActual, 'interanual') : null;
   const datosMensual = claveActual ? _narrativaEntradaSalidaDatos(mensual, claveActual, 'mensual') : null;
   return `
-    <div class="be-tabla-creadas-titulo" style="text-align:center">${titulo}</div>
+    ${titulo ? `<div class="be-tabla-creadas-titulo" style="text-align:center">${titulo}</div>` : ''}
     <div style="display:flex;gap:28px;flex-wrap:nowrap;overflow-x:auto">
       <div>${_narrativaTablaHtml(datosInteranual, 'Interanual (año contra año)')}</div>
       <div>${_narrativaTablaHtml(datosMensual, 'Mensual (mes contra mes)')}</div>
@@ -15689,8 +15693,10 @@ function _alimNivelPoblarRangoDefecto(prefijo, claves){
   const inDesde = document.getElementById(`${prefijo}-desde`);
   const inHasta = document.getElementById(`${prefijo}-hasta`);
   if((inDesde.value && inHasta.value) || !claves.length) return;
+  // input type="month" quiere "YYYY-MM"; type="date" quiere "YYYY-MM-DD".
+  const suf = inHasta.type === 'month' ? '' : '-01';
   const ultima = claves[claves.length-1];
-  if(!inHasta.value) inHasta.value = ultima + '-01';
+  if(!inHasta.value) inHasta.value = ultima + suf;
   if(!inDesde.value){
     const [aH, mH] = ultima.split('-').map(Number);
     const idx = aH*12 + (mH-1) - 7;
@@ -15698,7 +15704,7 @@ function _alimNivelPoblarRangoDefecto(prefijo, claves){
     const claveVentana = alimN21Clave(aD, mD);
     const claveD = claveVentana > ALIM_RANGO_ANCLA ? claveVentana : ALIM_RANGO_ANCLA;
     const claveDisponible = claves.find(c => c >= claveD) || claves[claves.length-1];
-    inDesde.value = claveDisponible + '-01';
+    inDesde.value = claveDisponible + suf;
   }
 }
 
@@ -16380,7 +16386,7 @@ async function alimNivel4Cargar(){
 
   const claves = [...new Set(filas.map(f => f.fecha.slice(0,7)))].sort();
   _alimNivelPoblarRangoDefecto('alim-nivel4', claves);
-  alimNivel4RenderTodo();
+  alimNivel4IrATab('ip');
 }
 
 // Filtro Rango (fbar, misma organización que Indicador N2-1) -- Nivel 4
@@ -16412,7 +16418,41 @@ function alimNivel4IrATab(nombre){
     document.getElementById('alim-nivel4-tab-'+t)?.classList.toggle('hidden', t!==nombre);
     document.getElementById('alim-nivel4-tab-btn-'+t)?.classList.toggle('activo', t===nombre);
   });
+  // El filtro Rango es un único nodo -- se mueve al tope de la tarjeta de
+  // la pestaña activa (pedido: "los filtros deben quedar sobre la misma
+  // pestaña donde me encuentro").
+  const card = document.querySelector('#alim-nivel4-tab-'+nombre+' > .card');
+  const filtro = document.getElementById('alim-nivel4-filtro');
+  if(card && filtro && filtro.parentElement !== card) card.prepend(filtro);
   if((ALIM_NIVEL4_FILAS||[]).length) alimNivel4RenderTodo();
+}
+
+// Explicación en prosa debajo de las 2 tablas de la pestaña "Pérdida
+// Técnica Nivel 4" (reemplaza el título "Por qué crece el indicador").
+function _alimNivel4ExplicaHtml(mensualCompleto, tecnicaPorMes, clave){
+  const reales = (mensualCompleto||[]).filter(f => f.pct != null);
+  if(reales.length < 2) return '<span style="color:var(--text3)">Aún no hay suficientes meses reales para explicar la evolución.</span>';
+  let idx = clave ? reales.findIndex(f => f.clave === clave) : -1;
+  if(idx <= 0) idx = reales.length - 1;
+  const act = reales[idx], ant = reales[idx-1];
+  const mesA = labelMesLargo(act.clave), mesP = labelMesLargo(ant.clave);
+  const fk = v => _alimNivelFKwh(v);   // ya incluye " kWh"
+  const b = t => `<b style="color:var(--text)">${t}</b>`;
+  const dPp = act.pct - ant.pct;
+  const p = [];
+  p.push(`En ${b(mesA)} entraron ${b(fk(act.entrada))} a la red de Nivel 4 y salieron (se entregaron a Nivel 3) ${b(fk(act.salida))}. Esa diferencia -- la ${b('pérdida total del balance')} -- fue ${b(fk(act.perdida))} (${b(act.pct.toFixed(2)+'%')}).`);
+  const tA = tecnicaPorMes ? tecnicaPorMes[act.clave] : null;
+  if(tA && tA.perdida != null){
+    const dif = act.perdida - tA.perdida;
+    const signo = dif >= 0 ? 'por encima' : 'por debajo';
+    p.push(`La ${b('pérdida técnica calculada')} para ese mes fue ${b(fk(tA.perdida))}, así que el balance real quedó ${b(fk(Math.abs(dif))+' '+signo)} de la técnica` +
+      (dif >= 0 ? ' -- ese excedente es pérdida no técnica (medición, ajustes o hurto).' : ' -- el balance registró menos pérdida de la que estima la técnica.'));
+  }
+  const pctEnt = ant.entrada ? (act.entrada-ant.entrada)/ant.entrada*100 : 0;
+  const pctSal = ant.salida ? (act.salida-ant.salida)/ant.salida*100 : 0;
+  const dir = Math.abs(dPp) < 0.005 ? 'se mantuvo' : (dPp > 0 ? `subió ${dPp.toFixed(2)} pp` : `bajó ${Math.abs(dPp).toFixed(2)} pp`);
+  p.push(`Frente a ${b(mesP)}, el índice ${b(dir)}: la entrada ${pctEnt>=0?'creció':'cayó'} ${b(Math.abs(pctEnt).toFixed(2)+'%')} y la salida ${pctSal>=0?'creció':'cayó'} ${b(Math.abs(pctSal).toFixed(2)+'%')} (el indicador sube cuando la entrada crece más rápido que la salida, o cae más lento).`);
+  return p.join('<br><br>');
 }
 
 function alimNivel4RenderTodo(){
@@ -16429,7 +16469,8 @@ function alimNivel4RenderTodo(){
 
   document.getElementById('alim-nivel4-tarjetas').innerHTML = _alimNivelTarjetasHtml(mensual, ALIM_NIVEL4_VAR);
   document.getElementById('alim-nivel4-analisis').innerHTML = _alimNivelComparativoTarjetasHtml(mensualCompleto, tecnicaPorMes, claveAnalisis);
-  document.getElementById('alim-nivel4-narrativa').innerHTML = _narrativaEntradaSalidaHtml(mensualCompleto, 'Por qué crece el indicador -- Nivel 4', claveAnalisis);
+  document.getElementById('alim-nivel4-narrativa').innerHTML = _narrativaEntradaSalidaHtml(mensualCompleto, '', claveAnalisis);
+  document.getElementById('alim-nivel4-tecnica-explica').innerHTML = _alimNivel4ExplicaHtml(mensualCompleto, tecnicaPorMes, claveAnalisis);
 
   if(chAlimNivel4Mensual) chAlimNivel4Mensual.destroy();
   chAlimNivel4Mensual = _alimNivelConstruirChartMensual(document.getElementById('ch-alim-nivel4-mensual'), mensual, 'Nivel 4', null, '', ALIM_NIVEL4_SIN_RELLENO);
