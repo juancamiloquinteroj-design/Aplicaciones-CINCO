@@ -17211,10 +17211,6 @@ function alimNivel3RenderEvalTabla(porZona){
 
   const pct = _reconPctN3();
   const totalN3 = filas.reduce((s,f) => s + f.perdida, 0);
-  const entradaN3 = filas.reduce((s,f) => s + f.entrada, 0);
-  const cupoN3 = entradaN3 * pct / 100;                 // energía reconocida CREG (Nivel 3)
-  const noReconTot = Math.max(0, totalN3 - cupoN3);
-  const reconTot = totalN3 - noReconTot;
 
   const sub = document.getElementById('alim-nivel3-eval-sub');
   if(sub) sub.textContent = (anual
@@ -17228,12 +17224,18 @@ function alimNivel3RenderEvalTabla(porZona){
     return;
   }
 
-  let tPT=0, tPref=0, tRef=0, tNoRef=0;
+  // Reconocido / no reconocido POR ZONA: cada zona se evalúa contra su
+  // propio cupo (índice % × Entrada de esa zona). Si el % de pérdida de la
+  // zona es <= el índice reconocido, NO tiene pérdida no reconocida (y
+  // queda con margen a favor) -- pedido explícito: "zona neiva está en
+  // 0,95 % y el reconocimiento es 1,45 %, me reconocen todo".
+  let tPT=0, tPref=0, tRef=0, tNoRef=0, tCupo=0;
   tb.innerHTML = filas.sort((a,b) => a.zona.localeCompare(b.zona)).map(f=>{
-    const share = totalN3 ? f.perdida/totalN3 : 0;
-    const recZ = reconTot*share, norecZ = noReconTot*share;
+    const cupoZ = f.entrada * pct / 100;
+    const norecZ = Math.max(0, f.perdida - cupoZ);
+    const recZ = f.perdida - norecZ;                       // = min(perdida, cupo)
     const perdRef = f.perdida*pr3, recRef = recZ*pr3, noRecRef = norecZ*pr3;
-    tPT += f.perdida; tPref += perdRef; tRef += recRef; tNoRef += noRecRef;
+    tPT += f.perdida; tPref += perdRef; tRef += recRef; tNoRef += noRecRef; tCupo += cupoZ;
     const hayNoRecon = norecZ > 0.5;
     const nrColor = hayNoRecon ? 'var(--red)' : 'var(--text)';
     return `<tr>
@@ -17254,7 +17256,7 @@ function alimNivel3RenderEvalTabla(porZona){
 
   const nrRed = tNoRef > 0.5;
   const nrc = nrRed ? 'var(--red)' : 'var(--text)';
-  const margen = cupoN3 - totalN3;
+  const margen = tCupo - totalN3;
   const nota = (!nrRed && margen > 0)
     ? ` <span style="font-weight:400;color:var(--text3)">(margen +${fK(margen)} kWh)</span>` : '';
   tf.innerHTML = `<tr style="border-top:3px double var(--text2);background:var(--bg)">
@@ -17287,13 +17289,15 @@ function alimNivel3RenderEvalChart(porZona){
   const mesVig = ALIM_NIVEL3_MAPA_MES || claves[claves.length-1];
   const pr3Vig = ALIM_NIVEL3_EVAL_PR3[mesVig] || 1;
   const puntos = claves.map(c => {
-    let total = 0, entrada = 0;
+    // Reconocido/no reconocido POR ZONA y después se suma (igual que la
+    // tabla) -- así una zona por debajo de su índice no aporta no-recon.
+    let total = 0, noRecon = 0;
     _zonasUso.forEach(z => {
       const f = (porZona.porZona[z]||[]).find(x => x.clave === c);
-      if(f){ total += f.perdida; entrada += f.entrada; }
+      if(!f) return;
+      total += f.perdida;
+      noRecon += Math.max(0, f.perdida - f.entrada * pct / 100);
     });
-    const cupo = entrada * pct / 100;
-    const noRecon = Math.max(0, total - cupo);
     const reconEff = total - noRecon;
     const pr3 = ALIM_NIVEL3_EVAL_PR3[c] || pr3Vig;
     const tar = _costoDeMes(c);
