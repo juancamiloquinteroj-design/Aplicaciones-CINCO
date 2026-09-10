@@ -161,11 +161,17 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(
    sobrada en el ancho de la columna.  !important porque el estilo
    inline (flex-wrap:nowrap) pesa más que una clase normal. */
 .alim-nivel-narrativa-compacta > div:nth-child(2){flex-direction:column!important;flex-wrap:nowrap!important;overflow-x:visible!important}
-/* IP Nivel 4 · pestaña "Pérdida Técnica": acá SÍ van las 2 tablas lado a
-   lado (a lo ancho de toda la tarjeta, sin gráfica al costado, así que no
-   se dispara el bug de Chromium que obligaba a apilar). */
-.alim-nivel-narrativa-fila > div{flex-direction:row!important;flex-wrap:wrap!important;overflow-x:auto}
-.alim-nivel-narrativa-fila > div > div{flex:1 1 320px;min-width:0}
+/* IP Nivel 4 · pestaña "Pérdida Técnica": las 2 tablas van lado a lado
+   en la columna izquierda (gráfica a la derecha). La FILA no scrollea
+   (overflow:visible) para no disparar el bug de Chromium; cada tabla se
+   estira a la mitad del ancho (flex:1 1 0, nowrap) con letra chica y
+   celdas apretadas, y cada .be-tabla-scroll sí puede scrollear sola si
+   hiciera falta (un solo nivel de overflow = sin bug). */
+.alim-nivel-narrativa-fila > div{flex-direction:row!important;flex-wrap:nowrap!important;overflow:visible!important;gap:14px!important;align-items:flex-start}
+.alim-nivel-narrativa-fila > div > div{flex:1 1 0!important;min-width:0;max-width:50%}
+.alim-nivel-narrativa-fila .be-tabla-scroll{overflow-x:auto;overflow-y:visible;max-width:100%}
+.alim-nivel-narrativa-fila table.be-tabla-creadas{font-size:8.5px;width:100%!important}
+.alim-nivel-narrativa-fila .be-tabla-creadas th,.alim-nivel-narrativa-fila .be-tabla-creadas td{padding:2px 3px;white-space:nowrap}
 .ip-tabla-compacta table.be-tabla-creadas{font-size:10px;white-space:nowrap}
 .ip-tabla-compacta .be-tabla-creadas th{padding:4px 7px;font-size:9px;text-align:center}
 .ip-tabla-compacta .be-tabla-creadas th.ip-th-mes{background:#20242f;color:#ffffff;position:sticky;left:0;z-index:1}
@@ -1332,33 +1338,9 @@ tfoot td:first-child{text-align:left}
          el Diagrama Unifilar (ver comentario en el sidebar). -->
   </div>
 
-  <div class="mod-grid">
-    <div class="mod-card active" onclick="mostrarVista('inicio')">
-      <span class="mc-icon">🏠</span>
-      <div class="mc-title">Inicio</div>
-      <div class="mc-desc">Resumen general de tu cuenta.</div>
-    </div>
-    <div class="mod-card" data-modulo="perdidas" onclick="mostrarVista('perdidas')">
-      <span class="mc-icon">📉</span>
-      <div class="mc-title">Pérdidas Técnicas</div>
-      <div class="mc-desc">Entradas, pérdidas y desglose por zona de tu operador.</div>
-    </div>
-    <div class="mod-card" data-modulo="telemedidos" onclick="mostrarVista('telemedidos')">
-      <span class="mc-icon">👥</span>
-      <div class="mc-title">Usuarios Telemedidos</div>
-      <div class="mc-desc">Consumo diario por medidor.</div>
-    </div>
-    <div class="mod-card" data-modulo="indicador_perdidas" onclick="mostrarVista('ip-reg')">
-      <span class="mc-icon">📊</span>
-      <div class="mc-title">Indicador de Pérdidas</div>
-      <div class="mc-desc">IP_Reg -- CREG 015/2018 Cap. 7.</div>
-    </div>
-    <div class="mod-card" data-modulo="balances_estructura" onclick="mostrarVista('be-ver')">
-      <span class="mc-icon">🧮</span>
-      <div class="mc-title">Balances por Estructura</div>
-      <div class="mc-desc">Balances de líneas, transformadores, barras, etc.</div>
-    </div>
-  </div>
+  <!-- Grilla de tarjetas-atajo a los módulos quitada de Inicio (pedido
+       explícito: "esas tarjetas que son como botones de acceso rápido,
+       quítalas"). La navegación queda solo en el sidebar. -->
 </div>
 
 <!-- ---------------- PÉRDIDAS TÉCNICAS ---------------- -->
@@ -2961,27 +2943,27 @@ tfoot td:first-child{text-align:left}
     </div>
 
     <!-- ===== PESTAÑA 2 · Pérdida Técnica Nivel 4 ===== -->
-    <!-- Gráfica arriba a lo ancho; debajo las 2 tablas (Interanual /
-         Mensual) EN UNA FILA y una explicación (pedido explícito: "las
-         tablas en una misma fila ambas y debajo una explicando; quitar
-         eso de 'Por qué crece el indicador'"). -->
+    <!-- Pedido explícito (con dibujo): las 2 tablas (Interanual / Mensual)
+         EN UNA FILA a la IZQUIERDA, la gráfica a la DERECHA, y debajo en
+         blanco. -->
     <div id="alim-nivel4-tab-tecnica" class="hidden">
       <div class="card">
-        <div style="text-align:center;margin-bottom:8px">
-          <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Pérdida Total vs Pérdida Técnica</div>
+        <div style="display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:24px;align-items:start">
+          <div id="alim-nivel4-narrativa" class="alim-nivel-narrativa-compacta alim-nivel-narrativa-fila" style="overflow:hidden"></div>
+          <div>
+            <div style="text-align:center;margin-bottom:8px">
+              <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Pérdida Total vs Pérdida Técnica</div>
+            </div>
+            <div class="chart-wrap" style="height:420px"><canvas id="ch-alim-nivel4-tecnica"></canvas></div>
+          </div>
         </div>
-        <div class="chart-wrap" style="height:400px"><canvas id="ch-alim-nivel4-tecnica"></canvas></div>
         <!-- Selector oculto: _alimNivelPoblarSelectorAnalisis lo usa para
-             fijar claveAnalisis (mes de referencia de la explicación). -->
+             fijar claveAnalisis (mes de referencia de la narrativa). -->
         <div class="fbar" style="justify-content:center;margin:16px 0 10px;display:none">
           <label>Mes a comparar</label>
           <select id="alim-nivel4-analisis-mes" onchange="alimNivel4RenderTodo()"></select>
         </div>
         <div id="alim-nivel4-analisis" class="tarjetas-fila-unica" style="display:none"></div>
-        <div style="border-top:1px solid var(--border);margin:14px -22px 0;padding:16px 22px 0">
-          <div id="alim-nivel4-narrativa" class="alim-nivel-narrativa-compacta alim-nivel-narrativa-fila"></div>
-          <div id="alim-nivel4-tecnica-explica" style="font-size:12.5px;line-height:1.7;color:var(--text2);margin-top:14px"></div>
-        </div>
       </div>
     </div>
 
@@ -16470,7 +16452,6 @@ function alimNivel4RenderTodo(){
   document.getElementById('alim-nivel4-tarjetas').innerHTML = _alimNivelTarjetasHtml(mensual, ALIM_NIVEL4_VAR);
   document.getElementById('alim-nivel4-analisis').innerHTML = _alimNivelComparativoTarjetasHtml(mensualCompleto, tecnicaPorMes, claveAnalisis);
   document.getElementById('alim-nivel4-narrativa').innerHTML = _narrativaEntradaSalidaHtml(mensualCompleto, '', claveAnalisis);
-  document.getElementById('alim-nivel4-tecnica-explica').innerHTML = _alimNivel4ExplicaHtml(mensualCompleto, tecnicaPorMes, claveAnalisis);
 
   if(chAlimNivel4Mensual) chAlimNivel4Mensual.destroy();
   chAlimNivel4Mensual = _alimNivelConstruirChartMensual(document.getElementById('ch-alim-nivel4-mensual'), mensual, 'Nivel 4', null, '', ALIM_NIVEL4_SIN_RELLENO);
@@ -25471,22 +25452,22 @@ function renderValuacionChart(){
       labels,
       datasets:[
         {type:'bar', label:'Energía reconocida (kWh/mes)', data: energiaRecon, yAxisID:'yKwh', order:3,
-          backgroundColor:'rgba(0,176,80,.55)', borderColor:'#00B050', borderWidth:1, borderRadius:3,
-          // Valor DENTRO de la barra, arriba (pedido explícito).
-          datalabels:{display:true, anchor:'end', align:'start', offset:4, rotation:-90,
-            formatter:v=>v?fmtGwh(v):'', font:{size:10,weight:'800'}, color:'#ffffff',
-            textStrokeColor:'#0a6b33', textStrokeWidth:3}},
+          backgroundColor:'rgba(0,176,80,.75)', borderColor:'#00753a', borderWidth:1, borderRadius:3,
+          // Valor DENTRO de la barra, arriba (pedido explícito). Texto
+          // blanco sobre relleno más opaco, SIN halo (el halo blanco
+          // borraba el número).
+          datalabels:{display:true, anchor:'end', align:'start', offset:6, rotation:-90,
+            formatter:v=>v?fmtGwh(v):'', font:{size:11,weight:'800'}, color:'#ffffff'}},
         {type:'bar', label:'Costo reconocido ($/mes)', data: costoRecon, yAxisID:'yDinero', order:3,
-          backgroundColor:'rgba(0,112,192,.55)', borderColor:'#0070C0', borderWidth:1, borderRadius:3,
-          datalabels:{display:true, anchor:'end', align:'start', offset:4, rotation:-90,
-            formatter:v=>v?fmtDineroEje(v):'', font:{size:10,weight:'800'}, color:'#ffffff',
-            textStrokeColor:'#0a3d6b', textStrokeWidth:3}},
+          backgroundColor:'rgba(0,112,192,.8)', borderColor:'#004a80', borderWidth:1, borderRadius:3,
+          datalabels:{display:true, anchor:'end', align:'start', offset:6, rotation:-90,
+            formatter:v=>v?fmtDineroEje(v):'', font:{size:11,weight:'800'}, color:'#ffffff'}},
         {type:'line', label:'Costo NO reconocido ($/mes)', data: costoNoRecon, yAxisID:'yDinero', order:1,
           borderColor:'#C00000', backgroundColor:'transparent', borderWidth:2.5, borderDash:[6,3],
           pointRadius:4, pointHoverRadius:6, tension:0, spanGaps:true,
-          datalabels:{display:true, anchor:'end', align:'top', offset:8,
-            formatter:v=>v?fmtDineroEje(v):'', font:{size:12,weight:'800'}, color:'#C00000',
-            textStrokeColor: dark?'#000000':'#ffffff', textStrokeWidth:4}},
+          datalabels:{display:true, anchor:'end', align:'top', offset:8, backgroundColor:'#ffffff',
+            borderRadius:4, padding:{top:2,bottom:1,left:4,right:4},
+            formatter:v=>v?fmtDineroEje(v):'', font:{size:12,weight:'800'}, color:'#C00000'}},
       ],
     },
     options:{
