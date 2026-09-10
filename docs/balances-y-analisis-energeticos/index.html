@@ -3247,9 +3247,10 @@ tfoot td:first-child{text-align:left}
           </div>
         </div>
 
-        <div style="display:grid;grid-template-columns:minmax(0,460px) minmax(0,1fr);gap:18px;align-items:start">
-          <!-- IZQUIERDA: mapa grande (abarca tabla + gráfica de la derecha). -->
-          <div id="alim-nivel3-mapa-leaflet" style="height:760px;border:1px solid var(--border);border-radius:10px;overflow:hidden;background:var(--bg3)"></div>
+        <div style="display:grid;grid-template-columns:minmax(0,600px) minmax(0,1fr);gap:18px;align-items:start">
+          <!-- IZQUIERDA: mapa -- encuadrado (alimNivel3RenderMapaMarcadores)
+               para que se vea el departamento con TODAS las tarjetas. -->
+          <div id="alim-nivel3-mapa-leaflet" style="height:600px;border:1px solid var(--border);border-radius:10px;overflow:hidden;background:var(--bg3)"></div>
           <!-- DERECHA: tabla a todo el ancho, y debajo la gráfica. -->
           <div style="min-width:0">
             <div class="tbl-wrap" id="alim-nivel3-eval-tbl-wrap" style="width:100%">
@@ -17028,6 +17029,7 @@ function alimNivel3RenderMapaMarcadores(){
   const auto = mapaZonasPosicionesAutomaticas(centros, deptoBounds);
   const fmt = v => v==null ? '--' : Math.round(v).toLocaleString('es-CO');
   let captionClave = null;
+  const boundsConTarjetas = L.latLngBounds(deptoBounds);   // dept + tarjetas flotantes
 
   zonas.forEach(zona => {
     const serie = porZona.porZona[zona] || [];
@@ -17050,6 +17052,7 @@ function alimNivel3RenderMapaMarcadores(){
     const tip = centros[zona];
     const guardada = posicionesGuardadas[zona];
     const box = guardada ? L.latLng(guardada.lat, guardada.lng) : auto[zona];
+    if(box) boundsConTarjetas.extend(box);
     const flecha = mapaZonasDibujarFlecha(mapa, box, tip);
     ALIM_NIVEL3_MAPA_MARCADORES.push(...flecha.capas);
     const html = `<div class="zcard" style="border-top:4px solid ${color};width:172px">
@@ -17075,6 +17078,14 @@ function alimNivel3RenderMapaMarcadores(){
     cap.classList.toggle('hidden', !anual);
     if(anual && captionClave) cap.textContent = `Ventana 12 meses móvil -- datos a ${labelMesLargo(captionClave)}`;
   }
+
+  // Encuadra el mapa para que se vean el departamento Y todas las tarjetas
+  // flotantes (mapaZonasRenderLeaflet solo encuadra los municipios, así que
+  // las tarjetas de los bordes quedaban cortadas). Se reintenta un frame
+  // después por si el ResizeObserver interno todavía no asentó el tamaño.
+  const encuadrar = () => { try{ mapa.fitBounds(boundsConTarjetas, {padding:[18,18]}); }catch(e){} };
+  encuadrar();
+  requestAnimationFrame(encuadrar);
 }
 
 // ===== Evaluación Económica · Nivel 3 (al lado del mapa, pestaña Mapa) =====
@@ -17183,7 +17194,8 @@ function alimNivel3RenderEvalTabla(porZona){
   const f$ = n => '$ '+Math.round(n||0).toLocaleString('es-CO');
 
   const ventana = anual ? _alimN3EvalVentana(mes, claves) : [mes];
-  const filas = (porZona.zonas||[]).map(z => {
+  const _zSel = ALIM_NIVEL3_ZONAS_SEL;
+  const filas = (porZona.zonas||[]).filter(z => !_zSel.size || _zSel.has(z)).map(z => {
     const serie = porZona.porZona[z] || [];
     let perdida = 0, entrada = 0;
     ventana.forEach(c => { const f = serie.find(x => x.clave === c); if(f){ perdida += f.perdida; entrada += f.entrada; } });
@@ -17263,11 +17275,13 @@ function alimNivel3RenderEvalChart(porZona){
   const claves = porZona.claves || [];
 
   const pct = _reconPctN3();
+  const _zSel = ALIM_NIVEL3_ZONAS_SEL;
+  const _zonasUso = (porZona.zonas||[]).filter(z => !_zSel.size || _zSel.has(z));
   const mesVig = ALIM_NIVEL3_MAPA_MES || claves[claves.length-1];
   const pr3Vig = ALIM_NIVEL3_EVAL_PR3[mesVig] || 1;
   const puntos = claves.map(c => {
     let total = 0, entrada = 0;
-    (porZona.zonas||[]).forEach(z => {
+    _zonasUso.forEach(z => {
       const f = (porZona.porZona[z]||[]).find(x => x.clave === c);
       if(f){ total += f.perdida; entrada += f.entrada; }
     });
