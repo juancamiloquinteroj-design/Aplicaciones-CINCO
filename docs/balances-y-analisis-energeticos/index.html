@@ -170,13 +170,13 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(
 .alim-nivel-narrativa-fila > div{flex-direction:row!important;flex-wrap:nowrap!important;overflow:visible!important;gap:16px!important;align-items:flex-start}
 .alim-nivel-narrativa-fila > div > div{flex:1 1 0!important;min-width:0;max-width:50%}
 .alim-nivel-narrativa-fila .be-tabla-scroll{overflow-x:auto;overflow-y:visible;max-width:100%}
-.alim-nivel-narrativa-fila table.be-tabla-creadas{font-size:9px;width:100%!important}
-.alim-nivel-narrativa-fila .be-tabla-creadas th,.alim-nivel-narrativa-fila .be-tabla-creadas td{padding:3px 3px;white-space:nowrap}
+.alim-nivel-narrativa-fila table.be-tabla-creadas{font-size:10px;width:100%!important}
+.alim-nivel-narrativa-fila .be-tabla-creadas th,.alim-nivel-narrativa-fila .be-tabla-creadas td{padding:4px 4px;white-space:nowrap}
 /* Primera columna (etiqueta) angosta y que envuelva -- pedido explícito
    ("la primera columna está muy grande, más pequeña para darle más
    tamaño a la gráfica"). */
 .alim-nivel-narrativa-fila .be-tabla-creadas th:first-child,
-.alim-nivel-narrativa-fila .be-tabla-creadas td:first-child{white-space:normal!important;width:1%;max-width:70px;font-size:8px;line-height:1.12}
+.alim-nivel-narrativa-fila .be-tabla-creadas td:first-child{white-space:normal!important;width:1%;max-width:76px;font-size:8.5px;line-height:1.14}
 /* Título de cada tabla -- centrado y más grande (pedido explícito: "los
    títulos centrados y letra más grande que se vea"). */
 .alim-nivel-narrativa-fila .narrativa-tabla-titulo{font-size:13px!important;text-align:center;margin:0 0 6px!important}
@@ -2956,7 +2956,7 @@ tfoot td:first-child{text-align:left}
          blanco. -->
     <div id="alim-nivel4-tab-tecnica" class="hidden">
       <div class="card">
-        <div style="display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1.2fr);gap:20px;align-items:start">
+        <div style="display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:20px;align-items:start">
           <div>
           <div id="alim-nivel4-narrativa" class="alim-nivel-narrativa-compacta alim-nivel-narrativa-fila" style="overflow:hidden"></div>
           <!-- Análisis por mes -- lo escribe el usuario y se ve en el
@@ -14155,8 +14155,9 @@ function _narrativaEntradaSalidaDatos(mensual, claveActual, modo){
 }
 
 // Una tabla (interanual O mensual) ya con los `datos` calculados.
-// `compacto`: muestra Entrada/Salida en GWh (2 dec) en vez de kWh, para
-// que la tabla entre en columnas angostas (IP Nivel 4, 2 tablas + gráfica).
+// `compacto`: valores en kWh pero SIN el sufijo " kWh" repetido en cada
+// celda (la unidad va en el título) -- para que las 5 columnas entren
+// angostas (IP Nivel 4, 2 tablas + gráfica al lado).
 function _narrativaTablaHtml(datos, tituloTabla, compacto){
   if(!datos){
     return `<div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;margin:10px 0 4px">${tituloTabla}</div>
@@ -14188,12 +14189,8 @@ function _narrativaTablaHtml(datos, tituloTabla, compacto){
   // Entrada/Salida son filas NEUTRAS (crecer no es "bueno" ni "malo" en sí
   // mismo) -- el color de dirección (rojo/verde) solo va en la fila de
   // Crecimiento de Pérdidas, que es donde sí importa la dirección.
-  // fGwh() usa Math.abs (pierde el signo); acá se necesita el signo en la
-  // columna Δ. En compacto: sólo el número (la unidad "GWh" va en el
-  // título de la tabla) para que las 5 columnas entren angostas.
-  const fVal = compacto
-    ? (v => (v/1e6).toLocaleString('es-CO',{maximumFractionDigits:2, minimumFractionDigits:2}))
-    : (v => `${fKwh(v)} kWh`);
+  // compacto: kWh sin sufijo por celda (unidad en el título).
+  const fVal = compacto ? (v => fKwh(v)) : (v => `${fKwh(v)} kWh`);
   const filaConcepto = (nombre, anterior, actual) => {
     const delta = actual - anterior;
     const deltaPct = anterior ? delta/anterior*100 : null;
@@ -14220,7 +14217,7 @@ function _narrativaTablaHtml(datos, tituloTabla, compacto){
   // tabla... utiliza negrilla con negro para que haya un contraste").
   const thEstilo = `color:var(--text);font-weight:800`;
   return `
-    <div class="narrativa-tabla-titulo" style="font-size:11px;font-weight:800;color:var(--text);text-transform:uppercase;margin:10px 0 4px;text-align:center">${tituloTabla}${compacto ? ' · GWh' : ''}</div>
+    <div class="narrativa-tabla-titulo" style="font-size:11px;font-weight:800;color:var(--text);text-transform:uppercase;margin:10px 0 4px;text-align:center">${tituloTabla}${compacto ? ' · kWh' : ''}</div>
     <div class="be-tabla-scroll">
       <table class="be-tabla-creadas" style="width:auto;border:1px solid var(--border)">
         <thead><tr>
@@ -15886,13 +15883,11 @@ function _alimNivelConstruirChartMensual(cv, mensual, etiquetaNivel, seriesExtra
   const visibles = mensual.filter(f => f[campoPct] != null);
   if(!visibles.length) return null;
   const clavesVis = visibles.map(f => f.clave);
-  // Eje propio, VISIBLE, para la línea de Pérdida kWh -- pedido explícito
-  // ("no hay coherencia: el eje muestra 142M-160M y la pérdida es 133.722;
-  // el eje no tiene sentido"). La Pérdida (~cientos de miles) tiene su
-  // propia escala rotulada a la izquierda; queda en la parte baja pero
-  // ya se entiende contra qué se lee.
+  // La línea de Pérdida kWh va en una escala OCULTA (no un 3er eje
+  // visible -- pedido explícito: "solo doble eje") con un tope enorme,
+  // así queda prácticamente pegada al eje X. Sin etiquetas de dato.
   const _maxPerd = Math.max(1, ...visibles.map(f => +f[campoPerdida] || 0));
-  const yPerdMax = Math.ceil(_maxPerd * 2.6 / 100000) * 100000;
+  const yPerdMax = _maxPerd * 22;
   const dark = document.documentElement.getAttribute('data-theme')==='dark';
   const tickC = dark ? '#ffffff' : '#000000';
   const tickXFuerte = dark ? '#ffffff' : '#000000';
@@ -15923,9 +15918,7 @@ function _alimNivelConstruirChartMensual(cv, mensual, etiquetaNivel, seriesExtra
     {type:'line', label:`Pérdida kWh/${etiquetaPeriodo}`, yAxisID:'yPerd', order:2, fill:false,
       data: visibles.map(f=>f[campoPerdida]), borderColor:'#7030A0', backgroundColor:'transparent',
       borderWidth:2, borderDash:[3,2], pointRadius:2, spanGaps:true, tension:0,
-      datalabels:{display:true, anchor:'end', align:'bottom', offset:8,
-        formatter:v=>v==null?'':Math.round(v).toLocaleString('es-CO'),
-        font:{size:9, weight:'700'}, color:'#7030A0'}},
+      datalabels:{display:false}},
     ...(seriesExtra||[]),
   ];
 
@@ -15960,10 +15953,7 @@ function _alimNivelConstruirChartMensual(cv, mensual, etiquetaNivel, seriesExtra
         y:{position:'left', grid:{color:gridC},
           ticks:{color:tickC, font:{size:10}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
           title:{display:true, text:'Energía (kWh)', color:tickC, font:{size:10}}},
-        yPerd:{type:'linear', position:'left', min:0, max:yPerdMax, grid:{drawOnChartArea:false},
-          ticks:{color:'#7030A0', font:{size:9}, maxTicksLimit:5,
-            callback:v=> v>=1e6 ? (v/1e6).toFixed(1)+'M' : Math.round(v/1000)+'k'},
-          title:{display:true, text:'Pérdida (kWh)', color:'#7030A0', font:{size:9}}},
+        yPerd:{type:'linear', position:'right', display:false, min:0, max:yPerdMax},
       },
     },
   });
