@@ -960,7 +960,7 @@ tfoot td:first-child{text-align:left}
 /* IP Nivel 4 -- mismas pestañas .pt-tabs; el panel de cada pestaña
    arranca directo en .card y va pegado a la pestaña activa. */
 #alim-nivel4-tab-ip>.card:first-child, #alim-nivel4-tab-tecnica>.card:first-child, #alim-nivel4-tab-impexp>.card:first-child{border-top-left-radius:0;border-top-right-radius:0}
-#alim-nivel3-tab-ip>.card:first-child, #alim-nivel3-tab-tecnica>.card:first-child, #alim-nivel3-tab-comparativo>.card:first-child{border-top-left-radius:0;border-top-right-radius:0}
+#alim-nivel3-tab-ip>.card:first-child, #alim-nivel3-tab-tecnica>.card:first-child, #alim-nivel3-tab-comparativo>.card:first-child, #alim-nivel3-tab-mapa>.card:first-child{border-top-left-radius:0;border-top-right-radius:0}
 #alim-nivel3-tab-tecnica .split-wrap{align-items:flex-start}
 /* Diagrama Unifilar -- símbolos SVG (currentColor toma el color de estas
    clases, así los íconos ya son theme-aware sin nada extra). */
@@ -3037,6 +3037,7 @@ tfoot td:first-child{text-align:left}
       <button type="button" class="pt-tab-btn activo" id="alim-nivel3-tab-btn-ip" onclick="alimNivel3IrATab('ip')">Indicador Pérdidas Nivel 3</button>
       <button type="button" class="pt-tab-btn" id="alim-nivel3-tab-btn-tecnica" onclick="alimNivel3IrATab('tecnica')">Pérdida Técnica Nivel 3</button>
       <button type="button" class="pt-tab-btn" id="alim-nivel3-tab-btn-comparativo" onclick="alimNivel3IrATab('comparativo')">Comparativo Zonas</button>
+      <button type="button" class="pt-tab-btn" id="alim-nivel3-tab-btn-mapa" onclick="alimNivel3IrATab('mapa')">Mapa por Zonas</button>
     </div>
 
     <!-- Filtro Rango + Zona (desplegable, como Pérdidas Técnicas) + CSV --
@@ -3198,6 +3199,30 @@ tfoot td:first-child{text-align:left}
       </div><!-- /grid -->
     </div><!-- /card -->
     </div><!-- /#alim-nivel3-tab-comparativo -->
+
+    <!-- ===== PESTAÑA 4 · Mapa por Zonas ===== -->
+    <!-- Croquis parametrizable (Parametrización → Mapa de zonas por
+         municipio, GET /api/mapa-zonas) + tarjetas por zona con Entrada,
+         Salida, Pérdida Técnica y Pérdida Total, con toggle Mensual/Anual
+         (12M móvil). Independiente del filtro Rango: tiene su propio
+         selector de mes. -->
+    <div id="alim-nivel3-tab-mapa" class="hidden">
+      <div class="card">
+        <div class="fbar" style="justify-content:center;margin-bottom:12px;flex-wrap:wrap">
+          <button type="button" class="be-modo-btn activo" id="alim-nivel3-mapa-btn-mensual" onclick="alimNivel3MapaModo('mensual')">Mensual</button>
+          <button type="button" class="be-modo-btn" id="alim-nivel3-mapa-btn-anual" onclick="alimNivel3MapaModo('anual')">Anual (12 Meses Móvil)</button>
+          <select id="alim-nivel3-mapa-mes" onchange="alimNivel3MapaCambioMes(this.value)" style="font-size:12px;padding:3px 6px;margin-left:8px"></select>
+          <span id="alim-nivel3-mapa-anual-caption" class="hidden" style="font-size:11px;color:var(--text3);margin-left:8px"></span>
+        </div>
+        <div style="display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:20px;align-items:start">
+          <div id="alim-nivel3-mapa-leaflet" style="height:520px;border:1px solid var(--border);border-radius:10px;overflow:hidden"></div>
+          <div>
+            <div style="font-size:13px;font-weight:800;letter-spacing:.6px;color:var(--text);text-transform:uppercase;text-align:center;margin-bottom:10px">Entrada · Salida · Pérdida por Zona</div>
+            <div id="alim-nivel3-mapa-tarjetas" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(185px,1fr));gap:10px"></div>
+          </div>
+        </div>
+      </div>
+    </div>
 
   </div>
 </div>
@@ -16793,7 +16818,7 @@ function alimNivel3ToggleZona(zona){
 
 // Pestañas del módulo IP Nivel 3 (mismo patrón que perdidasIrATab).
 function alimNivel3IrATab(nombre){
-  ['ip','tecnica','comparativo'].forEach(t=>{
+  ['ip','tecnica','comparativo','mapa'].forEach(t=>{
     document.getElementById('alim-nivel3-tab-'+t)?.classList.toggle('hidden', t!==nombre);
     document.getElementById('alim-nivel3-tab-btn-'+t)?.classList.toggle('activo', t===nombre);
   });
@@ -16801,6 +16826,118 @@ function alimNivel3IrATab(nombre){
   const filtro = document.getElementById('alim-nivel3-filtro');
   if(card && filtro && filtro.parentElement !== card) card.prepend(filtro);
   if((ALIM_NIVEL3_FILAS||[]).length) alimNivel3RenderTodo();
+  if(nombre === 'mapa') alimNivel3CargarMapa();
+}
+
+// ===== Pestaña "Mapa por Zonas" (IP Nivel 3) =====
+// El croquis sale de Parametrización (GET /api/mapa-zonas), mismo helper
+// compartido que Indicador N2-1 (mapaZonasRenderLeaflet). Las tarjetas por
+// zona muestran Entrada, Salida, Pérdida Técnica y Pérdida Total, con
+// toggle Mensual/Anual (12M móvil) -- independiente del filtro Rango del
+// módulo (tiene su propio selector de mes).
+let ALIM_NIVEL3_MAPA_MODO = 'mensual';
+let ALIM_NIVEL3_MAPA_MES = null;
+let ALIM_NIVEL3_MAPA_REF = null;
+let ALIM_NIVEL3_MAPA_GEN = 0;
+let ALIM_NIVEL3_MAPA_OPACIDAD = 0.7;
+
+async function alimNivel3CargarMapa(){
+  const cont = document.getElementById('alim-nivel3-mapa-leaflet');
+  if(!cont) return;
+  const miGen = ++ALIM_NIVEL3_MAPA_GEN;
+  if(!MAPA_ZONAS_INSTANCIAS['alim-nivel3-mapa-leaflet']){
+    cont.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text3);font-size:12px">Cargando…</div>';
+  }
+  try{
+    const topo = await mapaZonasCargarTopo();
+    const resp = DEMO ? {departamento:null, municipios:{}, posiciones:{}} : await apiGet('/api/mapa-zonas');
+    if(miGen !== ALIM_NIVEL3_MAPA_GEN) return;
+    if(!resp.departamento){
+      cont.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text3);font-size:12px;text-align:center;padding:20px">Todavía no se parametrizó el departamento ni las zonas -- hacelo en Parametrización → Mapa de zonas por municipio.</div>';
+      ALIM_NIVEL3_MAPA_REF = null;
+      alimNivel3RenderMapaTarjetas();
+      return;
+    }
+    const features = mapaZonasFeaturesDeDepto(topo, resp.departamento);
+    if(miGen !== ALIM_NIVEL3_MAPA_GEN) return;
+    const render = mapaZonasRenderLeaflet('alim-nivel3-mapa-leaflet', features, id => resp.municipios[id], null, ALIM_NIVEL3_MAPA_OPACIDAD);
+    if(!render || miGen !== ALIM_NIVEL3_MAPA_GEN) return;
+    ALIM_NIVEL3_MAPA_REF = {resp, features};
+    alimNivel3RenderMapaTarjetas();
+  }catch(e){
+    if(miGen !== ALIM_NIVEL3_MAPA_GEN) return;
+    ALIM_NIVEL3_MAPA_REF = null;
+    cont.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#ef476f;font-size:12px">${e.message || 'No se pudo cargar el croquis.'}</div>`;
+  }
+}
+
+function alimNivel3MapaModo(m){
+  ALIM_NIVEL3_MAPA_MODO = m;
+  document.getElementById('alim-nivel3-mapa-btn-mensual').classList.toggle('activo', m==='mensual');
+  document.getElementById('alim-nivel3-mapa-btn-anual').classList.toggle('activo', m==='anual');
+  alimNivel3RenderMapaTarjetas();
+}
+function alimNivel3MapaCambioMes(v){
+  ALIM_NIVEL3_MAPA_MES = v;
+  alimNivel3RenderMapaTarjetas();
+}
+
+function alimNivel3RenderMapaTarjetas(){
+  const cont = document.getElementById('alim-nivel3-mapa-tarjetas');
+  if(!cont) return;
+  const porZona = _alimNivel34MensualPorZona(ALIM_NIVEL3_FILAS || []);
+  const zonas = ALIM_NIVEL3_ZONAS_SEL.size
+    ? porZona.zonas.filter(z => ALIM_NIVEL3_ZONAS_SEL.has(z))
+    : porZona.zonas;
+  const meses = porZona.claves;
+  const anual = ALIM_NIVEL3_MAPA_MODO === 'anual';
+  const sel = document.getElementById('alim-nivel3-mapa-mes');
+  if(sel && meses.length){
+    if(!ALIM_NIVEL3_MAPA_MES || !meses.includes(ALIM_NIVEL3_MAPA_MES)) ALIM_NIVEL3_MAPA_MES = meses[meses.length-1];
+    const prev = sel.value;
+    sel.innerHTML = meses.map(m => `<option value="${m}"${m===ALIM_NIVEL3_MAPA_MES?' selected':''}>${labelMesLargo(m)}</option>`).join('');
+    if(meses.includes(prev)) sel.value = prev; else sel.value = ALIM_NIVEL3_MAPA_MES;
+    ALIM_NIVEL3_MAPA_MES = sel.value;
+  }
+  if(sel) sel.classList.toggle('hidden', anual);
+  const fk = v => v==null ? '--' : Math.round(v).toLocaleString('es-CO')+' kWh';
+  const fila = (etq, val) => `<div style="display:flex;justify-content:space-between;gap:6px"><span style="white-space:nowrap">${etq}</span><b style="color:var(--text);white-space:nowrap">${val}</b></div>`;
+  let captionClave = null;
+  const html = zonas.map(z => {
+    const serie = porZona.porZona[z];
+    let d, tec;
+    if(anual){
+      const s12 = alimN21Con12Meses(serie).filter(f => f.pct12 != null);
+      if(!s12.length) return '';
+      const u = s12[s12.length-1];
+      d = {entrada:u.entrada12, salida:u.salida12, perdida:u.perdida12, pct:u.pct12};
+      captionClave = u.clave;
+      const tec12 = _alimNivelTecnicaPorMes12M(ALIM_NIVEL3_TECNICA_POR_ZONA[z] || {}, serie.map(f => f.clave));
+      tec = tec12[u.clave] ? tec12[u.clave].perdida : null;
+    }else{
+      d = serie.find(f => f.clave === ALIM_NIVEL3_MAPA_MES);
+      if(!d) return '';
+      const t = (ALIM_NIVEL3_TECNICA_POR_ZONA[z] || {})[ALIM_NIVEL3_MAPA_MES];
+      tec = t ? t.perdida : null;
+    }
+    const color = colorParaZona(z);
+    return `<div style="border:1px solid var(--border);border-top:3px solid ${color};border-radius:9px;padding:10px 12px;background:var(--bg)">
+      <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--text)">Zona ${z}</div>
+      <div style="font-size:16px;font-weight:800;color:${color};margin:2px 0 7px">${d.pct==null?'--':d.pct.toFixed(2)+'%'}</div>
+      <div style="display:flex;flex-direction:column;gap:3px;font-size:10.5px;color:var(--text3)">
+        ${fila('Entrada', fk(d.entrada))}
+        ${fila('Salida', fk(d.salida))}
+        ${fila('Pérdida Técnica', fk(tec))}
+        ${fila('Pérdida Total', fk(d.perdida))}
+      </div>
+    </div>`;
+  }).join('');
+  cont.innerHTML = html || '<div style="font-size:12px;color:var(--text3)">Sin datos para el período.</div>';
+  const cap = document.getElementById('alim-nivel3-mapa-anual-caption');
+  if(cap){
+    cap.classList.toggle('hidden', !anual);
+    if(anual && captionClave) cap.textContent = `Ventana 12 meses móvil -- datos a ${labelMesLargo(captionClave)}`;
+  }
 }
 
 let ALIM_NIVEL3_TEC_MODO = 'mensual';
@@ -16940,6 +17077,8 @@ function alimNivel3RenderTodo(){
 
   alimNivel3RenderTablaZonas(porZona, claveTabla);
   alimNivel3RenderChartZonasComparativo();
+
+  if(!document.getElementById('alim-nivel3-tab-mapa')?.classList.contains('hidden')) alimNivel3RenderMapaTarjetas();
 }
 
 function alimNivel3DescargarCsv(){
