@@ -549,15 +549,14 @@ canvas[id^="ch-tride-"]:active{cursor:grabbing}
 #circvar-tbl-wrap table{font-size:9.5px}
 #circvar-tbl-wrap thead th,#circvar-tbl-wrap tbody td{padding:2px 5px}
 /* Detalle por Circuito -- pedido explícito y repetido ("sigue existiendo
-   la separación entre gráfica, tabla y tarjetas"): se pegan los 3
-   bloques (filtros / gráfica+tabla / tarjetas) con gaps mínimos. Además
-   la tarjeta de la gráfica se vuelve flex-column y la gráfica crece para
-   llenar el alto de la tarjeta -- así no queda ese hueco debajo del
-   canvas cuando la tarjeta de la tabla (más alta) la estira. */
-#perdidas-tab-detalle>.card{margin-bottom:6px}
-#perdidas-tab-detalle .split-wrap{gap:6px;margin-bottom:6px;align-items:stretch}
-#perdidas-tab-detalle .split-wrap>.card{margin-bottom:0;display:flex;flex-direction:column}
-#perdidas-tab-detalle .split-wrap>.card>.chart-wrap{flex:1 1 auto;min-height:380px;height:auto}
+   esa separación, como si todo fueran bloquesitos"): los 3 bloques
+   (filtros / gráfica+tabla / tarjetas) viven en UNA .card (#det-panel),
+   separados sólo por border-top a sangre. La columna de la gráfica se
+   vuelve flex-column y la gráfica crece para llenar el alto -- así no
+   queda hueco debajo del canvas cuando la tabla (más alta) la estira. */
+#perdidas-tab-detalle .split-wrap{align-items:stretch}
+#perdidas-tab-detalle .split-wrap>div{display:flex;flex-direction:column;min-width:280px}
+#perdidas-tab-detalle .split-wrap>div>.chart-wrap{flex:1 1 auto;min-height:360px;height:auto}
 #perdidas-tab-evaluacion .split-wrap{align-items:flex-start}
 /* Evaluación Económica -- primero se pidió compacta; después ("la tabla
    está muy pequeña, ocupá ese espacio que está ahí") se la deja estirar
@@ -1525,15 +1524,13 @@ tfoot td:first-child{text-align:left}
   </div>
 
   <div id="perdidas-tab-detalle" class="hidden">
-    <!-- TODOS los filtros en una sola fila (Zona, Nivel, Alimentador,
-         Desde/Hasta, Reconocimiento CREG) -- pedido explícito ("el filtro
-         de fecha subirlo más, está desperdiciando espacio" + "que no
-         exista ese espaciamiento entre los filtros y la gráfica"). Card
-         de filtros con padding/margin mínimos para pegarse a la gráfica.
-         El slider "Rango" sigue existiendo por dentro (RANGO.start/end,
-         lo usan Valuación y la tabla de variación) pero oculto -- los 2
-         <input type="month"> son el control visible (detalleSyncRango()). -->
-    <div class="card" style="padding:10px 16px;margin-bottom:8px">
+    <!-- UN SOLO panel (pedido explícito y repetido: "sigue existiendo esa
+         separación, como si todo fueran bloquesitos, no quiero eso"):
+         filtros + gráfica/tabla + tarjetas viven en la MISMA .card,
+         separados sólo por líneas finas (border-top a sangre, igual que
+         la pestaña "Pérdidas Técnicas Totales"). El slider "Rango" sigue
+         existiendo por dentro (RANGO.start/end) pero oculto. -->
+    <div class="card" id="det-panel" style="padding:14px 22px">
       <div class="fbar" style="margin-bottom:0">
         <label>Zona</label>
         <div class="msel" id="msel-zona"></div>
@@ -1563,24 +1560,16 @@ tfoot td:first-child{text-align:left}
           <input type="range" id="re" min="0" value="0" oninput="updateRange()">
         </div>
       </div>
-    </div>
 
-    <!-- Gráfica + tabla de variación, una al lado de la otra -- pedido
-         explícito ("debajo colocar la gráfica ... y al lado de esa
-         gráfica la tabla de variación de pérdida técnica por circuito").
-         Ambas siguen dinámicas con los mismos filtros de arriba (Zona/
-         Nivel/Alimentador/Desde/Hasta -- aplicarFiltros() y
-         cargarCircuitosVariacion() ya se llaman juntas desde cada
-         onChange, sin cambios acá). Clic en una fila de la tabla fija el
-         filtro Alimentador a ese circuito -- mismo mecanismo que ya usan
-         las flechas ▲▼ de Usuarios Telemedidos (mselSetSeleccion), así
-         la gráfica se actualiza sola. -->
-    <div class="split-wrap">
-      <div class="card">
+    <!-- Gráfica + tabla de variación, una al lado de la otra. Ambas
+         dinámicas con los mismos filtros de arriba. Clic en una fila de
+         la tabla fija el filtro Alimentador a ese circuito. Van dentro
+         del mismo panel, separadas por una línea fina a sangre. -->
+    <div class="split-wrap" style="border-top:1px solid var(--border);margin:12px -22px 0;padding:14px 22px 0">
+      <div>
         <!-- Botones arriba a la derecha, título CENTRADO debajo a lo ancho
-             de la tarjeta (pedido explícito: "el título de la gráfica
-             debe ser centrado"). Fila de botones con alto mínimo para no
-             sumar separación. -->
+             (pedido explícito: "el título de la gráfica debe ser
+             centrado"). -->
         <div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:2px">
           <!-- Entrada/Salida opcional (pedido explícito previo) -- en un
                3er eje aparte cuando se activa, ver renderPrincipal(). -->
@@ -1601,7 +1590,7 @@ tfoot td:first-child{text-align:left}
         <div class="chart-wrap"><canvas id="ch-principal"></canvas></div>
       </div>
 
-      <div class="card">
+      <div>
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:8px">
           <div class="card-title" style="margin-bottom:0">Variación de Pérdida Técnica por Circuito</div>
           <div id="circvar-caption" style="font-size:11px;color:var(--text3);font-weight:700"></div>
@@ -1625,18 +1614,16 @@ tfoot td:first-child{text-align:left}
       </div>
     </div>
 
-    <!-- Tarjetas rápidas + nota de análisis -- pedido explícito ("esas
-         tarjetas quiero que sean como las de Pérdidas Técnicas Totales;
-         el reconocimiento debe decirme más y hacer un análisis: decir
-         cuándo se encuentra por encima o por debajo del reconocimiento").
-         Se arman en JS (detalleRenderTarjetas()). -->
-    <div class="card" style="margin-top:0;display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap">
+    <!-- Tarjetas rápidas + nota de análisis (detalleRenderTarjetas()).
+         Dentro del mismo panel, separadas por una línea fina a sangre. -->
+    <div style="border-top:1px solid var(--border);margin:14px -22px 0;padding:14px 22px 0;display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap">
       <div class="inicio-dash-fila" id="det-tarjetas" style="flex:1 1 420px;margin-bottom:0;gap:8px;grid-template-columns:repeat(auto-fit,minmax(120px,1fr))"></div>
       <div style="flex:0 1 300px;min-width:240px;font-size:11px;line-height:1.6;color:var(--text2);background:var(--bg);border:1px solid var(--border);border-radius:9px;padding:10px 12px;display:flex;gap:7px">
         <span style="font-size:15px;flex-shrink:0">⚖️</span>
         <span id="det-nota-analisis">—</span>
       </div>
     </div>
+    </div><!-- /#det-panel -->
   </div>
 
   <!-- Pestaña propia -- pedido explícito ("va a ver otra pestaña que se
@@ -1661,7 +1648,7 @@ tfoot td:first-child{text-align:left}
           <label style="font-size:12px;color:var(--text3);white-space:nowrap">Costo kWh/mes (G+T+R):</label>
           <div style="display:flex;align-items:center;gap:4px">
             <span style="font-size:12px;color:var(--text3)">$</span>
-            <input type="number" id="costo-kwh" value="0" step="1" min="0" oninput="renderValuacionZonas()"
+            <input type="number" id="costo-kwh" value="0" step="1" min="0" oninput="guardarCostoKwh();renderValuacionZonas()"
               style="padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12px;font-weight:700;color:var(--accent);background:var(--bg);width:110px;text-align:right">
           </div>
           <!-- Factor para Referir al STN por nivel -- pedido explícito
@@ -24015,6 +24002,31 @@ function cargarFactoresSTN(){
 }
 function _factorSTN(nivel){ return _factorSTNmes(nivel); }
 
+// Costo (tarifa) G+T+R del kWh referido al STN -- pedido explícito ("la
+// tarifa que escribo no está quedando guardada"). Se guarda por operador
+// + mes en localStorage; al cambiar de mes, si ese mes no tiene valor
+// guardado se ARRASTRA el que ya estaba en la casilla (no vuelve a 0).
+function _costoKey(mes){
+  const slug = (OPERADOR && OPERADOR.slug) ? OPERADOR.slug : 'default';
+  return `pt_costo_gtr_${slug}_${mes}`;
+}
+function guardarCostoKwh(){
+  const mes = document.getElementById('fm-mes')?.value;
+  const el = document.getElementById('costo-kwh');
+  if(!mes || !el) return;
+  try{ localStorage.setItem(_costoKey(mes), el.value || '0'); }catch(e){}
+}
+function cargarCostoKwh(){
+  const mes = document.getElementById('fm-mes')?.value;
+  const el = document.getElementById('costo-kwh');
+  if(!mes || !el) return;
+  let v = null;
+  try{ v = localStorage.getItem(_costoKey(mes)); }catch(e){}
+  if(v!=null) el.value = v;
+  // si no hay guardado, se deja lo que haya (arrastre); si estaba vacío queda 0
+  guardarCostoKwh();
+}
+
 async function cargarZonas(){
   const mes = document.getElementById('fm-mes').value;
   if(!mes) return;
@@ -24027,6 +24039,7 @@ async function cargarZonas(){
   const filasVal = Array.isArray(valuacion) ? valuacion : (valuacion.filas || []);
   PR_STN_AUTO = Array.isArray(valuacion) ? {} : (valuacion.pr_por_nivel || {});
   cargarFactoresSTN();
+  cargarCostoKwh();
   const costo = parseFloat(document.getElementById('costo-kwh').value||'0') || 0;
   document.getElementById('tbl-sub').textContent = `Costo de la pérdida (referida al STN) · ${labelMes(mes)} · ${costo.toLocaleString('es-CO')} $/kWh (G+T+R)`;
   VALUACION_ZONAS_CRUDA = filasVal;
@@ -25258,7 +25271,11 @@ function renderValuacionZonas(){
       pt_reconocida_ref_kwh: f.pt_reconocida_ref_kwh!=null ? f.pt_reconocida_ref_kwh : f.pt_reconocida_kwh,
       pt_no_reconocida_ref_kwh: f.pt_no_reconocida_ref_kwh!=null ? f.pt_no_reconocida_ref_kwh : f.pt_no_reconocida_kwh,
     };
-    const nrColor = f.pt_no_reconocida_kwh>0 ? 'var(--red)' : 'var(--green)';
+    // Rojo SÓLO cuando hay pérdida NO reconocida (pedido explícito: "quita
+    // el verde, todo negro; el rojo sólo para lo no reconocido"). El resto
+    // en tinta normal (var(--text)).
+    const hayNoRecon = (f.pt_no_reconocida_kwh||0) > 0.5;
+    const nrColor = hayNoRecon ? 'var(--red)' : 'var(--text)';
     let celdaZona = '';
     let claseSep = '';
     if(!zonaYaPintada.has(f.zona)){
@@ -25274,14 +25291,14 @@ function renderValuacionZonas(){
       <td style="text-align:center">${f.nivel ? 'Nivel '+f.nivel : 'Todos'}</td>
       <td>${f.reconocimiento_pct.toFixed(2)}%</td>
       <td style="text-align:center">${r.pr.toFixed(6)}</td>
-      <td style="color:var(--red);font-weight:700">${fK(f.perdidas_kwh)}</td>
+      <td style="color:var(--text);font-weight:700">${fK(f.perdidas_kwh)}</td>
       <td>${f.perdidas_pct.toFixed(2)}%</td>
-      <td style="color:var(--red);font-weight:600">${fK(r.perdida_ref_kwh)}</td>
+      <td style="color:var(--text);font-weight:600">${fK(r.perdida_ref_kwh)}</td>
       <td style="font-weight:700">${f$(r.perdida_ref_kwh*costo)}</td>
-      <td style="color:var(--green);font-weight:600">${fK(r.pt_reconocida_ref_kwh)}</td>
-      <td style="color:${nrColor};font-weight:${f.pt_no_reconocida_kwh>0?'700':'400'}">${fK(r.pt_no_reconocida_ref_kwh)}</td>
-      <td style="color:var(--green);font-weight:600">${f$(r.pt_reconocida_ref_kwh*costo)}</td>
-      <td style="color:${nrColor};font-weight:${f.pt_no_reconocida_kwh>0?'700':'400'}">${f$(r.pt_no_reconocida_ref_kwh*costo)}</td>
+      <td style="color:var(--text);font-weight:600">${fK(r.pt_reconocida_ref_kwh)}</td>
+      <td style="color:${nrColor};font-weight:${hayNoRecon?'700':'400'}">${fK(r.pt_no_reconocida_ref_kwh)}</td>
+      <td style="color:var(--text);font-weight:600">${f$(r.pt_reconocida_ref_kwh*costo)}</td>
+      <td style="color:${nrColor};font-weight:${hayNoRecon?'700':'400'}">${f$(r.pt_no_reconocida_ref_kwh*costo)}</td>
     </tr>`;
   }).join('');
 
@@ -25307,29 +25324,36 @@ function renderValuacionZonas(){
   });
   const nivelesOrd = Object.keys(porNivel).map(Number).sort((a,b)=>a-b);
   let tPerd=0, tRecon=0, tNoRec=0;
-  const filaFoot = (etq, d, bold) => {
-    const nrc = d.noReconRef>0.5 ? 'var(--red)' : 'var(--green)';
-    const fw = bold ? '800' : '700';
+  // kind: 'primera' (1ra fila del pie -> separador grueso del cuerpo),
+  //       'nivel'   (filas Σ Nivel intermedias),
+  //       'total'   (fila TOTAL -> doble separación + fondo).
+  const filaFoot = (etq, d, kind) => {
+    const nrRed = d.noReconRef > 0.5;
+    const nrc = nrRed ? 'var(--red)' : 'var(--text)';
+    const fw = kind==='total' ? '800' : '700';
     const margen = d.cupoKwh - d.realKwh; // > 0 = pérdida por debajo del cupo
-    const nota = (d.noReconRef<=0.5 && margen>0)
+    const nota = (!nrRed && margen>0)
       ? ` <span style="font-weight:400;color:var(--text3)">(margen +${fK(margen)} kWh)</span>` : '';
-    return `<tr${bold?' style="border-top:2px solid var(--border)"':''}>
+    let trStyle = '';
+    if(kind==='primera') trStyle = 'border-top:3px solid var(--text3)';
+    if(kind==='total')   trStyle = 'border-top:3px double var(--text2);background:var(--bg)';
+    return `<tr style="${trStyle}">
       <td colspan="4" style="text-align:right;font-weight:${fw};color:var(--text2)">${etq}${nota}</td>
       <td colspan="2"></td>
-      <td style="color:var(--red);font-weight:${fw}">${fK(d.perdRef)}</td>
+      <td style="color:var(--text);font-weight:${fw}">${fK(d.perdRef)}</td>
       <td style="font-weight:${fw}">${f$(d.perdRef*costo)}</td>
-      <td style="color:var(--green);font-weight:${fw}">${fK(d.reconRef)}</td>
+      <td style="color:var(--text);font-weight:${fw}">${fK(d.reconRef)}</td>
       <td style="color:${nrc};font-weight:${fw}">${fK(d.noReconRef)}</td>
-      <td style="color:var(--green);font-weight:${fw}">${f$(d.reconRef*costo)}</td>
+      <td style="color:var(--text);font-weight:${fw}">${f$(d.reconRef*costo)}</td>
       <td style="color:${nrc};font-weight:${fw}">${f$(d.noReconRef*costo)}</td>
     </tr>`;
   };
-  const filasFoot = nivelesOrd.map(n=>{
+  const filasFoot = nivelesOrd.map((n,i)=>{
     const d = porNivel[n];
     tPerd+=d.perdRef; tRecon+=d.reconRef; tNoRec+=d.noReconRef;
-    return filaFoot(n ? 'Σ Nivel '+n : 'Σ Sin nivel', d, false);
+    return filaFoot(n ? 'Σ Nivel '+n : 'Σ Sin nivel', d, i===0 ? 'primera' : 'nivel');
   }).join('');
-  tf.innerHTML = filasFoot + filaFoot('TOTAL', {perdRef:tPerd, reconRef:tRecon, noReconRef:tNoRec, cupoKwh:0, realKwh:0}, true);
+  tf.innerHTML = filasFoot + filaFoot('TOTAL', {perdRef:tPerd, reconRef:tRecon, noReconRef:tNoRec, cupoKwh:0, realKwh:0}, 'total');
   renderValuacionChart();
 }
 
