@@ -962,6 +962,7 @@ tfoot td:first-child{text-align:left}
 #alim-nivel4-tab-ip>.card:first-child, #alim-nivel4-tab-tecnica>.card:first-child, #alim-nivel4-tab-impexp>.card:first-child{border-top-left-radius:0;border-top-right-radius:0}
 #alim-nivel3-tab-ip>.card:first-child, #alim-nivel3-tab-tecnica>.card:first-child, #alim-nivel3-tab-comparativo>.card:first-child, #alim-nivel3-tab-mapa>.card:first-child{border-top-left-radius:0;border-top-right-radius:0}
 #alim-n21-tab-total>.card:first-child, #alim-n21-tab-comparativo>.card:first-child, #alim-n21-tab-variaciones>.card:first-child, #alim-n21-tab-mapa>.card:first-child{border-top-left-radius:0;border-top-right-radius:0}
+#alim-sub-tab-subestaciones>.card:first-child, #alim-sub-tab-alimentadores>.card:first-child{border-top-left-radius:0;border-top-right-radius:0}
 #alim-nivel3-tab-tecnica .split-wrap{align-items:flex-start}
 /* Diagrama Unifilar -- símbolos SVG (currentColor toma el color de estas
    clases, así los íconos ya son theme-aware sin nada extra). */
@@ -3463,17 +3464,26 @@ tfoot td:first-child{text-align:left}
 
   <div id="alim-sub-contenido" class="hidden">
 
-    <div class="card">
-      <div class="fbar" style="margin-bottom:14px">
-        <label>Rango</label>
-        <input type="date" id="alim-sub-desde" onchange="alimSubRenderTodo()">
-        <span style="font-size:11px;color:var(--text3)">→</span>
-        <input type="date" id="alim-sub-hasta" onchange="alimSubRenderTodo()">
-        <label style="margin-left:10px">Zona</label>
-        <div id="alim-sub-zonas" style="display:flex;gap:6px;flex-wrap:wrap"></div>
-        <button type="button" class="btn-theme" style="width:auto;padding:0 14px;margin-left:auto" onclick="alimSubDescargarCsv()">⬇ Descargar CSV</button>
-      </div>
+    <div class="pt-tabs">
+      <button type="button" class="pt-tab-btn activo" id="alim-sub-tab-btn-subestaciones" onclick="alimSubIrATab('subestaciones')">Subestaciones</button>
+      <button type="button" class="pt-tab-btn" id="alim-sub-tab-btn-alimentadores" onclick="alimSubIrATab('alimentadores')">Pérdida por alimentadores</button>
+    </div>
 
+    <!-- Filtro Rango + Zona (chips) + CSV -- ÚNICO nodo, alimSubIrATab() lo
+         mueve al tope de la .card de la pestaña activa. -->
+    <div id="alim-sub-filtro" class="fbar" style="margin-bottom:12px">
+      <label>Rango</label>
+      <input type="date" id="alim-sub-desde" onchange="alimSubRenderTodo()">
+      <span style="font-size:11px;color:var(--text3)">→</span>
+      <input type="date" id="alim-sub-hasta" onchange="alimSubRenderTodo()">
+      <label style="margin-left:10px">Zona</label>
+      <div id="alim-sub-zonas" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+      <button type="button" class="btn-theme" style="width:auto;padding:0 14px;margin-left:auto" onclick="alimSubDescargarCsv()">⬇ Descargar CSV</button>
+    </div>
+
+    <!-- ===== PESTAÑA 1 · Subestaciones ===== -->
+    <div id="alim-sub-tab-subestaciones">
+    <div class="card">
       <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">
         <!-- La columna de la gráfica/heatmap absorbe TODO el espacio
              sobrante (flex:1) -- antes quedaba ancho fijo y la tabla de al
@@ -3532,6 +3542,10 @@ tfoot td:first-child{text-align:left}
       </div>
     </div>
 
+    </div><!-- /#alim-sub-tab-subestaciones -->
+
+    <!-- ===== PESTAÑA 2 · Pérdida por alimentadores ===== -->
+    <div id="alim-sub-tab-alimentadores" class="hidden">
     <div class="card">
       <div class="fbar" style="margin-bottom:10px">
         <label>Subestación</label>
@@ -3572,6 +3586,7 @@ tfoot td:first-child{text-align:left}
         <div id="alim-sub-alimentador-cards" class="inicio-dash-fila" style="margin-bottom:0"></div>
       </div>
     </div>
+    </div><!-- /#alim-sub-tab-alimentadores -->
 
   </div>
 </div>
@@ -18249,7 +18264,21 @@ async function alimSubCargar(){
 
   mselInit('msel-alim-sub-subestacion', 'Subestación', 'Ninguna', alimSubSubestacionesDisponibles().map(s => ({value:s, label:s})), alimSubRenderAlimentadoresYCards, []);
 
-  alimSubRenderTodo();
+  alimSubIrATab('subestaciones');
+}
+
+// Pestañas del módulo Subestaciones (mismo patrón que alimNivel3IrATab):
+// "Subestaciones" / "Pérdida por alimentadores". El nodo #alim-sub-filtro
+// (Rango + Zona + CSV) se mueve al tope de la .card de la pestaña activa.
+function alimSubIrATab(nombre){
+  ['subestaciones','alimentadores'].forEach(t=>{
+    document.getElementById('alim-sub-tab-'+t)?.classList.toggle('hidden', t!==nombre);
+    document.getElementById('alim-sub-tab-btn-'+t)?.classList.toggle('activo', t===nombre);
+  });
+  const card = document.querySelector('#alim-sub-tab-'+nombre+' > .card');
+  const filtro = document.getElementById('alim-sub-filtro');
+  if(card && filtro && filtro.parentElement !== card) card.prepend(filtro);
+  if(ALIM_FILAS && ALIM_FILAS.length) alimSubRenderTodo();
 }
 
 // El multiselect de Subestación maneja el gráfico "Pérdida % por
