@@ -3221,9 +3221,43 @@ tfoot td:first-child{text-align:left}
           <label style="margin-left:16px">Opacidad</label>
           <input type="range" min="0" max="0.9" step="0.05" value="0.7" oninput="alimNivel3MapaCambiarOpacidad(this.value)" style="width:120px" title="Bajala para ver el terreno/vías debajo">
         </div>
-        <div style="display:grid;grid-template-columns:minmax(0,2.6fr) minmax(0,1fr);gap:20px;align-items:start">
+        <div style="display:grid;grid-template-columns:minmax(0,560px) minmax(0,1fr);gap:20px;align-items:start">
           <div id="alim-nivel3-mapa-leaflet" style="height:560px;border:1px solid var(--border);border-radius:10px;overflow:hidden;background:var(--bg3)"></div>
-          <div id="alim-nivel3-mapa-lateral"></div>
+          <!-- Evaluación Económica · Nivel 3 · todas las zonas -- misma
+               tabla y misma lógica de "Factor para Referir al STN" que la
+               pestaña Evaluación Económica de Pérdidas Técnicas, pero
+               acotada a Nivel 3. La tarifa G+T+R se comparte (mismo
+               localStorage pt_costo_gtr_<slug>_<mes>). -->
+          <div id="alim-nivel3-mapa-lateral">
+            <div class="valuacion-hdr" style="margin-bottom:8px">
+              <div>
+                <div class="card-title" style="margin-bottom:2px;font-size:13px">💰 Evaluación Económica · Nivel 3 · por Zona</div>
+                <div class="card-sub" id="alim-nivel3-eval-sub" style="margin-bottom:0;font-size:11px">—</div>
+              </div>
+              <div class="valuacion-hdr-controles">
+                <label style="font-size:11px;color:var(--text3);white-space:nowrap">Costo kWh/mes (G+T+R):</label>
+                <span style="font-size:11px;color:var(--text3)">$</span>
+                <input type="number" id="alim-nivel3-eval-costo" value="0" step="1" min="0" oninput="alimNivel3EvalGuardarCosto()"
+                  style="padding:5px 7px;border:1px solid var(--border);border-radius:7px;font-size:11px;font-weight:700;color:var(--accent);background:var(--bg);width:96px;text-align:right">
+                <label style="font-size:11px;color:var(--text3);white-space:nowrap;margin-left:6px" title="Factor para Referir al STN (Datos_XM / TFROC). Valor fijo del mes, no editable.">Factor STN · N3</label>
+                <span id="alim-nivel3-eval-pr3" style="padding:4px 7px;border:1px dashed var(--border);border-radius:6px;font-size:11px;font-weight:700;color:var(--text);background:var(--bg);min-width:58px;text-align:right;display:inline-block">1</span>
+              </div>
+            </div>
+            <div class="tbl-wrap tbl-compacta" id="alim-nivel3-eval-tbl-wrap">
+              <table>
+                <thead><tr>
+                  <th>Zona</th><th style="text-align:center">Nivel</th><th>Recon.<br>CREG (%)</th>
+                  <th style="text-align:center">Factor<br>STN</th>
+                  <th>Pérd. Téc.<br>(kWh/mes)</th><th>Pérd. Téc.<br>(%)</th>
+                  <th>Pérd. ref.<br>STN (kWh/mes)</th><th>Costo total<br>G+T+R ($/mes)</th>
+                  <th>Recon. ref.<br>STN (kWh/mes)</th><th>No Recon. ref.<br>STN (kWh/mes)</th>
+                  <th>Costo Recon.<br>($/mes)</th><th>Costo No<br>Recon. ($/mes)</th>
+                </tr></thead>
+                <tbody id="alim-nivel3-eval-tb"></tbody>
+                <tfoot id="alim-nivel3-eval-tf"></tfoot>
+              </table>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -16959,6 +16993,8 @@ function alimNivel3RenderMapaMarcadores(){
   }
   if(sel) sel.classList.toggle('hidden', anual);
 
+  alimNivel3RenderEvalEconomica();
+
   if(!ALIM_NIVEL3_MAPA_REF || !ALIM_NIVEL3_MAPA_REF.mapa) return;
   const {resp, features, mapa} = ALIM_NIVEL3_MAPA_REF;
   ALIM_NIVEL3_MAPA_MARCADORES.forEach(m => mapa.removeLayer(m));
@@ -17020,6 +17056,109 @@ function alimNivel3RenderMapaMarcadores(){
     cap.classList.toggle('hidden', !anual);
     if(anual && captionClave) cap.textContent = `Ventana 12 meses móvil -- datos a ${labelMesLargo(captionClave)}`;
   }
+}
+
+// ===== Evaluación Económica · Nivel 3 (panel derecho de la pestaña Mapa) =====
+// Misma tabla y misma lógica de "Factor para Referir al STN" que la
+// pestaña Evaluación Económica de Pérdidas Técnicas
+// (renderValuacionZonas / _referidoSTN), pero acotada a Nivel 3 y a TODAS
+// las zonas. Fuente: GET /api/valuacion-zonas?mes=<mes> -> {filas,
+// pr_por_nivel}. La tarifa G+T+R se comparte con Pérdidas Técnicas
+// (localStorage pt_costo_gtr_<slug>_<mes>, helpers _costoKey/_costoDeMes).
+// El mes es el del selector de la pestaña Mapa (ALIM_NIVEL3_MAPA_MES).
+let ALIM_NIVEL3_EVAL_CACHE = {};
+
+function alimNivel3EvalGuardarCosto(){
+  const mes = ALIM_NIVEL3_MAPA_MES;
+  const el = document.getElementById('alim-nivel3-eval-costo');
+  if(!mes || !el) return;
+  try{ localStorage.setItem(_costoKey(mes), el.value || '0'); }catch(e){}
+  alimNivel3RenderEvalTabla();
+}
+
+async function alimNivel3RenderEvalEconomica(){
+  const mes = ALIM_NIVEL3_MAPA_MES;
+  const wrap = document.getElementById('alim-nivel3-eval-tbl-wrap');
+  if(!mes || !wrap) return;
+  const elC = document.getElementById('alim-nivel3-eval-costo');
+  if(elC){ let v = null; try{ v = localStorage.getItem(_costoKey(mes)); }catch(e){} elC.value = (v!=null) ? v : '0'; }
+  if(!ALIM_NIVEL3_EVAL_CACHE[mes]){
+    if(DEMO){ ALIM_NIVEL3_EVAL_CACHE[mes] = {filas:[], pr:{}}; }
+    else{
+      try{
+        const r = await apiGet(`/api/valuacion-zonas?mes=${mes}`);
+        ALIM_NIVEL3_EVAL_CACHE[mes] = Array.isArray(r) ? {filas:r, pr:{}} : {filas:(r.filas||[]), pr:(r.pr_por_nivel||{})};
+      }catch(e){ ALIM_NIVEL3_EVAL_CACHE[mes] = {filas:[], pr:{}}; }
+    }
+  }
+  alimNivel3RenderEvalTabla();
+}
+
+function alimNivel3RenderEvalTabla(){
+  const mes = ALIM_NIVEL3_MAPA_MES;
+  const data = ALIM_NIVEL3_EVAL_CACHE[mes];
+  const tb = document.getElementById('alim-nivel3-eval-tb');
+  const tf = document.getElementById('alim-nivel3-eval-tf');
+  if(!data || !tb || !tf) return;
+  const pr3 = (data.pr && +data.pr[3] > 0) ? +data.pr[3] : 1;
+  const elPr = document.getElementById('alim-nivel3-eval-pr3');
+  if(elPr) elPr.textContent = pr3.toFixed(6);
+  const costo = _costoDeMes(mes);
+  const sub = document.getElementById('alim-nivel3-eval-sub');
+  if(sub) sub.textContent = `Costo de la pérdida (referida al STN) · ${labelMes(mes)} · ${costo.toLocaleString('es-CO')} $/kWh (G+T+R)`;
+  const fK = n => Math.round(n||0).toLocaleString('es-CO');
+  const f$ = n => '$ '+Math.round(n||0).toLocaleString('es-CO');
+
+  const filasN3 = (data.filas||[]).filter(f => Number(f.nivel) === 3)
+    .sort((a,b) => (a.zona||'').localeCompare(b.zona||''));
+  if(!filasN3.length){
+    tb.innerHTML = `<tr><td colspan="12" style="text-align:center;color:var(--text3);padding:14px">Sin datos de Nivel 3 para ${labelMes(mes)}.</td></tr>`;
+    tf.innerHTML = '';
+    return;
+  }
+
+  let tPT=0, tPref=0, tRef=0, tNoRef=0, tCupo=0;
+  tb.innerHTML = filasN3.map(f=>{
+    const pt = +f.perdidas_kwh || 0;
+    const rec = +f.pt_reconocida_kwh || 0;
+    const norec = +f.pt_no_reconocida_kwh || 0;
+    const perdRef = pt*pr3, recRef = rec*pr3, noRecRef = norec*pr3;
+    tPT += pt; tPref += perdRef; tRef += recRef; tNoRef += noRecRef;
+    tCupo += (+f.reconocimiento_creg_kwh || 0);
+    const hayNoRecon = norec > 0.5;
+    const nrColor = hayNoRecon ? 'var(--red)' : 'var(--text)';
+    return `<tr>
+      <td style="border-right:1px solid var(--border)"><span class="zb" style="background:${colorParaZona(f.zona)}22;color:var(--text)">${f.zona}</span></td>
+      <td style="text-align:center">Nivel 3</td>
+      <td>${(+f.reconocimiento_pct || 0).toFixed(2)}%</td>
+      <td style="text-align:center">${pr3.toFixed(6)}</td>
+      <td style="color:var(--text);font-weight:700">${fK(pt)}</td>
+      <td>${(+f.perdidas_pct || 0).toFixed(2)}%</td>
+      <td style="color:var(--text);font-weight:600">${fK(perdRef)}</td>
+      <td style="font-weight:700">${f$(perdRef*costo)}</td>
+      <td style="color:var(--text);font-weight:600">${fK(recRef)}</td>
+      <td style="color:${nrColor};font-weight:${hayNoRecon?'700':'400'}">${fK(noRecRef)}</td>
+      <td style="color:var(--text);font-weight:600">${f$(recRef*costo)}</td>
+      <td style="color:${nrColor};font-weight:${hayNoRecon?'700':'400'}">${f$(noRecRef*costo)}</td>
+    </tr>`;
+  }).join('');
+
+  const nrRed = tNoRef > 0.5;
+  const nrc = nrRed ? 'var(--red)' : 'var(--text)';
+  const margen = tCupo - tPT;
+  const nota = (!nrRed && margen > 0)
+    ? ` <span style="font-weight:400;color:var(--text3)">(margen +${fK(margen)} kWh)</span>` : '';
+  tf.innerHTML = `<tr style="border-top:3px double var(--text2);background:var(--bg)">
+    <td colspan="4" style="text-align:right;font-weight:800;color:var(--text2)">TOTAL Nivel 3${nota}</td>
+    <td style="color:var(--text);font-weight:800">${fK(tPT)}</td>
+    <td></td>
+    <td style="color:var(--text);font-weight:800">${fK(tPref)}</td>
+    <td style="font-weight:800">${f$(tPref*costo)}</td>
+    <td style="color:var(--text);font-weight:800">${fK(tRef)}</td>
+    <td style="color:${nrc};font-weight:800">${fK(tNoRef)}</td>
+    <td style="color:var(--text);font-weight:800">${f$(tRef*costo)}</td>
+    <td style="color:${nrc};font-weight:800">${f$(tNoRef*costo)}</td>
+  </tr>`;
 }
 
 let ALIM_NIVEL3_TEC_MODO = 'mensual';
