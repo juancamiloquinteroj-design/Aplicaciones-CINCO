@@ -24623,7 +24623,7 @@ async function cargarGraficasApiladas(){
       porZona = _anualizarSerieMensual(porZona);
     }
     renderPtTotalesNivel(porNivel, modoAnual);
-    renderPtTotalesZona(porZona, modoAnual);
+    renderPtTotalesZona(porZona, modoAnual, porNivel);
   }catch(e){
     // Estas gráficas son un complemento -- si fallan no deben tumbar el resto de la vista.
   }
@@ -24696,14 +24696,38 @@ function renderPtTotalesNivel(datos, modoAnual){
 // mejor coloca en columnas la pérdida técnica"): ya no hay Entrada/
 // Salida ni Pérdida Total acá -- eso de paso resuelve la queja del eje Y
 // (antes competía con números 15-20x más grandes).
-function renderPtTotalesZona(datos, modoAnual){
+function renderPtTotalesZona(datos, modoAnual, datosPorNivel){
   const ctx = document.getElementById('ch-pt-totales-zona');
   if(!ctx) return;
   const vacio = document.getElementById('pt-tot-zona-vacio');
 
   const zonaSel = mselValores('msel-pt-tot-zona');
-  const series = (datos.series || []).filter(s => !zonaSel.length || zonaSel.includes(s.clave));
+  let series = (datos.series || []).filter(s => !zonaSel.length || zonaSel.includes(s.clave));
+
+  // Pedido explícito ("cuando selecciono nivel de tensión 4 debería salir
+  // automático la pérdida en % en nivel 4, ya que ese no se discrimina
+  // por zona"): los circuitos de Nivel 4 tienen todos zona='EH'
+  // (Transmisión), que /perdidas-por-zona excluye a propósito de las
+  // vistas POR ZONA -- así que esa consulta vuelve VACÍA. Cuando pasa
+  // eso, se cae a los datos POR NIVEL (que sí traen Nivel 4, no filtran
+  // 'EH'): una línea por nivel en vez de por zona, coloreada con la
+  // paleta de niveles.
+  let esFallbackNivel = false;
+  if(!series.length && datosPorNivel && (datosPorNivel.series||[]).length){
+    series = (datosPorNivel.series || []).map(s => ({...s, clave: `Nivel ${s.clave}`, _nivel: s.clave}));
+    esFallbackNivel = true;
+  }
+  const clavesFallback = series.map(s => s._nivel);
+  const colorSerie = s => esFallbackNivel ? colorParaNivel(s._nivel, clavesFallback) : colorParaZona(s.clave);
   const hayDatosPct = series.some(s => (s.perdidas_pct||[]).some(v=>v!=null));
+  // En el fallback, /perdidas-por-zona vino vacía -- los meses salen de
+  // /perdidas-por-nivel.
+  const meses = (esFallbackNivel && datosPorNivel ? datosPorNivel.meses : datos.meses) || [];
+  if(esFallbackNivel){
+    const nivelSel = mselValores('msel-pt-tot-nivel');
+    document.getElementById('pt-tot-titulo-zona').textContent =
+      'Pérdida Técnica por Nivel' + (nivelSel.length ? ` -- Nivel: ${nivelSel.join(', ')}` : '');
+  }
 
   // Pedido explícito ("las columnas no coincide el valor con la sumatoria
   // de la gráfica de Nivel"): antes esta columna salía de ALIM_FILAS
@@ -24716,7 +24740,7 @@ function renderPtTotalesZona(datos, modoAnual){
   // gráficas de esta pestaña quedan consistentes entre sí (en modo Anual
   // ya viene rodada, porque `datos` llega anualizado desde
   // cargarGraficasApiladas()).
-  const perdidaTecnicaKwh = (datos.meses || []).map((_,i)=>{
+  const perdidaTecnicaKwh = meses.map((_,i)=>{
     const valoresMes = series.map(z=>(z.valores||[])[i]);
     return valoresMes.every(v=>v==null) ? null : valoresMes.reduce((s,v)=>s+(v||0), 0);
   });
@@ -24736,7 +24760,7 @@ function renderPtTotalesZona(datos, modoAnual){
   const dark = document.documentElement.getAttribute('data-theme')==='dark';
   const tickC = dark ? '#ffffff' : '#000000';
   const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
-  const labels = (datos.meses || []).map(labelMes);
+  const labels = meses.map(labelMes);
 
   // Halo de contorno en las etiquetas -- pedido explícito ("el color
   // amarillo en pérdida no se ve"): colorParaZona puede tocarle a una
@@ -24775,20 +24799,14 @@ function renderPtTotalesZona(datos, modoAnual){
   };
 
   const datasetsPct = series.map(s => {
-    const color = colorParaZona(s.clave);
+    const color = colorSerie(s);
     return {
-      // Pedido explícito ("esa pérdida en azul, es la técnica? debe
-      // decir pérdida técnica %"): sí -- /perdidas-por-zona viene de
-      // Circuito/BalanceMensual, la fuente propia de este módulo de
-      // Pérdidas TÉCNICAS, así que esta línea siempre es técnica; la
-      // etiqueta ahora lo dice explícito. El color sigue siendo la
-      // identidad DE LA ZONA (colorParaZona -- el mismo que usa el Mapa),
-      // no un color semántico, por eso puede coincidir con cualquier
-      // tono, incluido el azul.
-      // 2 decimales -- pedido explícito ("la línea azul está mostrando el
-      // mismo valor en todos los meses"): la pérdida técnica % se mueve
-      // en un rango angosto (1.4%-1.6%) y con 1 solo decimal varios
-      // meses redondeaban al mismo texto aunque la línea sí se moviera.
+      // El color es la identidad de la ZONA (colorParaZona -- el mismo
+      // que usa el Mapa) o, en el fallback de Nivel 4, la del NIVEL
+      // (colorParaNivel) -- no un color semántico. 2 decimales -- pedido
+      // explícito ("la línea azul está mostrando el mismo valor en todos
+      // los meses"): la pérdida técnica % se mueve en un rango angosto y
+      // con 1 solo decimal varios meses redondeaban al mismo texto.
       type:'line', label: `Pérdida Técnica % -- ${s.clave}`, data: s.perdidas_pct || [], yAxisID:'yPct', order:1,
       borderColor: color, backgroundColor: color, borderWidth:2, pointRadius:2, pointHoverRadius:4, tension:0, spanGaps:true,
       datalabels:{display:true, anchor:'end', align:'top', offset:2,
