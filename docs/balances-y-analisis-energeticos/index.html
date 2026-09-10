@@ -938,6 +938,9 @@ tfoot td:first-child{text-align:left}
    no se vea el fondo"). Solo en las 2 pestañas cuyo panel arranca
    directo en .card (Mapa tiene su propio encabezado antes, no aplica). */
 #perdidas-tab-totales>.card:first-child, #perdidas-tab-detalle>.card:first-child, #perdidas-tab-evaluacion>.card:first-child{border-top-left-radius:0;border-top-right-radius:0}
+/* IP Nivel 4 -- mismas pestañas .pt-tabs; el panel de cada pestaña
+   arranca directo en .card y va pegado a la pestaña activa. */
+#alim-nivel4-tab-ip>.card:first-child, #alim-nivel4-tab-tecnica>.card:first-child, #alim-nivel4-tab-impexp>.card:first-child{border-top-left-radius:0;border-top-right-radius:0}
 /* Diagrama Unifilar -- símbolos SVG (currentColor toma el color de estas
    clases, así los íconos ya son theme-aware sin nada extra). */
 .bd-elemento{color:var(--text);cursor:move}
@@ -2908,85 +2911,88 @@ tfoot td:first-child{text-align:left}
   <div id="alim-nivel4-vacio" class="card"><div style="color:var(--text3)">Cargando…</div></div>
 
   <div id="alim-nivel4-contenido" class="hidden">
-    <div class="card">
-      <div class="fbar" style="margin-bottom:14px">
+
+    <!-- Filtro compartido por las 3 pestañas (Rango + CSV). Mismo patrón
+         "Excel" que Pérdidas Técnicas (.pt-tabs / .pt-tab-btn). -->
+    <div class="card" style="padding:10px 16px;margin-bottom:8px">
+      <div class="fbar" style="margin-bottom:0">
         <label>Rango</label>
         <input type="date" id="alim-nivel4-desde" onchange="alimNivel4RenderTodo()">
         <span style="font-size:11px;color:var(--text3)">→</span>
         <input type="date" id="alim-nivel4-hasta" onchange="alimNivel4RenderTodo()">
         <button type="button" class="btn-theme" style="width:auto;padding:0 14px;margin-left:auto" onclick="alimNivel4DescargarCsv()">⬇ Descargar CSV</button>
       </div>
-      <div class="fbar" style="justify-content:center;margin-bottom:10px">
-        <button type="button" class="be-modo-btn" id="alim-nivel4-btn-var" onclick="alimNivel4ToggleVariacion()" title="Agrega tarjetas de variación (Δ Entrada, Δ Salida, Δ Pérdida %) vs. el mes anterior">Δ Variación</button>
-        <button type="button" class="be-modo-btn" id="alim-nivel4-btn-relleno" onclick="alimNivel4ToggleRelleno()" title="Quita el sombreado bajo las líneas de Entrada/Salida">▨ Relleno</button>
-      </div>
-      <div class="alim-n21-grid-2">
-        <div>
-          <div style="text-align:center;margin-bottom:8px">
-            <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Índice de Pérdidas Nivel 4 (Mensual %)</div>
-          </div>
-          <div class="chart-wrap" style="height:320px"><canvas id="ch-alim-nivel4-mensual"></canvas></div>
-        </div>
-        <div>
-          <div style="text-align:center;margin-bottom:8px">
-            <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Índice de Pérdidas Nivel 4 (Anual %)</div>
-          </div>
-          <div class="chart-wrap" style="height:320px"><canvas id="ch-alim-nivel4-anual"></canvas></div>
-        </div>
-      </div>
-      <div id="alim-nivel4-tarjetas" class="tarjetas-fila-unica"></div>
     </div>
 
-    <!-- Narrativa (Por qué crece) + Pérdida Total vs Pérdida Técnica en UNA
-         sola tarjeta, lado a lado -- antes eran 2 tarjetas separadas y la de
-         la narrativa dejaba un espacio en blanco enorme a la derecha de sus
-         2 tablas angostas. Pedido explícito ("ese espacio ahí podrías
-         colocar Pérdida Total vs Pérdida Técnica y más pequeña esas
-         tablas"). -->
-    <div class="card">
-      <!-- grid con minmax(0,1fr), NO flex -- así el ancho de esta columna
-           queda realmente acotado (con flex, aunque con min-width:0, el
-           ancho seguía sin fijarse bien acá). El apilado vertical de las
-           2 tablas (Interanual/Mensual) es el que evita por completo el
-           problema real: con las 2 lado a lado, el overflow-x:auto
-           DOBLEMENTE anidado que ya trae _narrativaEntradaSalidaHtml
-           (fila) + _narrativaTablaHtml (cada tabla, su propio
-           .be-tabla-scroll) rompía el recorte del contenedor padre --
-           overflow:hidden, clip-path e incluso contain:layout no lo
-           evitaban (confirmado con pruebas aisladas, reproducible fuera
-           de esta app -- rareza real de Chromium). Ver la regla CSS
-           ".alim-nivel-narrativa-compacta > div:nth-child(2)" que fuerza
-           el apilado. -->
-      <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:28px;align-items:start">
-        <div id="alim-nivel4-narrativa" class="alim-nivel-narrativa-compacta" style="overflow:hidden"></div>
-        <div>
-          <div style="text-align:center;margin-bottom:8px">
-            <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Pérdida Total vs Pérdida Técnica</div>
+    <div class="pt-tabs">
+      <button type="button" class="pt-tab-btn activo" id="alim-nivel4-tab-btn-ip" onclick="alimNivel4IrATab('ip')">Indicador Pérdidas Nivel 4</button>
+      <button type="button" class="pt-tab-btn" id="alim-nivel4-tab-btn-tecnica" onclick="alimNivel4IrATab('tecnica')">Pérdida Técnica Nivel 4</button>
+      <button type="button" class="pt-tab-btn" id="alim-nivel4-tab-btn-impexp" onclick="alimNivel4IrATab('impexp')">Importaciones y Exportaciones</button>
+    </div>
+
+    <!-- ===== PESTAÑA 1 · Indicador de Pérdidas Nivel 4 ===== -->
+    <div id="alim-nivel4-tab-ip">
+      <div class="card">
+        <div class="fbar" style="justify-content:center;margin-bottom:10px">
+          <button type="button" class="be-modo-btn" id="alim-nivel4-btn-var" onclick="alimNivel4ToggleVariacion()" title="Agrega tarjetas de variación (Δ Entrada, Δ Salida, Δ Pérdida %) vs. el mes anterior">Δ Variación</button>
+          <button type="button" class="be-modo-btn" id="alim-nivel4-btn-relleno" onclick="alimNivel4ToggleRelleno()" title="Quita el sombreado bajo las líneas de Entrada/Salida">▨ Relleno</button>
+        </div>
+        <div class="alim-n21-grid-2">
+          <div>
+            <div style="text-align:center;margin-bottom:8px">
+              <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Índice de Pérdidas Nivel 4 (Mensual %)</div>
+            </div>
+            <div class="chart-wrap" style="height:320px"><canvas id="ch-alim-nivel4-mensual"></canvas></div>
           </div>
-          <div class="chart-wrap" style="height:420px"><canvas id="ch-alim-nivel4-tecnica"></canvas></div>
-          <!-- Selector + tarjetas ocultos (pedido explícito: "quita esas
-               tarjetas... coloca la gráfica más grande ya que se desperdicia
-               mucho espacio") -- el <select> se deja en el DOM sin mostrar
-               porque _alimNivelPoblarSelectorAnalisis lo sigue usando para
-               fijar claveAnalisis (mes que colorea la narrativa de al lado);
-               quitarlo del todo dejaría esa narrativa sin mes de referencia. -->
-          <div class="fbar" style="justify-content:center;margin:16px 0 10px;display:none">
-            <label>Mes a comparar</label>
-            <select id="alim-nivel4-analisis-mes" onchange="alimNivel4RenderTodo()"></select>
+          <div>
+            <div style="text-align:center;margin-bottom:8px">
+              <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Índice de Pérdidas Nivel 4 (Anual %)</div>
+            </div>
+            <div class="chart-wrap" style="height:320px"><canvas id="ch-alim-nivel4-anual"></canvas></div>
           </div>
-          <div id="alim-nivel4-analisis" class="tarjetas-fila-unica" style="display:none"></div>
+        </div>
+        <div id="alim-nivel4-tarjetas" class="tarjetas-fila-unica"></div>
+      </div>
+    </div>
+
+    <!-- ===== PESTAÑA 2 · Pérdida Técnica Nivel 4 ===== -->
+    <!-- Narrativa (Por qué crece) + Pérdida Total vs Pérdida Técnica lado
+         a lado. El grid usa minmax(0,1fr) (NO flex) para acotar de verdad
+         el ancho; el apilado vertical de las 2 tablas de la narrativa lo
+         fuerza ".alim-nivel-narrativa-compacta > div:nth-child(2)". -->
+    <div id="alim-nivel4-tab-tecnica" class="hidden">
+      <div class="card">
+        <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:28px;align-items:start">
+          <div id="alim-nivel4-narrativa" class="alim-nivel-narrativa-compacta" style="overflow:hidden"></div>
+          <div>
+            <div style="text-align:center;margin-bottom:8px">
+              <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Pérdida Total vs Pérdida Técnica</div>
+            </div>
+            <div class="chart-wrap" style="height:420px"><canvas id="ch-alim-nivel4-tecnica"></canvas></div>
+            <!-- Selector oculto: _alimNivelPoblarSelectorAnalisis lo usa
+                 para fijar claveAnalisis (mes que colorea la narrativa). -->
+            <div class="fbar" style="justify-content:center;margin:16px 0 10px;display:none">
+              <label>Mes a comparar</label>
+              <select id="alim-nivel4-analisis-mes" onchange="alimNivel4RenderTodo()"></select>
+            </div>
+            <div id="alim-nivel4-analisis" class="tarjetas-fila-unica" style="display:none"></div>
+          </div>
         </div>
       </div>
     </div>
 
-    <div class="card">
-      <div style="text-align:center;margin-bottom:8px">
-        <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Importaciones / Exportaciones (kWh)</div>
-        <div style="font-size:11px;color:var(--text3);margin-top:2px">Importaciones 230 kV, Importaciones 115 kV y Exportaciones 115 kV -- Consolidado Nivel 4.csv</div>
+    <!-- ===== PESTAÑA 3 · Importaciones y Exportaciones ===== -->
+    <div id="alim-nivel4-tab-impexp" class="hidden">
+      <div class="card">
+        <div style="text-align:center;margin-bottom:8px">
+          <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Importaciones / Exportaciones (kWh)</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">Importaciones 230 kV, Importaciones 115 kV y Exportaciones 115 kV -- Consolidado Nivel 4.csv</div>
+        </div>
+        <div id="alim-nivel4-importexport-vacio" style="color:var(--text3);font-size:12px;text-align:center"></div>
+        <div class="chart-wrap" style="height:340px"><canvas id="ch-alim-nivel4-importexport"></canvas></div>
       </div>
-      <div id="alim-nivel4-importexport-vacio" style="color:var(--text3);font-size:12px;text-align:center"></div>
-      <div class="chart-wrap" style="height:320px"><canvas id="ch-alim-nivel4-importexport"></canvas></div>
     </div>
+
   </div>
 </div>
 
@@ -16393,6 +16399,20 @@ function alimNivel4ToggleRelleno(){
   ALIM_NIVEL4_SIN_RELLENO = !ALIM_NIVEL4_SIN_RELLENO;
   document.getElementById('alim-nivel4-btn-relleno').classList.toggle('activo', ALIM_NIVEL4_SIN_RELLENO);
   alimNivel4RenderTodo();
+}
+
+// Pestañas del módulo IP Nivel 4 (mismo patrón que perdidasIrATab):
+// 'ip' (Indicador de Pérdidas), 'tecnica' (Pérdida Total vs Técnica),
+// 'impexp' (Importaciones/Exportaciones). Al cambiar se re-renderiza todo
+// -- las gráficas de la pestaña que estaba oculta se habían dibujado con
+// tamaño 0; recrearlas ya visibles las deja bien (más simple y seguro que
+// perseguir un resize).
+function alimNivel4IrATab(nombre){
+  ['ip','tecnica','impexp'].forEach(t=>{
+    document.getElementById('alim-nivel4-tab-'+t)?.classList.toggle('hidden', t!==nombre);
+    document.getElementById('alim-nivel4-tab-btn-'+t)?.classList.toggle('activo', t===nombre);
+  });
+  if((ALIM_NIVEL4_FILAS||[]).length) alimNivel4RenderTodo();
 }
 
 function alimNivel4RenderTodo(){
