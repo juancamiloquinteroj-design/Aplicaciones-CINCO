@@ -548,6 +548,11 @@ canvas[id^="ch-tride-"]:active{cursor:grabbing}
    comparte con otras que no pidieron achicarse más. */
 #circvar-tbl-wrap table{font-size:9.5px}
 #circvar-tbl-wrap thead th,#circvar-tbl-wrap tbody td{padding:2px 5px}
+/* Evaluación Económica -- pedido explícito ("esa tabla la requiero más
+   pequeña compacta porque al lado derecho se colocará una gráfica"). */
+#valuacion-tbl-wrap table{font-size:9.5px}
+#valuacion-tbl-wrap thead th,#valuacion-tbl-wrap tbody td,#valuacion-tbl-wrap tfoot td{padding:2px 5px}
+#valuacion-tbl-wrap .zb{font-size:9px;padding:1px 5px}
 .alim3-th-flecha{font-size:9px}
 .circvar-fila{cursor:pointer}
 .circvar-fila:hover td{background:var(--accent)14}
@@ -1613,7 +1618,7 @@ tfoot td:first-child{text-align:left}
     <div class="card">
       <div class="valuacion-hdr">
         <div>
-          <div class="card-title" style="margin-bottom:2px">💰 Valuación Económica de Pérdidas Técnicas · por Zona</div>
+          <div class="card-title" style="margin-bottom:2px">💰 Evaluación Económica de Pérdidas Técnicas · por Zona</div>
           <div class="card-sub" id="tbl-sub" style="margin-bottom:0">—</div>
         </div>
         <div class="valuacion-hdr-controles">
@@ -1631,19 +1636,32 @@ tfoot td:first-child{text-align:left}
           </div>
         </div>
       </div>
-      <div class="tbl-wrap">
-        <table style="min-width:1020px">
-          <thead>
-            <tr>
-              <th>Zona</th><th>Nivel</th><th>Reconocimiento<br>CREG (%)</th><th>Entradas<br>(kWh/mes)</th>
-              <th>Pérd. Técnicas<br>Calculadas (kWh/mes)</th><th>Pérd. Técnicas<br>Calculadas (%)</th>
-              <th>Pérd.<br>Reconocida (kWh/mes)</th><th>Pérd. No<br>Reconocida (kWh/mes)</th>
-              <th>Costo<br>Reconocido ($/mes)</th><th>Costo No<br>Reconocido ($/mes)</th>
-            </tr>
-          </thead>
-          <tbody id="tb-valuacion"></tbody>
-          <tfoot id="tf-valuacion"></tfoot>
-        </table>
+      <!-- Tabla a la izquierda (compacta -- pedido explícito: "esa tabla
+           la requiero más pequeña compacta porque al lado derecho se
+           colocará una gráfica"), gráfica de barras + línea a la
+           derecha. -->
+      <div class="split-wrap">
+        <div class="tbl-wrap tbl-compacta" id="valuacion-tbl-wrap" style="max-height:520px;overflow-y:auto">
+          <table>
+            <thead>
+              <tr>
+                <th>Zona</th><th>Nivel</th><th>Recon.<br>CREG (%)</th><th>Entradas<br>(kWh/mes)</th>
+                <th>Pérd. Téc.<br>(kWh/mes)</th><th>Pérd. Téc.<br>(%)</th>
+                <th>Recon.<br>(kWh/mes)</th><th>No Recon.<br>(kWh/mes)</th>
+                <th>Costo Recon.<br>($/mes)</th><th>Costo No<br>Recon. ($/mes)</th>
+              </tr>
+            </thead>
+            <tbody id="tb-valuacion"></tbody>
+            <tfoot id="tf-valuacion"></tfoot>
+          </table>
+        </div>
+        <div>
+          <div class="card-title" style="text-align:center">Pérdida Técnica · Reconocida vs No Reconocida por Zona</div>
+          <div class="chart-wrap" style="height:480px;position:relative">
+            <canvas id="ch-valuacion-zonas"></canvas>
+            <div id="valuacion-chart-vacio" class="hidden" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;color:var(--text3);font-size:12px;padding:24px">Sin datos para el mes seleccionado.</div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -24971,6 +24989,7 @@ async function ptTotalesRenderCards(){
  * muestra tal cual, una fila por nivel (expandido). */
 let VALUACION_ZONAS_CRUDA = [];
 let zonasExpandidas = true;
+let chValuacionZonas = null;
 
 function toggleZonasContraidas(){
   zonasExpandidas = !zonasExpandidas;
@@ -25041,6 +25060,80 @@ function renderValuacionZonas(){
   }).join('');
 
   tf.innerHTML = '';
+  renderValuacionChart();
+}
+
+// Pedido explícito ("al lado derecho una gráfica en barras donde muestre
+// la pérdida técnica total de la zona y el total reconocido, y en una
+// línea el no reconocido, debe ser doble eje"). Siempre AGREGADA por
+// zona (no importa si la tabla está expandida por nivel). Doble eje: el
+// "No Reconocido" suele ser mucho más chico que la pérdida total, así
+// que va en su propio eje a la derecha para que se le vea el
+// movimiento.
+function renderValuacionChart(){
+  const ctx = document.getElementById('ch-valuacion-zonas');
+  const vacio = document.getElementById('valuacion-chart-vacio');
+  if(!ctx) return;
+  const dark = document.documentElement.getAttribute('data-theme')==='dark';
+  const tickC = dark ? '#ffffff' : '#000000';
+  const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
+
+  const porZona = _agregarValuacionPorZona(VALUACION_ZONAS_CRUDA);
+  if(!porZona.length){
+    if(chValuacionZonas){ chValuacionZonas.destroy(); chValuacionZonas=null; }
+    if(vacio) vacio.classList.remove('hidden');
+    ctx.classList.add('hidden');
+    return;
+  }
+  if(vacio) vacio.classList.add('hidden');
+  ctx.classList.remove('hidden');
+
+  const labels = porZona.map(z=>z.zona);
+  const total = porZona.map(z=>z.perdidas_kwh);
+  const reconocida = porZona.map(z=>z.pt_reconocida_kwh);
+  const noReconocida = porZona.map(z=>z.pt_no_reconocida_kwh);
+  const fK = v => v==null?'':`${Math.round(v).toLocaleString('es-CO')} kWh`;
+
+  if(chValuacionZonas) chValuacionZonas.destroy();
+  chValuacionZonas = new Chart(ctx, {
+    data:{
+      labels,
+      datasets:[
+        {type:'bar', label:'Pérdida Técnica total', data: total, yAxisID:'yKwh', order:3,
+          backgroundColor:'rgba(0,176,240,.55)', borderColor:'#00B0F0', borderWidth:1, borderRadius:3,
+          datalabels:{display:true, anchor:'end', align:'top', offset:2, rotation:-90,
+            formatter:v=>v?fmtGwh(v):'', font:{size:9,weight:'700'}, color:tickC}},
+        {type:'bar', label:'Total Reconocido', data: reconocida, yAxisID:'yKwh', order:3,
+          backgroundColor:'rgba(0,176,80,.55)', borderColor:'#00B050', borderWidth:1, borderRadius:3,
+          datalabels:{display:true, anchor:'end', align:'top', offset:2, rotation:-90,
+            formatter:v=>v?fmtGwh(v):'', font:{size:9,weight:'700'}, color:tickC}},
+        {type:'line', label:'No Reconocido', data: noReconocida, yAxisID:'yNoRec', order:1,
+          borderColor:'#C00000', backgroundColor:'transparent', borderWidth:2.5, borderDash:[6,3],
+          pointRadius:4, pointHoverRadius:6, tension:0, spanGaps:true,
+          datalabels:{display:true, anchor:'end', align:'bottom', offset:6,
+            formatter:v=>fK(v), font:{size:10,weight:'800'}, color:'#C00000',
+            textStrokeColor: dark?'#000000':'#ffffff', textStrokeWidth:3}},
+      ],
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      layout:{padding:{top:28, right:12}},
+      interaction:{mode:'index', intersect:false},
+      plugins:{
+        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:10}, color:tickC}},
+        tooltip:{callbacks:{label:c=> c.raw==null?null:`${c.dataset.label}: ${Math.round(c.raw).toLocaleString('es-CO')} kWh`}},
+      },
+      scales:{
+        x:{grid:{display:false}, ticks:{color:tickC, font:{size:11}}},
+        yKwh:{position:'left', beginAtZero:true, grid:{color:gridC},
+          ticks:{color:tickC, font:{size:11}, callback:v=>fmtGwh(v)},
+          title:{display:true, text:'Pérdida Técnica / Reconocido (kWh)', color:tickC, font:{size:11}}},
+        yNoRec:{position:'right', beginAtZero:true, grace:'20%', grid:{drawOnChartArea:false},
+          ticks:{color:tickC, font:{size:11}, callback:v=>fmtGwh(v)},
+          title:{display:true, text:'No Reconocido (kWh)', color:tickC, font:{size:11}}},
+      },
+    },
+  });
 }
 
 /* ============================================================
