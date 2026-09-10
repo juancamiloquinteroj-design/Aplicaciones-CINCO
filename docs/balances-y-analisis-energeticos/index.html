@@ -17150,17 +17150,20 @@ function alimNivel3EvalGuardarReconPct(){
   alimNivel3RenderEvalChart(porZona);
 }
 
-async function alimNivel3EvalAsegurarPr3(claves){
-  const faltan = (claves||[]).filter(c => ALIM_NIVEL3_EVAL_PR3[c] === undefined);
-  if(!faltan.length) return;
-  await Promise.all(faltan.map(async c => {
-    if(DEMO){ ALIM_NIVEL3_EVAL_PR3[c] = 1; return; }
-    try{
-      const r = await apiGet(`/api/valuacion-zonas?mes=${c}`);
-      const pr = Array.isArray(r) ? {} : (r.pr_por_nivel || {});
-      ALIM_NIVEL3_EVAL_PR3[c] = (+pr[3] > 0) ? +pr[3] : 1;
-    }catch(e){ ALIM_NIVEL3_EVAL_PR3[c] = 1; }
-  }));
+// Trae el Pr de Nivel 3 de TODOS los meses en UNA sola consulta
+// (/api/valuacion-pr-niveles) -- antes se pedía /valuacion-zonas mes a mes
+// (decenas de requests, cada uno recalculando el desglose por zona), que
+// con Datos_XM ya grande hacía la pestaña lentísima.
+let ALIM_NIVEL3_PR_CARGADO = false;
+async function alimNivel3EvalAsegurarPr3(){
+  if(ALIM_NIVEL3_PR_CARGADO || DEMO) return;
+  ALIM_NIVEL3_PR_CARGADO = true;
+  try{
+    const r = await apiGet('/api/valuacion-pr-niveles');
+    Object.entries(r || {}).forEach(([mes, pr]) => {
+      ALIM_NIVEL3_EVAL_PR3[mes] = (+pr['3'] > 0) ? +pr['3'] : 1;
+    });
+  }catch(e){ ALIM_NIVEL3_PR_CARGADO = false; }   // reintenta la próxima
 }
 
 async function alimNivel3RenderEvalEconomica(){
@@ -17174,13 +17177,7 @@ async function alimNivel3RenderEvalEconomica(){
   // Pinta ya con lo que haya (Pr = 1 si aún no llegó) y refina al resolver.
   alimNivel3RenderEvalTabla(porZona);
   alimNivel3RenderEvalChart(porZona);
-  // El Pr de Nivel 3 sólo se pide para el mes de la tabla y su ventana de
-  // 12 (exacto ahí); la gráfica histórica usa el Pr del mes vigente como
-  // aproximación para los meses viejos (el Pr de N3 se mueve ~1 %, y esos
-  // meses no suelen tener dato XM). Así se evitan decenas de requests.
-  const nec = new Set([mes, ..._alimN3EvalVentana(mes, claves)]);
-  claves.forEach(c => { if(c >= '2026-01') nec.add(c); });   // los meses de la gráfica (ene-2026 →)
-  await alimNivel3EvalAsegurarPr3([...nec]);
+  await alimNivel3EvalAsegurarPr3();   // 1 request para todos los meses
   alimNivel3RenderEvalTabla(porZona);
   alimNivel3RenderEvalChart(porZona);
 }
