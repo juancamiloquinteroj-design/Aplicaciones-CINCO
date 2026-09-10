@@ -23742,7 +23742,19 @@ async function cargarAlimentadores(){
   const nivel = mselValores('msel-nivel');
   const qs = new URLSearchParams();
   zona.forEach(z=>qs.append('zona', z));
-  nivel.forEach(n=>qs.append('nivel', n));
+  // Pedido explícito ("cuando selecciono nivel 1 debería salir los
+  // circuitos de nivel 2 [en el desplegable] pero mostrar la pérdida de
+  // nivel 1"): confirmado -- Nivel 1 casi no tiene nombre propio
+  // (Circuito.nombre viene null en los 164 circuitos de Nivel 1) y 163
+  // de esos 164 nemónicos son EXACTAMENTE los mismos que los de Nivel 2
+  // (mismo circuito físico, reconocido en las 2 capas), así que para
+  // elegir el alimentador es más reconocible navegar por el catálogo de
+  // Nivel 2. Esto SOLO cambia de dónde sale la lista -- el filtro real
+  // de Nivel sigue siendo el que eligió el usuario (1), tal cual se
+  // manda en aplicarFiltros()/`/api/resumen`, así que la gráfica termina
+  // mostrando la pérdida de Nivel 1 de ese mismo circuito.
+  const nivelParaLista = (nivel.length===1 && nivel[0]==='1') ? ['2'] : nivel;
+  nivelParaLista.forEach(n=>qs.append('nivel', n));
   try{
     const circuitos = DEMO ? [] : await apiGet(`/api/circuitos?${qs.toString()}`);
     const nemonicos = [...new Set(circuitos.map(c=>c.nemonico))].sort();
@@ -24389,9 +24401,14 @@ function renderPrincipal(){
       interaction:{mode:'index', intersect:false},
       plugins:{
         legend:{display:true, position:'bottom', labels:{boxWidth:14, font:{size:11}, color:tickC, padding:14}},
+        // Pedido explícito ("el reconocimiento sale en 1 kWh, debería
+        // salir en 1.45%"): clasificaba por si el TEXTO del label tenía
+        // un "%" -- "Reconocimiento CREG" no lo tiene, así que caía en
+        // kWh. Se cambió al mismo criterio robusto que ya usa el tooltip
+        // de "Pérdida Técnica por Zona": el yAxisID real del dataset.
         tooltip:{callbacks:{label:c=>{
           const v=c.raw; if(v==null) return null;
-          if((c.dataset.label||'').indexOf('%')>=0) return c.dataset.label+': '+parseFloat(v).toFixed(2)+'%';
+          if(c.dataset.yAxisID==='yPct') return c.dataset.label+': '+parseFloat(v).toFixed(2)+'%';
           return c.dataset.label+': '+v.toLocaleString('es-CO',{maximumFractionDigits:0})+' kWh';
         }}},
       },
