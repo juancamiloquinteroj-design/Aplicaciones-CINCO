@@ -1483,40 +1483,28 @@ tfoot td:first-child{text-align:left}
   </div>
 
   <div id="perdidas-tab-detalle" class="hidden">
-    <div class="card">
-      <!-- Mismos filtros que "Pérdidas Técnicas Totales" (Zona, Nivel de
-           tensión, Desde/Hasta mes y año escribible) + Alimentador extra
-           -- pedido explícito ("va a tener los mismos filtros que tiene
-           Pérdidas Técnicas Totales, pero se adiciona el que dice
-           alimentador"). El slider de "Rango" de antes sigue existiendo
-           por dentro (RANGO.start/end -- lo usan Proyección, Valuación y
-           la tabla de variación) pero queda oculto: estos 2 <input
-           type="month"> son ahora el control visible, se traducen al
-           mismo índice de META.meses y llaman _applyRange() -- ver
-           detalleSyncRango(). -->
-      <!-- Zona, Nivel de tensión, Alimentador Y el Reconocimiento CREG en
-           una sola fila -- pedido explícito ("los filtros zona, nivel de
-           tensión y alimentador en una sola fila igual que las fechas" +
-           "el reconocimiento de la CREG que sea en la primera fila donde
-           está zona, nivel de tensión y alimentador"). #creg-tbl pierde
-           su borde/margen superior (los tenía para separarse de la fila
-           de arriba cuando iba debajo) al pasar a ser un ítem más de este
-           mismo .fbar. -->
-      <div class="fbar" style="margin-bottom:14px">
+    <!-- TODOS los filtros en una sola fila (Zona, Nivel, Alimentador,
+         Desde/Hasta, Reconocimiento CREG) -- pedido explícito ("el filtro
+         de fecha subirlo más, está desperdiciando espacio" + "que no
+         exista ese espaciamiento entre los filtros y la gráfica"). Card
+         de filtros con padding/margin mínimos para pegarse a la gráfica.
+         El slider "Rango" sigue existiendo por dentro (RANGO.start/end,
+         lo usan Valuación y la tabla de variación) pero oculto -- los 2
+         <input type="month"> son el control visible (detalleSyncRango()). -->
+    <div class="card" style="padding:10px 16px;margin-bottom:8px">
+      <div class="fbar" style="margin-bottom:0">
         <label>Zona</label>
         <div class="msel" id="msel-zona"></div>
-        <label style="margin-left:16px">Nivel de tensión</label>
+        <label style="margin-left:12px">Nivel de tensión</label>
         <div class="msel" id="msel-nivel"></div>
-        <label style="margin-left:16px">Alimentador</label>
+        <label style="margin-left:12px">Alimentador</label>
         <div class="msel" id="msel-alimentador"></div>
-        <div class="creg-tbl" id="creg-tbl" style="margin:0;padding:0;border-top:none"></div>
-        <button class="btn-theme" style="width:auto;padding:0 14px;margin-left:auto" onclick="descargarCSV()" id="btn-descargar" title="Descargar el detalle mensual en CSV">⬇ Descargar CSV</button>
-      </div>
-      <div class="fbar" style="margin-bottom:0">
-        <label>Desde</label>
+        <label style="margin-left:12px">Desde</label>
         <input type="month" id="det-desde" onchange="detalleSyncRango()">
         <label>Hasta</label>
         <input type="month" id="det-hasta" onchange="detalleSyncRango()">
+        <div class="creg-tbl" id="creg-tbl" style="margin:0;padding:0;border-top:none"></div>
+        <button class="btn-theme" style="width:auto;padding:0 14px;margin-left:auto" onclick="descargarCSV()" id="btn-descargar" title="Descargar el detalle mensual en CSV">⬇ Descargar CSV</button>
       </div>
 
       <div class="range-wrap hidden">
@@ -1552,36 +1540,23 @@ tfoot td:first-child{text-align:left}
             <div id="chart-titulo" style="font-size:16px;font-weight:800;letter-spacing:1.5px;color:var(--text);text-transform:uppercase">Pérdidas Técnicas Total</div>
           </div>
           <div style="display:flex;gap:8px;flex-shrink:0">
-            <!-- Pedido explícito ("quita los datos de entrada y salida,
-                 que haya un botón si uno lo quiere añadir o no, si uno lo
-                 añade queda con triple eje"): oculto por defecto, se
-                 agrega en un 3er eje aparte (mucha más magnitud que
-                 Pérdida) solo cuando se activa -- ver renderPrincipal(). -->
+            <!-- Entrada/Salida opcional (pedido explícito previo) -- en un
+                 3er eje aparte cuando se activa, ver renderPrincipal(). -->
             <button id="det-es-btn" onclick="detalleToggleEntradaSalida()" title="Sobreponer Entrada y Salida (en un eje aparte)"
               style="display:flex;align-items:center;gap:6px;padding:6px 14px;background:transparent;color:var(--accent);border:1px solid var(--accent);border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">
               ➕ Entrada/Salida
             </button>
-            <button id="proj-btn" onclick="toggleProjection()" title="Proyectar PT kWh basado en entradas futuras"
+            <!-- Pedido explícito ("quita ese botón de proyección y mejor
+                 coloca uno de variación en la gráfica"): toggle que agrega
+                 la variación mes a mes a las etiquetas -- ver
+                 detalleToggleVariacion() / renderPrincipal(). -->
+            <button id="det-var-btn" onclick="detalleToggleVariacion()" title="Mostrar la variación mes a mes en las etiquetas"
               style="display:flex;align-items:center;gap:6px;padding:6px 14px;background:transparent;color:var(--accent);border:1px solid var(--accent);border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">
-              📈 Proyección
+              📊 Variación
             </button>
-            <select id="proj-method" onchange="renderPrincipal()"
-              style="display:none;padding:5px 10px;border:1px solid var(--accent);border-radius:8px;font-size:11px;font-weight:600;color:var(--accent);background:var(--bg);cursor:pointer">
-              <option value="lineal">📏 Lineal</option>
-              <option value="polinomica">📐 Polinómica</option>
-              <option value="logaritmica">📉 Logarítmica</option>
-              <option value="media_movil">〰️ Media Móvil</option>
-              <option value="arima">🔁 ARIMA AR(1)</option>
-              <option value="sarima">🌊 SARIMA</option>
-            </select>
-            <!-- "⬇ Exportar PNG" se quitó -- pedido explícito ("ya existe
-                 una forma más sencilla"): el botón que se inyecta solo en
-                 TODO .chart-wrap de la app (ver más abajo, "exportar
-                 Imagen/Excel"). -->
           </div>
         </div>
         <div class="chart-wrap" style="height:420px"><canvas id="ch-principal"></canvas></div>
-        <div id="kpi-notes-row" style="margin-top:14px"></div>
       </div>
 
       <div class="card">
@@ -1606,6 +1581,16 @@ tfoot td:first-child{text-align:left}
           </table>
         </div>
       </div>
+    </div>
+
+    <!-- Tarjetas rápidas -- pedido explícito ("en la parte inferior de
+         Detalle por Circuito vas a colocar tarjetas rápidas que digan
+         nombre de la estructura seleccionada, pérdida técnica total en
+         kWh/mes, pérdida %, variación de porcentaje y pérdida técnica −
+         reconocimiento CREG por el nivel de tensión seleccionado").
+         Se arman en JS (detalleRenderTarjetas()). -->
+    <div class="card" style="margin-top:10px">
+      <div class="inicio-dash-fila" id="det-tarjetas" style="margin-bottom:0;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))"></div>
     </div>
   </div>
 
@@ -5061,11 +5046,11 @@ let chBalanceEstructura = null;  // un solo chart/canvas para los 3 modos de "Ve
 let META = {zonas:[], niveles:[], meses:[]};
 let RESUMEN = null;
 let RANGO = {start:0, end:0};
-let showProjection = false;
-// Pedido explícito ("quita los datos de entrada y salida, que haya un
-// botón si uno lo quiere añadir"): apagado por defecto -- ver
-// detalleToggleEntradaSalida() y renderPrincipal().
+let showProjection = false;   // (feature Proyección retirada -- variable solo por si quedó alguna referencia muerta)
+// Botones opcionales de la gráfica de "Detalle por Circuito" -- apagados
+// por defecto (pedido explícito). Ver detalleToggle*() / renderPrincipal().
 let DET_MOSTRAR_ES = false;
+let DET_MOSTRAR_VAR = false;
 
 // Las etiquetas flotantes sobre barras/puntos son opt-in por dataset -- si no,
 // el plugin las dibuja por defecto en TODOS los charts (incluidos zona/dona).
@@ -24206,74 +24191,6 @@ function fitModel(xs, ys, method){
   }
 }
 
-const PROJ_NAMES = {lineal:'Regresión Lineal', polinomica:'Regresión Polinómica (Cuadrática)', logaritmica:'Regresión Logarítmica', media_movil:'Media Móvil', arima:'ARIMA — Proceso Autorregresivo AR(1)', sarima:'SARIMA — AR Estacional (s=12)'};
-const PROJ_DESC = {
-  lineal:'Ajusta una recta a los datos históricos por mínimos cuadrados. Adecuada cuando la tendencia es aproximadamente lineal.',
-  polinomica:'Ajusta una parábola (mínimos cuadrados orden 2). Requiere ≥ 3 puntos; con menos, regresa a lineal.',
-  logaritmica:'Modela crecimiento o decaimiento con velocidad decreciente (efecto de saturación).',
-  media_movil:'Proyecta el promedio de las últimas W observaciones (W = mín(3, n)). Sin tendencia — proyección plana.',
-  arima:'Proceso autorregresivo de orden 1: φ mide la persistencia de la serie. Equivale a un suavizado exponencial.',
-  sarima:'Descompone la serie en componente estacional (media por mes) y residuos, con AR(1) sobre los residuos.',
-};
-
-function toggleProjection(){
-  showProjection = !showProjection;
-  const btn = document.getElementById('proj-btn');
-  const sel = document.getElementById('proj-method');
-  btn.style.background = showProjection ? 'var(--accent)' : 'transparent';
-  btn.style.color = showProjection ? '#fff' : 'var(--accent)';
-  btn.textContent = showProjection ? '✕ Quitar Proyección' : '📈 Proyección';
-  sel.style.display = showProjection ? 'block' : 'none';
-  renderPrincipal();
-}
-
-function updateKpiNotes(){
-  const row = document.getElementById('kpi-notes-row');
-  if(!showProjection || !RESUMEN){ row.innerHTML=''; return; }
-  const idx=[], ent=[], kwh=[];
-  RESUMEN.meses.forEach((m,i)=>{
-    if(RESUMEN.perdidas_kwh[i]>0 && RESUMEN.entradas_kwh[i]>0){ idx.push(i); ent.push(RESUMEN.entradas_kwh[i]); kwh.push(RESUMEN.perdidas_kwh[i]); }
-  });
-  if(!idx.length){ row.innerHTML=''; return; }
-  const pct = idx.map((v,i)=>kwh[i]/ent[i]*100);
-  const method = document.getElementById('proj-method').value || 'lineal';
-  const fitPct = fitModel(idx, pct, method);
-  const fitEnt = fitModel(idx, ent, method);
-  const nextX = idx[idx.length-1]+1;
-  const nextPct = Math.max(0, fitPct.predict(nextX)).toFixed(4);
-  const nextEnt = Math.max(0, Math.round(fitEnt.predict(nextX))).toLocaleString('es-CO');
-  const t0lbl = labelMes(RESUMEN.meses[idx[0]]);
-
-  row.innerHTML = `
-  <div style="background:rgba(0,180,216,.05);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:9px;padding:10px 16px">
-    <div style="display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap">
-      <span style="font-size:18px">📐</span>
-      <div style="flex:1;min-width:240px">
-        <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--accent2);margin-bottom:5px">${PROJ_NAMES[method]}</div>
-        <div style="font-size:10px;color:var(--text3);line-height:1.55;margin-bottom:8px">${PROJ_DESC[method]}</div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:6px">
-          <div style="background:rgba(192,0,0,.05);border:1px solid rgba(192,0,0,.2);border-radius:7px;padding:7px 11px">
-            <div style="font-size:8px;font-weight:700;color:var(--red);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px">Pérdidas Técnicas (%)</div>
-            <div class="math-block eq-row" style="font-size:12.5px"><span class="eq-lhs">PT%<sub>t</sub> =</span><span class="eq-rhs">${fitPct.eqHTML()}</span></div>
-            <div style="font-size:8px;color:var(--text3);margin-top:3px">${fitPct.noteDetail}</div>
-          </div>
-          <div style="background:rgba(0,180,216,.05);border:1px solid rgba(0,180,216,.2);border-radius:7px;padding:7px 11px">
-            <div style="font-size:8px;font-weight:700;color:var(--accent2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px">Entradas (kWh)</div>
-            <div class="math-block eq-row" style="font-size:12.5px"><span class="eq-lhs">Ent<sub>t</sub> =</span><span class="eq-rhs">${fitEnt.eqHTML()}</span></div>
-            <div style="font-size:8px;color:var(--text3);margin-top:3px">${fitEnt.noteDetail}</div>
-          </div>
-        </div>
-        <div style="font-size:8.5px;color:var(--text3);margin-top:6px;padding-top:5px;border-top:1px solid var(--border)">
-          t<sub>0</sub> = ${t0lbl} &nbsp;·&nbsp; n = ${idx.length} meses con datos &nbsp;·&nbsp;
-          <b>Próximo período proyectado:</b>
-          <span style="color:var(--red);font-weight:600"> PT% ≈ ${nextPct}%</span> &nbsp;|&nbsp;
-          <span style="color:var(--accent2);font-weight:600">Ent ≈ ${nextEnt} kWh</span>
-        </div>
-      </div>
-    </div>
-  </div>`;
-}
-
 function fmtGwh(v){
   const g=(v||0)/1e6;
   return g.toFixed(Math.abs(g)>=1?2:3)+' GWh';
@@ -24310,14 +24227,12 @@ function _detalleReconocimientoConstante(){
   return valores.reduce((s,v)=>s+v, 0) / valores.length;
 }
 
-// Gráfica principal de "Detalle por Circuito" -- pedido explícito ("solo
-// quiero que salga la pérdida técnica en kWh/mes y la pérdida técnica en
-// %/mes y el % de reconocimiento... una línea constante"): SIEMPRE en
-// líneas -- Pérdida Técnica (celeste, kWh) + Pérdida Técnica % (naranja
-// punteada) + Reconocimiento CREG (gris punteada, constante, ver arriba).
-// Entrada/Salida quedan OCULTAS por defecto (pedido explícito previo:
-// "quita los datos de entrada y salida, que haya un botón si uno lo
-// quiere añadir") -- DET_MOSTRAR_ES las agrega en un 3er eje aparte.
+// Gráfica principal de "Detalle por Circuito" -- SIEMPRE en líneas:
+// Pérdida Técnica (celeste, kWh) + Pérdida Técnica % (naranja punteada) +
+// Reconocimiento CREG (gris punteada, constante). Entrada/Salida ocultas
+// salvo el botón "➕ Entrada/Salida" (DET_MOSTRAR_ES, 3er eje). El botón
+// "📊 Variación" (DET_MOSTRAR_VAR) agrega el delta mes a mes a las
+// etiquetas -- reemplazó a "Proyección" (pedido explícito).
 function renderPrincipal(){
   if(!RESUMEN) return;
   const ctx = document.getElementById('ch-principal');
@@ -24329,55 +24244,22 @@ function renderPrincipal(){
   let labels = RESUMEN.meses.map(labelMes);
   let entV = RESUMEN.entradas_kwh.slice();
   let kwhV = RESUMEN.perdidas_kwh.map(v=> v>0 ? v : null);
-  // Salida -- se deriva igual que en el resto de la app (no viene de
-  // /api/resumen) -- Salida = Entrada - Pérdida. Solo se dibuja si se
-  // activa con "➕ Entrada/Salida" (ver más abajo).
   let salV = entV.map((e,i)=> e - (RESUMEN.perdidas_kwh[i]||0));
   let pctV = RESUMEN.perdidas_pct.map((v,i)=> RESUMEN.entradas_kwh[i]>0 && RESUMEN.perdidas_kwh[i]>0 ? v : null);
   const cregVal = _detalleReconocimientoConstante() || 0;
 
-  updateKpiNotes();
-
-  let projDatasets = [];
-  if(showProjection){
-    const idx=[], ent=[], kwh=[];
-    RESUMEN.meses.forEach((m,i)=>{
-      if(RESUMEN.perdidas_kwh[i]>0 && RESUMEN.entradas_kwh[i]>0){ idx.push(i); ent.push(RESUMEN.entradas_kwh[i]); kwh.push(RESUMEN.perdidas_kwh[i]); }
-    });
-    if(idx.length){
-      const method = document.getElementById('proj-method').value || 'lineal';
-      const pct = idx.map((v,i)=>kwh[i]/ent[i]*100);
-      const fitPct = fitModel(idx, pct, method);
-      const fitEnt = fitModel(idx, ent, method);
-      const nextX = idx[idx.length-1]+1;
-      const nextPct = Math.max(0, fitPct.predict(nextX));
-      const nextEnt = Math.max(0, fitEnt.predict(nextX));
-      const nextKwh = Math.round(nextEnt*nextPct/100);
-      labels = labels.concat([labelMesSiguiente(RESUMEN.meses[RESUMEN.meses.length-1])]);
-      const lastValid = idx[idx.length-1];
-      // Continúa cada línea real con un tramo punteado hasta el punto
-      // proyectado -- mismo criterio (mismo valor en el último punto real
-      // Y en el proyectado) que ya usaba "Proyección PT%" antes de este
-      // rediseño, ahora aplicado también a Entrada/Salida/Pérdida Técnica.
-      const proyectar = (base, valorSiguiente) => base.map((v,i)=>
-        i===lastValid ? base[lastValid] : (i===labels.length-1 ? valorSiguiente : null));
-      entV = entV.concat([null]); kwhV = kwhV.concat([null]); pctV = pctV.concat([null]); salV = salV.concat([null]);
-      projDatasets = [
-        {type:'line', label:`Proyección Pérdida Técnica (${method})`, data: proyectar(kwhV, nextKwh),
-          borderColor:'#00B0F0', backgroundColor:'transparent', borderWidth:2, borderDash:[6,4],
-          pointRadius:4, pointStyle:'rectRot', tension:0, spanGaps:true, yAxisID:'y'},
-        {type:'line', label:'Proyección Pérdida %', data: proyectar(pctV, nextPct),
-          borderColor:'#ED7D31', backgroundColor:'transparent', borderWidth:2, borderDash:[6,4],
-          pointRadius:4, pointStyle:'rectRot', tension:0, spanGaps:true, yAxisID:'yPct'},
-      ];
-      // La proyección de Entrada solo suma ruido si Entrada/Salida ni
-      // siquiera se están mostrando.
-      if(DET_MOSTRAR_ES) projDatasets.push(
-        {type:'line', label:'Proyección Entrada', data: proyectar(entV, Math.round(nextEnt)),
-          borderColor:'#00B050', backgroundColor:'transparent', borderWidth:2, borderDash:[6,4],
-          pointRadius:4, pointStyle:'rectRot', tension:0, spanGaps:true, yAxisID:'yVolumen'});
-    }
-  }
+  // Variación mes a mes contra el punto anterior del MISMO dataset.
+  const _deltaTexto = (ctx2, esPct) => {
+    if(ctx2.dataIndex===0) return '';
+    const a = ctx2.dataset.data[ctx2.dataIndex], p = ctx2.dataset.data[ctx2.dataIndex-1];
+    if(a==null || p==null) return '';
+    const d = a - p;
+    const fl = Math.abs(d) < (esPct?0.005:0.5) ? '■' : (d>0 ? '▲' : '▼');
+    if(esPct) return `${fl}${Math.abs(d).toFixed(2)}pp`;
+    const dp = p ? d/p*100 : null;
+    return `${fl}${Math.round(Math.abs(d)).toLocaleString('es-CO')} kWh${dp!=null?`, ${fl}${Math.abs(dp).toFixed(1)}%`:''}`;
+  };
+  const conVar = (ctx2, esPct) => { if(!DET_MOSTRAR_VAR) return ''; const t=_deltaTexto(ctx2,esPct); return t?` (${t})`:''; };
 
   if(chPrincipal) chPrincipal.destroy();
   chPrincipal = new Chart(ctx, {
@@ -24387,11 +24269,12 @@ function renderPrincipal(){
         {type:'line', label:'Pérdida Técnica', data:kwhV, borderColor:'#00B0F0', backgroundColor:'transparent',
           borderWidth:2.5, pointRadius:3, tension:0, spanGaps:true, yAxisID:'y',
           datalabels:{display:labels.length<=24, anchor:'end', align:'bottom', offset:8,
-            formatter:v=>v==null?'':v.toLocaleString('es-CO',{maximumFractionDigits:0}), font:{size:10,weight:'700'}, color:'#00B0F0'}},
+            formatter:(v,ctx2)=>v==null?'':v.toLocaleString('es-CO',{maximumFractionDigits:0})+conVar(ctx2,false), font:{size:10,weight:'700'}, color:'#00B0F0',
+            textStrokeColor: dark?'#000000':'#ffffff', textStrokeWidth:3}},
         {type:'line', label:'Pérdida Técnica %', data:pctV, borderColor:'#ED7D31', backgroundColor:'transparent',
           borderWidth:2, borderDash:[6,3], pointRadius:2, tension:0, spanGaps:true, yAxisID:'yPct',
           datalabels:{display:labels.length<=24, anchor:'end', align:'top', offset:6,
-            formatter:v=>v==null?'':v.toFixed(2)+'%', font:{size:10,weight:'700'}, color:'#ED7D31',
+            formatter:(v,ctx2)=>v==null?'':v.toFixed(2)+'%'+conVar(ctx2,true), font:{size:10,weight:'700'}, color:'#ED7D31',
             textStrokeColor: dark?'#000000':'#ffffff', textStrokeWidth:3}},
         // Constante -- pedido explícito ("debe ser una línea constante").
         {type:'line', label:'Reconocimiento CREG', data:labels.map(()=>cregVal),
@@ -24407,27 +24290,26 @@ function renderPrincipal(){
           {type:'line', label:'Salida', data:salV, borderColor:'#C00000',
             backgroundColor:'transparent', borderWidth:2.5, pointRadius:3, tension:0, spanGaps:true, yAxisID:'yVolumen'},
         ] : []),
-        ...projDatasets,
       ],
     },
     options:{
       responsive:true, maintainAspectRatio:false,
-      // left más ancho -- pedido explícito ("el eje Y de la gráfica se
-      // ven los valores sobrepuestos"): el primer punto quedaba pegado
-      // al eje Y y su etiqueta se montaba sobre los ticks.
       layout:{padding:{bottom:20,top:20,right:16,left:8}},
       interaction:{mode:'index', intersect:false},
       plugins:{
         legend:{display:true, position:'bottom', labels:{boxWidth:14, font:{size:11}, color:tickC, padding:14}},
-        // Pedido explícito ("el reconocimiento sale en 1 kWh, debería
-        // salir en 1.45%"): clasificaba por si el TEXTO del label tenía
-        // un "%" -- "Reconocimiento CREG" no lo tiene, así que caía en
-        // kWh. Se cambió al mismo criterio robusto que ya usa el tooltip
-        // de "Pérdida Técnica por Zona": el yAxisID real del dataset.
+        // El hover SIEMPRE muestra la variación (no depende del botón
+        // "📊 Variación", que solo controla la etiqueta permanente). El
+        // tooltip clasifica % vs kWh por el yAxisID real del dataset
+        // ("Reconocimiento CREG" no tiene "%" en el nombre).
         tooltip:{callbacks:{label:c=>{
           const v=c.raw; if(v==null) return null;
-          if(c.dataset.yAxisID==='yPct') return c.dataset.label+': '+parseFloat(v).toFixed(2)+'%';
-          return c.dataset.label+': '+v.toLocaleString('es-CO',{maximumFractionDigits:0})+' kWh';
+          const esPct = c.dataset.yAxisID==='yPct';
+          const base = esPct ? c.dataset.label+': '+parseFloat(v).toFixed(2)+'%'
+                             : c.dataset.label+': '+v.toLocaleString('es-CO',{maximumFractionDigits:0})+' kWh';
+          if(c.dataset.label==='Reconocimiento CREG') return base;
+          const t=_deltaTexto(c, esPct);
+          return t ? `${base} (${t})` : base;
         }}},
       },
       scales:{
@@ -24451,6 +24333,7 @@ function renderPrincipal(){
       },
     },
   });
+  detalleRenderTarjetas();
 }
 
 // Pedido explícito ("quita los datos de entrada y salida, que haya un
@@ -24462,6 +24345,58 @@ function detalleToggleEntradaSalida(){
   btn.style.color = DET_MOSTRAR_ES ? '#fff' : 'var(--accent)';
   btn.textContent = DET_MOSTRAR_ES ? '✕ Quitar Entrada/Salida' : '➕ Entrada/Salida';
   renderPrincipal();
+}
+
+// Pedido explícito ("quita ese botón de proyección y mejor coloca uno de
+// variación en la gráfica").
+function detalleToggleVariacion(){
+  DET_MOSTRAR_VAR = !DET_MOSTRAR_VAR;
+  const btn = document.getElementById('det-var-btn');
+  btn.style.background = DET_MOSTRAR_VAR ? 'var(--accent)' : 'transparent';
+  btn.style.color = DET_MOSTRAR_VAR ? '#fff' : 'var(--accent)';
+  btn.textContent = DET_MOSTRAR_VAR ? '✕ Quitar Variación' : '📊 Variación';
+  renderPrincipal();
+}
+
+// Tarjetas rápidas debajo de la gráfica/tabla -- pedido explícito:
+// nombre de lo seleccionado, Pérdida Técnica total kWh/mes, Pérdida %,
+// variación de %, y "Pérdida Técnica − Reconocimiento CREG" del nivel
+// seleccionado (el margen contra el límite regulatorio). Todo del ÚLTIMO
+// mes visible de RESUMEN.
+function detalleRenderTarjetas(){
+  const cont = document.getElementById('det-tarjetas');
+  if(!cont) return;
+  if(!RESUMEN || !RESUMEN.meses || !RESUMEN.meses.length){ cont.innerHTML=''; return; }
+  const n = RESUMEN.meses.length - 1;
+  const mesLbl = labelMes(RESUMEN.meses[n]);
+  const kwh = RESUMEN.perdidas_kwh[n] || 0;
+  const pct = (RESUMEN.entradas_kwh[n]>0) ? kwh/RESUMEN.entradas_kwh[n]*100 : null;
+  const pctPrev = (n>0 && RESUMEN.entradas_kwh[n-1]>0) ? (RESUMEN.perdidas_kwh[n-1]||0)/RESUMEN.entradas_kwh[n-1]*100 : null;
+  const deltaPp = (pct!=null && pctPrev!=null) ? pct - pctPrev : null;
+  const creg = _detalleReconocimientoConstante();
+  const margen = (pct!=null && creg!=null) ? pct - creg : null;
+
+  const nombre = (document.getElementById('chart-titulo')?.textContent || 'Total')
+    .replace(/^Pérdidas Técnicas\s*[—-]?\s*/i,'').trim() || 'Total operador';
+
+  const fk = v => `${Math.round(v).toLocaleString('es-CO')} kWh`;
+  const varColor = deltaPp==null ? 'var(--text3)' : (deltaPp>0.005 ? 'var(--red)' : deltaPp<-0.005 ? 'var(--green)' : 'var(--text3)');
+  const varTxt = deltaPp==null ? '--' : `${deltaPp>0?'▲':deltaPp<0?'▼':'■'} ${Math.abs(deltaPp).toFixed(2)} pp`;
+  const margenColor = margen==null ? 'var(--text3)' : (margen>0 ? 'var(--red)' : 'var(--green)');
+  const margenTxt = margen==null ? '--' : `${margen>0?'+':''}${margen.toFixed(2)} pp`;
+
+  const tarjeta = (icono,titulo,valor,color,sub) => `<div class="card inicio-dash-card" style="padding:8px 10px">
+    <div class="card-title" style="font-size:9.5px">${icono} ${titulo}</div>
+    <div style="font-size:14px;font-weight:800;color:${color||'var(--text)'};margin-top:3px">${valor}</div>
+    ${sub?`<div style="font-size:9px;color:var(--text3);margin-top:2px">${sub}</div>`:''}
+  </div>`;
+
+  cont.innerHTML =
+    tarjeta('📍','Seleccionado', `<span style="font-size:11px;font-weight:700">${nombre}</span>`, 'var(--text)', mesLbl) +
+    tarjeta('⚡','Pérdida Técnica', fk(kwh), '#00B0F0', 'kWh / mes') +
+    tarjeta('📉','Pérdida Técnica %', pct!=null?pct.toFixed(2)+'%':'--', '#ED7D31') +
+    tarjeta('📊','Variación %', varTxt, varColor, 'vs. mes anterior') +
+    tarjeta('⚖️','PT − Reconocimiento CREG', margenTxt, margenColor, creg!=null?`Límite: ${creg.toFixed(2)}%`:'');
 }
 
 function labelMesSiguiente(m){
