@@ -963,6 +963,7 @@ tfoot td:first-child{text-align:left}
 #alim-nivel3-tab-ip>.card:first-child, #alim-nivel3-tab-tecnica>.card:first-child, #alim-nivel3-tab-comparativo>.card:first-child, #alim-nivel3-tab-mapa>.card:first-child{border-top-left-radius:0;border-top-right-radius:0}
 #alim-n21-tab-total>.card:first-child, #alim-n21-tab-comparativo>.card:first-child, #alim-n21-tab-variaciones>.card:first-child, #alim-n21-tab-mapa>.card:first-child{border-top-left-radius:0;border-top-right-radius:0}
 #alim-sub-tab-subestaciones>.card:first-child, #alim-sub-tab-alimentadores>.card:first-child{border-top-left-radius:0;border-top-right-radius:0}
+#alim3-tab-detalle>.card:first-child, #alim3-tab-top>.card:first-child{border-top-left-radius:0;border-top-right-radius:0}
 #alim-nivel3-tab-tecnica .split-wrap{align-items:flex-start}
 /* Diagrama Unifilar -- símbolos SVG (currentColor toma el color de estas
    clases, así los íconos ya son theme-aware sin nada extra). */
@@ -3601,16 +3602,26 @@ tfoot td:first-child{text-align:left}
   <div id="alim3-vacio" class="card"><div style="color:var(--text3)">Cargando…</div></div>
 
   <div id="alim3-contenido" class="hidden">
-    <div class="card">
-      <div class="fbar" style="margin-bottom:14px">
-        <label>Rango</label>
-        <input type="date" id="alim3-desde" onchange="alim3RenderSeleccion(); alim3RenderTablaVariacion(); alim3RenderChartCircuitos()">
-        <span style="font-size:11px;color:var(--text3)">→</span>
-        <input type="date" id="alim3-hasta" onchange="alim3RenderSeleccion(); alim3RenderTablaVariacion(); alim3RenderChartCircuitos()">
-        <label style="margin-left:10px">Zona</label>
-        <div id="alim3-zonas" style="display:flex;gap:6px;flex-wrap:wrap"></div>
-      </div>
 
+    <div class="pt-tabs">
+      <button type="button" class="pt-tab-btn activo" id="alim3-tab-btn-detalle" onclick="alim3IrATab('detalle')">Detalle por Alimentador</button>
+      <button type="button" class="pt-tab-btn" id="alim3-tab-btn-top" onclick="alim3IrATab('top')">Top y Variación</button>
+    </div>
+
+    <!-- Filtro Rango + Zona (chips) -- ÚNICO nodo, alim3IrATab() lo mueve
+         al tope de la .card de la pestaña activa. -->
+    <div id="alim3-filtro" class="fbar" style="margin-bottom:12px">
+      <label>Rango</label>
+      <input type="date" id="alim3-desde" onchange="alim3RenderSeleccion(); alim3RenderTablaVariacion(); alim3RenderChartCircuitos()">
+      <span style="font-size:11px;color:var(--text3)">→</span>
+      <input type="date" id="alim3-hasta" onchange="alim3RenderSeleccion(); alim3RenderTablaVariacion(); alim3RenderChartCircuitos()">
+      <label style="margin-left:10px">Zona</label>
+      <div id="alim3-zonas" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+    </div>
+
+    <!-- ===== PESTAÑA 1 · Detalle por Alimentador ===== -->
+    <div id="alim3-tab-detalle">
+    <div class="card">
       <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">
         <!-- Columna izquierda: lista de circuitos + indicador + comentarios -->
         <div style="flex:0 0 280px;max-width:280px;display:flex;flex-direction:column;gap:14px">
@@ -3663,6 +3674,10 @@ tfoot td:first-child{text-align:left}
       </div>
     </div>
 
+    </div><!-- /#alim3-tab-detalle -->
+
+    <!-- ===== PESTAÑA 2 · Top y Variación ===== -->
+    <div id="alim3-tab-top" class="hidden">
     <div class="card">
       <div class="fbar" style="justify-content:center;margin-bottom:10px">
         <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Top Alimentadores</div>
@@ -3783,6 +3798,7 @@ tfoot td:first-child{text-align:left}
         </div>
       </div>
     </div>
+    </div><!-- /#alim3-tab-top -->
   </div>
 </div>
 <!-- fin vista-alim-alimentadores -->
@@ -18980,11 +18996,31 @@ async function alim3Cargar(){
   alim3PoblarSelectorMesTop(claves);
   alim3RecalcularListaCache();
   alim3RenderListaAlimentadores();
+  alim3PoblarMselCircuitos();
+  alim3IrATab('detalle');
+}
+
+// Pestañas del módulo Alimentadores (mismo patrón que alimNivel3IrATab):
+// "Detalle por Alimentador" / "Top y Variación". El nodo #alim3-filtro
+// (Rango + Zona) se mueve al tope de la .card de la pestaña activa.
+function alim3IrATab(nombre){
+  ['detalle','top'].forEach(t=>{
+    document.getElementById('alim3-tab-'+t)?.classList.toggle('hidden', t!==nombre);
+    document.getElementById('alim3-tab-btn-'+t)?.classList.toggle('activo', t===nombre);
+  });
+  const card = document.querySelector('#alim3-tab-'+nombre+' > .card');
+  const filtro = document.getElementById('alim3-filtro');
+  if(card && filtro && filtro.parentElement !== card) card.prepend(filtro);
+  alim3RenderTodo();
+}
+
+function alim3RenderTodo(){
+  if(!ALIM_FILAS || !ALIM_FILAS.length) return;
   alim3RenderSeleccion();
   alim3RenderTablaTop();
   alim3RenderScatter();
   alim3RenderTablaVariacion();
-  alim3PoblarMselCircuitos();
+  alim3RenderChartCircuitos();
 }
 
 // Multiselect de circuitos (cualquier zona) para "Pérdida Gestionable
