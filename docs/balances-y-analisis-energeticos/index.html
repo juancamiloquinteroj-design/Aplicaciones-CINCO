@@ -550,10 +550,15 @@ canvas[id^="ch-tride-"]:active{cursor:grabbing}
 #circvar-tbl-wrap thead th,#circvar-tbl-wrap tbody td{padding:2px 5px}
 /* Detalle por Circuito -- pedido explícito y repetido ("sigue existiendo
    la separación entre gráfica, tabla y tarjetas"): se pegan los 3
-   bloques (filtros / gráfica+tabla / tarjetas) con gaps mínimos. */
-#perdidas-tab-detalle>.card{margin-bottom:8px}
-#perdidas-tab-detalle .split-wrap{gap:8px;margin-bottom:8px}
-#perdidas-tab-detalle .split-wrap>.card{margin-bottom:0}
+   bloques (filtros / gráfica+tabla / tarjetas) con gaps mínimos. Además
+   la tarjeta de la gráfica se vuelve flex-column y la gráfica crece para
+   llenar el alto de la tarjeta -- así no queda ese hueco debajo del
+   canvas cuando la tarjeta de la tabla (más alta) la estira. */
+#perdidas-tab-detalle>.card{margin-bottom:6px}
+#perdidas-tab-detalle .split-wrap{gap:6px;margin-bottom:6px;align-items:stretch}
+#perdidas-tab-detalle .split-wrap>.card{margin-bottom:0;display:flex;flex-direction:column}
+#perdidas-tab-detalle .split-wrap>.card>.chart-wrap{flex:1 1 auto;min-height:380px;height:auto}
+#perdidas-tab-evaluacion .split-wrap{align-items:flex-start}
 /* Evaluación Económica -- primero se pidió compacta; después ("la tabla
    está muy pequeña, ocupá ese espacio que está ahí") se la deja estirar
    al ancho completo de su columna (width:100%, no auto) y con fuente un
@@ -1572,28 +1577,28 @@ tfoot td:first-child{text-align:left}
          la gráfica se actualiza sola. -->
     <div class="split-wrap">
       <div class="card">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;flex-wrap:wrap;gap:8px">
-          <div style="flex:1;text-align:center">
-            <div id="chart-titulo" style="font-size:16px;font-weight:800;letter-spacing:1.5px;color:var(--text);text-transform:uppercase">Pérdidas Técnicas Total</div>
-          </div>
-          <div style="display:flex;gap:8px;flex-shrink:0">
-            <!-- Entrada/Salida opcional (pedido explícito previo) -- en un
-                 3er eje aparte cuando se activa, ver renderPrincipal(). -->
-            <button id="det-es-btn" onclick="detalleToggleEntradaSalida()" title="Sobreponer Entrada y Salida (en un eje aparte)"
-              style="display:flex;align-items:center;gap:6px;padding:6px 14px;background:transparent;color:var(--accent);border:1px solid var(--accent);border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">
-              ➕ Entrada/Salida
-            </button>
-            <!-- Pedido explícito ("quita ese botón de proyección y mejor
-                 coloca uno de variación en la gráfica"): toggle que agrega
-                 la variación mes a mes a las etiquetas -- ver
-                 detalleToggleVariacion() / renderPrincipal(). -->
-            <button id="det-var-btn" onclick="detalleToggleVariacion()" title="Mostrar la variación mes a mes en las etiquetas"
-              style="display:flex;align-items:center;gap:6px;padding:6px 14px;background:transparent;color:var(--accent);border:1px solid var(--accent);border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">
-              📊 Variación
-            </button>
-          </div>
+        <!-- Botones arriba a la derecha, título CENTRADO debajo a lo ancho
+             de la tarjeta (pedido explícito: "el título de la gráfica
+             debe ser centrado"). Fila de botones con alto mínimo para no
+             sumar separación. -->
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:2px">
+          <!-- Entrada/Salida opcional (pedido explícito previo) -- en un
+               3er eje aparte cuando se activa, ver renderPrincipal(). -->
+          <button id="det-es-btn" onclick="detalleToggleEntradaSalida()" title="Sobreponer Entrada y Salida (en un eje aparte)"
+            style="display:flex;align-items:center;gap:6px;padding:5px 12px;background:transparent;color:var(--accent);border:1px solid var(--accent);border-radius:8px;font-size:11.5px;font-weight:600;cursor:pointer;white-space:nowrap">
+            ➕ Entrada/Salida
+          </button>
+          <!-- Pedido explícito ("quita ese botón de proyección y mejor
+               coloca uno de variación en la gráfica"): toggle que agrega
+               la variación mes a mes a las etiquetas -- ver
+               detalleToggleVariacion() / renderPrincipal(). -->
+          <button id="det-var-btn" onclick="detalleToggleVariacion()" title="Mostrar la variación mes a mes en las etiquetas"
+            style="display:flex;align-items:center;gap:6px;padding:5px 12px;background:transparent;color:var(--accent);border:1px solid var(--accent);border-radius:8px;font-size:11.5px;font-weight:600;cursor:pointer;white-space:nowrap">
+            📊 Variación
+          </button>
         </div>
-        <div class="chart-wrap" style="height:420px"><canvas id="ch-principal"></canvas></div>
+        <div id="chart-titulo" style="text-align:center;font-size:16px;font-weight:800;letter-spacing:1.5px;color:var(--text);text-transform:uppercase;margin:0 0 6px">Pérdidas Técnicas Total</div>
+        <div class="chart-wrap"><canvas id="ch-principal"></canvas></div>
       </div>
 
       <div class="card">
@@ -1679,7 +1684,7 @@ tfoot td:first-child{text-align:left}
            colocará una gráfica"), gráfica de barras + línea a la
            derecha. -->
       <div class="split-wrap">
-        <div class="tbl-wrap tbl-compacta" id="valuacion-tbl-wrap" style="max-height:520px;overflow-y:auto">
+        <div class="tbl-wrap tbl-compacta" id="valuacion-tbl-wrap">
           <table>
             <thead>
               <tr>
@@ -25280,43 +25285,51 @@ function renderValuacionZonas(){
     </tr>`;
   }).join('');
 
-  // Pie de tabla -- totales por nivel de tensión (pedido explícito:
-  // "la tabla tiene que presentar en la parte inferior el total de
-  // pérdida referida al STN por nivel de tensión, y el costo no
-  // reconocido por nivel de tensión también"). Siempre se calcula
-  // desde la data cruda por (zona,nivel), sin importar si la tabla está
-  // contraída. Columnas alineadas: Pérd. ref. STN = col 7, Costo No
-  // Recon. = col 12 (de 12).
+  // Pie de tabla -- totales por NIVEL DE TENSIÓN (el reconocimiento CREG
+  // se evalúa por nivel, no por zona: por eso "no reconocida" sólo sale
+  // > 0 en los niveles cuyo total de pérdida supera el cupo del nivel;
+  // en los demás es 0, con margen a favor). Se calcula desde la data
+  // cruda por (zona,nivel), que ya viene neteada por nivel desde el
+  // backend. Columnas (de 12): 7 Pérd. ref. STN · 8 Costo total ·
+  // 9 Recon. ref. STN · 10 No Recon. ref. STN · 11 Costo Recon. ·
+  // 12 Costo No Recon.
   const porNivel = {};
   VALUACION_ZONAS_CRUDA.forEach(f=>{
     const n = f.nivel || 0;
     const pr = _factorSTN(f.nivel);
-    if(!porNivel[n]) porNivel[n] = {perdRef:0, noReconRef:0};
-    porNivel[n].perdRef += f.perdidas_kwh * pr;
-    porNivel[n].noReconRef += f.pt_no_reconocida_kwh * pr;
+    if(!porNivel[n]) porNivel[n] = {perdRef:0, reconRef:0, noReconRef:0, cupoKwh:0, realKwh:0};
+    const d = porNivel[n];
+    d.perdRef      += f.perdidas_kwh * pr;
+    d.reconRef     += (f.pt_reconocida_kwh||0) * pr;
+    d.noReconRef   += (f.pt_no_reconocida_kwh||0) * pr;
+    d.cupoKwh      += (f.reconocimiento_creg_kwh||0);
+    d.realKwh      += f.perdidas_kwh;
   });
   const nivelesOrd = Object.keys(porNivel).map(Number).sort((a,b)=>a-b);
-  let totRef = 0, totNoRec = 0;
+  let tPerd=0, tRecon=0, tNoRec=0;
+  const filaFoot = (etq, d, bold) => {
+    const nrc = d.noReconRef>0.5 ? 'var(--red)' : 'var(--green)';
+    const fw = bold ? '800' : '700';
+    const margen = d.cupoKwh - d.realKwh; // > 0 = pérdida por debajo del cupo
+    const nota = (d.noReconRef<=0.5 && margen>0)
+      ? ` <span style="font-weight:400;color:var(--text3)">(margen +${fK(margen)} kWh)</span>` : '';
+    return `<tr${bold?' style="border-top:2px solid var(--border)"':''}>
+      <td colspan="4" style="text-align:right;font-weight:${fw};color:var(--text2)">${etq}${nota}</td>
+      <td colspan="2"></td>
+      <td style="color:var(--red);font-weight:${fw}">${fK(d.perdRef)}</td>
+      <td style="font-weight:${fw}">${f$(d.perdRef*costo)}</td>
+      <td style="color:var(--green);font-weight:${fw}">${fK(d.reconRef)}</td>
+      <td style="color:${nrc};font-weight:${fw}">${fK(d.noReconRef)}</td>
+      <td style="color:var(--green);font-weight:${fw}">${f$(d.reconRef*costo)}</td>
+      <td style="color:${nrc};font-weight:${fw}">${f$(d.noReconRef*costo)}</td>
+    </tr>`;
+  };
   const filasFoot = nivelesOrd.map(n=>{
     const d = porNivel[n];
-    totRef += d.perdRef; totNoRec += d.noReconRef;
-    const nrc = d.noReconRef>0 ? 'var(--red)' : 'var(--green)';
-    return `<tr>
-      <td colspan="4" style="text-align:right;font-weight:600;color:var(--text2)">${n ? 'Σ Nivel '+n : 'Σ Sin nivel'}</td>
-      <td colspan="2"></td>
-      <td style="color:var(--red);font-weight:700">${fK(d.perdRef)}</td>
-      <td colspan="4"></td>
-      <td style="color:${nrc};font-weight:700">${f$(d.noReconRef*costo)}</td>
-    </tr>`;
+    tPerd+=d.perdRef; tRecon+=d.reconRef; tNoRec+=d.noReconRef;
+    return filaFoot(n ? 'Σ Nivel '+n : 'Σ Sin nivel', d, false);
   }).join('');
-  const nrcT = totNoRec>0 ? 'var(--red)' : 'var(--green)';
-  tf.innerHTML = filasFoot + `<tr style="border-top:2px solid var(--border)">
-      <td colspan="4" style="text-align:right;font-weight:800">TOTAL</td>
-      <td colspan="2"></td>
-      <td style="color:var(--red);font-weight:800">${fK(totRef)}</td>
-      <td colspan="4"></td>
-      <td style="color:${nrcT};font-weight:800">${f$(totNoRec*costo)}</td>
-    </tr>`;
+  tf.innerHTML = filasFoot + filaFoot('TOTAL', {perdRef:tPerd, reconRef:tRecon, noReconRef:tNoRec, cupoKwh:0, realKwh:0}, true);
   renderValuacionChart();
 }
 
