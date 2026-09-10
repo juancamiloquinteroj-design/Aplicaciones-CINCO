@@ -24063,25 +24063,30 @@ function cargarFactoresSTN(){
 }
 function _factorSTN(nivel){ return _factorSTNmes(nivel); }
 
-// Costo (tarifa) G+T+R del kWh referido al STN -- pedido explícito ("la
-// tarifa que escribo no está quedando guardada" + "la tarifa cambia para
-// todos los meses"): UN solo valor por operador (no por mes), se aplica a
-// toda la serie. Se guarda en localStorage.
-function _costoKey(){
+// Costo (tarifa) G+T+R del kWh referido al STN -- se guarda POR MES
+// (pedido explícito: "la tarifa de enero es distinta a la de febrero, eso
+// es lo que hay que guardar"). Cada mes su propio valor en localStorage;
+// la gráfica de serie lee el de cada mes (0 si no se cargó todavía).
+function _costoKey(mes){
   const slug = (OPERADOR && OPERADOR.slug) ? OPERADOR.slug : 'default';
-  return `pt_costo_gtr_${slug}`;
+  return `pt_costo_gtr_${slug}_${mes}`;
+}
+function _costoDeMes(mes){
+  try{ return parseFloat(localStorage.getItem(_costoKey(mes))) || 0; }catch(e){ return 0; }
 }
 function guardarCostoKwh(){
+  const mes = document.getElementById('fm-mes')?.value;
   const el = document.getElementById('costo-kwh');
-  if(!el) return;
-  try{ localStorage.setItem(_costoKey(), el.value || '0'); }catch(e){}
+  if(!mes || !el) return;
+  try{ localStorage.setItem(_costoKey(mes), el.value || '0'); }catch(e){}
 }
 function cargarCostoKwh(){
+  const mes = document.getElementById('fm-mes')?.value;
   const el = document.getElementById('costo-kwh');
-  if(!el) return;
+  if(!mes || !el) return;
   let v = null;
-  try{ v = localStorage.getItem(_costoKey()); }catch(e){}
-  if(v!=null) el.value = v;
+  try{ v = localStorage.getItem(_costoKey(mes)); }catch(e){}
+  el.value = (v!=null) ? v : '0';   // sin guardado -> 0 (cada mes independiente)
 }
 
 async function cargarZonas(){
@@ -25453,11 +25458,10 @@ function renderValuacionChart(){
   if(vacio) vacio.classList.add('hidden');
   ctx.classList.remove('hidden');
 
-  const costo = parseFloat(document.getElementById('costo-kwh')?.value||'0') || 0;
   const labels        = serie.map(s => labelMes(s.mes));
   const energiaRecon  = serie.map(s => s.reconocida_ref_kwh);
-  const costoRecon    = serie.map(s => (s.reconocida_ref_kwh||0) * costo);
-  const costoNoRecon  = serie.map(s => (s.no_reconocida_ref_kwh||0) * costo);
+  const costoRecon    = serie.map(s => (s.reconocida_ref_kwh||0) * _costoDeMes(s.mes));
+  const costoNoRecon  = serie.map(s => (s.no_reconocida_ref_kwh||0) * _costoDeMes(s.mes));
   const fD = v => v==null ? '' : '$ '+Math.round(v).toLocaleString('es-CO');
   const fmtDineroEje = v => v>=1e9 ? '$'+(v/1e9).toFixed(1)+' MM' : v>=1e6 ? '$'+(v/1e6).toFixed(0)+' M' : '$'+Math.round(v).toLocaleString('es-CO');
 
@@ -25468,21 +25472,26 @@ function renderValuacionChart(){
       datasets:[
         {type:'bar', label:'Energía reconocida (kWh/mes)', data: energiaRecon, yAxisID:'yKwh', order:3,
           backgroundColor:'rgba(0,176,80,.55)', borderColor:'#00B050', borderWidth:1, borderRadius:3,
-          datalabels:{display:false}},
+          // Valor DENTRO de la barra, arriba (pedido explícito).
+          datalabels:{display:true, anchor:'end', align:'start', offset:4, rotation:-90,
+            formatter:v=>v?fmtGwh(v):'', font:{size:10,weight:'800'}, color:'#ffffff',
+            textStrokeColor:'#0a6b33', textStrokeWidth:3}},
         {type:'bar', label:'Costo reconocido ($/mes)', data: costoRecon, yAxisID:'yDinero', order:3,
           backgroundColor:'rgba(0,112,192,.55)', borderColor:'#0070C0', borderWidth:1, borderRadius:3,
-          datalabels:{display:false}},
+          datalabels:{display:true, anchor:'end', align:'start', offset:4, rotation:-90,
+            formatter:v=>v?fmtDineroEje(v):'', font:{size:10,weight:'800'}, color:'#ffffff',
+            textStrokeColor:'#0a3d6b', textStrokeWidth:3}},
         {type:'line', label:'Costo NO reconocido ($/mes)', data: costoNoRecon, yAxisID:'yDinero', order:1,
           borderColor:'#C00000', backgroundColor:'transparent', borderWidth:2.5, borderDash:[6,3],
-          pointRadius:3, pointHoverRadius:6, tension:0, spanGaps:true,
-          datalabels:{display:true, anchor:'end', align:'top', offset:6,
-            formatter:v=>v?fmtDineroEje(v):'', font:{size:9,weight:'800'}, color:'#C00000',
-            textStrokeColor: dark?'#000000':'#ffffff', textStrokeWidth:3}},
+          pointRadius:4, pointHoverRadius:6, tension:0, spanGaps:true,
+          datalabels:{display:true, anchor:'end', align:'top', offset:8,
+            formatter:v=>v?fmtDineroEje(v):'', font:{size:12,weight:'800'}, color:'#C00000',
+            textStrokeColor: dark?'#000000':'#ffffff', textStrokeWidth:4}},
       ],
     },
     options:{
       responsive:true, maintainAspectRatio:false,
-      layout:{padding:{top:24, right:8}},
+      layout:{padding:{top:30, right:8}},
       interaction:{mode:'index', intersect:false},
       plugins:{
         legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:12}, color:tickC}},
