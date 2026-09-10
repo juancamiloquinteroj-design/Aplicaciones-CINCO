@@ -2962,8 +2962,11 @@ tfoot td:first-child{text-align:left}
           <!-- Análisis por mes -- lo escribe el usuario y se ve en el
                tooltip de la gráfica al pasar el mouse por ese mes. -->
           <div style="margin-top:14px">
-            <label style="display:block;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--text3);margin-bottom:4px">Análisis · <span id="alim-nivel4-analisis-mes-lbl">—</span></label>
-            <textarea id="alim-nivel4-analisis-texto" rows="4" oninput="alimNivel4GuardarAnalisis()" placeholder="Escribe acá el análisis de este mes. Aparecerá en la gráfica al pasar el mouse por el dato de ese mes."
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+              <label style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--text3)">Análisis del mes</label>
+              <select id="alim-nivel4-analisis-sel" onchange="alimNivel4AnalisisSelCambio()" style="font-size:12px;padding:3px 6px"></select>
+            </div>
+            <textarea id="alim-nivel4-analisis-texto" rows="4" oninput="alimNivel4GuardarAnalisis()" placeholder="Escribe acá el análisis de este mes. Aparecerá en las gráficas al pasar el mouse por el dato de ese mes."
               style="width:100%;box-sizing:border-box;font-size:12px;line-height:1.5;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);resize:vertical"></textarea>
           </div>
           </div>
@@ -15875,19 +15878,21 @@ function _alimNivelComparativoTarjetasHtml(mensual, tecnicaPorMes, claveSeleccio
 // `sufijo` ('' mensual, '12' anual 12M móvil) elige qué campos leer
 // (entrada/entrada12, etc.) -- misma función para las 2 gráficas lado a
 // lado (Mensual/Anual), igual criterio que alim-n21 (botón/gráfica anual).
-function _alimNivelConstruirChartMensual(cv, mensual, etiquetaNivel, seriesExtra, sufijo, sinRelleno){
+function _alimNivelConstruirChartMensual(cv, mensual, etiquetaNivel, seriesExtra, sufijo, sinRelleno, notaPorClave){
   if(!cv) return null;
   sufijo = sufijo || '';
   const campoPct = 'pct'+sufijo, campoEntrada = 'entrada'+sufijo, campoSalida = 'salida'+sufijo, campoPerdida = 'perdida'+sufijo;
   const etiquetaPeriodo = sufijo === '12' ? '12M' : 'Mes';
   const visibles = mensual.filter(f => f[campoPct] != null);
   if(!visibles.length) return null;
-  // Tope del eje (oculto) de la línea de Pérdida kWh -- ~3.3x el máximo
-  // real para que la línea quede confinada al TERCIO INFERIOR del gráfico
-  // (pedido explícito: "debe verse en la parte de abajo acorde a la
-  // escala", no cruzando todo el alto).
+  const clavesVis = visibles.map(f => f.clave);
+  // Eje propio, VISIBLE, para la línea de Pérdida kWh -- pedido explícito
+  // ("no hay coherencia: el eje muestra 142M-160M y la pérdida es 133.722;
+  // el eje no tiene sentido"). La Pérdida (~cientos de miles) tiene su
+  // propia escala rotulada a la izquierda; queda en la parte baja pero
+  // ya se entiende contra qué se lee.
   const _maxPerd = Math.max(1, ...visibles.map(f => +f[campoPerdida] || 0));
-  const yPerdMax = _maxPerd * 3.3;
+  const yPerdMax = Math.ceil(_maxPerd * 2.6 / 100000) * 100000;
   const dark = document.documentElement.getAttribute('data-theme')==='dark';
   const tickC = dark ? '#ffffff' : '#000000';
   const tickXFuerte = dark ? '#ffffff' : '#000000';
@@ -15932,10 +15937,19 @@ function _alimNivelConstruirChartMensual(cv, mensual, etiquetaNivel, seriesExtra
       interaction:{mode:'index', intersect:false},
       plugins:{
         legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:12}, color:tickC}},
-        tooltip:{callbacks:{label:c=>{
-          if(c.raw==null) return null;
-          return c.dataset.yAxisID==='yPct' ? `${c.dataset.label}: ${c.raw.toFixed(2)}%` : `${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`;
-        }}},
+        tooltip:{callbacks:{
+          label:c=>{
+            if(c.raw==null) return null;
+            return c.dataset.yAxisID==='yPct' ? `${c.dataset.label}: ${c.raw.toFixed(2)}%` : `${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`;
+          },
+          afterBody:(items)=>{
+            if(typeof notaPorClave !== 'function' || !items.length) return;
+            const nota = notaPorClave(clavesVis[items[0].dataIndex]);
+            if(!nota) return;
+            const wrap = nota.replace(/(.{1,58})(\s+|$)/g, '$1\n').trim().split('\n');
+            return ['', '📝 Análisis:'].concat(wrap);
+          },
+        }},
         zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:3}}},
       },
       scales:{
@@ -15946,7 +15960,10 @@ function _alimNivelConstruirChartMensual(cv, mensual, etiquetaNivel, seriesExtra
         y:{position:'left', grid:{color:gridC},
           ticks:{color:tickC, font:{size:10}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
           title:{display:true, text:'Energía (kWh)', color:tickC, font:{size:10}}},
-        yPerd:{type:'linear', position:'right', display:false, min:0, max:yPerdMax},
+        yPerd:{type:'linear', position:'left', min:0, max:yPerdMax, grid:{drawOnChartArea:false},
+          ticks:{color:'#7030A0', font:{size:9}, maxTicksLimit:5,
+            callback:v=> v>=1e6 ? (v/1e6).toFixed(1)+'M' : Math.round(v/1000)+'k'},
+          title:{display:true, text:'Pérdida (kWh)', color:'#7030A0', font:{size:9}}},
       },
     },
   });
@@ -16504,8 +16521,17 @@ function alimNivel4GuardarAnalisis(){
     if(txt){ localStorage.setItem(_analisisKeyN4(mes), txt); ALIM_NIVEL4_ANALISIS[mes] = txt; }
     else { localStorage.removeItem(_analisisKeyN4(mes)); delete ALIM_NIVEL4_ANALISIS[mes]; }
   }catch(e){}
-  // Refresca sólo la gráfica (para que el tooltip tome el texto nuevo).
-  if(chAlimNivel4Tecnica){ chAlimNivel4Tecnica.update('none'); }
+  // El tooltip de las gráficas lee ALIM_NIVEL4_ANALISIS en vivo -- basta
+  // un update sin animación para que tomen el texto nuevo.
+  [chAlimNivel4Mensual, chAlimNivel4Anual, chAlimNivel4Tecnica].forEach(c => { if(c) c.update('none'); });
+}
+// Cambio del selector de mes de la caja de análisis.
+function alimNivel4AnalisisSelCambio(){
+  const sel = document.getElementById('alim-nivel4-analisis-sel');
+  const ta = document.getElementById('alim-nivel4-analisis-texto');
+  if(!sel || !ta) return;
+  ALIM_NIVEL4_ANALISIS_MES = sel.value;
+  ta.value = ALIM_NIVEL4_ANALISIS[sel.value] || '';
 }
 
 // Acumulado 12M móvil de la pérdida TÉCNICA (para la vista Anual).
@@ -16563,13 +16589,20 @@ function alimNivel4RenderTodo(){
   const _hastaMes = (document.getElementById('alim-nivel4-hasta')?.value || '').slice(0,7);
   const _mesesReales = mensualCompleto.filter(f => f.pct != null).map(f => f.clave);
   if(_hastaMes && _mesesReales.includes(_hastaMes)) claveAnalisis = _hastaMes;
-  // Caja de análisis por mes (se muestra en el tooltip de la gráfica).
-  _cargarAnalisisN4(mensualCompleto.map(f => f.clave));
-  ALIM_NIVEL4_ANALISIS_MES = claveAnalisis;
+  // Caja de análisis por mes (se muestra en el tooltip de TODAS las
+  // gráficas). Tiene su propio selector de mes -- pedido explícito
+  // ("debe tener un filtro para colocar el análisis de otro mes").
+  const _clavesN4 = mensualCompleto.map(f => f.clave);
+  _cargarAnalisisN4(_clavesN4);
+  const _selAn = document.getElementById('alim-nivel4-analisis-sel');
+  if(_selAn){
+    const _prev = _selAn.value;
+    _selAn.innerHTML = _clavesN4.map(c => `<option value="${c}">${labelMesLargo(c)}</option>`).join('');
+    _selAn.value = _clavesN4.includes(_prev) ? _prev : (_clavesN4.includes(claveAnalisis) ? claveAnalisis : _clavesN4[_clavesN4.length-1]);
+  }
+  ALIM_NIVEL4_ANALISIS_MES = _selAn ? _selAn.value : claveAnalisis;
   const _taAnalisis = document.getElementById('alim-nivel4-analisis-texto');
-  if(_taAnalisis) _taAnalisis.value = (claveAnalisis && ALIM_NIVEL4_ANALISIS[claveAnalisis]) || '';
-  const _lblAnalisis = document.getElementById('alim-nivel4-analisis-mes-lbl');
-  if(_lblAnalisis) _lblAnalisis.textContent = claveAnalisis ? labelMesLargo(claveAnalisis) : '—';
+  if(_taAnalisis) _taAnalisis.value = ALIM_NIVEL4_ANALISIS[ALIM_NIVEL4_ANALISIS_MES] || '';
   document.getElementById('alim-nivel4-btn-var').classList.toggle('activo', ALIM_NIVEL4_VAR);
   document.getElementById('alim-nivel4-btn-relleno').classList.toggle('activo', ALIM_NIVEL4_SIN_RELLENO);
 
@@ -16577,13 +16610,16 @@ function alimNivel4RenderTodo(){
   document.getElementById('alim-nivel4-analisis').innerHTML = _alimNivelComparativoTarjetasHtml(mensualCompleto, tecnicaPorMes, claveAnalisis);
   document.getElementById('alim-nivel4-narrativa').innerHTML = _narrativaEntradaSalidaHtml(mensualCompleto, '', claveAnalisis, true);
 
+  // Análisis del mes -> se muestra en el tooltip de TODAS las gráficas
+  // de esta vista (pedido explícito).
+  const _notaPorClave = c => ALIM_NIVEL4_ANALISIS[c] || null;
+
   if(chAlimNivel4Mensual) chAlimNivel4Mensual.destroy();
-  chAlimNivel4Mensual = _alimNivelConstruirChartMensual(document.getElementById('ch-alim-nivel4-mensual'), mensual, 'Nivel 4', null, '', ALIM_NIVEL4_SIN_RELLENO);
+  chAlimNivel4Mensual = _alimNivelConstruirChartMensual(document.getElementById('ch-alim-nivel4-mensual'), mensual, 'Nivel 4', null, '', ALIM_NIVEL4_SIN_RELLENO, _notaPorClave);
   if(chAlimNivel4Anual) chAlimNivel4Anual.destroy();
-  chAlimNivel4Anual = _alimNivelConstruirChartMensual(document.getElementById('ch-alim-nivel4-anual'), anual, 'Nivel 4', null, '12', ALIM_NIVEL4_SIN_RELLENO);
+  chAlimNivel4Anual = _alimNivelConstruirChartMensual(document.getElementById('ch-alim-nivel4-anual'), anual, 'Nivel 4', null, '12', ALIM_NIVEL4_SIN_RELLENO, _notaPorClave);
   if(chAlimNivel4Tecnica) chAlimNivel4Tecnica.destroy();
   const _cvTec = document.getElementById('ch-alim-nivel4-tecnica');
-  const _notaPorClave = c => ALIM_NIVEL4_ANALISIS[c] || null;
   if(ALIM_NIVEL4_TEC_MODO === 'anual'){
     const m12 = alimN21Con12Meses(mensualCompleto).map(f => ({...f, perdida:f.perdida12, pct:f.pct12, entrada:f.entrada12, salida:f.salida12}));
     const mensual12 = _alimNivelVisibles(m12, 'alim-nivel4').filter(f => f.pct != null);
@@ -25595,27 +25631,29 @@ function renderValuacionChart(){
   const minEnergia = Math.min(...energiaRecon.filter(v=>v>0));
   const yKwhMin = isFinite(minEnergia) ? Math.max(0, Math.floor(minEnergia/1e6)*1e6 - 200000) : 0;
 
+  const colBar = '#A9CCE3';   // azul claro -- deja resaltar las 2 líneas
+  const colRecon = '#00A650', colNoRecon = '#C00000';
+
   if(chValuacionZonas) chValuacionZonas.destroy();
   chValuacionZonas = new Chart(ctx, {
     data:{
       labels,
       datasets:[
-        // Estilo Excel: 1 columna azul (energía) + 2 líneas sólidas con
-        // viñeta en cada punto (Costo reconocido VERDE / NO reconocido
-        // ROJO -- colores intercambiados, pedido explícito).
+        // Estilo Excel: 1 columna azul CLARA (energía) + 2 líneas sólidas
+        // con viñeta (Costo reconocido VERDE / NO reconocido ROJO).
         {type:'bar', label:'Energía reconocida (kWh/mes)', data: energiaRecon, yAxisID:'yKwh', order:3,
-          backgroundColor:'#4472C4', borderColor:'#4472C4', borderWidth:0, borderRadius:0,
-          pointStyle:'rect', categoryPercentage:0.55, barPercentage:0.6,
-          // Valor ENCIMA de la columna, chico, sin estorbar a las líneas.
-          datalabels:{display:true, anchor:'end', align:'top', offset:2,
-            formatter:v=>v?fmtGwh(v):'', font:{size:8.5,weight:'700'}, color:dark?'#cbd5e1':'#333333'}},
+          backgroundColor:colBar, borderColor:colBar, borderWidth:0, borderRadius:0,
+          categoryPercentage:0.55, barPercentage:0.62,
+          // Valor DENTRO de la barra, arriba, VERTICAL (pedido explícito).
+          datalabels:{display:true, anchor:'end', align:'start', offset:5, rotation:-90,
+            formatter:v=>v?fmtGwh(v):'', font:{size:10,weight:'800'}, color:'#1b3a5c'}},
         {type:'line', label:'Costo reconocido ($/mes)', data: costoRecon, yAxisID:'yDinero', order:1,
-          borderColor:'#00A650', backgroundColor:'transparent', borderWidth:2.5,
-          pointRadius:3.5, pointHoverRadius:6, pointBackgroundColor:'#00A650', pointBorderColor:'#ffffff', pointBorderWidth:1,
+          borderColor:colRecon, backgroundColor:'transparent', borderWidth:2.5,
+          pointRadius:3.5, pointHoverRadius:6, pointBackgroundColor:colRecon, pointBorderColor:'#ffffff', pointBorderWidth:1,
           tension:0, spanGaps:true, datalabels: dlLinea('#0a7a3c','bottom')},
         {type:'line', label:'Costo NO reconocido ($/mes)', data: costoNoRecon, yAxisID:'yDinero', order:2,
-          borderColor:'#C00000', backgroundColor:'transparent', borderWidth:2.5,
-          pointRadius:3.5, pointHoverRadius:6, pointBackgroundColor:'#C00000', pointBorderColor:'#ffffff', pointBorderWidth:1,
+          borderColor:colNoRecon, backgroundColor:'transparent', borderWidth:2.5,
+          pointRadius:3.5, pointHoverRadius:6, pointBackgroundColor:colNoRecon, pointBorderColor:'#ffffff', pointBorderWidth:1,
           tension:0, spanGaps:true, datalabels: dlLinea('#C00000','bottom')},
       ],
     },
@@ -25624,7 +25662,16 @@ function renderValuacionChart(){
       layout:{padding:{top:26, right:14, left:6, bottom:4}},
       interaction:{mode:'index', intersect:false},
       plugins:{
-        legend:{display:true, position:'bottom', labels:{boxWidth:22, font:{size:12}, color:tickC, padding:16}},
+        legend:{display:true, position:'bottom', labels:{
+          usePointStyle:false, boxWidth:18, boxHeight:12, font:{size:12}, color:tickC, padding:16,
+          // Recuadro de color lleno (pedido: "no se ven los colores de la
+          // leyenda") -- se arma a mano para que cada uno lleve su color.
+          generateLabels: (ch) => ch.data.datasets.map((ds,i) => {
+            const oculto = ch.getDatasetMeta(i).hidden;
+            return {text:(oculto?'☐  ':'☑  ')+ds.label, fillStyle:ds.borderColor,
+              strokeStyle:ds.borderColor, lineWidth:0, hidden:oculto, datasetIndex:i};
+          }),
+        }},
         tooltip:{callbacks:{label:c=>{
           if(c.raw==null) return null;
           const esKwh = c.dataset.yAxisID==='yKwh';
