@@ -142,7 +142,7 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(
 /* Texto explicativo debajo de cada tabla de "Información de Balance
    Energético" -- pedido explícito ("en la parte inferior de cada tabla
    colocar un texto explicativo de cada una"). */
-.ip-explicacion-tabla{font-size:10.5px;color:var(--text3);line-height:1.5;text-align:center;margin:8px 0 0;max-width:340px}
+.ip-explicacion-tabla{font-size:12.5px;color:var(--text2);line-height:1.6;text-align:center;margin:10px 0 0;max-width:360px}
 /* Tablas "Por qué crece el indicador" (Interanual/Mensual) de Nivel 4 y
    Nivel 3 -- mismo criterio que .ip-tabla-compacta (achica letra/padding
    vía CSS, SIN tocar _narrativaTablaHtml/_narrativaEntradaSalidaHtml,
@@ -1979,16 +1979,43 @@ tfoot td:first-child{text-align:left}
 
     <!-- Análisis IPT -- reemplaza las tarjetas resumen que había acá
          antes (pedido explícito: "quita esas tarjetas y mejor el
-         análisis"). El selector "Mes del análisis" también manda en la
-         tabla "Por qué crece" y la caja de balance de la pestaña
-         "Información de Balance Energético" (ver ipGenerarAnalisisPrincipal). -->
-    <div style="border-top:1px solid var(--border);margin:14px -22px 0;padding:14px 22px 0">
-      <div class="fbar" style="margin-bottom:6px">
+         análisis"). El selector "Mes del análisis" (nodo único, ver
+         ipIrATab) también manda en la tabla "Por qué crece" y la caja de
+         balance de la pestaña "Información de Balance Energético" -- se
+         MUEVE a esa pestaña cuando está activa, para poder cambiar el mes
+         desde ahí también (pedido explícito: "debe tener filtro de año y
+         mes para poder cambiar la información"), ver
+         ipGenerarAnalisisPrincipal. -->
+    <div id="ip-analisis-ipt-caja" style="border-top:1px solid var(--border);margin:14px -22px 0;padding:14px 22px 0">
+      <div class="fbar" id="ip-analisis-mes-filtro" style="margin-bottom:6px">
         <label style="font-size:10.5px" title="El análisis cambia cada mes -- elige un mes anterior para ver cómo se veía esa nota en su momento">Mes del análisis</label>
         <select id="ip-analisis-mes" onchange="ipGenerarAnalisisPrincipal()" style="padding:3px 6px;font-size:10.5px;border-radius:6px"></select>
       </div>
       <div id="ip-mensual-comentario" class="ip-comentario-caja"></div>
     </div>
+  </div>
+
+  <!-- Configuración de mes (Versión XM / Pj reconocida) -- SOLO en esta
+       pestaña, pedido explícito ("porque en todas las pestañas está lo
+       de configurar mes, solo debería estar en la primera"; antes vivía
+       fuera de las pestañas, así que se veía en las 5 a la vez). -->
+  <div class="card ip-config-compacta">
+    <div class="fbar" style="margin-bottom:0">
+      <label title="Versión de liquidación de XM (3-6) y % de pérdida reconocida por nivel -- criterio manual, sin regla fija">Configurar mes</label>
+      <select id="ip-config-anio"></select>
+      <select id="ip-config-mes"></select>
+      <label>Versión XM</label>
+      <input type="number" id="ip-config-version" min="3" max="20" step="1" title="El histórico ya usó hasta la versión 9 -- XM sigue republicando liquidaciones viejas con el tiempo" style="width:56px;padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg)">
+      <label title="% pérdida reconocida Nivel 2">Pj N2</label>
+      <input type="number" id="ip-config-pj2" step="0.01" style="width:64px;padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg)">
+      <label title="% pérdida reconocida Nivel 3">Pj N3</label>
+      <input type="number" id="ip-config-pj3" step="0.01" style="width:64px;padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg)">
+      <label title="Fracción (no %) de pérdida reconocida Nivel 4">Pj N4</label>
+      <input type="number" id="ip-config-pj4" step="0.0001" style="width:72px;padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg)">
+      <button class="btn-theme" style="width:auto;padding:0 14px" onclick="ipGuardarVersion()">Guardar y recalcular</button>
+      <button class="btn-excel" style="margin-left:auto" onclick="ipDescargarExcel()" title="Descargar el histórico completo en el mismo formato de IP_Reg">⬇ Excel</button>
+    </div>
+    <div id="ip-config-msg" class="tm-modal-msg"></div>
   </div>
   </div><!-- /#ip-tab-anual -->
 
@@ -2023,7 +2050,11 @@ tfoot td:first-child{text-align:left}
   <!-- ===== PESTAÑA 4 · Información de Balance Energético ===== -->
   <!-- Centrado -- pedido explícito ("organizar esas tablas más
        centradas") -- justify-content:center en vez de dejarlas pegadas a
-       la izquierda con flex-basis fijo. -->
+       la izquierda con flex-basis fijo. El filtro "Mes del análisis" (año
+       y mes) se MUEVE acá desde la pestaña 1 cuando esta pestaña está
+       activa (nodo único #ip-analisis-mes-filtro, ver ipIrATab) --
+       pedido explícito ("debe tener filtro de año y mes para poder
+       cambiar la información"). -->
   <div id="ip-tab-balance" class="hidden">
   <div class="card">
     <div style="display:flex;gap:28px;flex-wrap:wrap;align-items:flex-start;justify-content:center">
@@ -2076,30 +2107,6 @@ tfoot td:first-child{text-align:left}
     </div>
   </div>
   </div><!-- /#ip-tab-nivel1 -->
-
-  <!-- Configuración de mes (Versión XM / Pj reconocida) -- movida acá
-       abajo, pedido explícito ("bajarlo al final que no ocupe tanto
-       espacio"): aplica a todo el módulo (no a una pestaña puntual), pero
-       se usa poco y no necesita estar arriba compitiendo con los
-       filtros de la gráfica. -->
-  <div class="card ip-config-compacta">
-    <div class="fbar" style="margin-bottom:0">
-      <label title="Versión de liquidación de XM (3-6) y % de pérdida reconocida por nivel -- criterio manual, sin regla fija">Configurar mes</label>
-      <select id="ip-config-anio"></select>
-      <select id="ip-config-mes"></select>
-      <label>Versión XM</label>
-      <input type="number" id="ip-config-version" min="3" max="20" step="1" title="El histórico ya usó hasta la versión 9 -- XM sigue republicando liquidaciones viejas con el tiempo" style="width:56px;padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg)">
-      <label title="% pérdida reconocida Nivel 2">Pj N2</label>
-      <input type="number" id="ip-config-pj2" step="0.01" style="width:64px;padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg)">
-      <label title="% pérdida reconocida Nivel 3">Pj N3</label>
-      <input type="number" id="ip-config-pj3" step="0.01" style="width:64px;padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg)">
-      <label title="Fracción (no %) de pérdida reconocida Nivel 4">Pj N4</label>
-      <input type="number" id="ip-config-pj4" step="0.0001" style="width:72px;padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg)">
-      <button class="btn-theme" style="width:auto;padding:0 14px" onclick="ipGuardarVersion()">Guardar y recalcular</button>
-      <button class="btn-excel" style="margin-left:auto" onclick="ipDescargarExcel()" title="Descargar el histórico completo en el mismo formato de IP_Reg">⬇ Excel</button>
-    </div>
-    <div id="ip-config-msg" class="tm-modal-msg"></div>
-  </div>
 
 </div>
 <!-- fin vista-ip-reg -->
@@ -14686,8 +14693,19 @@ function _ipNarrativaBalanceHtml(mensual, titulo, claveActual){
   claveActual = claveActual || _narrativaUltimaClaveCompleta(mensual);
   const datosInteranual = claveActual ? _narrativaEntradaSalidaDatos(mensual, claveActual, 'interanual') : null;
   const datosMensual = claveActual ? _narrativaEntradaSalidaDatos(mensual, claveActual, 'mensual') : null;
-  const explInteranual = 'Compara el mismo mes de este año contra el mismo mes del año anterior -- aísla el crecimiento real del indicador, sin el efecto de la estacionalidad (meses que suelen tener más o menos demanda que otros).';
-  const explMensual = 'Compara el mes elegido contra el mes inmediatamente anterior -- muestra el cambio más reciente del balance de energía, mes a mes.';
+  // Nota nombra el mes elegido (no genérico "el mes elegido") -- pedido
+  // explícito ("las notas... más grandes explicando el mes respectivo").
+  let explInteranual = 'Compara el mismo mes de este año contra el mismo mes del año anterior -- aísla el crecimiento real del indicador, sin el efecto de la estacionalidad (meses que suelen tener más o menos demanda que otros).';
+  let explMensual = 'Compara el mes elegido contra el mes inmediatamente anterior -- muestra el cambio más reciente del balance de energía, mes a mes.';
+  if(claveActual){
+    const [anio, mes] = claveActual.split('-').map(Number);
+    const mesActualTxt = labelMesLargo(claveActual);
+    const claveAnioAnterior = `${anio-1}-${String(mes).padStart(2,'0')}`;
+    const idxMensual = anio*12 + (mes-1) - 1;
+    const claveMesAnterior = `${Math.floor(idxMensual/12)}-${String((idxMensual%12)+1).padStart(2,'0')}`;
+    explInteranual = `Compara <b>${mesActualTxt}</b> contra <b>${labelMesLargo(claveAnioAnterior)}</b> (mismo mes, un año antes) -- aísla el crecimiento real del indicador, sin el efecto de la estacionalidad (meses que suelen tener más o menos demanda que otros).`;
+    explMensual = `Compara <b>${mesActualTxt}</b> contra <b>${labelMesLargo(claveMesAnterior)}</b> (el mes inmediatamente anterior) -- muestra el cambio más reciente del balance de energía, mes a mes.`;
+  }
   return `
     ${titulo ? `<div class="be-tabla-creadas-titulo" style="text-align:center">${titulo}</div>` : ''}
     <div style="display:flex;gap:28px;flex-wrap:wrap;justify-content:center">
@@ -14806,21 +14824,32 @@ async function cargarIndicadorPerdidas(){
 // Tensión 1 -- "Indicador Mensual" YA NO es pestaña aparte (pedido
 // explícito: "la pestaña de mensual quítala", el botón Vista
 // Anual/Mensual de la pestaña 1 ya cubre lo mismo con el mismo gráfico
-// ch-ip-reg, ver ipCambiarModoGraficoPrincipal). A diferencia de
-// Alimentadores/N2-1, cada pestaña tiene sus propios filtros inline (no
-// hay un nodo de filtro único que mover) -- acá solo se togglean paneles
-// y botones. Re-renderiza las gráficas de la pestaña recién activada --
-// Chart.js las pinta con tamaño 0 si el canvas estaba dentro de un
-// ancestro display:none al momento de crearlas (mismo criterio que
+// ch-ip-reg, ver ipCambiarModoGraficoPrincipal). Cada pestaña tiene sus
+// propios filtros inline, salvo "Mes del análisis" (#ip-analisis-mes-filtro)
+// -- nodo único que se MUEVE entre la pestaña 1 (su hogar,
+// #ip-analisis-ipt-caja) y la pestaña "Información de Balance Energético"
+// (pedido explícito: "debe tener filtro de año y mes para poder cambiar
+// la información" -- antes esa pestaña no tenía ningún filtro visible).
+// Re-renderiza las gráficas de la pestaña recién activada -- Chart.js las
+// pinta con tamaño 0 si el canvas estaba dentro de un ancestro
+// display:none al momento de crearlas (mismo criterio que
 // alimN21IrATab/alim3IrATab).
 function ipIrATab(nombre){
   ['anual','detalle','balance','nivel1'].forEach(t=>{
     document.getElementById('ip-tab-'+t)?.classList.toggle('hidden', t!==nombre);
     document.getElementById('ip-tab-btn-'+t)?.classList.toggle('activo', t===nombre);
   });
+  const filtroMes = document.getElementById('ip-analisis-mes-filtro');
+  if(filtroMes){
+    const destino = nombre==='balance'
+      ? document.querySelector('#ip-tab-balance > .card')
+      : document.getElementById('ip-analisis-ipt-caja');
+    if(destino && filtroMes.parentElement !== destino) destino.prepend(filtroMes);
+  }
   if(!IP_REG_FILAS.length) return;
   if(nombre==='anual') ipRenderChart();
   if(nombre==='detalle') ipRenderTablaNivel();
+  if(nombre==='balance') ipGenerarAnalisisPrincipal();
   if(nombre==='nivel1'){ ipRenderChartNivel1(); ipRenderTablaNivel1(); }
 }
 
@@ -23483,7 +23512,7 @@ function ipGenerarAnalisisPrincipal(){
   if(contNarrativa) contNarrativa.innerHTML = _ipNarrativaBalanceHtml(_narrativaIpRegMensual(), 'Por qué crece el indicador -- IP_Reg', claveActual);
   const contCajaBalance = document.getElementById('ip-caja-balance');
   if(contCajaBalance) contCajaBalance.innerHTML = `<div class="be-tabla-creadas-titulo" style="text-align:center">Información del Balance Energético</div>` + _ipCajaBalanceHtml(claveActual)
-    + `<p class="ip-explicacion-tabla">Cómo se arma la pérdida del mes: la Energía de Entrada menos la Energía de Salida (venta) da la Pérdida de Energía, en kWh y en porcentaje sobre la Entrada.</p>`;
+    + `<p class="ip-explicacion-tabla">Cómo se arma la pérdida de <b>${labelMesLargo(claveActual)}</b>: la Energía de Entrada menos la Energía de Salida (venta) de ese mes da la Pérdida de Energía, en kWh y en porcentaje sobre la Entrada.</p>`;
   const [anioAct, mesAct] = claveActual.split('-').map(Number);
   const mesActualTitulo = labelMes(claveActual);
   const mesActualLargo = labelMesLargo(claveActual);
