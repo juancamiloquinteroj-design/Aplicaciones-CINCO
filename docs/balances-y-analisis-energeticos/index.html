@@ -9337,6 +9337,7 @@ function ipMostrarResultadoAenc(jobId, resultado){
   }
   const estructurasUnicas = [...new Set(candidatos.map(c => c.estructura_nombre))];
   const forzados = candidatos.filter(c => c.forzado).length;
+  const sinForzar = candidatos.length - forzados;
   const filas = candidatos.map(c => `
     <tr${c.forzado ? ' style="background:rgba(220,38,38,.08)"' : ''}>
       <td>${ipEscapar(c.estructura_nombre)}</td>
@@ -9347,6 +9348,18 @@ function ipMostrarResultadoAenc(jobId, resultado){
       <td>${ipEscapar(c.archivo)}</td>
       <td>${c.forzado ? `<span style="color:#dc2626;font-weight:700" title="Va a reemplazar un dato real existente">⚠️ reemplaza ${Number(c.valor_anterior).toLocaleString('es-CO')}</span>` : ''}</td>
     </tr>`).join('');
+  // "Aplicar" por defecto SOLO rellena vacíos -- pedido explícito ("tiene
+  // que haber alguna forma que no reemplace los existentes, que solo sea
+  // lo que esté en blanco"): antes el único botón mandaba TODOS los
+  // candidatos juntos (vacíos + forzados) al backend. Ahora, si hay
+  // forzados, aparece una casilla aparte (desmarcada por defecto) -- el
+  // botón manda incluir_forzados=true/false según esa casilla, y el
+  // backend (ver /aplicar-aenc) filtra ahí mismo.
+  const casillaForzados = forzados ? `
+    <label style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--text2);margin-bottom:8px;cursor:pointer">
+      <input type="checkbox" id="ip-aenc-incluir-forzados" onchange="ipActualizarBotonAenc(${forzados}, ${sinForzar})">
+      Incluir también los <b>${forzados}</b> que reemplazan un dato real existente (marcados en rojo arriba) -- revisalos antes de marcar esto
+    </label>` : '';
   cont.innerHTML = `
     <div style="font-size:12px;font-weight:700;color:var(--text2);margin-bottom:6px">
       ${candidatos.length} día(s) encontrado(s) en ${estructurasUnicas.length} estructura${estructurasUnicas.length===1?'':'s'}: ${ipEscapar(estructurasUnicas.join(', '))}
@@ -9363,19 +9376,30 @@ function ipMostrarResultadoAenc(jobId, resultado){
         <tbody>${filas}</tbody>
       </table>
     </div>
-    <button type="button" class="btn-theme" style="width:auto;padding:7px 16px" onclick="ipAplicarAenc('${jobId}', this, ${forzados})">✅ Aplicar a Balances (${candidatos.length})</button>
+    ${casillaForzados}
+    <button type="button" id="ip-aenc-btn-aplicar" class="btn-theme" style="width:auto;padding:7px 16px" onclick="ipAplicarAenc('${jobId}', this)">✅ Aplicar a Balances (${sinForzar})</button>
   `;
 }
 
-async function ipAplicarAenc(jobId, btn, forzados){
-  const avisoForzados = forzados ? `\n\n⚠️ ${forzados} de esos días van a REEMPLAZAR un dato real que ya existía (marcados en rojo en la tabla) -- revisalos antes de confirmar.` : '';
+function ipActualizarBotonAenc(forzados, sinForzar){
+  const casilla = document.getElementById('ip-aenc-incluir-forzados');
+  const btn = document.getElementById('ip-aenc-btn-aplicar');
+  if(!casilla || !btn) return;
+  const total = casilla.checked ? sinForzar + forzados : sinForzar;
+  btn.textContent = `✅ Aplicar a Balances (${total})`;
+}
+
+async function ipAplicarAenc(jobId, btn){
+  const casilla = document.getElementById('ip-aenc-incluir-forzados');
+  const incluirForzados = !!(casilla && casilla.checked);
+  const avisoForzados = incluirForzados ? '\n\n⚠️ Marcaste incluir los que REEMPLAZAN un dato real que ya existía -- revisalos antes de confirmar.' : '';
   if(!confirm('¿Aplicar estos días a Balances por Estructura? Van a quedar como ajustes con nota de que salieron de AENC/Novedades CGM -- no se puede deshacer desde acá, habría que borrar el ajuste a mano en Ver Balance.' + avisoForzados)) return;
   btn.disabled = true;
   const textoOriginal = btn.textContent;
   btn.textContent = 'Aplicando...';
   try{
-    const r = await apiPost(`/api/indice-perdidas/job/${jobId}/aplicar-aenc`, {});
-    document.getElementById('ip-resultado').innerHTML = `<div style="font-size:12px;color:#06d6a0;font-weight:700">✅ Se aplicaron ${r.aplicados} día(s) a Balances${r.saltados ? ` (${r.saltados} se saltearon porque ya tenían dato o ajuste)` : ''}.</div>`;
+    const r = await apiPost(`/api/indice-perdidas/job/${jobId}/aplicar-aenc`, {incluir_forzados: incluirForzados});
+    document.getElementById('ip-resultado').innerHTML = `<div style="font-size:12px;color:#06d6a0;font-weight:700">✅ Se aplicaron ${r.aplicados} día(s) a Balances${r.saltados ? ` (${r.saltados} se saltearon porque ya tenían dato o ajuste)` : ''}${!incluirForzados ? ' -- los que reemplazaban un dato real quedaron sin aplicar, corré "Ejecutar" de nuevo si los necesitás.' : ''}.</div>`;
   }catch(e){
     btn.disabled = false;
     btn.textContent = textoOriginal;
