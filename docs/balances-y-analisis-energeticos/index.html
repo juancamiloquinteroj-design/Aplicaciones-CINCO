@@ -1907,11 +1907,13 @@ tfoot td:first-child{text-align:left}
   </div>
 
   <!-- ===== PESTAÑA 1 · Índice Total de Pérdidas Anual ===== -->
-  <!-- Filtros reorganizados en 4 filas cortas (antes 3 filas muy largas,
-       pedido explícito: "muy saturado") -- Vista+Rango / herramientas de
-       análisis (más chicas, .be-modo-btn-sm) / Medidor / Sobreponer
-       variable (un solo desplegable con selección múltiple en vez de
-       Nivel + fila de chips, pedido explícito). -->
+  <!-- Filtros reorganizados en 3 filas cortas (antes 3-4 filas muy
+       largas, pedido explícito: "muy saturado" / "organizar mejor los
+       filtros que sea más ordenado") -- fila 1 = lo que define QUÉ se
+       grafica (Vista, Rango, Sobreponer variable -- pedido explícito
+       "que quede en la primera fila"); fila 2 = herramientas de análisis
+       del modo Anual (más chicas, .be-modo-btn-sm); fila 3 = Medidor
+       (lo menos usado, al final). -->
   <div id="ip-tab-anual">
   <div class="card">
     <div class="fbar" style="margin-bottom:6px">
@@ -1922,6 +1924,8 @@ tfoot td:first-child{text-align:left}
       <input type="month" id="ip-chart-desde" onchange="ipRenderChart(); ipRenderTablaNivel();">
       <span style="font-size:11px;color:var(--text3)">→</span>
       <input type="month" id="ip-chart-hasta" onchange="ipRenderChart(); ipRenderTablaNivel();">
+      <label style="margin-left:12px" class="no-exportar">Sobreponer variable</label>
+      <div class="msel no-exportar" id="msel-ip-overlay"></div>
     </div>
     <!-- Herramientas de análisis del modo Anual -- no tienen sentido en
          Mensual (no hay ventana móvil que "sombrear", ni tendencia/
@@ -1946,10 +1950,6 @@ tfoot td:first-child{text-align:left}
       <button class="btn-theme" style="width:auto;padding:0 12px" onclick="ipAgregarMedidor()">＋ Agregar</button>
       <div id="ip-medidores-activos" style="display:flex;gap:6px;flex-wrap:wrap"></div>
     </div>
-    <div class="fbar no-exportar" id="ip-fbar-overlay" style="margin-bottom:6px">
-      <label>Sobreponer variable</label>
-      <div class="msel" id="msel-ip-overlay"></div>
-    </div>
     <!-- Título justo encima de la gráfica, DESPUÉS de todos los filtros --
          pedido explícito ("todo filtro quede encima del titulo"). -->
     <div style="text-align:center;margin-bottom:8px">
@@ -1973,8 +1973,20 @@ tfoot td:first-child{text-align:left}
   </div><!-- /#ip-tab-anual -->
 
   <!-- ===== PESTAÑA 2 · Detalle por Nivel de Tensión ===== -->
+  <!-- Rango + Nivel de Tensión propios de esta pestaña -- pedido
+       explícito ("que haya filtro de rango para parametrizar las fechas
+       y filtro por nivel de tensión"), antes dependía del rango de la
+       pestaña 1 sin ningún control visible acá. -->
   <div id="ip-tab-detalle" class="hidden">
   <div class="card">
+    <div class="fbar" style="margin-bottom:10px">
+      <label>Rango</label>
+      <input type="month" id="ip-tabla-nivel-desde" onchange="ipRenderTablaNivel()">
+      <span style="font-size:11px;color:var(--text3)">→</span>
+      <input type="month" id="ip-tabla-nivel-hasta" onchange="ipRenderTablaNivel()">
+      <label style="margin-left:12px">Nivel de Tensión</label>
+      <div id="ip-tabla-nivel-chips" style="display:flex;gap:6px"></div>
+    </div>
     <div class="be-tabla-creadas-titulo ip-tabla-compacta-titulo">Detalle por Nivel de Tensión</div>
     <div class="be-tabla-scroll ip-tabla-compacta" style="max-height:720px">
       <table class="be-tabla-creadas">
@@ -14734,6 +14746,8 @@ async function cargarIndicadorPerdidas(){
   ipRenderChart();
   ipPoblarSelectorAnalisisMes();
   ipGenerarAnalisisPrincipal();
+  ipPoblarRangoFechas('ip-tabla-nivel-desde', 'ip-tabla-nivel-hasta');
+  ipRenderTablaNivelChips();
   ipRenderTablaNivel();
   // Nivel de Tensión 1 -- pestaña 5, trasladada acá desde su submódulo
   // aparte (pedido explícito); reusa el mismo IP_REG_FILAS, no pide nada
@@ -23462,32 +23476,34 @@ function ipGenerarAnalisisPrincipal(){
     parrafoMensual = variantesMensualIpt[_informesVariante('ipt_mensual_vs_anio', variantesMensualIpt.length)];
   }
 
-  // Bullets estilo "Índice de Pérdidas Mensuales" (imagen de referencia
-  // del usuario) -- pedido explícito ("en mensual quiero algo como esta
-  // imagen con ese análisis... hay que hacer un análisis de la entrada y
-  // salida también se debe incluir en el texto"): pérdida del mes en GWh,
-  // más cómo cambiaron Entrada (demanda) y Salida (ventas) vs. el mes
-  // anterior -- las 2 variables que arman el balance, no solo el IPT.
+  // Segundo párrafo: IPT mensual puro + Entrada (demanda) y Salida
+  // (ventas) del mes, todo junto en un solo párrafo -- pedido explícito
+  // ("esta nota que sea por ahí en dos párrafos"): antes el párrafo
+  // mensual y las 3 frases de pérdidas/demanda/ventas quedaban separados
+  // en una lista aparte, y el resultado eran 3-4 bloques en vez de 2.
+  // Frases con el mismo estilo de la imagen de referencia del usuario
+  // ("Índice de Pérdidas Mensuales") -- pedido explícito: "hay que hacer
+  // un análisis de la entrada y salida también se debe incluir en el texto".
   const fGwh = v => (v/1e6).toLocaleString('es-CO', {maximumFractionDigits:2, minimumFractionDigits:2});
-  const bullets = [];
+  const frasesGwh = [];
   if(actual.perdida_mensual_kwh != null && actual.pct_perdida_mensual != null){
-    bullets.push(`Las pérdidas mensuales para <b>${mesActualLargo.toUpperCase()}</b> (${(actual.pct_perdida_mensual*100).toFixed(2)}%) equivalen a <b>${fGwh(actual.perdida_mensual_kwh)} GWh/mensuales</b>.`);
+    frasesGwh.push(`Las pérdidas mensuales para <b>${mesActualLargo.toUpperCase()}</b> (${(actual.pct_perdida_mensual*100).toFixed(2)}%) equivalen a <b>${fGwh(actual.perdida_mensual_kwh)} GWh/mensuales</b>.`);
   }
   if(actual.entrada_mensual_kwh != null && anterior.entrada_mensual_kwh != null){
     const dEnt = actual.entrada_mensual_kwh - anterior.entrada_mensual_kwh;
-    bullets.push(`La demanda (Entrada) para el mes de <b>${mesActualLargo.toUpperCase()}</b> ${dEnt>=0?'aumenta':'disminuye'} respecto al mes de ${mesAnteriorLargo.toUpperCase()} en <b>${fGwh(Math.abs(dEnt))} GWh/mensuales</b>.`);
+    frasesGwh.push(`La demanda (Entrada) ${dEnt>=0?'aumenta':'disminuye'} respecto a ${mesAnteriorLargo.toUpperCase()} en <b>${fGwh(Math.abs(dEnt))} GWh/mensuales</b>.`);
   }
   if(actual.salida_mensual_kwh != null && anterior.salida_mensual_kwh != null){
     const dSal = actual.salida_mensual_kwh - anterior.salida_mensual_kwh;
-    bullets.push(`Las ventas (Salida) para el mes de <b>${mesActualLargo.toUpperCase()}</b> ${dSal>=0?'aumentan':'disminuyen'} respecto al mes de ${mesAnteriorLargo.toUpperCase()} en <b>${fGwh(Math.abs(dSal))} GWh/mensuales</b>.`);
+    frasesGwh.push(`Las ventas (Salida) ${dSal>=0?'aumentan':'disminuyen'} respecto a ${mesAnteriorLargo.toUpperCase()} en <b>${fGwh(Math.abs(dSal))} GWh/mensuales</b>.`);
   }
+  const parrafoMensualCompleto = [parrafoMensual, ...frasesGwh].filter(Boolean).join(' ');
 
   cont.innerHTML = `
     <div class="ip-comentario-titulo">Análisis IPT -- ${mesActualTitulo}</div>
     <div class="ip-comentario-cifra ${subeMensual?'sube':'baja'}">${iptActual.toFixed(2)}% (${fKwh(actual.pt_kwh)} kWh/Anual)</div>
     <p>El IPT pasó de <b>${iptAnterior.toFixed(2)}%</b> en ${mesAnteriorLargo} a <b>${iptActual.toFixed(2)}%</b> en ${mesActualLargo}, lo que equivale a pasar de una pérdida de <b>${fKwh(anterior.pt_kwh)} kWh/Anual</b> a <b>${fKwh(actual.pt_kwh)} kWh/Anual</b> -- un ${subeMensual?'incremento':'descenso'} de <b>${Math.abs(deltaMensual).toFixed(2)} pp</b>, equivalente a <b>${signo(deltaPtKwh)}${fKwh(Math.abs(deltaPtKwh))} kWh/Anual</b>.${parrafoAnualIpt}</p>
-    ${parrafoMensual ? `<p>${parrafoMensual}</p>` : ''}
-    ${bullets.length ? `<ul style="margin:8px 0 0;padding-left:18px">${bullets.map(b=>`<li style="margin-bottom:4px">${b}</li>`).join('')}</ul>` : ''}
+    ${parrafoMensualCompleto ? `<p>${parrafoMensualCompleto}</p>` : ''}
   `;
 }
 
@@ -25006,22 +25022,49 @@ function ipRenderChartNivel1(){
 // Los 4 Niveles de Tensión juntos, uno al lado del otro -- igual que la
 // hoja IP_Reg del Excel (con scroll horizontal para el ancho extra) --
 // en vez de elegir uno a la vez con un selector.
+// Filtros propios de esta pestaña -- pedido explícito ("que haya filtro
+// de rango para parametrizar las fechas y filtro por nivel de tensión"):
+// antes dependía CIEGAMENTE del rango del gráfico de la pestaña 1
+// (ip-chart-desde/hasta), sin ningún control visible acá. Ahora tiene su
+// propio Rango (ip-tabla-nivel-desde/-hasta) y chips para elegir qué
+// Niveles mostrar (vacío = los 4, mismo criterio que los chips de Zona en
+// otros módulos) -- útil porque la tabla completa (44 columnas) es ancha.
+let IP_TABLA_NIVEL_SEL = new Set();
+function _ipNivelesUso(){ return IP_TABLA_NIVEL_SEL.size ? [1,2,3,4].filter(n=>IP_TABLA_NIVEL_SEL.has(n)) : [1,2,3,4]; }
+
+function ipRenderTablaNivelChips(){
+  const cont = document.getElementById('ip-tabla-nivel-chips');
+  if(!cont) return;
+  cont.innerHTML = [1,2,3,4].map(n => {
+    const activo = IP_TABLA_NIVEL_SEL.size===0 || IP_TABLA_NIVEL_SEL.has(n);
+    return `<button type="button" class="be-modo-btn be-modo-btn-sm${activo?' activo':''}" onclick="ipToggleTablaNivelSel(${n})">N${n}</button>`;
+  }).join('');
+}
+function ipToggleTablaNivelSel(n){
+  if(IP_TABLA_NIVEL_SEL.has(n)) IP_TABLA_NIVEL_SEL.delete(n); else IP_TABLA_NIVEL_SEL.add(n);
+  // Los 4 tildados equivale a "todos" (vacío) -- mismo criterio en toda la app.
+  if(IP_TABLA_NIVEL_SEL.size===4) IP_TABLA_NIVEL_SEL.clear();
+  ipRenderTablaNivelChips();
+  ipRenderTablaNivel();
+}
+
 function ipRenderTablaNivel(){
+  const niveles = _ipNivelesUso();
   const head1 = document.getElementById('ip-tabla-nivel-head-1');
   const head2 = document.getElementById('ip-tabla-nivel-head-2');
-  // El primer th/td de cada bloque (salvo Nivel 1, que ya arranca pegado
-  // a la columna "Mes") lleva ip-sep-nivel -- una línea gris que separa
-  // visualmente dónde termina un Nivel de Tensión y empieza el siguiente.
+  // El primer th/td de cada bloque (salvo el primero, que ya arranca
+  // pegado a la columna "Mes") lleva ip-sep-nivel -- una línea gris que
+  // separa visualmente dónde termina un Nivel de Tensión y empieza el
+  // siguiente.
   head1.innerHTML = '<th class="ip-th-mes" rowspan="2">Mes (fecha real)</th>' +
-    [1,2,3,4].map(n => `<th class="ip-th-nivel${n}${n>1?' ip-sep-nivel':''}" colspan="${IP_COLUMNAS_NIVEL[n].length}">Nivel de Tensión ${n}</th>`).join('');
-  head2.innerHTML = [1,2,3,4].map(n =>
-    IP_COLUMNAS_NIVEL[n].map(([,etiqueta], i) => `<th class="ip-th-variable${n>1 && i===0?' ip-sep-nivel':''}" title="${ipDescripcionVariable(etiqueta)}">${etiqueta}</th>`).join('')
+    niveles.map((n,idx) => `<th class="ip-th-nivel${n}${idx>0?' ip-sep-nivel':''}" colspan="${IP_COLUMNAS_NIVEL[n].length}">Nivel de Tensión ${n}</th>`).join('');
+  head2.innerHTML = niveles.map((n,idx) =>
+    IP_COLUMNAS_NIVEL[n].map(([,etiqueta], i) => `<th class="ip-th-variable${idx>0 && i===0?' ip-sep-nivel':''}" title="${ipDescripcionVariable(etiqueta)}">${etiqueta}</th>`).join('')
   ).join('');
 
-  // Depende TOTALMENTE del mismo rango de fechas del gráfico principal
-  // (ip-chart-desde/hasta) -- no un listado aparte.
-  const desde = document.getElementById('ip-chart-desde').value ? document.getElementById('ip-chart-desde').value.slice(0,7) : null;
-  const hasta = document.getElementById('ip-chart-hasta').value ? document.getElementById('ip-chart-hasta').value.slice(0,7) : null;
+  // Rango propio de esta pestaña (ip-tabla-nivel-desde/-hasta).
+  const desde = document.getElementById('ip-tabla-nivel-desde')?.value?.slice(0,7) || null;
+  const hasta = document.getElementById('ip-tabla-nivel-hasta')?.value?.slice(0,7) || null;
   const visibles = IP_REG_FILAS.filter(f => {
     const clave = ipClaveNormal(f);
     return (!desde || clave >= desde) && (!hasta || clave <= hasta);
@@ -25036,8 +25079,8 @@ function ipRenderTablaNivel(){
   // ipFilaConDatosRealesDe) -- "f" solo se usa para la etiqueta del mes.
   body.innerHTML = [...visibles].reverse().map(f => {
     const fReal = ipFilaConDatosRealesDe(ipClaveNormal(f));
-    const celdas = [1,2,3,4].map(n =>
-      IP_COLUMNAS_NIVEL[n].map(([clave], i) => `<td class="${n>1 && i===0?'ip-sep-nivel':''}">${fReal ? formatear(clave, fReal[clave]) : '--'}</td>`).join('')
+    const celdas = niveles.map((n,idx) =>
+      IP_COLUMNAS_NIVEL[n].map(([clave], i) => `<td class="${idx>0 && i===0?'ip-sep-nivel':''}">${fReal ? formatear(clave, fReal[clave]) : '--'}</td>`).join('')
     ).join('');
     return `<tr><td class="ip-td-mes">${labelMes(ipClaveNormal(f))}</td>${celdas}</tr>`;
   }).join('');
