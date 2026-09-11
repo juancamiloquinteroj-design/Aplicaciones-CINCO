@@ -24794,10 +24794,15 @@ const ipPluginSombraVentana = {
 // explícito ("en la ventana móvil del indicador mensual me gustaría un
 // botón que muestre así la franja de los 12 meses con flechas y muestre
 // energía y % anual"): bordes punteados en los 2 extremos de los últimos
-// 12 meses reales + una flecha doble arriba con el kWh/año y el % Anual
-// (IP_REG, mismas cifras ipt_pct/pt_kwh que ya usa la Vista "Anual
-// (IP_Reg)" para ese mismo mes de cierre) -- para ver esa ventana SIN
-// cambiar de Vista.
+// 12 meses reales + una flecha doble ABAJO (pedido explícito: "esa
+// [línea de la] doble flecha la quiero abajo") con el % Anual (IP_REG)
+// arriba de la línea EN GRANDE y el kWh/año abajo de la línea más chico
+// -- pedido explícito, formato exacto:
+//   %
+//   <---------->
+//   kWh/año
+// Mismas cifras ipt_pct/pt_kwh que ya usa la Vista "Anual (IP_Reg)" para
+// ese mismo mes de cierre -- para ver esa ventana SIN cambiar de Vista.
 const ipPluginBandaAnualMensual = {
   id: 'bandaAnualMensual',
   beforeDraw(chart){
@@ -24824,10 +24829,11 @@ const ipPluginBandaAnualMensual = {
     });
     ctx.setLineDash([]);
 
-    // Flecha doble horizontal arriba, con la etiqueta encima -- mismo
-    // trazo (rojo) que los bordes punteados, para que se lea como una
-    // sola anotación.
-    const yFlecha = chartArea.top + 16;
+    // Flecha doble horizontal ABAJO -- el % Anual va grande justo arriba
+    // de la línea, el kWh/año más chico justo debajo (mismo trazo rojo
+    // que los bordes punteados, para leerse como una sola anotación).
+    const centroX = (xIni + xFin) / 2;
+    const yFlecha = chartArea.bottom - 26;
     const tam = 6;
     ctx.lineWidth = 2;
     ctx.beginPath();
@@ -24847,8 +24853,10 @@ const ipPluginBandaAnualMensual = {
 
     ctx.fillStyle = '#C00000';
     ctx.textAlign = 'center';
-    ctx.font = 'bold 11px sans-serif';
-    ctx.fillText(cfg.etiqueta || '', (xIni + xFin) / 2, yFlecha - 8);
+    ctx.font = 'bold 16px sans-serif';
+    ctx.fillText(cfg.etiquetaPct || '', centroX, yFlecha - 12);
+    ctx.font = 'bold 10.5px sans-serif';
+    ctx.fillText(cfg.etiquetaKwh || '', centroX, yFlecha + 18);
     ctx.restore();
   },
 };
@@ -24972,7 +24980,7 @@ function ipCambiarModoGraficoPrincipal(modo){
   document.getElementById('ip-medidor-inline').classList.toggle('hidden', !esAnual);
   document.getElementById('ip-titulo-grafico').textContent = esAnual
     ? 'Indicador de Pérdidas Totales (IP_REG)'
-    : 'Indicador de Pérdidas Mensual (%) -- sin ventana móvil';
+    : 'Indicador de Pérdidas Mensual (%)';
   ipRenderChart();
 }
 
@@ -25048,10 +25056,16 @@ function ipRenderChartPrincipalMensual(){
   for(let i = visibles.length - 1; i >= 0; i--){
     if(visibles[i].ipt_pct != null){ idxVentanaFin = i; break; }
   }
-  let etiquetaVentana = '';
+  // Separados a propósito -- pedido explícito, formato exacto:
+  //   %
+  //   <---------->
+  //   kWh/año
+  // (el % Anual grande arriba de la flecha, el kWh/año chico debajo).
+  let etiquetaPctVentana = '', etiquetaKwhVentana = '';
   if(idxVentanaFin >= 0){
     const filaVentana = visibles[idxVentanaFin];
-    etiquetaVentana = `${(filaVentana.ipt_pct*100).toFixed(2)}% Anual (IP_Reg) -- ${Math.round(filaVentana.pt_kwh).toLocaleString('es-CO')} kWh/año`;
+    etiquetaPctVentana = `${(filaVentana.ipt_pct*100).toFixed(2)}% Anual (IP_Reg)`;
+    etiquetaKwhVentana = `${Math.round(filaVentana.pt_kwh).toLocaleString('es-CO')} kWh/año`;
   }
 
   if(chIpReg) chIpReg.destroy();
@@ -25073,7 +25087,7 @@ function ipRenderChartPrincipalMensual(){
           zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'},
           limits:{x:{minRange:3}},
         },
-        bandaAnualMensual:{activo: IP_VENTANA_ANUAL_EN_MENSUAL, ultimoIndice: idxVentanaFin>=0?idxVentanaFin:null, etiqueta: etiquetaVentana},
+        bandaAnualMensual:{activo: IP_VENTANA_ANUAL_EN_MENSUAL, ultimoIndice: idxVentanaFin>=0?idxVentanaFin:null, etiquetaPct: etiquetaPctVentana, etiquetaKwh: etiquetaKwhVentana},
       },
       scales:{
         x:{grid:{display:false}, offset:true,
