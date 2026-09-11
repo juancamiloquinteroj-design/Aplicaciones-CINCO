@@ -139,10 +139,6 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(
 .sidebar-sublink:hover{background:var(--bg3);color:var(--text)}
 .sidebar-badge-soon{font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;background:var(--bg3);color:var(--text3);padding:2px 6px;border-radius:10px;white-space:nowrap}
 .ip-tabla-compacta-titulo{color:var(--text)}
-/* Texto explicativo debajo de cada tabla de "Información de Balance
-   Energético" -- pedido explícito ("en la parte inferior de cada tabla
-   colocar un texto explicativo de cada una"). */
-.ip-explicacion-tabla{font-size:12.5px;color:var(--text2);line-height:1.6;text-align:center;margin:10px 0 0;max-width:360px}
 /* Tablas "Por qué crece el indicador" (Interanual/Mensual) de Nivel 4 y
    Nivel 3 -- mismo criterio que .ip-tabla-compacta (achica letra/padding
    vía CSS, SIN tocar _narrativaTablaHtml/_narrativaEntradaSalidaHtml,
@@ -14683,34 +14679,44 @@ function _narrativaEntradaSalidaHtml(mensual, titulo, claveActual, compacto){
   `;
 }
 
-// Igual que _narrativaEntradaSalidaHtml, pero con un texto explicativo
-// debajo de CADA tabla -- pedido explícito ("Información de Balance
-// Energético... en la parte inferior de cada tabla colocar un texto
-// explicativo de cada una"). Aparte para no cambiarle el aspecto a los
-// demás módulos que usan _narrativaEntradaSalidaHtml tal cual (Nivel 4,
-// Nivel 3, N2-1...).
+// Narra CON LOS NÚMEROS reales de una tabla interanual/mensual (datos =
+// lo que devuelve _narrativaEntradaSalidaDatos) -- pedido explícito
+// ("esas notas están muy malas debe explicar con los datos de cada
+// tabla"): antes solo decía QUÉ compara la tabla (genérico), sin ningún
+// valor -- ahora dice cuánto fue la Entrada/Salida en cada mes, cuánto
+// creció cada una, y el crecimiento de pérdidas resultante, con las
+// mismas cifras que ya se ven arriba en la tabla.
+function _ipNarrarDatosTabla(datos, etiquetaAnterior){
+  if(!datos){
+    return 'Todavía no hay suficiente histórico para calcular esta comparación.';
+  }
+  const fKwh = v => Math.round(v).toLocaleString('es-CO');
+  const fPct = v => v.toLocaleString('es-CO', {maximumFractionDigits:2, minimumFractionDigits:2});
+  const signo = v => v>=0 ? '+' : '';
+  const mesActualTxt = labelMesLargo(datos.claveActual);
+  const mesAnteriorTxt = labelMesLargo(datos.claveAnterior);
+  const subeEnt = datos.pctEntrada >= 0, subeSal = datos.pctSalida >= 0;
+  const UMBRAL = 0.01;
+  const crece = datos.brecha > UMBRAL, baja = datos.brecha < -UMBRAL;
+  return `En <b>${mesActualTxt}</b> la Entrada fue de <b>${fKwh(datos.actual.entrada)} kWh</b> y la Salida (venta) de <b>${fKwh(datos.actual.salida)} kWh</b>; en ${etiquetaAnterior} (<b>${mesAnteriorTxt}</b>) fueron <b>${fKwh(datos.anterior.entrada)} kWh</b> y <b>${fKwh(datos.anterior.salida)} kWh</b>. La Entrada ${subeEnt?'subió':'bajó'} <b>${fPct(Math.abs(datos.pctEntrada))}%</b> y la Salida ${subeSal?'subió':'bajó'} <b>${fPct(Math.abs(datos.pctSalida))}%</b> -- un crecimiento de pérdidas de <b>${signo(datos.brecha)}${fPct(datos.brecha)} pp</b> (${crece?'sube':baja?'baja':'estable'}), equivalente a <b>${signo(datos.kwhNoFacturado)}${fKwh(Math.abs(datos.kwhNoFacturado))} kWh</b>.`;
+}
+
+// Igual que _narrativaEntradaSalidaHtml, pero con una tarjeta de análisis
+// (mismo estilo .ip-comentario-caja que "Análisis IPT") debajo de CADA
+// tabla, narrando sus propios números -- pedido explícito ("las notas
+// dentro de una tarjeta que se vean bonitas"). Aparte para no cambiarle
+// el aspecto a los demás módulos que usan _narrativaEntradaSalidaHtml tal
+// cual (Nivel 4, Nivel 3, N2-1...).
 function _ipNarrativaBalanceHtml(mensual, titulo, claveActual){
   claveActual = claveActual || _narrativaUltimaClaveCompleta(mensual);
   const datosInteranual = claveActual ? _narrativaEntradaSalidaDatos(mensual, claveActual, 'interanual') : null;
   const datosMensual = claveActual ? _narrativaEntradaSalidaDatos(mensual, claveActual, 'mensual') : null;
-  // Nota nombra el mes elegido (no genérico "el mes elegido") -- pedido
-  // explícito ("las notas... más grandes explicando el mes respectivo").
-  let explInteranual = 'Compara el mismo mes de este año contra el mismo mes del año anterior -- aísla el crecimiento real del indicador, sin el efecto de la estacionalidad (meses que suelen tener más o menos demanda que otros).';
-  let explMensual = 'Compara el mes elegido contra el mes inmediatamente anterior -- muestra el cambio más reciente del balance de energía, mes a mes.';
-  if(claveActual){
-    const [anio, mes] = claveActual.split('-').map(Number);
-    const mesActualTxt = labelMesLargo(claveActual);
-    const claveAnioAnterior = `${anio-1}-${String(mes).padStart(2,'0')}`;
-    const idxMensual = anio*12 + (mes-1) - 1;
-    const claveMesAnterior = `${Math.floor(idxMensual/12)}-${String((idxMensual%12)+1).padStart(2,'0')}`;
-    explInteranual = `Compara <b>${mesActualTxt}</b> contra <b>${labelMesLargo(claveAnioAnterior)}</b> (mismo mes, un año antes) -- aísla el crecimiento real del indicador, sin el efecto de la estacionalidad (meses que suelen tener más o menos demanda que otros).`;
-    explMensual = `Compara <b>${mesActualTxt}</b> contra <b>${labelMesLargo(claveMesAnterior)}</b> (el mes inmediatamente anterior) -- muestra el cambio más reciente del balance de energía, mes a mes.`;
-  }
+  const cajaNota = texto => `<div class="ip-comentario-caja" style="font-size:12.5px;margin-top:10px"><div class="ip-comentario-titulo">Análisis</div><p style="margin:0">${texto}</p></div>`;
   return `
     ${titulo ? `<div class="be-tabla-creadas-titulo" style="text-align:center">${titulo}</div>` : ''}
     <div style="display:flex;gap:28px;flex-wrap:wrap;justify-content:center">
-      <div>${_narrativaTablaHtml(datosInteranual, 'Interanual (año contra año)')}<p class="ip-explicacion-tabla">${explInteranual}</p></div>
-      <div>${_narrativaTablaHtml(datosMensual, 'Mensual (mes contra mes)')}<p class="ip-explicacion-tabla">${explMensual}</p></div>
+      <div style="max-width:380px">${_narrativaTablaHtml(datosInteranual, 'Interanual (año contra año)')}${cajaNota(_ipNarrarDatosTabla(datosInteranual, 'el mismo mes del año anterior'))}</div>
+      <div style="max-width:380px">${_narrativaTablaHtml(datosMensual, 'Mensual (mes contra mes)')}${cajaNota(_ipNarrarDatosTabla(datosMensual, 'el mes anterior'))}</div>
     </div>
   `;
 }
@@ -23511,8 +23517,23 @@ function ipGenerarAnalisisPrincipal(){
   const contNarrativa = document.getElementById('ip-narrativa-estructural');
   if(contNarrativa) contNarrativa.innerHTML = _ipNarrativaBalanceHtml(_narrativaIpRegMensual(), 'Por qué crece el indicador -- IP_Reg', claveActual);
   const contCajaBalance = document.getElementById('ip-caja-balance');
-  if(contCajaBalance) contCajaBalance.innerHTML = `<div class="be-tabla-creadas-titulo" style="text-align:center">Información del Balance Energético</div>` + _ipCajaBalanceHtml(claveActual)
-    + `<p class="ip-explicacion-tabla">Cómo se arma la pérdida de <b>${labelMesLargo(claveActual)}</b>: la Energía de Entrada menos la Energía de Salida (venta) de ese mes da la Pérdida de Energía, en kWh y en porcentaje sobre la Entrada.</p>`;
+  if(contCajaBalance){
+    // Nota CON los mismos números de las tarjetas de arriba (Entrada,
+    // Salida, Pérdida, %) -- pedido explícito ("debe explicar con los
+    // datos de cada tabla"), en una tarjeta .ip-comentario-caja igual que
+    // "Análisis IPT" -- pedido explícito ("las notas dentro de una
+    // tarjeta que se vean bonitas").
+    const filaBalance = IP_MAPA_POR_NORMAL.get(claveActual);
+    let notaBalance = 'No hay datos suficientes para el balance de este mes.';
+    if(filaBalance && filaBalance.ipt_pct != null){
+      const entradaB = filaBalance.pt_kwh / filaBalance.ipt_pct;
+      const salidaB = entradaB - filaBalance.pt_kwh;
+      const fk = v => Math.round(v).toLocaleString('es-CO');
+      notaBalance = `En <b>${labelMesLargo(claveActual)}</b>, la Energía de Entrada fue de <b>${fk(entradaB)} kWh</b> y la de Salida (venta) de <b>${fk(salidaB)} kWh</b> -- la diferencia entre las dos, <b>${fk(filaBalance.pt_kwh)} kWh</b>, es la Pérdida de Energía del mes, equivalente al <b>${(filaBalance.ipt_pct*100).toFixed(2)}%</b> de la Entrada.`;
+    }
+    contCajaBalance.innerHTML = `<div class="be-tabla-creadas-titulo" style="text-align:center">Información del Balance Energético</div>` + _ipCajaBalanceHtml(claveActual)
+      + `<div class="ip-comentario-caja" style="font-size:12.5px;margin-top:10px"><div class="ip-comentario-titulo">Análisis</div><p style="margin:0">${notaBalance}</p></div>`;
+  }
   const [anioAct, mesAct] = claveActual.split('-').map(Number);
   const mesActualTitulo = labelMes(claveActual);
   const mesActualLargo = labelMesLargo(claveActual);
