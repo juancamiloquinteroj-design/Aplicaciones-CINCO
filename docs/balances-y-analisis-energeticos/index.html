@@ -558,6 +558,13 @@ canvas[id^="ch-tride-"]:active{cursor:grabbing}
 
 .tbl-wrap{overflow-x:auto;border-radius:9px;border:1px solid var(--border)}
 .alim3-tabla-sticky thead th{position:sticky;top:0;z-index:2}
+/* Tabla "Top Alimentadores" -- más compacta que el resto de .tbl-compacta
+   (pedido explícito: "la tabla de top se puede colocar más pequeña las
+   columnas más compactas") para que le quede espacio de sobra al
+   scatter "Gest x Longitud Vs Gestionable % Top" de al lado, sin que el
+   flex los mande a filas separadas. */
+#alim3-top-tbl-wrap table{font-size:10px}
+#alim3-top-tbl-wrap thead th, #alim3-top-tbl-wrap tbody td{padding:2px 5px}
 .tbl-wrap.tbl-compacta{display:inline-block;max-width:100%}
 .tbl-compacta table{width:auto;font-size:11px}
 .tbl-compacta thead th,.tbl-compacta tbody td,.tbl-compacta tfoot td{padding:4px 6px;border-right:1px solid var(--border)}
@@ -3850,17 +3857,23 @@ tfoot td:first-child{text-align:left}
     <!-- ===== PESTAÑA 2 · Top y Variación ===== -->
     <div id="alim3-tab-top" class="hidden">
     <div class="card">
-      <div class="fbar" style="justify-content:center;margin-bottom:10px">
+      <!-- Partido en 2 filas -- pedido explícito ("la fila 1 se puede
+           volver 2 filas para ocupar menos espacio"): antes todo el
+           toolbar competía por el mismo ancho que la tabla+gráfica de
+           abajo, que ahora necesitan ese espacio para quedar lado a lado. -->
+      <div class="fbar" style="justify-content:center;margin-bottom:6px">
         <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Top Alimentadores</div>
         <button type="button" class="be-modo-btn activo" id="alim3-top-btn-mensual" style="margin-left:12px" onclick="alim3ToggleTopModo('mensual')">Mensual</button>
         <button type="button" class="be-modo-btn" id="alim3-top-btn-anual" onclick="alim3ToggleTopModo('anual')" title="Suma los 12 meses hasta el AñoMes elegido">Anual (12M)</button>
         <label style="margin-left:16px">AñoMes</label>
         <select id="alim3-mes-top" onchange="alim3CambiarMesTop(this.value)"></select>
+      </div>
+      <div class="fbar" style="justify-content:center;margin-bottom:10px">
         <!-- pedido explícito: "en esa tabla es donde también necesito lo
              del crecimiento de pérdida del 5%" -- filtra y ordena a los
              que superaron ese crecimiento; el botón ⬇ de exportar de la
              tabla ya sale solo. -->
-        <button type="button" class="be-modo-btn" id="alim3-top-btn-crecimiento" style="margin-left:10px" onclick="alim3ToggleTopCrecimiento()" title="Muestra solo los alimentadores con Var. Pérdida (%) mayor al umbral de al lado vs. el período anterior, para exportar">Crecimiento &gt;</button>
+        <button type="button" class="be-modo-btn" id="alim3-top-btn-crecimiento" onclick="alim3ToggleTopCrecimiento()" title="Muestra solo los alimentadores con Var. Pérdida (%) mayor al umbral de al lado vs. el período anterior, para exportar">Crecimiento &gt;</button>
         <input type="number" id="alim3-top-umbral-crecimiento" value="5" min="0" step="0.5" style="width:56px" onchange="alim3RenderTablaTop()" title="Umbral de Var. Pérdida (%) para el botón Crecimiento">%
       </div>
       <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">
@@ -3873,8 +3886,11 @@ tfoot td:first-child{text-align:left}
           <!-- Alto igual al de la gráfica de al lado (520px) con scroll
                vertical -- pedido explícito ("debe ser del tamaño de la
                gráfica que está a la derecha", "la barra vertical... quiero
-               que se conserve"). -->
-          <div class="tbl-wrap tbl-compacta alim3-tabla-sticky" style="max-height:520px;overflow-y:auto">
+               que se conserve"). Id propio (alim3-top-tbl-wrap) para
+               achicarla sin afectar las otras tablas que comparten
+               .alim3-tabla-sticky -- pedido explícito ("columnas más
+               compactas"), así le queda espacio real al scatter de al lado. -->
+          <div class="tbl-wrap tbl-compacta alim3-tabla-sticky" id="alim3-top-tbl-wrap" style="max-height:520px;overflow-y:auto">
             <table>
               <thead><tr>
                 <th style="text-align:left;cursor:pointer" onclick="alim3OrdenarTop('nombre')" title="Click para ordenar">Nombre Spard <span id="alim3-th-nombre" class="alim3-th-flecha"></span></th>
@@ -7097,7 +7113,7 @@ async function iniIpCambiarModo(modo){
   if(modo==='sobreponer'){
     document.getElementById('ini-ip-titulo-grafico').textContent = 'IP_Reg vs. Indicador de Pérdidas Institucional (Anual, 12 meses)';
     ipiPoblarSelectorAnalisisMes('ini-ip-analisis-mes');
-    ipiGenerarAnalisisInicio();
+    iniIpGenerarAnalisisSobreponer();  // las 2 notas (IP_Reg + Institucional), no solo una
     iniIpRenderChartSobreponer();
     return;
   }
@@ -7111,6 +7127,7 @@ async function iniIpCambiarModo(modo){
 // cuál esté activo, dispara el generador de análisis correspondiente.
 function iniIpAnalisisMesCambio(){
   if(INI_IP_MODO==='ipreg') ipGenerarAnalisisInicio();
+  else if(INI_IP_MODO==='sobreponer') iniIpGenerarAnalisisSobreponer();
   else ipiGenerarAnalisisInicio();
 }
 
@@ -7256,14 +7273,16 @@ function ipiRenderChartAnualInicio(){
 // (igual criterio que ipiGenerarAnalisis del módulo dedicado). El
 // selector "Mes del análisis" fija el mes mensual; el anual toma la
 // ventana de 12 meses que CIERRA en ese mismo mes.
-function ipiGenerarAnalisisInicio(){
+function ipiGenerarAnalisisInicio(soloHtml){
   const cont = document.getElementById('ini-ip-mensual-comentario');
-  if(!cont) return;
+  if(!cont) return '';
   const mensual = ipiSerieCompleta(null).filter(f => f.pct!=null);
   const anual = ipiSerieAnual(ipiSerieCompleta(null), null).filter(f => f.pct!=null);
   if(mensual.length < 2){
-    cont.innerHTML = '<div class="ip-comentario-titulo">Análisis</div><p>Todavía no hay suficientes meses reales para analizar la variación.</p>';
-    return;
+    const htmlVacio = '<div class="ip-comentario-titulo">Análisis</div><p>Todavía no hay suficientes meses reales para analizar la variación.</p>';
+    if(soloHtml) return htmlVacio;
+    cont.innerHTML = htmlVacio;
+    return '';
   }
   const sel = document.getElementById('ini-ip-analisis-mes');
   let idx = sel && sel.value ? mensual.findIndex(f => f.clave === sel.value) : -1;
@@ -7297,12 +7316,32 @@ function ipiGenerarAnalisisInicio(){
     cifraAnual = ` -- ${actualA.pct.toFixed(2)}% Anual (12m)`;
   }
 
-  cont.innerHTML = `
+  const htmlInst = `
     <div class="ip-comentario-titulo">Análisis IPT -- ${mesActualLargo}</div>
     <div class="ip-comentario-cifra ${subeM?'sube':'baja'}">${actualM.pct.toFixed(2)}% Mensual${cifraAnual}</div>
     ${parrafoMensual}
     ${parrafoAnual}
   `;
+  if(soloHtml) return htmlInst;
+  cont.innerHTML = htmlInst;
+  return '';
+}
+
+// Modo "Sobreponer" -- el gráfico muestra IPT (IP_Reg) e Institucional
+// juntos, así que la caja de análisis también debe mostrar las 2 notas
+// (antes solo se veía la de Institucional, la de IP_Reg quedaba pisada
+// porque las 2 escriben al mismo contenedor) -- pedido explícito ("en el
+// de sobreponer no sale el análisis de las dos gráficas").
+function iniIpGenerarAnalisisSobreponer(){
+  const cont = document.getElementById('ini-ip-mensual-comentario');
+  if(!cont) return;
+  const htmlIpReg = ipGenerarAnalisisInicio(true);
+  const htmlInst = ipiGenerarAnalisisInicio(true);
+  cont.innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px">
+      <div>${htmlIpReg}</div>
+      <div style="border-left:1px solid var(--border);padding-left:16px">${htmlInst}</div>
+    </div>`;
 }
 
 // Tarjeta de Inicio: el MISMO croquis por zona de Indicador N2-1
@@ -23421,14 +23460,19 @@ function ipGenerarAnalisisPrincipal(){
 
 // Misma nota que ipGenerarAnalisisPrincipal, duplicada con ids propios
 // para la tarjeta de Inicio (ver cargarDashboardIniIpReg) -- un id de HTML
-// no puede repetirse en dos vistas visibles a la vez.
-function ipGenerarAnalisisInicio(){
+// no puede repetirse en dos vistas visibles a la vez. `soloHtml=true`
+// (modo "Sobreponer", ver iniIpGenerarAnalisisSobreponer) devuelve el HTML
+// en vez de escribirlo -- ipiGenerarAnalisisInicio() usa el MISMO
+// contenedor y lo pisaría si las 2 escribieran directo.
+function ipGenerarAnalisisInicio(soloHtml){
   const cont = document.getElementById('ini-ip-mensual-comentario');
-  if(!cont) return;
+  if(!cont) return '';
   const reales = ipUltimasFilasReales();
   if(reales.length < 2){
-    cont.innerHTML = '<div class="ip-comentario-titulo">Análisis</div><p>Todavía no hay suficientes meses reales para analizar la variación.</p>';
-    return;
+    const htmlVacio = '<div class="ip-comentario-titulo">Análisis</div><p>Todavía no hay suficientes meses reales para analizar la variación.</p>';
+    if(soloHtml) return htmlVacio;
+    cont.innerHTML = htmlVacio;
+    return '';
   }
   const sel = document.getElementById('ini-ip-analisis-mes');
   let idxSel = reales.length - 1;
@@ -23477,12 +23521,15 @@ function ipGenerarAnalisisInicio(){
     parrafoMensual = variantesMensualIpt[_informesVariante('ipt_mensual_vs_anio', variantesMensualIpt.length)];
   }
 
-  cont.innerHTML = `
+  const htmlIpReg = `
     <div class="ip-comentario-titulo">Análisis IPT -- ${mesActualTitulo}</div>
     <div class="ip-comentario-cifra ${subeMensual?'sube':'baja'}">${iptActual.toFixed(2)}% (${fKwh(actual.pt_kwh)} kWh/Anual)</div>
     <p>El IPT pasó de <b>${iptAnterior.toFixed(2)}%</b> en ${mesAnteriorLargo} a <b>${iptActual.toFixed(2)}%</b> en ${mesActualLargo}, lo que equivale a pasar de una pérdida de <b>${fKwh(anterior.pt_kwh)} kWh/Anual</b> a <b>${fKwh(actual.pt_kwh)} kWh/Anual</b> -- un ${subeMensual?'incremento':'descenso'} de <b>${Math.abs(deltaMensual).toFixed(2)} pp</b>, equivalente a <b>${signo(deltaPtKwh)}${fKwh(Math.abs(deltaPtKwh))} kWh/Anual</b>.${parrafoAnualIpt}</p>
     ${parrafoMensual ? `<p>${parrafoMensual}</p>` : ''}
   `;
+  if(soloHtml) return htmlIpReg;
+  cont.innerHTML = htmlIpReg;
+  return '';
 }
 
 // Mismo tipo de análisis que ipGenerarAnalisisPrincipal, pero para
@@ -26681,46 +26728,62 @@ async function ptTotalesRenderCards(){
   // más grande con más análisis"). Varias frases: valor del mes, cambio
   // MoM, mínimo/máximo y tendencia del rango visible, peso de la
   // gestionable, y acumulado anual.
+  // Nota de análisis -- reescrita para más claridad (pedido explícito:
+  // "esta nota está mal, no es clara, quiero algo más claro"). Antes cada
+  // línea metía 2-3 datos telegráficos separados por comas/punto y coma
+  // (ej. "En el rango: mín. X (mes), máx. Y (mes); la tendencia subió Z");
+  // ahora cada oración dice UNA sola idea completa, con el verbo explícito
+  // (subió/bajó/representa) en vez de abreviar con signos o "pesa".
   const notaEl = document.getElementById('pt-tot-nota-analisis');
   if(notaEl){
     const zonaTxt = zonaSel.length ? `Zona ${zonaSel.join(', ')}` : 'Todas las zonas';
     const b = v => `<b>${v}</b>`;
     const pctActual = actual.pctTecnica;
     const p = [];
-    p.push(`${b(zonaTxt)} · ${labelMes(actual.clave)}`);
-    let l2 = `Pérdida técnica: ${b(pctActual!=null ? pctActual.toFixed(2)+'%' : 'sin dato')} (${b(fmtKwh(actual.tecnica))})`;
-    if(pctActual!=null && anterior.pctTecnica!=null){
-      const d = pctActual - anterior.pctTecnica;
-      l2 += Math.abs(d)<0.005 ? `, estable vs. ${labelMes(anterior.clave)}` :
-        `, ${d>0?'▲':'▼'} ${Math.abs(d).toFixed(2)} pp vs. ${labelMes(anterior.clave)}`;
-    }
-    p.push(l2 + '.');
+    p.push(`${b(zonaTxt)} · ${labelMesLargo(actual.clave)}`);
 
-    // Mínimo / máximo y tendencia -- SOLO del rango visible (Desde/Hasta),
-    // no de toda la historia de ALIM_FILAS (que trae ~30 meses para poder
-    // rodar el 12M).
+    // 1) El dato del mes y cómo cambió vs. el mes anterior -- una sola
+    // idea, con el verbo dicho ("subió"/"bajó"/"se mantuvo") en vez del
+    // signo ▲/▼ solo.
+    if(pctActual!=null){
+      let l = `La pérdida técnica fue de ${b(pctActual.toFixed(2)+'%')}, equivalente a ${b(fmtKwh(actual.tecnica))}.`;
+      if(anterior.pctTecnica!=null){
+        const d = pctActual - anterior.pctTecnica;
+        l += Math.abs(d)<0.005
+          ? ` Se mantuvo prácticamente igual que en ${labelMesLargo(anterior.clave)}.`
+          : ` ${d>0?'Subió':'Bajó'} ${b(Math.abs(d).toFixed(2)+' puntos porcentuales')} frente a ${labelMesLargo(anterior.clave)}.`;
+      }
+      p.push(l);
+    } else {
+      p.push('No hay dato de pérdida técnica para este mes.');
+    }
+
+    // 2) Mínimo y máximo del rango visible -- en 2 oraciones separadas en
+    // vez de una sola con mín/máx/tendencia encimados.
     const dDesde = document.getElementById('pt-tot-desde')?.value || '';
     const dHasta = document.getElementById('pt-tot-hasta')?.value || '';
     const conPct = serieBase.filter(f=>f.pctTecnica!=null && (!dDesde || f.clave>=dDesde) && (!dHasta || f.clave<=dHasta));
     if(conPct.length >= 2){
       const min = conPct.reduce((a,f)=> f.pctTecnica<a.pctTecnica?f:a);
       const max = conPct.reduce((a,f)=> f.pctTecnica>a.pctTecnica?f:a);
+      p.push(`En el período mostrado, el mes con menor pérdida técnica fue ${b(labelMesLargo(min.clave))} (${b(min.pctTecnica.toFixed(2)+'%')}) y el de mayor pérdida fue ${b(labelMesLargo(max.clave))} (${b(max.pctTecnica.toFixed(2)+'%')}).`);
       const tend = conPct[conPct.length-1].pctTecnica - conPct[0].pctTecnica;
-      const tendTxt = Math.abs(tend)<0.05 ? 'se mantuvo plana' :
-        (tend>0 ? `subió ${tend.toFixed(2)} pp` : `bajó ${Math.abs(tend).toFixed(2)} pp`);
-      p.push(`En el rango: mín. ${b(min.pctTecnica.toFixed(2)+'%')} (${labelMes(min.clave)}), máx. ${b(max.pctTecnica.toFixed(2)+'%')} (${labelMes(max.clave)}); la tendencia ${b(tendTxt)}.`);
+      const tendTxt = Math.abs(tend)<0.05 ? 'se mantuvo estable' :
+        (tend>0 ? `subió ${tend.toFixed(2)} puntos porcentuales` : `bajó ${Math.abs(tend).toFixed(2)} puntos porcentuales`);
+      p.push(`Comparando el inicio y el final de ese período, la pérdida técnica ${b(tendTxt)}.`);
     }
 
-    // Peso de la pérdida gestionable sobre la total.
+    // 3) Peso de la gestionable -- "representa" en vez de "pesa".
     if(actual.perdida > 0){
       const gp = actual.gestionable / actual.perdida * 100;
-      p.push(`La pérdida gestionable pesa ${b(gp.toFixed(1)+'%')} de la pérdida total del mes.`);
+      p.push(`Del total de la pérdida de este mes, la parte gestionable representa el ${b(gp.toFixed(1)+'%')}.`);
     }
 
+    // 4) Acumulado de los últimos 12 meses -- se explica qué es "12M".
     if(actualTec12 && actualTec12.pctTecnica12!=null){
-      p.push(`Acumulado anual (12M): ${b(actualTec12.pctTecnica12.toFixed(2)+'%')}.`);
+      p.push(`Sumando los últimos 12 meses, la pérdida técnica acumulada es de ${b(actualTec12.pctTecnica12.toFixed(2)+'%')}.`);
     }
-    notaEl.innerHTML = p.join('<br>');
+    notaEl.innerHTML = p.map(linea => `<p style="margin:0 0 6px">${linea}</p>`).join('');
   }
 }
 
