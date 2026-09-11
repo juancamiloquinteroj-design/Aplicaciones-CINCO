@@ -2044,18 +2044,22 @@ tfoot td:first-child{text-align:left}
   </div><!-- /#ip-tab-detalle -->
 
   <!-- ===== PESTAÑA 4 · Información de Balance Energético ===== -->
-  <!-- Centrado -- pedido explícito ("organizar esas tablas más
-       centradas") -- justify-content:center en vez de dejarlas pegadas a
-       la izquierda con flex-basis fijo. El filtro "Mes del análisis" (año
-       y mes) se MUEVE acá desde la pestaña 1 cuando esta pestaña está
-       activa (nodo único #ip-analisis-mes-filtro, ver ipIrATab) --
-       pedido explícito ("debe tener filtro de año y mes para poder
-       cambiar la información"). -->
+  <!-- 2 filas -- pedido explícito ("quedó muy feo las tablas cortadas...
+       se desperdicia espacio a la derecha y izquierda"): apretar los 2
+       cuadros de Interanual/Mensual JUNTO a la caja de balance en una
+       sola fila los dejaba sin ancho real (max-width angosto -> tabla
+       cortada con scroll). Ahora Interanual+Mensual usan el ancho
+       completo de la tarjeta (fila 1) y la caja de balance va abajo,
+       centrada (fila 2, separada por una línea fina a sangre). El filtro
+       "Mes del análisis" (año y mes) se MUEVE acá desde la pestaña 1
+       cuando esta pestaña está activa (nodo único
+       #ip-analisis-mes-filtro, ver ipIrATab) -- pedido explícito ("debe
+       tener filtro de año y mes para poder cambiar la información"). -->
   <div id="ip-tab-balance" class="hidden">
   <div class="card">
-    <div style="display:flex;gap:28px;flex-wrap:wrap;align-items:flex-start;justify-content:center">
-      <div id="ip-narrativa-estructural" style="flex:0 1 auto"></div>
-      <div id="ip-caja-balance" style="flex:0 1 340px"></div>
+    <div id="ip-narrativa-estructural"></div>
+    <div style="border-top:1px solid var(--border);margin:18px -22px 0;padding:18px 22px 0;display:flex;justify-content:center">
+      <div id="ip-caja-balance" style="width:100%;max-width:440px"></div>
     </div>
   </div>
   </div><!-- /#ip-tab-balance -->
@@ -14707,16 +14711,22 @@ function _ipNarrarDatosTabla(datos, etiquetaAnterior){
 // dentro de una tarjeta que se vean bonitas"). Aparte para no cambiarle
 // el aspecto a los demás módulos que usan _narrativaEntradaSalidaHtml tal
 // cual (Nivel 4, Nivel 3, N2-1...).
-function _ipNarrativaBalanceHtml(mensual, titulo, claveActual){
+function _ipNarrativaBalanceHtml(mensual, claveActual){
   claveActual = claveActual || _narrativaUltimaClaveCompleta(mensual);
   const datosInteranual = claveActual ? _narrativaEntradaSalidaDatos(mensual, claveActual, 'interanual') : null;
   const datosMensual = claveActual ? _narrativaEntradaSalidaDatos(mensual, claveActual, 'mensual') : null;
   const cajaNota = texto => `<div class="ip-comentario-caja" style="font-size:12.5px;margin-top:10px"><div class="ip-comentario-titulo">Análisis</div><p style="margin:0">${texto}</p></div>`;
+  // Sin max-width -- pedido explícito ("quedó muy feo las tablas
+  // cortadas... se desperdicia espacio a la derecha y izquierda"): un
+  // tope angosto dejaba la tabla (5 columnas con montos de 9 cifras) más
+  // ancha que su caja y el navegador la cortaba con scroll horizontal.
+  // flex:1 1 420px -- cada tabla usa el ancho real disponible de la fila
+  // (la tarjeta completa, ver #ip-tab-balance), se reparten 50/50 en
+  // pantallas anchas y se apilan solas en angostas.
   return `
-    ${titulo ? `<div class="be-tabla-creadas-titulo" style="text-align:center">${titulo}</div>` : ''}
-    <div style="display:flex;gap:28px;flex-wrap:wrap;justify-content:center">
-      <div style="max-width:380px">${_narrativaTablaHtml(datosInteranual, 'Interanual (año contra año)')}${cajaNota(_ipNarrarDatosTabla(datosInteranual, 'el mismo mes del año anterior'))}</div>
-      <div style="max-width:380px">${_narrativaTablaHtml(datosMensual, 'Mensual (mes contra mes)')}${cajaNota(_ipNarrarDatosTabla(datosMensual, 'el mes anterior'))}</div>
+    <div style="display:flex;gap:32px;flex-wrap:wrap">
+      <div style="flex:1 1 420px;min-width:0">${_narrativaTablaHtml(datosInteranual, 'Interanual (año contra año)')}${cajaNota(_ipNarrarDatosTabla(datosInteranual, 'el mismo mes del año anterior'))}</div>
+      <div style="flex:1 1 420px;min-width:0">${_narrativaTablaHtml(datosMensual, 'Mensual (mes contra mes)')}${cajaNota(_ipNarrarDatosTabla(datosMensual, 'el mes anterior'))}</div>
     </div>
   `;
 }
@@ -23515,7 +23525,9 @@ function ipGenerarAnalisisPrincipal(){
   // elegido acá -- pedido explícito ("yo puedo cambiar esos valores de
   // las tablas con el filtro de arriba Mes del análisis").
   const contNarrativa = document.getElementById('ip-narrativa-estructural');
-  if(contNarrativa) contNarrativa.innerHTML = _ipNarrativaBalanceHtml(_narrativaIpRegMensual(), 'Por qué crece el indicador -- IP_Reg', claveActual);
+  // Sin título encima -- pedido explícito ("quita esto 'Por qué crece el
+  // indicador -- IP_Reg'").
+  if(contNarrativa) contNarrativa.innerHTML = _ipNarrativaBalanceHtml(_narrativaIpRegMensual(), claveActual);
   const contCajaBalance = document.getElementById('ip-caja-balance');
   if(contCajaBalance){
     // Nota CON los mismos números de las tarjetas de arriba (Entrada,
