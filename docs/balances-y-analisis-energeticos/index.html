@@ -7869,11 +7869,11 @@ async function entrarVisualizador(){
     document.getElementById('sidebar').classList.remove('hidden');
   }
 
-  // Se carga temprano (antes de abrir ninguna vista) para que, si ya hay
-  // colores de zona parametrizados de una sesión anterior, las gráficas de
-  // Pérdidas Técnicas los usen desde el primer render, no solo después de
-  // visitar Parametrización.
+  // Se cargan temprano (antes de abrir ninguna vista) para que, si ya hay
+  // colores de zona / valores de config parametrizados de una sesión
+  // anterior, las vistas los usen desde el primer render.
   await cargarZonaColoresPersonalizados();
+  await cargarConfigApp();
 
   actualizarBadgeRecarga();
   if(_badgeRecargaInterval) clearInterval(_badgeRecargaInterval);
@@ -7942,6 +7942,61 @@ async function cargarZonaColoresPersonalizados(){
   }catch(e){
     // Si falla, se sigue con los colores automáticos -- no es bloqueante.
   }
+}
+
+/* ---- Config de app compartida por operador (Tarifa G+T+R, Índice
+   reconocido N3, notas de análisis N3/N4, "contratos" de Resumen por
+   Nivel, etc.) -- reemplaza el localStorage de esos campos puntuales,
+   pedido explícito ("puse el precio de las tarifas pero ingreso otro
+   usuario y no las ve" -- localStorage es por navegador, no se comparte
+   entre usuarios del mismo operador). Se trae TODO de una sola vez acá
+   (mismo patrón que cargarZonaColoresPersonalizados) y las lecturas
+   después son síncronas contra este objeto en memoria -- ningún call site
+   existente tiene que volverse async solo por esto. configSet() hace la
+   escritura optimista (actualiza la memoria YA, para que la UI no se
+   sienta más lenta que antes) + persiste en el backend en segundo plano;
+   requiereEditor() la bloquea del lado del cliente y el backend además
+   devuelve 403 si el rol es 'visualizador' (Depends(requiere_editor)). ---- */
+let APP_CONFIG = {};
+
+async function cargarConfigApp(){
+  try{
+    APP_CONFIG = DEMO ? {} : await apiGet('/api/config-app');
+  }catch(e){
+    APP_CONFIG = {};  // si falla, cada campo cae a su valor por defecto -- no es bloqueante
+  }
+}
+
+function configGet(clave, porDefecto){
+  const v = APP_CONFIG[clave];
+  return (v == null) ? (porDefecto === undefined ? null : porDefecto) : v;
+}
+
+async function configSet(clave, valor){
+  if(!requiereEditor()) return false;
+  APP_CONFIG[clave] = valor;
+  try{
+    await apiPut('/api/config-app', {clave, valor});
+    return true;
+  }catch(e){
+    return false;  // se queda en memoria para esta sesión aunque no haya podido persistir (ej. servidor caído a mitad de sesión)
+  }
+}
+
+// Para cajas de texto con oninput (cada tecla) -- ej. las notas de
+// análisis N3/N4 -- llamar configSet directo mandaría un PUT por letra.
+// Esta versión actualiza APP_CONFIG (y por lo tanto la UI/tooltips) al
+// toque, pero espera `ms` de silencio antes de persistir de verdad.
+const _configSetDebounceTimers = new Map();
+function configSetDebounced(clave, valor, ms){
+  if(!requiereEditor()) return;
+  APP_CONFIG[clave] = valor;
+  const previo = _configSetDebounceTimers.get(clave);
+  if(previo) clearTimeout(previo);
+  _configSetDebounceTimers.set(clave, setTimeout(() => {
+    _configSetDebounceTimers.delete(clave);
+    apiPut('/api/config-app', {clave, valor}).catch(()=>{});
+  }, ms || 700));
 }
 
 /* ==========================================================================
@@ -16875,8 +16930,10 @@ function alimNivel4TecModo(m){
   alimNivel4RenderTodo();
 }
 // Análisis por mes que escribe el usuario (pestaña "Pérdida Técnica
-// Nivel 4") -- se guarda por operador+mes en localStorage y se muestra
-// en el tooltip de la gráfica al pasar el mouse por ese mes.
+// Nivel 4") -- compartido por operador+mes vía configGet/configSet (antes
+// vivía solo en localStorage, no lo veían los demás usuarios del mismo
+// operador -- pedido explícito) y se muestra en el tooltip de la gráfica
+// al pasar el mouse por ese mes.
 let ALIM_NIVEL4_ANALISIS = {};
 let ALIM_NIVEL4_ANALISIS_MES = null;
 function _analisisKeyN4(mes){
@@ -16886,18 +16943,20 @@ function _analisisKeyN4(mes){
 function _cargarAnalisisN4(claves){
   ALIM_NIVEL4_ANALISIS = {};
   (claves||[]).forEach(c => {
-    try{ const v = localStorage.getItem(_analisisKeyN4(c)); if(v) ALIM_NIVEL4_ANALISIS[c] = v; }catch(e){}
+    const v = configGet(_analisisKeyN4(c)); if(v) ALIM_NIVEL4_ANALISIS[c] = v;
   });
 }
 function alimNivel4GuardarAnalisis(){
   const mes = ALIM_NIVEL4_ANALISIS_MES;
   const ta = document.getElementById('alim-nivel4-analisis-texto');
   if(!mes || !ta) return;
+  // Chequeo silencioso (no requiereEditor(), que hace alert -- esto corre
+  // en cada tecla, no en un botón) -- la caja además queda `disabled` para
+  // Visualizador (ver alimNivel4AnalisisSelCambio), esto es el respaldo.
+  if(!EDITOR || OFFLINE_MODO) return;
   const txt = ta.value.trim();
-  try{
-    if(txt){ localStorage.setItem(_analisisKeyN4(mes), txt); ALIM_NIVEL4_ANALISIS[mes] = txt; }
-    else { localStorage.removeItem(_analisisKeyN4(mes)); delete ALIM_NIVEL4_ANALISIS[mes]; }
-  }catch(e){}
+  if(txt) ALIM_NIVEL4_ANALISIS[mes] = txt; else delete ALIM_NIVEL4_ANALISIS[mes];
+  configSetDebounced(_analisisKeyN4(mes), txt || null);  // oninput -- una tecla no dispara un PUT por sí sola
   // El tooltip de las gráficas lee ALIM_NIVEL4_ANALISIS en vivo -- basta
   // un update sin animación para que tomen el texto nuevo.
   [chAlimNivel4Mensual, chAlimNivel4Anual, chAlimNivel4Tecnica].forEach(c => { if(c) c.update('none'); });
@@ -16909,6 +16968,9 @@ function alimNivel4AnalisisSelCambio(){
   if(!sel || !ta) return;
   ALIM_NIVEL4_ANALISIS_MES = sel.value;
   ta.value = ALIM_NIVEL4_ANALISIS[sel.value] || '';
+  // Visualizador: solo lectura -- pedido explícito ("el usuario que tiene
+  // acceso como visualizador puede cambiar ese campo, no debería").
+  ta.disabled = !EDITOR || OFFLINE_MODO;
 }
 
 // Acumulado 12M móvil de la pérdida TÉCNICA (para la vista Anual).
@@ -16979,7 +17041,7 @@ function alimNivel4RenderTodo(){
   }
   ALIM_NIVEL4_ANALISIS_MES = _selAn ? _selAn.value : claveAnalisis;
   const _taAnalisis = document.getElementById('alim-nivel4-analisis-texto');
-  if(_taAnalisis) _taAnalisis.value = ALIM_NIVEL4_ANALISIS[ALIM_NIVEL4_ANALISIS_MES] || '';
+  if(_taAnalisis){ _taAnalisis.value = ALIM_NIVEL4_ANALISIS[ALIM_NIVEL4_ANALISIS_MES] || ''; _taAnalisis.disabled = !EDITOR || OFFLINE_MODO; }
   document.getElementById('alim-nivel4-btn-var').classList.toggle('activo', ALIM_NIVEL4_VAR);
   document.getElementById('alim-nivel4-btn-relleno').classList.toggle('activo', ALIM_NIVEL4_SIN_RELLENO);
 
@@ -17289,8 +17351,8 @@ function _reconPctN3Key(){
   return `pt_recon_pct_n3_${slug}`;
 }
 function _reconPctN3(){
-  try{ const v = parseFloat(localStorage.getItem(_reconPctN3Key())); return (isFinite(v) && v >= 0) ? v : 1.45; }
-  catch(e){ return 1.45; }
+  const v = parseFloat(configGet(_reconPctN3Key()));
+  return (isFinite(v) && v >= 0) ? v : 1.45;
 }
 function _alimN3EvalVentana(mes, claves){
   const idx = claves.indexOf(mes);
@@ -17298,17 +17360,19 @@ function _alimN3EvalVentana(mes, claves){
   return claves.slice(Math.max(0, end - 11), end + 1);
 }
 function _alimN3EvalCargarInputs(mes){
+  const soloLectura = !EDITOR || OFFLINE_MODO;
   const elC = document.getElementById('alim-nivel3-eval-costo');
-  if(elC){ let v=null; try{ v = localStorage.getItem(_costoKey(mes)); }catch(e){} elC.value = (v!=null)?v:'0'; }
+  if(elC){ elC.value = configGet(_costoKey(mes), '0'); elC.disabled = soloLectura; }
   const elR = document.getElementById('alim-nivel3-eval-recon');
-  if(elR) elR.value = String(_reconPctN3());
+  if(elR){ elR.value = String(_reconPctN3()); elR.disabled = soloLectura; }
 }
 
 function alimNivel3EvalGuardarCosto(){
   const mes = ALIM_NIVEL3_MAPA_MES;
   const el = document.getElementById('alim-nivel3-eval-costo');
   if(!mes || !el) return;
-  try{ localStorage.setItem(_costoKey(mes), el.value || '0'); }catch(e){}
+  if(!EDITOR || OFFLINE_MODO) return;  // silencioso -- oninput corre en cada tecla
+  configSetDebounced(_costoKey(mes), el.value || '0');
   const porZona = _alimNivel34MensualPorZona(ALIM_NIVEL3_FILAS || []);
   alimNivel3RenderEvalTabla(porZona);
   alimNivel3RenderEvalChart(porZona);
@@ -17316,7 +17380,8 @@ function alimNivel3EvalGuardarCosto(){
 function alimNivel3EvalGuardarReconPct(){
   const el = document.getElementById('alim-nivel3-eval-recon');
   if(!el) return;
-  try{ localStorage.setItem(_reconPctN3Key(), el.value || '0'); }catch(e){}
+  if(!EDITOR || OFFLINE_MODO) return;
+  configSetDebounced(_reconPctN3Key(), el.value || '0');
   const porZona = _alimNivel34MensualPorZona(ALIM_NIVEL3_FILAS || []);
   alimNivel3RenderEvalTabla(porZona);
   alimNivel3RenderEvalChart(porZona);
@@ -17557,7 +17622,8 @@ function alimNivel3TecModo(m){
   alimNivel3RenderTodo();
 }
 
-// Análisis por mes (pestaña "Pérdida Técnica Nivel 3") -- igual que Nivel 4.
+// Análisis por mes (pestaña "Pérdida Técnica Nivel 3") -- igual que Nivel 4
+// (compartido por operador vía configGet/configSet, no solo en este navegador).
 let ALIM_NIVEL3_ANALISIS = {};
 let ALIM_NIVEL3_ANALISIS_MES = null;
 function _analisisKeyN3(mes){
@@ -17566,17 +17632,16 @@ function _analisisKeyN3(mes){
 }
 function _cargarAnalisisN3(claves){
   ALIM_NIVEL3_ANALISIS = {};
-  (claves||[]).forEach(c => { try{ const v = localStorage.getItem(_analisisKeyN3(c)); if(v) ALIM_NIVEL3_ANALISIS[c] = v; }catch(e){} });
+  (claves||[]).forEach(c => { const v = configGet(_analisisKeyN3(c)); if(v) ALIM_NIVEL3_ANALISIS[c] = v; });
 }
 function alimNivel3GuardarAnalisis(){
   const mes = ALIM_NIVEL3_ANALISIS_MES;
   const ta = document.getElementById('alim-nivel3-analisis-texto');
   if(!mes || !ta) return;
+  if(!EDITOR || OFFLINE_MODO) return;  // silencioso -- corre en cada tecla, ver nota en alimNivel4GuardarAnalisis
   const txt = ta.value.trim();
-  try{
-    if(txt){ localStorage.setItem(_analisisKeyN3(mes), txt); ALIM_NIVEL3_ANALISIS[mes] = txt; }
-    else { localStorage.removeItem(_analisisKeyN3(mes)); delete ALIM_NIVEL3_ANALISIS[mes]; }
-  }catch(e){}
+  if(txt) ALIM_NIVEL3_ANALISIS[mes] = txt; else delete ALIM_NIVEL3_ANALISIS[mes];
+  configSetDebounced(_analisisKeyN3(mes), txt || null);
   [chAlimNivel3Mensual, chAlimNivel3Anual, chAlimNivel3Tecnica].forEach(c => { if(c) c.update('none'); });
 }
 function alimNivel3AnalisisSelCambio(){
@@ -17585,6 +17650,7 @@ function alimNivel3AnalisisSelCambio(){
   if(!sel || !ta) return;
   ALIM_NIVEL3_ANALISIS_MES = sel.value;
   ta.value = ALIM_NIVEL3_ANALISIS[sel.value] || '';
+  ta.disabled = !EDITOR || OFFLINE_MODO;
 }
 
 // Filtro Rango acota el total (línea + tarjetas); filtro de chips de Zona
@@ -17655,7 +17721,7 @@ function alimNivel3RenderTodo(){
   }
   ALIM_NIVEL3_ANALISIS_MES = _selAn ? _selAn.value : claveAnalisis;
   const _taAn = document.getElementById('alim-nivel3-analisis-texto');
-  if(_taAn) _taAn.value = ALIM_NIVEL3_ANALISIS[ALIM_NIVEL3_ANALISIS_MES] || '';
+  if(_taAn){ _taAn.value = ALIM_NIVEL3_ANALISIS[ALIM_NIVEL3_ANALISIS_MES] || ''; _taAn.disabled = !EDITOR || OFFLINE_MODO; }
   const _notaPorClave = c => ALIM_NIVEL3_ANALISIS[c] || null;
 
   _alimNivelRenderResumenGrupos('alim-nivel3', _alimNivelVisibles(datos12Completo, 'alim-nivel3'), tecnicaPorMes);
@@ -17752,18 +17818,18 @@ function _alimResumenGestionable(nivelClave, clave, actual, tec){
 }
 
 // % Reconocido -- lo ingresa el usuario, se guarda por nivel Y por
-// operador (localStorage, para que no se pierda entre visitas pero
-// tampoco se mezcle si el mismo navegador usa varios operadores).
+// operador (compartido vía configGet/configSet, antes localStorage -- no
+// se veía entre usuarios del mismo operador, pedido explícito).
 function _alimResumenClaveLS(nivelClave){
   const slug = (typeof OPERADOR !== 'undefined' && OPERADOR && OPERADOR.slug) ? OPERADOR.slug : 'default';
   return `pt_reconocido_${slug}_${nivelClave}`;
 }
 function _alimResumenLeerPct(nivelClave){
-  const v = localStorage.getItem(_alimResumenClaveLS(nivelClave));
+  const v = configGet(_alimResumenClaveLS(nivelClave));
   return v==null || v==='' ? '' : v;
 }
 function _alimResumenGuardarPct(nivelClave, valor){
-  localStorage.setItem(_alimResumenClaveLS(nivelClave), valor);
+  configSetDebounced(_alimResumenClaveLS(nivelClave), valor);
 }
 
 // Tarifa G+T+R ($/kWh) -- UNA sola, compartida por los 3 niveles (diseño
@@ -17778,11 +17844,11 @@ function _alimResumenTarifaClaveLS(mesClave){
   return `pt_tarifa_${slug}_${mesClave}`;
 }
 function _alimResumenLeerTarifa(mesClave){
-  const v = localStorage.getItem(_alimResumenTarifaClaveLS(mesClave));
+  const v = configGet(_alimResumenTarifaClaveLS(mesClave));
   return v==null || v==='' ? '' : v;
 }
 function _alimResumenGuardarTarifa(mesClave, valor){
-  localStorage.setItem(_alimResumenTarifaClaveLS(mesClave), valor);
+  configSetDebounced(_alimResumenTarifaClaveLS(mesClave), valor);
 }
 
 // Tarifa DERECHA -- pedido explícito ("son tarifas diferentes, una
@@ -17796,11 +17862,11 @@ function _alimResumenTarifaDerClaveLS(nivelClave, mesClave){
   return `pt_tarifa_der_${slug}_${nivelClave}_${mesClave}`;
 }
 function _alimResumenLeerTarifaDer(nivelClave, mesClave){
-  const v = localStorage.getItem(_alimResumenTarifaDerClaveLS(nivelClave, mesClave));
+  const v = configGet(_alimResumenTarifaDerClaveLS(nivelClave, mesClave));
   return v==null || v==='' ? '' : v;
 }
 function _alimResumenGuardarTarifaDer(nivelClave, mesClave, valor){
-  localStorage.setItem(_alimResumenTarifaDerClaveLS(nivelClave, mesClave), valor);
+  configSetDebounced(_alimResumenTarifaDerClaveLS(nivelClave, mesClave), valor);
 }
 
 const _alimResumenFmtMoney = v => v==null ? '--' : '$'+v.toLocaleString('es-CO',{maximumFractionDigits:0});
@@ -17816,11 +17882,11 @@ function _alimResumenContratosClaveLS(){
   return `pt_contratos_${slug}`;
 }
 function _alimResumenLeerContratos(){
-  try{ return JSON.parse(localStorage.getItem(_alimResumenContratosClaveLS()) || '[]'); }
+  try{ return JSON.parse(configGet(_alimResumenContratosClaveLS()) || '[]'); }
   catch(e){ return []; }
 }
-function _alimResumenGuardarContratos(lista){
-  localStorage.setItem(_alimResumenContratosClaveLS(), JSON.stringify(lista));
+async function _alimResumenGuardarContratos(lista){
+  await configSet(_alimResumenContratosClaveLS(), JSON.stringify(lista));
 }
 
 // Valor Total/Reconocido/No Reconocido/Técnica ($) de un nivel, con los
@@ -18050,7 +18116,7 @@ function alimResumenActualizarTarifaDer(nivelClave){
   const input = document.getElementById(`alim-resumen-tarifa-der-${nivelClave}`);
   const sel = document.getElementById('alim-resumen-mes');
   if(!input || !sel || !sel.value) return;
-  _alimResumenGuardarTarifaDer(nivelClave, sel.value, input.value);
+  if(EDITOR && !OFFLINE_MODO) _alimResumenGuardarTarifaDer(nivelClave, sel.value, input.value);  // silencioso -- oninput
   _alimResumenActualizarFilaTabla(nivelClave);
 }
 
@@ -18092,7 +18158,7 @@ function _alimResumenActualizarValorizacionNivel(nivelClave){
 function alimResumenActualizarValorizacion(){
   const input = document.getElementById('alim-resumen-tarifa');
   const sel = document.getElementById('alim-resumen-mes');
-  if(input && sel && sel.value) _alimResumenGuardarTarifa(sel.value, input.value);
+  if(input && sel && sel.value && EDITOR && !OFFLINE_MODO) _alimResumenGuardarTarifa(sel.value, input.value);  // silencioso -- oninput
   ALIM_RESUMEN_NIVELES.forEach(n => _alimResumenActualizarValorizacionNivel(n.clave));
   _alimResumenActualizarTotales();
   // "Compra (Tarifa G+T+R)" del diagrama de abajo usa esta misma tarifa
@@ -18239,7 +18305,7 @@ function alimResumenRenderNiveles(){
   // Tarifa G+T+R -- UNA sola para los 3 niveles (diseño original,
   // restaurado -- pedido explícito). El input vive arriba, junto a Mes.
   const tarifaInput = document.getElementById('alim-resumen-tarifa');
-  if(tarifaInput) tarifaInput.value = _alimResumenLeerTarifa(clave);
+  if(tarifaInput){ tarifaInput.value = _alimResumenLeerTarifa(clave); tarifaInput.disabled = !EDITOR || OFFLINE_MODO; }
 
   // "Campo Excel" -- etiqueta ARRIBA de una caja blanca con borde fino,
   // pedido explícito ("lo más parecido como está ahí"). `opts`: {destacada, id}.
@@ -18329,7 +18395,7 @@ function alimResumenRenderNiveles(){
             `<div class="resnivel-campo">
               <div class="resnivel-campo-label">% Reconocido</div>
               <input type="number" min="0" max="100" step="0.01" placeholder="--" value="${pctGuardado}"
-                id="alim-resumen-pct-${n.clave}" oninput="alimResumenActualizarReconocido('${n.clave}')">
+                id="alim-resumen-pct-${n.clave}" oninput="alimResumenActualizarReconocido('${n.clave}')" ${(!EDITOR||OFFLINE_MODO)?'disabled':''}>
             </div>`
           )}
         </div>
@@ -18363,7 +18429,7 @@ function alimResumenRenderTarifaNeta(clave){
       <div class="resnivel-campo-label" style="white-space:normal">${n.nombre}${n.clave==='n21'?' (prom.)':''}</div>
       <input type="number" min="0" step="0.01" placeholder="--" value="${_alimResumenLeerTarifaDer(n.clave, clave)}"
         style="border-color:var(--accent);color:var(--accent);font-weight:800;width:100%;box-sizing:border-box"
-        id="alim-resumen-tarifa-der-${n.clave}" oninput="alimResumenActualizarTarifaDer('${n.clave}')">
+        id="alim-resumen-tarifa-der-${n.clave}" oninput="alimResumenActualizarTarifaDer('${n.clave}')" ${(!EDITOR||OFFLINE_MODO)?'disabled':''}>
     </div>`;
   cont.innerHTML = `
     <div style="font-size:11px;font-weight:800;letter-spacing:.5px;color:var(--text2);text-transform:uppercase;margin-bottom:6px" title="$/kWh por nivel, independiente de la Tarifa G+T+R de las tarjetas de Nivel -- alimenta la tabla de Valorización de más abajo">Tarifa Neta ($/kWh)</div>
@@ -18486,7 +18552,7 @@ function alimResumenActualizarReconocido(nivelClave){
   const destinoKwh = document.getElementById(`alim-resumen-perdrec-${nivelClave}`);
   const sel = document.getElementById('alim-resumen-mes');
   if(!input || !sel) return;
-  _alimResumenGuardarPct(nivelClave, input.value);
+  if(EDITOR && !OFFLINE_MODO) _alimResumenGuardarPct(nivelClave, input.value);  // silencioso -- oninput corre en cada tecla
 
   const serie = _alimResumenSerie(nivelClave);
   const actual = serie.find(x => x.clave === sel.value);
@@ -25467,28 +25533,31 @@ function _factorSTN(nivel){ return _factorSTNmes(nivel); }
 
 // Costo (tarifa) G+T+R del kWh referido al STN -- se guarda POR MES
 // (pedido explícito: "la tarifa de enero es distinta a la de febrero, eso
-// es lo que hay que guardar"). Cada mes su propio valor en localStorage;
-// la gráfica de serie lee el de cada mes (0 si no se cargó todavía).
+// es lo que hay que guardar"), compartido por operador vía configGet/
+// configSet (antes localStorage, no lo veían los demás usuarios -- pedido
+// explícito: "puse el precio de las tarifas... ingreso otro usuario y no
+// las ve"). Cada mes su propio valor; la gráfica de serie lee el de cada
+// mes (0 si no se cargó todavía).
 function _costoKey(mes){
   const slug = (OPERADOR && OPERADOR.slug) ? OPERADOR.slug : 'default';
   return `pt_costo_gtr_${slug}_${mes}`;
 }
 function _costoDeMes(mes){
-  try{ return parseFloat(localStorage.getItem(_costoKey(mes))) || 0; }catch(e){ return 0; }
+  return parseFloat(configGet(_costoKey(mes))) || 0;
 }
 function guardarCostoKwh(){
   const mes = document.getElementById('fm-mes')?.value;
   const el = document.getElementById('costo-kwh');
   if(!mes || !el) return;
-  try{ localStorage.setItem(_costoKey(mes), el.value || '0'); }catch(e){}
+  if(!EDITOR || OFFLINE_MODO) return;  // silencioso -- oninput corre en cada tecla
+  configSetDebounced(_costoKey(mes), el.value || '0');
 }
 function cargarCostoKwh(){
   const mes = document.getElementById('fm-mes')?.value;
   const el = document.getElementById('costo-kwh');
   if(!mes || !el) return;
-  let v = null;
-  try{ v = localStorage.getItem(_costoKey(mes)); }catch(e){}
-  el.value = (v!=null) ? v : '0';   // sin guardado -> 0 (cada mes independiente)
+  el.value = configGet(_costoKey(mes), '0');   // sin guardado -> 0 (cada mes independiente)
+  el.disabled = !EDITOR || OFFLINE_MODO;
 }
 
 async function cargarZonas(){
