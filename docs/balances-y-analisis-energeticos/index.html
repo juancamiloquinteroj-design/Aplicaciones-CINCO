@@ -967,6 +967,9 @@ tfoot td:first-child{text-align:left}
 .alim-nivel3-eval-tabla td:first-child{text-align:left}
 #alim-sub-tab-subestaciones>.card:first-child, #alim-sub-tab-alimentadores>.card:first-child{border-top-left-radius:0;border-top-right-radius:0}
 #alim3-tab-detalle>.card:first-child, #alim3-tab-top>.card:first-child, #alim3-tab-variacion>.card:first-child{border-top-left-radius:0;border-top-right-radius:0}
+#ip-tab-anual>.card:first-child, #ip-tab-detalle>.card:first-child, #ip-tab-mensual>.card:first-child, #ip-tab-balance>.card:first-child, #ip-tab-nivel1>.card:first-child{border-top-left-radius:0;border-top-right-radius:0}
+#ip-com-tab-indicador>.card:first-child, #ip-com-tab-detalle>.card:first-child{border-top-left-radius:0;border-top-right-radius:0}
+#ipi-tab-indicador>.card:first-child, #ipi-tab-zona>.card:first-child{border-top-left-radius:0;border-top-right-radius:0}
 #alim-nivel3-tab-tecnica .split-wrap{align-items:flex-start}
 /* Diagrama Unifilar -- símbolos SVG (currentColor toma el color de estas
    clases, así los íconos ya son theme-aware sin nada extra). */
@@ -1249,9 +1252,6 @@ tfoot td:first-child{text-align:left}
     </button>
     <button class="sidebar-sublink" data-vista="ip-institucional" data-modulo="ip-institucional" onclick="mostrarVista('ip-institucional')" style="line-height:1.25;text-align:left">
       🏛️ Indicador Pérdidas<br>Institucional
-    </button>
-    <button class="sidebar-sublink" data-vista="ip-nivel1" data-modulo="ip-nivel1" onclick="mostrarVista('ip-nivel1')" style="line-height:1.25;text-align:left">
-      Indicador Pérdidas<br>Nivel de Tensión 1
     </button>
     <button class="sidebar-sublink" data-vista="reportes-sspd" data-modulo="reportes-sspd" onclick="mostrarVista('reportes-sspd')" style="line-height:1.25;text-align:left">
       📋 Reportes Resolución<br>SSPD 20192200020155
@@ -1896,6 +1896,20 @@ tfoot td:first-child{text-align:left}
     <div id="ip-config-msg" class="tm-modal-msg"></div>
   </div>
 
+  <!-- Pestañas estilo Excel (mismo patrón .pt-tabs que Alimentadores) --
+       pedido explícito: "hacerlo estilo pestañas". La config de arriba
+       (Configurar mes/Versión XM/Pj) queda FUERA de las pestañas -- aplica
+       a todo el módulo, no a una vista puntual. -->
+  <div class="pt-tabs">
+    <button type="button" class="pt-tab-btn activo" id="ip-tab-btn-anual" onclick="ipIrATab('anual')">Índice Total de Pérdidas Anual</button>
+    <button type="button" class="pt-tab-btn" id="ip-tab-btn-detalle" onclick="ipIrATab('detalle')">Detalle por Nivel de Tensión</button>
+    <button type="button" class="pt-tab-btn" id="ip-tab-btn-mensual" onclick="ipIrATab('mensual')">Indicador Mensual</button>
+    <button type="button" class="pt-tab-btn" id="ip-tab-btn-balance" onclick="ipIrATab('balance')">Información de Balance Energético</button>
+    <button type="button" class="pt-tab-btn" id="ip-tab-btn-nivel1" onclick="ipIrATab('nivel1')">Índice de Pérdidas Nivel de Tensión 1</button>
+  </div>
+
+  <!-- ===== PESTAÑA 1 · Índice Total de Pérdidas Anual ===== -->
+  <div id="ip-tab-anual">
   <div class="card">
     <div class="fbar" style="margin-bottom:6px">
       <label>Vista</label>
@@ -1946,6 +1960,22 @@ tfoot td:first-child{text-align:left}
     <div class="be-resumen-cards" id="ip-resumen-principal" style="margin:16px 0 0"></div>
   </div>
 
+  <!-- Tarjeta de Análisis IPT -- movida acá (antes vivía junto a "Indicador
+       Mensual", pedido explícito: "aquí se debe añadir esa tarjeta de
+       análisis de IPT"). El selector "Mes del análisis" también manda en
+       la tabla "Por qué crece" y la caja de balance de la pestaña
+       "Información de Balance Energético" (ver ipGenerarAnalisisPrincipal). -->
+  <div class="card">
+    <div class="fbar" style="margin-bottom:6px">
+      <label title="El análisis cambia cada mes -- elige un mes anterior para ver cómo se veía esa nota en su momento">Mes del análisis</label>
+      <select id="ip-analisis-mes" onchange="ipGenerarAnalisisPrincipal()" style="flex:1;min-width:0"></select>
+    </div>
+    <div id="ip-mensual-comentario" class="ip-comentario-caja"></div>
+  </div>
+  </div><!-- /#ip-tab-anual -->
+
+  <!-- ===== PESTAÑA 2 · Detalle por Nivel de Tensión ===== -->
+  <div id="ip-tab-detalle" class="hidden">
   <div class="card">
     <div class="be-tabla-creadas-titulo ip-tabla-compacta-titulo">Detalle por Nivel de Tensión</div>
     <div class="be-tabla-scroll ip-tabla-compacta" style="max-height:720px">
@@ -1958,180 +1988,33 @@ tfoot td:first-child{text-align:left}
       </table>
     </div>
   </div>
+  </div><!-- /#ip-tab-detalle -->
 
+  <!-- ===== PESTAÑA 3 · Indicador Mensual ===== -->
+  <div id="ip-tab-mensual" class="hidden">
   <div class="card">
     <div style="text-align:center;margin-bottom:8px">
       <div style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Indicador Mensual</div>
     </div>
-    <div class="ip-mensual-grid">
-      <div class="chart-wrap" style="height:320px"><canvas id="ch-ip-mensual"></canvas></div>
-      <div style="display:flex;flex-direction:column;gap:8px;min-height:0">
-        <div class="fbar" style="margin-bottom:0">
-          <label title="El análisis cambia cada mes -- elige un mes anterior para ver cómo se veía esa nota en su momento">Mes del análisis</label>
-          <select id="ip-analisis-mes" onchange="ipGenerarAnalisisPrincipal()" style="flex:1;min-width:0"></select>
-        </div>
-        <div id="ip-mensual-comentario" class="ip-comentario-caja" style="flex:1"></div>
-      </div>
-    </div>
+    <div class="chart-wrap" style="height:380px"><canvas id="ch-ip-mensual"></canvas></div>
   </div>
+  </div><!-- /#ip-tab-mensual -->
 
+  <!-- ===== PESTAÑA 4 · Información de Balance Energético ===== -->
+  <div id="ip-tab-balance" class="hidden">
   <div class="card">
     <div style="display:flex;gap:28px;flex-wrap:wrap;align-items:flex-start">
       <div id="ip-narrativa-estructural" style="flex:2 1 520px"></div>
       <div id="ip-caja-balance" style="flex:1 1 320px"></div>
     </div>
   </div>
+  </div><!-- /#ip-tab-balance -->
 
-</div>
-<!-- fin vista-ip-reg -->
-
-<!-- ---------------- INDICADOR DE PÉRDIDAS COMERCIAL ---------------- -->
-<!-- Datos YA calculados en un Excel del operador (Indice Perdidas
-     EH_Comercial.xlsx, hoja "1. Balance_Final") -- no depende de IP_Reg ni
-     de Datos_XM.csv, es una fuente totalmente aparte. -->
-<div id="vista-ip-comercial" class="vista-modulo hidden">
-  <div class="sec-hdr">
-    <div class="sec-title">Indicador de Pérdidas Comercial</div>
-    <div class="sec-sub">Pérdidas de energía (Compra - Venta) mes a mes, según el balance comercial del operador.</div>
-  </div>
-
-  <div class="card">
-    <div class="fbar" style="margin-bottom:6px">
-      <label>Rango</label>
-      <input type="date" id="ip-com-desde">
-      <span style="font-size:11px;color:var(--text3)">→</span>
-      <input type="date" id="ip-com-hasta">
-      <button type="button" class="btn-theme" style="width:auto;padding:0 14px" onclick="ipComercialRenderTodo()">Graficar</button>
-      <button type="button" class="btn-theme ip-com-modo-btn activo" id="ip-com-btn-perdidas" style="width:auto;padding:0 16px;margin-left:auto" onclick="ipComercialCambiarModo('perdidas')">📉 Pérdidas</button>
-      <button type="button" class="btn-theme ip-com-modo-btn" id="ip-com-btn-compraventa" style="width:auto;padding:0 16px" onclick="ipComercialCambiarModo('compraventa')">💰 Compra / Venta</button>
-    </div>
-    <div class="fbar" style="margin-bottom:6px">
-      <button class="be-modo-btn" id="ip-com-btn-proyeccion" onclick="ipComercialToggleProyeccion()">🔮 Proyección</button>
-      <input type="number" id="ip-com-proyeccion-meses" value="2" min="1" max="24" step="1" title="Cuántos meses proyectar hacia adelante"
-        style="width:52px;padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg)"
-        onchange="if(IP_COMERCIAL_MOSTRAR_PROYECCION) ipComercialRenderChart()">
-      <span style="font-size:11px;color:var(--text3)">meses</span>
-      <button type="button" class="btn-theme" style="width:auto;padding:0 14px;margin-left:auto" onclick="ipComercialDescargarCsv()" title="Descarga el rango filtrado arriba">⬇ Descargar CSV</button>
-    </div>
-    <div style="text-align:center;margin-bottom:8px">
-      <div style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Índice de Pérdidas Comercial</div>
-    </div>
-    <!-- Override data-export-w/h quitado -- el default de _expImagenChart
-         ya es 1000x346 (final 1048x~400px con márgenes), pedido explícito:
-         "en toda la descarga de imagenes... 1048x400" (mismo tamaño en
-         TODAS las gráficas, esta incluida). -->
-    <div class="chart-wrap" style="height:420px"><canvas id="ch-ip-comercial"></canvas></div>
-    <div class="be-resumen-cards" id="ip-com-resumen" style="margin:16px 0 0"></div>
-  </div>
-
-  <div class="card">
-    <div class="ip-mensual-grid ip-com-detalle-grid">
-      <div>
-        <div class="be-tabla-creadas-titulo">Detalle mensual</div>
-        <div class="be-tabla-scroll ip-tabla-compacta" style="max-height:420px">
-          <table class="be-tabla-creadas">
-            <thead>
-              <tr>
-                <th>Mes</th><th>Compra (kWh)</th><th>Venta (kWh)</th>
-                <th>Pérdida (kWh)</th><th>Pérdida (%)</th>
-                <th>Pérdida Anual (kWh)</th><th>Pérdida Anual (%)</th>
-              </tr>
-            </thead>
-            <tbody id="ip-com-tabla-body"></tbody>
-          </table>
-        </div>
-      </div>
-      <div>
-        <div class="be-tabla-creadas-titulo" style="text-align:center">Indicador Mensual</div>
-        <div class="chart-wrap" style="height:320px"><canvas id="ch-ip-comercial-mensual"></canvas></div>
-        <!-- Selector de mes del análisis -- pedido explícito ("este
-             análisis del indicador comercial también se debe poder
-             cambiar a otro mes"), antes siempre mostraba el último mes
-             real, sin poder elegir otro. Mismo patrón que "Mes del
-             análisis" del Indicador Mensual principal (ip-analisis-mes). -->
-        <div class="fbar" style="margin:10px 0 0">
-          <label title="El análisis cambia cada mes -- elige un mes anterior para ver cómo se veía esa nota en su momento">Mes del análisis</label>
-          <select id="ip-com-analisis-mes" onchange="ipComercialGenerarAnalisis()" style="flex:1;min-width:0"></select>
-        </div>
-        <div id="ip-com-comentario" class="ip-comentario-caja" style="margin-top:8px;font-size:11.5px;padding:10px"></div>
-      </div>
-    </div>
-  </div>
-</div>
-<!-- fin vista-ip-comercial -->
-
-<!-- ---------------- INDICADOR DE PÉRDIDAS INSTITUCIONAL ---------------- -->
-<!-- Depende EXCLUSIVAMENTE de "IPT Institucional.csv" (ver
-     load_ipt_institucional.py) -- desglose de pérdida por zona y nivel;
-     el % institucional (5 zonas combinadas) ya viene calculado en el CSV,
-     igual en las 5 filas de un mismo mes. -->
-<div id="vista-ip-institucional" class="vista-modulo hidden">
-  <div class="sec-hdr">
-    <div class="sec-title">Indicador de Pérdidas Institucional</div>
-    <div class="sec-sub">Pérdida total de energía por zona y a nivel institucional (suma de las 5 zonas), mes a mes.</div>
-  </div>
-
-  <div class="card">
-    <div class="fbar" style="margin-bottom:6px">
-      <label>Zona</label>
-      <div class="msel" id="msel-ipi-zona"></div>
-      <label>Rango</label>
-      <input type="date" id="ipi-desde" onchange="ipiRenderTodo()">
-      <span style="font-size:11px;color:var(--text3)">→</span>
-      <input type="date" id="ipi-hasta" onchange="ipiRenderTodo()">
-      <button type="button" class="btn-theme ip-com-modo-btn activo" id="ipi-btn-mensual" style="width:auto;padding:0 16px;margin-left:auto" onclick="ipiCambiarModo('mensual')">📅 Mensual</button>
-      <button type="button" class="btn-theme ip-com-modo-btn" id="ipi-btn-anual" style="width:auto;padding:0 16px" onclick="ipiCambiarModo('anual')">📆 Anual (12m)</button>
-    </div>
-    <div class="fbar" style="margin-bottom:6px">
-      <button class="be-modo-btn" id="ipi-btn-variacion" onclick="ipiToggleVariacion()" title="Muestra la variación contra el mes anterior en las etiquetas">Δ Variación</button>
-      <button class="be-modo-btn" id="ipi-btn-proyeccion" onclick="ipiToggleProyeccion()">🔮 Proyección</button>
-      <input type="number" id="ipi-proyeccion-meses" value="2" min="1" max="24" step="1" title="Cuántos meses proyectar hacia adelante"
-        style="width:52px;padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg)"
-        onchange="if(IPI_MOSTRAR_PROYECCION) ipiRenderChart()">
-      <span style="font-size:11px;color:var(--text3)">meses</span>
-      <button type="button" class="btn-theme" style="width:auto;padding:0 14px;margin-left:auto" onclick="ipiDescargarCsv()" title="Descarga el rango filtrado arriba">⬇ Descargar CSV</button>
-    </div>
-    <div style="text-align:center;margin-bottom:8px">
-      <div id="ipi-titulo-grafico" style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Indicador de Pérdidas Institucional</div>
-    </div>
-    <div class="chart-wrap" style="height:420px"><canvas id="ch-ipi-linea"></canvas></div>
-    <div class="be-resumen-cards" id="ipi-resumen" style="margin:16px 0 0"></div>
-    <div id="ipi-comentario" class="ip-comentario-caja" style="margin-top:16px;font-size:11.5px;padding:10px"></div>
-  </div>
-
-  <div class="card">
-    <div class="fbar" style="margin-bottom:10px">
-      <div class="card-title" style="margin:0">Pérdida por Zona</div>
-      <label style="margin-left:14px">Rango</label>
-      <input type="date" id="ipi-barras-desde" onchange="ipiRenderBarras()">
-      <span style="font-size:11px;color:var(--text3)">→</span>
-      <input type="date" id="ipi-barras-hasta" onchange="ipiRenderBarras()">
-      <button type="button" class="btn-theme ip-com-modo-btn activo" id="ipi-barras-btn-mensual" style="width:auto;padding:0 16px;margin-left:auto" onclick="ipiBarrasCambiarModo('mensual')">📅 Mensual</button>
-      <button type="button" class="btn-theme ip-com-modo-btn" id="ipi-barras-btn-anual" style="width:auto;padding:0 16px" onclick="ipiBarrasCambiarModo('anual')">📆 Anual</button>
-      <button type="button" class="btn-theme ip-com-modo-btn activo" id="ipi-barras-btn-pct" style="width:auto;padding:0 16px" onclick="ipiBarrasCambiarMetrica('pct')">% Pérdida</button>
-      <button type="button" class="btn-theme ip-com-modo-btn" id="ipi-barras-btn-kwh" style="width:auto;padding:0 16px" onclick="ipiBarrasCambiarMetrica('kwh')">kWh</button>
-    </div>
-    <div class="split-wrap">
-      <div style="flex:2 1 520px">
-        <div class="chart-wrap" style="height:300px"><canvas id="ch-ipi-barras"></canvas></div>
-      </div>
-      <div style="flex:1 1 280px">
-        <div class="card-title" style="text-align:center">Participación por Zona (kWh acumulado)</div>
-        <div class="chart-wrap" style="height:300px"><canvas id="ch-ipi-dona"></canvas></div>
-      </div>
-    </div>
-  </div>
-</div>
-<!-- fin vista-ip-institucional -->
-
-<!-- ---------------- INDICADOR PÉRDIDAS NIVEL DE TENSIÓN 1 ---------------- -->
-<div id="vista-ip-nivel1" class="vista-modulo hidden">
-
-  <div class="sec-hdr">
-    <div class="sec-title">Indicador Pérdidas -- Nivel de Tensión 1</div>
-    <div class="sec-sub">PTj,1,t (kWh) e IPTj,1,t (%) -- misma ventana móvil de 12 meses / 3 meses vencido que IP_REG, restringida a Nivel 1</div>
-  </div>
-
+  <!-- ===== PESTAÑA 5 · Índice de Pérdidas Nivel de Tensión 1 ===== -->
+  <!-- Trasladado acá desde el submódulo aparte "Indicador Pérdidas Nivel
+       de Tensión 1" (pedido explícito) -- mismo IP_REG_FILAS ya cargado
+       arriba, sin pedir nada nuevo al backend (ver cargarIndicadorPerdidas). -->
+  <div id="ip-tab-nivel1" class="hidden">
   <div class="card">
     <div class="fbar" style="margin-bottom:6px">
       <label>Rango</label>
@@ -2169,9 +2052,182 @@ tfoot td:first-child{text-align:left}
       </table>
     </div>
   </div>
+  </div><!-- /#ip-tab-nivel1 -->
 
 </div>
-<!-- fin vista-ip-nivel1 -->
+<!-- fin vista-ip-reg -->
+
+<!-- ---------------- INDICADOR DE PÉRDIDAS COMERCIAL ---------------- -->
+<!-- Datos YA calculados en un Excel del operador (Indice Perdidas
+     EH_Comercial.xlsx, hoja "1. Balance_Final") -- no depende de IP_Reg ni
+     de Datos_XM.csv, es una fuente totalmente aparte. -->
+<div id="vista-ip-comercial" class="vista-modulo hidden">
+  <div class="sec-hdr">
+    <div class="sec-title">Indicador de Pérdidas Comercial</div>
+    <div class="sec-sub">Pérdidas de energía (Compra - Venta) mes a mes, según el balance comercial del operador.</div>
+  </div>
+
+  <!-- Pestañas estilo Excel (mismo patrón .pt-tabs), pedido explícito. -->
+  <div class="pt-tabs">
+    <button type="button" class="pt-tab-btn activo" id="ip-com-tab-btn-indicador" onclick="ipComercialIrATab('indicador')">Indicador de Pérdidas Comercial</button>
+    <button type="button" class="pt-tab-btn" id="ip-com-tab-btn-detalle" onclick="ipComercialIrATab('detalle')">Detalle Mensual</button>
+  </div>
+
+  <!-- ===== PESTAÑA 1 · Indicador de Pérdidas Comercial ===== -->
+  <div id="ip-com-tab-indicador">
+  <div class="card">
+    <div class="fbar" style="margin-bottom:6px">
+      <label>Rango</label>
+      <input type="date" id="ip-com-desde">
+      <span style="font-size:11px;color:var(--text3)">→</span>
+      <input type="date" id="ip-com-hasta">
+      <button type="button" class="btn-theme" style="width:auto;padding:0 14px" onclick="ipComercialRenderTodo()">Graficar</button>
+      <button type="button" class="btn-theme ip-com-modo-btn activo" id="ip-com-btn-perdidas" style="width:auto;padding:0 16px;margin-left:auto" onclick="ipComercialCambiarModo('perdidas')">📉 Pérdidas</button>
+      <button type="button" class="btn-theme ip-com-modo-btn" id="ip-com-btn-compraventa" style="width:auto;padding:0 16px" onclick="ipComercialCambiarModo('compraventa')">💰 Compra / Venta</button>
+    </div>
+    <div class="fbar" style="margin-bottom:6px">
+      <button class="be-modo-btn" id="ip-com-btn-proyeccion" onclick="ipComercialToggleProyeccion()">🔮 Proyección</button>
+      <input type="number" id="ip-com-proyeccion-meses" value="2" min="1" max="24" step="1" title="Cuántos meses proyectar hacia adelante"
+        style="width:52px;padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg)"
+        onchange="if(IP_COMERCIAL_MOSTRAR_PROYECCION) ipComercialRenderChart()">
+      <span style="font-size:11px;color:var(--text3)">meses</span>
+      <button type="button" class="btn-theme" style="width:auto;padding:0 14px;margin-left:auto" onclick="ipComercialDescargarCsv()" title="Descarga el rango filtrado arriba">⬇ Descargar CSV</button>
+    </div>
+    <div style="text-align:center;margin-bottom:8px">
+      <div style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Índice de Pérdidas Comercial</div>
+    </div>
+    <!-- Override data-export-w/h quitado -- el default de _expImagenChart
+         ya es 1000x346 (final 1048x~400px con márgenes), pedido explícito:
+         "en toda la descarga de imagenes... 1048x400" (mismo tamaño en
+         TODAS las gráficas, esta incluida). -->
+    <div class="chart-wrap" style="height:420px"><canvas id="ch-ip-comercial"></canvas></div>
+    <div class="be-resumen-cards" id="ip-com-resumen" style="margin:16px 0 0"></div>
+  </div>
+
+  <!-- Tarjeta de explicación -- pedido explícito ("incluir la tarjeta de
+       explicación"): mismo texto/cifra que ipComercialGenerarAnalisis()
+       escribe en la pestaña "Detalle Mensual" (#ip-com-comentario, junto
+       al selector "Mes del análisis") -- se escribe en los DOS
+       contenedores a la vez, no hay 2 selectores independientes. -->
+  <div class="card">
+    <div id="ip-com-comentario-anual" class="ip-comentario-caja"></div>
+  </div>
+  </div><!-- /#ip-com-tab-indicador -->
+
+  <!-- ===== PESTAÑA 2 · Detalle Mensual ===== -->
+  <div id="ip-com-tab-detalle" class="hidden">
+  <div class="card">
+    <div class="ip-mensual-grid ip-com-detalle-grid">
+      <div>
+        <div class="be-tabla-creadas-titulo">Detalle mensual</div>
+        <div class="be-tabla-scroll ip-tabla-compacta" style="max-height:420px">
+          <table class="be-tabla-creadas">
+            <thead>
+              <tr>
+                <th>Mes</th><th>Compra (kWh)</th><th>Venta (kWh)</th>
+                <th>Pérdida (kWh)</th><th>Pérdida (%)</th>
+                <th>Pérdida Anual (kWh)</th><th>Pérdida Anual (%)</th>
+              </tr>
+            </thead>
+            <tbody id="ip-com-tabla-body"></tbody>
+          </table>
+        </div>
+      </div>
+      <div>
+        <div class="be-tabla-creadas-titulo" style="text-align:center">Indicador Mensual</div>
+        <div class="chart-wrap" style="height:320px"><canvas id="ch-ip-comercial-mensual"></canvas></div>
+        <!-- Selector de mes del análisis -- pedido explícito ("este
+             análisis del indicador comercial también se debe poder
+             cambiar a otro mes"), antes siempre mostraba el último mes
+             real, sin poder elegir otro. Mismo patrón que "Mes del
+             análisis" del Indicador Mensual principal (ip-analisis-mes). -->
+        <div class="fbar" style="margin:10px 0 0">
+          <label title="El análisis cambia cada mes -- elige un mes anterior para ver cómo se veía esa nota en su momento">Mes del análisis</label>
+          <select id="ip-com-analisis-mes" onchange="ipComercialGenerarAnalisis()" style="flex:1;min-width:0"></select>
+        </div>
+        <div id="ip-com-comentario" class="ip-comentario-caja" style="margin-top:8px;font-size:11.5px;padding:10px"></div>
+      </div>
+    </div>
+  </div>
+  </div><!-- /#ip-com-tab-detalle -->
+</div>
+<!-- fin vista-ip-comercial -->
+
+<!-- ---------------- INDICADOR DE PÉRDIDAS INSTITUCIONAL ---------------- -->
+<!-- Depende EXCLUSIVAMENTE de "IPT Institucional.csv" (ver
+     load_ipt_institucional.py) -- desglose de pérdida por zona y nivel;
+     el % institucional (5 zonas combinadas) ya viene calculado en el CSV,
+     igual en las 5 filas de un mismo mes. -->
+<div id="vista-ip-institucional" class="vista-modulo hidden">
+  <div class="sec-hdr">
+    <div class="sec-title">Indicador de Pérdidas Institucional</div>
+    <div class="sec-sub">Pérdida total de energía por zona y a nivel institucional (suma de las 5 zonas), mes a mes.</div>
+  </div>
+
+  <!-- Pestañas estilo Excel (mismo patrón .pt-tabs), pedido explícito. -->
+  <div class="pt-tabs">
+    <button type="button" class="pt-tab-btn activo" id="ipi-tab-btn-indicador" onclick="ipiIrATab('indicador')">Indicador de Pérdidas Institucional</button>
+    <button type="button" class="pt-tab-btn" id="ipi-tab-btn-zona" onclick="ipiIrATab('zona')">Pérdidas por Zona</button>
+  </div>
+
+  <!-- ===== PESTAÑA 1 · Indicador de Pérdidas Institucional ===== -->
+  <div id="ipi-tab-indicador">
+  <div class="card">
+    <div class="fbar" style="margin-bottom:6px">
+      <label>Zona</label>
+      <div class="msel" id="msel-ipi-zona"></div>
+      <label>Rango</label>
+      <input type="date" id="ipi-desde" onchange="ipiRenderTodo()">
+      <span style="font-size:11px;color:var(--text3)">→</span>
+      <input type="date" id="ipi-hasta" onchange="ipiRenderTodo()">
+      <button type="button" class="btn-theme ip-com-modo-btn activo" id="ipi-btn-mensual" style="width:auto;padding:0 16px;margin-left:auto" onclick="ipiCambiarModo('mensual')">📅 Mensual</button>
+      <button type="button" class="btn-theme ip-com-modo-btn" id="ipi-btn-anual" style="width:auto;padding:0 16px" onclick="ipiCambiarModo('anual')">📆 Anual (12m)</button>
+    </div>
+    <div class="fbar" style="margin-bottom:6px">
+      <button class="be-modo-btn" id="ipi-btn-variacion" onclick="ipiToggleVariacion()" title="Muestra la variación contra el mes anterior en las etiquetas">Δ Variación</button>
+      <button class="be-modo-btn" id="ipi-btn-proyeccion" onclick="ipiToggleProyeccion()">🔮 Proyección</button>
+      <input type="number" id="ipi-proyeccion-meses" value="2" min="1" max="24" step="1" title="Cuántos meses proyectar hacia adelante"
+        style="width:52px;padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg)"
+        onchange="if(IPI_MOSTRAR_PROYECCION) ipiRenderChart()">
+      <span style="font-size:11px;color:var(--text3)">meses</span>
+      <button type="button" class="btn-theme" style="width:auto;padding:0 14px;margin-left:auto" onclick="ipiDescargarCsv()" title="Descarga el rango filtrado arriba">⬇ Descargar CSV</button>
+    </div>
+    <div style="text-align:center;margin-bottom:8px">
+      <div id="ipi-titulo-grafico" style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Indicador de Pérdidas Institucional</div>
+    </div>
+    <div class="chart-wrap" style="height:420px"><canvas id="ch-ipi-linea"></canvas></div>
+    <div class="be-resumen-cards" id="ipi-resumen" style="margin:16px 0 0"></div>
+    <div id="ipi-comentario" class="ip-comentario-caja" style="margin-top:16px;font-size:11.5px;padding:10px"></div>
+  </div>
+  </div><!-- /#ipi-tab-indicador -->
+
+  <!-- ===== PESTAÑA 2 · Pérdidas por Zona ===== -->
+  <div id="ipi-tab-zona" class="hidden">
+  <div class="card">
+    <div class="fbar" style="margin-bottom:10px">
+      <div class="card-title" style="margin:0">Pérdida por Zona</div>
+      <label style="margin-left:14px">Rango</label>
+      <input type="date" id="ipi-barras-desde" onchange="ipiRenderBarras()">
+      <span style="font-size:11px;color:var(--text3)">→</span>
+      <input type="date" id="ipi-barras-hasta" onchange="ipiRenderBarras()">
+      <button type="button" class="btn-theme ip-com-modo-btn activo" id="ipi-barras-btn-mensual" style="width:auto;padding:0 16px;margin-left:auto" onclick="ipiBarrasCambiarModo('mensual')">📅 Mensual</button>
+      <button type="button" class="btn-theme ip-com-modo-btn" id="ipi-barras-btn-anual" style="width:auto;padding:0 16px" onclick="ipiBarrasCambiarModo('anual')">📆 Anual</button>
+      <button type="button" class="btn-theme ip-com-modo-btn activo" id="ipi-barras-btn-pct" style="width:auto;padding:0 16px" onclick="ipiBarrasCambiarMetrica('pct')">% Pérdida</button>
+      <button type="button" class="btn-theme ip-com-modo-btn" id="ipi-barras-btn-kwh" style="width:auto;padding:0 16px" onclick="ipiBarrasCambiarMetrica('kwh')">kWh</button>
+    </div>
+    <div class="split-wrap">
+      <div style="flex:2 1 520px">
+        <div class="chart-wrap" style="height:300px"><canvas id="ch-ipi-barras"></canvas></div>
+      </div>
+      <div style="flex:1 1 280px">
+        <div class="card-title" style="text-align:center">Participación por Zona (kWh acumulado)</div>
+        <div class="chart-wrap" style="height:300px"><canvas id="ch-ipi-dona"></canvas></div>
+      </div>
+    </div>
+  </div>
+  </div><!-- /#ipi-tab-zona -->
+</div>
+<!-- fin vista-ip-institucional -->
 
 <!-- ---------------- REPORTES RESOLUCIÓN SSPD 20192200020155 ---------------- -->
 <div id="vista-reportes-sspd" class="vista-modulo hidden">
@@ -6849,7 +6905,7 @@ function toggleSubmenuAlim(){
   }
 }
 
-let vistaCargada = {perdidas:false, parametrizacion:false, telemedidos:false, balancesEstructura:false, ipReg:false, ipComercial:false, ipInstitucional:false, ipNivel1:false, reportesSspd:false, tridevanados:false, alimResumen:false, alimNivel4:false, alimNivel3:false, alimN21:false, alimSubestaciones:false, alimAlimentadores:false, alimAnalisisCiclo:false, tempEntrada:false, informes:false, programaFacturacion:false};
+let vistaCargada = {perdidas:false, parametrizacion:false, telemedidos:false, balancesEstructura:false, ipReg:false, ipComercial:false, ipInstitucional:false, reportesSspd:false, tridevanados:false, alimResumen:false, alimNivel4:false, alimNivel3:false, alimN21:false, alimSubestaciones:false, alimAlimentadores:false, alimAnalisisCiclo:false, tempEntrada:false, informes:false, programaFacturacion:false};
 
 async function mostrarVista(nombre){
   document.querySelectorAll('.vista-modulo').forEach(v=>v.classList.add('hidden'));
@@ -6868,7 +6924,7 @@ async function mostrarVista(nombre){
   // la sincronización de tema/alto justo al hacerse visible.
   if(nombre==='be-puntos-medida') _pmSincronizarTema();
 
-  const esIndicadorPerdidas = nombre==='ip-reg' || nombre==='ip-comercial' || nombre==='ip-institucional' || nombre==='ip-nivel1' || nombre==='reportes-sspd' || nombre==='tridevanados';
+  const esIndicadorPerdidas = nombre==='ip-reg' || nombre==='ip-comercial' || nombre==='ip-institucional' || nombre==='reportes-sspd' || nombre==='tridevanados';
   document.getElementById('sidebar-ip-padre').classList.toggle('activa', esIndicadorPerdidas);
   if(esIndicadorPerdidas) abrirSubmenuIP();
 
@@ -6909,10 +6965,6 @@ async function mostrarVista(nombre){
   if(nombre==='ip-institucional' && !vistaCargada.ipInstitucional){
     vistaCargada.ipInstitucional = true;
     await cargarIpInstitucional();
-  }
-  if(nombre==='ip-nivel1' && !vistaCargada.ipNivel1){
-    vistaCargada.ipNivel1 = true;
-    await cargarIndicadorPerdidasNivel1();
   }
   if(nombre==='reportes-sspd' && !vistaCargada.reportesSspd){
     vistaCargada.reportesSspd = true;
@@ -7656,7 +7708,7 @@ function _iniRenderVariacionKwh(elId, valorAnt, valorAct, esPerdida){
 function cerrarSesion(){
   TOKEN=null; OPERADOR=null; PERSONA=null; DEMO=false;
   OFFLINE_MODO=false; OFFLINE_FECHA=null;
-  vistaCargada = {perdidas:false, parametrizacion:false, telemedidos:false, balancesEstructura:false, ipReg:false, ipComercial:false, ipInstitucional:false, ipNivel1:false, reportesSspd:false, tridevanados:false};
+  vistaCargada = {perdidas:false, parametrizacion:false, telemedidos:false, balancesEstructura:false, ipReg:false, ipComercial:false, ipInstitucional:false, reportesSspd:false, tridevanados:false};
   document.getElementById('app-screen').classList.add('hidden');
   document.getElementById('suite-screen').classList.add('hidden');
   document.getElementById('codigo-python-screen').classList.add('hidden');
@@ -14580,6 +14632,32 @@ async function cargarIndicadorPerdidas(){
   ipGenerarAnalisisPrincipal();
   ipRenderChartMensual();
   ipRenderTablaNivel();
+  // Nivel de Tensión 1 -- pestaña 5, trasladada acá desde su submódulo
+  // aparte (pedido explícito); reusa el mismo IP_REG_FILAS, no pide nada
+  // nuevo al backend.
+  await cargarIndicadorPerdidasNivel1();
+  ipIrATab('anual');
+}
+
+// Pestañas del módulo IP_Reg (mismo patrón .pt-tabs que Alimentadores):
+// Índice Total de Pérdidas Anual / Detalle por Nivel de Tensión /
+// Indicador Mensual / Información de Balance Energético / Índice de
+// Pérdidas Nivel de Tensión 1. A diferencia de Alimentadores/N2-1, cada
+// pestaña tiene sus propios filtros inline (no hay un nodo de filtro
+// único que mover) -- acá solo se togglean paneles y botones. Re-renderiza
+// las gráficas de la pestaña recién activada -- Chart.js las pinta con
+// tamaño 0 si el canvas estaba dentro de un ancestro display:none al
+// momento de crearlas (mismo criterio que alimN21IrATab/alim3IrATab).
+function ipIrATab(nombre){
+  ['anual','detalle','mensual','balance','nivel1'].forEach(t=>{
+    document.getElementById('ip-tab-'+t)?.classList.toggle('hidden', t!==nombre);
+    document.getElementById('ip-tab-btn-'+t)?.classList.toggle('activo', t===nombre);
+  });
+  if(!IP_REG_FILAS.length) return;
+  if(nombre==='anual'){ ipRenderChart(); ipRenderResumenPrincipal(); }
+  if(nombre==='detalle') ipRenderTablaNivel();
+  if(nombre==='mensual') ipRenderChartMensual();
+  if(nombre==='nivel1'){ ipRenderChartNivel1(); ipRenderTablaNivel1(); }
 }
 
 /* ---- Indicador de Pérdidas COMERCIAL -- fuente aparte (Excel ya
@@ -14610,6 +14688,21 @@ async function cargarIndicadorPerdidasComercial(){
     if(!inHasta.value) inHasta.value = ultimaClave + '-01';
   }
   ipComercialRenderTodo();
+  ipComercialIrATab('indicador');
+}
+
+// Pestañas del módulo Comercial (mismo patrón .pt-tabs): Indicador de
+// Pérdidas Comercial / Detalle Mensual. Sin nodo de filtro compartido --
+// cada pestaña ya trae los suyos. Re-renderiza la gráfica de la pestaña
+// activada -- Chart.js la pinta con tamaño 0 si el canvas estaba dentro
+// de un ancestro display:none al crearla.
+function ipComercialIrATab(nombre){
+  ['indicador','detalle'].forEach(t=>{
+    document.getElementById('ip-com-tab-'+t)?.classList.toggle('hidden', t!==nombre);
+    document.getElementById('ip-com-tab-btn-'+t)?.classList.toggle('activo', t===nombre);
+  });
+  if(nombre==='indicador' && IP_COMERCIAL_FILAS.length) ipComercialRenderChart();
+  if(nombre==='detalle' && IP_COMERCIAL_FILAS.length) ipComercialRenderChartMensual();
 }
 
 function ipComercialVisibles(){
@@ -14733,6 +14826,22 @@ async function cargarIpInstitucional(){
   if(!inBarrasHasta.value) inBarrasHasta.value = `${ultimoReal}-01`;
 
   ipiRenderTodo();
+  ipiIrATab('indicador');
+}
+
+// Pestañas del módulo Institucional (mismo patrón .pt-tabs): Indicador de
+// Pérdidas Institucional / Pérdidas por Zona. Cada pestaña ya trae sus
+// propios filtros (Zona/Rango en la 1, Rango/Modo/Métrica en la 2).
+// Re-renderiza las gráficas de la pestaña activada -- Chart.js las pinta
+// con tamaño 0 si el canvas estaba dentro de un ancestro display:none.
+function ipiIrATab(nombre){
+  ['indicador','zona'].forEach(t=>{
+    document.getElementById('ipi-tab-'+t)?.classList.toggle('hidden', t!==nombre);
+    document.getElementById('ipi-tab-btn-'+t)?.classList.toggle('activo', t===nombre);
+  });
+  if(!IPI_FILAS.length) return;
+  if(nombre==='indicador') ipiRenderChart();
+  if(nombre==='zona') ipiRenderBarras();
 }
 
 function ipiCambiarModo(modo){
@@ -22922,10 +23031,12 @@ function ipComercialRenderResumen(){
 // de 12 meses vs. el que "entra"), más la comparación año a año.
 function ipComercialGenerarAnalisis(){
   const cont = document.getElementById('ip-com-comentario');
+  const contAnualVacio = document.getElementById('ip-com-comentario-anual');
   if(!cont) return;
   const reales = ipComercialUltimasFilasReales();
   if(reales.length < 2){
     cont.innerHTML = '<p>Todavía no hay suficientes meses reales para analizar la variación.</p>';
+    if(contAnualVacio) contAnualVacio.innerHTML = cont.innerHTML;
     return;
   }
   // Mes elegido en el selector (pedido explícito: "este análisis también
@@ -22983,12 +23094,18 @@ function ipComercialGenerarAnalisis(){
     parrafoMensual = variantesMensualIpReg[_informesVariante('ipreg_mensual_vs_anio', variantesMensualIpReg.length)];
   }
 
-  cont.innerHTML = `
+  const html = `
     <div class="ip-comentario-titulo">Índice de Pérdidas Comercial -- ${mesActualLargo}</div>
     <div class="ip-comentario-cifra ${subeMensual?'sube':'baja'}">${pctActual.toFixed(2)}% (${fKwh(actual.perdida_kwh_12)} kWh/Anual)</div>
     <p>El índice de pérdidas comercial pasó de <b>${pctAnterior.toFixed(2)}%</b> en ${mesAnteriorLargo} (mes que sale de la ventana de 12 meses) a <b>${pctActual.toFixed(2)}%</b> en ${mesActualLargo} (mes que entra), lo que equivale a pasar de una pérdida de <b>${fKwh(anterior.perdida_kwh_12)} kWh/Anual</b> a <b>${fKwh(actual.perdida_kwh_12)} kWh/Anual</b> -- un ${subeMensual?'incremento':'descenso'} de <b>${Math.abs(deltaMensual).toFixed(2)} pp</b>, equivalente a <b>${signo(deltaKwh)}${fKwh(Math.abs(deltaKwh))} kWh/Anual</b>.${parrafoAnual}</p>
     ${parrafoMensual ? `<p>${parrafoMensual}</p>` : ''}
   `;
+  cont.innerHTML = html;
+  // Misma tarjeta en la pestaña "Indicador de Pérdidas Comercial" -- pedido
+  // explícito ("incluir la tarjeta de explicación" en las 2 pestañas), un
+  // solo selector/cálculo, escrito en los 2 contenedores.
+  const contAnual = document.getElementById('ip-com-comentario-anual');
+  if(contAnual) contAnual.innerHTML = html;
 }
 
 function ipComercialRenderTabla(){
