@@ -139,6 +139,10 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(
 .sidebar-sublink:hover{background:var(--bg3);color:var(--text)}
 .sidebar-badge-soon{font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;background:var(--bg3);color:var(--text3);padding:2px 6px;border-radius:10px;white-space:nowrap}
 .ip-tabla-compacta-titulo{color:var(--text)}
+/* Texto explicativo debajo de cada tabla de "Información de Balance
+   Energético" -- pedido explícito ("en la parte inferior de cada tabla
+   colocar un texto explicativo de cada una"). */
+.ip-explicacion-tabla{font-size:10.5px;color:var(--text3);line-height:1.5;text-align:center;margin:8px 0 0;max-width:340px}
 /* Tablas "Por qué crece el indicador" (Interanual/Mensual) de Nivel 4 y
    Nivel 3 -- mismo criterio que .ip-tabla-compacta (achica letra/padding
    vía CSS, SIN tocar _narrativaTablaHtml/_narrativaEntradaSalidaHtml,
@@ -180,7 +184,14 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(
 /* Título de cada tabla -- centrado y más grande (pedido explícito: "los
    títulos centrados y letra más grande que se vea"). */
 .alim-nivel-narrativa-fila .narrativa-tabla-titulo{font-size:13px!important;text-align:center;margin:0 0 6px!important}
-.ip-tabla-compacta table.be-tabla-creadas{font-size:10px;white-space:nowrap}
+/* width:auto -- pedido explícito ("cuando selecciono los filtros... la
+   tabla que queda ocupa todo el tamaño de la ventana, no debería
+   ocuparlo todo"): sin esto heredaba width:100% de .be-tabla-creadas y
+   con pocas columnas (ej. un solo Nivel de Tensión filtrado) cada celda
+   se estiraba para llenar el ancho de la tarjeta en vez de quedarse en
+   su ancho natural; con muchas columnas el scroll horizontal de
+   .be-tabla-scroll sigue funcionando igual. */
+.ip-tabla-compacta table.be-tabla-creadas{width:auto;font-size:10px;white-space:nowrap}
 .ip-tabla-compacta .be-tabla-creadas th{padding:4px 7px;font-size:9px;text-align:center}
 .ip-tabla-compacta .be-tabla-creadas th.ip-th-mes{background:#20242f;color:#ffffff;position:sticky;left:0;z-index:1}
 .ip-tabla-compacta .be-tabla-creadas td{padding:4px 7px;color:var(--text);font-weight:600;text-align:right}
@@ -1907,25 +1918,41 @@ tfoot td:first-child{text-align:left}
   </div>
 
   <!-- ===== PESTAÑA 1 · Índice Total de Pérdidas Anual ===== -->
-  <!-- Filtros reorganizados en 3 filas cortas (antes 3-4 filas muy
-       largas, pedido explícito: "muy saturado" / "organizar mejor los
-       filtros que sea más ordenado") -- fila 1 = lo que define QUÉ se
-       grafica (Vista, Rango, Sobreponer variable -- pedido explícito
-       "que quede en la primera fila"); fila 2 = herramientas de análisis
-       del modo Anual (más chicas, .be-modo-btn-sm); fila 3 = Medidor
-       (lo menos usado, al final). -->
+  <!-- UN SOLO panel (pedido explícito: "esa separación de bloquesitos no
+       debe existir") -- filtros + gráfica + análisis en la MISMA .card,
+       separados solo por una línea fina a sangre (mismo patrón que
+       "Detalle por Circuito" en Pérdidas Técnicas, #det-panel). Filtros
+       en 2 filas cortas -- fila 1 = todo lo que define QUÉ se grafica
+       (Vista, Rango, Sobreponer variable, Medidor -- pedido explícito
+       "esto también se puede poner en la primera fila"); fila 2 =
+       herramientas de análisis del modo Anual (Tendencia/Proyección/
+       Sombrear/Variación, chicas). Vista y Mes del análisis también más
+       chicos -- pedido explícito. -->
   <div id="ip-tab-anual">
-  <div class="card">
+  <div class="card" style="padding:14px 22px">
     <div class="fbar" style="margin-bottom:6px">
       <label>Vista</label>
-      <button class="be-modo-btn activo" id="ip-btn-modo-anual" onclick="ipCambiarModoGraficoPrincipal('anual')" title="Ventana móvil de 12 meses (IP_REG, CREG 015/2018)">📊 Anual (IP_Reg)</button>
-      <button class="be-modo-btn" id="ip-btn-modo-mensual" onclick="ipCambiarModoGraficoPrincipal('mensual')" title="El indicador de un solo mes, sin ventana móvil -- para comparar mes a mes contra otra fuente">📅 Mensual</button>
+      <button class="be-modo-btn be-modo-btn-sm activo" id="ip-btn-modo-anual" onclick="ipCambiarModoGraficoPrincipal('anual')" title="Ventana móvil de 12 meses (IP_REG, CREG 015/2018)">📊 Anual (IP_Reg)</button>
+      <button class="be-modo-btn be-modo-btn-sm" id="ip-btn-modo-mensual" onclick="ipCambiarModoGraficoPrincipal('mensual')" title="El indicador de un solo mes, sin ventana móvil -- para comparar mes a mes contra otra fuente">📅 Mensual</button>
       <label style="margin-left:12px">Rango</label>
       <input type="month" id="ip-chart-desde" onchange="ipRenderChart(); ipRenderTablaNivel();">
       <span style="font-size:11px;color:var(--text3)">→</span>
       <input type="month" id="ip-chart-hasta" onchange="ipRenderChart(); ipRenderTablaNivel();">
       <label style="margin-left:12px" class="no-exportar">Sobreponer variable</label>
       <div class="msel no-exportar" id="msel-ip-overlay"></div>
+      <!-- Medidor -- exclusivo del modo Anual (igual que Tendencia/
+           Proyección/etc.), display:contents para no crear su propia fila
+           pero sí poder esconderse entero como bloque -- ver
+           ipCambiarModoGraficoPrincipal. -->
+      <span id="ip-medidor-inline" class="no-exportar" style="display:contents">
+        <label style="margin-left:12px" title="Buscar un medidor/frontera (código SIC, ej. Frt00264) que aplique al cálculo del indicador y sobreponer su consumo">Medidor</label>
+        <input type="text" id="ip-medidor-buscar" placeholder="Ej. Frt00264" style="width:100px;padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg)"
+          onkeydown="if(event.key==='Enter') ipAgregarMedidor()">
+        <button class="btn-theme" style="width:auto;padding:0 10px" onclick="ipAgregarMedidor()">＋</button>
+      </span>
+    </div>
+    <div class="fbar no-exportar" id="ip-fbar-medidor" style="margin-bottom:6px">
+      <div id="ip-medidores-activos" style="display:flex;gap:6px;flex-wrap:wrap"></div>
     </div>
     <!-- Herramientas de análisis del modo Anual -- no tienen sentido en
          Mensual (no hay ventana móvil que "sombrear", ni tendencia/
@@ -1943,32 +1970,25 @@ tfoot td:first-child{text-align:left}
       <button class="be-modo-btn be-modo-btn-sm" id="ip-btn-sombra" onclick="ipToggleSombraVentana()" title="Resalta los 12 meses que alimentan el último punto real">🌓 Sombrear 12 meses</button>
       <button class="be-modo-btn be-modo-btn-sm" id="ip-btn-variacion" onclick="ipToggleVariacion()" title="Muestra la variación contra el mes anterior en las etiquetas">Δ Variación</button>
     </div>
-    <div class="fbar no-exportar" id="ip-fbar-medidor" style="margin-bottom:6px">
-      <label title="Buscar un medidor/frontera (código SIC, ej. Frt00264) que aplique al cálculo del indicador y sobreponer su consumo">Medidor (código SIC)</label>
-      <input type="text" id="ip-medidor-buscar" placeholder="Ej. Frt00264" style="width:120px;padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg)"
-        onkeydown="if(event.key==='Enter') ipAgregarMedidor()">
-      <button class="btn-theme" style="width:auto;padding:0 12px" onclick="ipAgregarMedidor()">＋ Agregar</button>
-      <div id="ip-medidores-activos" style="display:flex;gap:6px;flex-wrap:wrap"></div>
-    </div>
     <!-- Título justo encima de la gráfica, DESPUÉS de todos los filtros --
          pedido explícito ("todo filtro quede encima del titulo"). -->
     <div style="text-align:center;margin-bottom:8px">
       <div id="ip-titulo-grafico" style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Indicador de Pérdidas Totales (IP_REG)</div>
     </div>
     <div class="chart-wrap" style="height:420px"><canvas id="ch-ip-reg"></canvas></div>
-  </div>
 
-  <!-- Tarjeta de Análisis IPT -- reemplaza las tarjetas resumen que había
-       acá antes (pedido explícito: "quita esas tarjetas y mejor el
-       análisis"). El selector "Mes del análisis" también manda en la
-       tabla "Por qué crece" y la caja de balance de la pestaña
-       "Información de Balance Energético" (ver ipGenerarAnalisisPrincipal). -->
-  <div class="card">
-    <div class="fbar" style="margin-bottom:6px">
-      <label title="El análisis cambia cada mes -- elige un mes anterior para ver cómo se veía esa nota en su momento">Mes del análisis</label>
-      <select id="ip-analisis-mes" onchange="ipGenerarAnalisisPrincipal()" style="flex:1;min-width:0"></select>
+    <!-- Análisis IPT -- reemplaza las tarjetas resumen que había acá
+         antes (pedido explícito: "quita esas tarjetas y mejor el
+         análisis"). El selector "Mes del análisis" también manda en la
+         tabla "Por qué crece" y la caja de balance de la pestaña
+         "Información de Balance Energético" (ver ipGenerarAnalisisPrincipal). -->
+    <div style="border-top:1px solid var(--border);margin:14px -22px 0;padding:14px 22px 0">
+      <div class="fbar" style="margin-bottom:6px">
+        <label style="font-size:10.5px" title="El análisis cambia cada mes -- elige un mes anterior para ver cómo se veía esa nota en su momento">Mes del análisis</label>
+        <select id="ip-analisis-mes" onchange="ipGenerarAnalisisPrincipal()" style="padding:3px 6px;font-size:10.5px;border-radius:6px"></select>
+      </div>
+      <div id="ip-mensual-comentario" class="ip-comentario-caja"></div>
     </div>
-    <div id="ip-mensual-comentario" class="ip-comentario-caja"></div>
   </div>
   </div><!-- /#ip-tab-anual -->
 
@@ -2001,11 +2021,14 @@ tfoot td:first-child{text-align:left}
   </div><!-- /#ip-tab-detalle -->
 
   <!-- ===== PESTAÑA 4 · Información de Balance Energético ===== -->
+  <!-- Centrado -- pedido explícito ("organizar esas tablas más
+       centradas") -- justify-content:center en vez de dejarlas pegadas a
+       la izquierda con flex-basis fijo. -->
   <div id="ip-tab-balance" class="hidden">
   <div class="card">
-    <div style="display:flex;gap:28px;flex-wrap:wrap;align-items:flex-start">
-      <div id="ip-narrativa-estructural" style="flex:2 1 520px"></div>
-      <div id="ip-caja-balance" style="flex:1 1 320px"></div>
+    <div style="display:flex;gap:28px;flex-wrap:wrap;align-items:flex-start;justify-content:center">
+      <div id="ip-narrativa-estructural" style="flex:0 1 auto"></div>
+      <div id="ip-caja-balance" style="flex:0 1 340px"></div>
     </div>
   </div>
   </div><!-- /#ip-tab-balance -->
@@ -14653,6 +14676,27 @@ function _narrativaEntradaSalidaHtml(mensual, titulo, claveActual, compacto){
   `;
 }
 
+// Igual que _narrativaEntradaSalidaHtml, pero con un texto explicativo
+// debajo de CADA tabla -- pedido explícito ("Información de Balance
+// Energético... en la parte inferior de cada tabla colocar un texto
+// explicativo de cada una"). Aparte para no cambiarle el aspecto a los
+// demás módulos que usan _narrativaEntradaSalidaHtml tal cual (Nivel 4,
+// Nivel 3, N2-1...).
+function _ipNarrativaBalanceHtml(mensual, titulo, claveActual){
+  claveActual = claveActual || _narrativaUltimaClaveCompleta(mensual);
+  const datosInteranual = claveActual ? _narrativaEntradaSalidaDatos(mensual, claveActual, 'interanual') : null;
+  const datosMensual = claveActual ? _narrativaEntradaSalidaDatos(mensual, claveActual, 'mensual') : null;
+  const explInteranual = 'Compara el mismo mes de este año contra el mismo mes del año anterior -- aísla el crecimiento real del indicador, sin el efecto de la estacionalidad (meses que suelen tener más o menos demanda que otros).';
+  const explMensual = 'Compara el mes elegido contra el mes inmediatamente anterior -- muestra el cambio más reciente del balance de energía, mes a mes.';
+  return `
+    ${titulo ? `<div class="be-tabla-creadas-titulo" style="text-align:center">${titulo}</div>` : ''}
+    <div style="display:flex;gap:28px;flex-wrap:wrap;justify-content:center">
+      <div>${_narrativaTablaHtml(datosInteranual, 'Interanual (año contra año)')}<p class="ip-explicacion-tabla">${explInteranual}</p></div>
+      <div>${_narrativaTablaHtml(datosMensual, 'Mensual (mes contra mes)')}<p class="ip-explicacion-tabla">${explMensual}</p></div>
+    </div>
+  `;
+}
+
 // IP_Reg no trae un par simple {entrada,salida} en sus filas -- solo las
 // columnas crudas por nivel de IP_COLUMNAS_NIVEL. Entrada = n4_eej (todo
 // lo que entra al sistema por Nivel 4, el punto más alto -- transmisión);
@@ -23436,9 +23480,10 @@ function ipGenerarAnalisisPrincipal(){
   // elegido acá -- pedido explícito ("yo puedo cambiar esos valores de
   // las tablas con el filtro de arriba Mes del análisis").
   const contNarrativa = document.getElementById('ip-narrativa-estructural');
-  if(contNarrativa) contNarrativa.innerHTML = _narrativaEntradaSalidaHtml(_narrativaIpRegMensual(), 'Por qué crece el indicador -- IP_Reg', claveActual);
+  if(contNarrativa) contNarrativa.innerHTML = _ipNarrativaBalanceHtml(_narrativaIpRegMensual(), 'Por qué crece el indicador -- IP_Reg', claveActual);
   const contCajaBalance = document.getElementById('ip-caja-balance');
-  if(contCajaBalance) contCajaBalance.innerHTML = `<div class="be-tabla-creadas-titulo" style="text-align:center">Información del Balance Energético</div>` + _ipCajaBalanceHtml(claveActual);
+  if(contCajaBalance) contCajaBalance.innerHTML = `<div class="be-tabla-creadas-titulo" style="text-align:center">Información del Balance Energético</div>` + _ipCajaBalanceHtml(claveActual)
+    + `<p class="ip-explicacion-tabla">Cómo se arma la pérdida del mes: la Energía de Entrada menos la Energía de Salida (venta) da la Pérdida de Energía, en kWh y en porcentaje sobre la Entrada.</p>`;
   const [anioAct, mesAct] = claveActual.split('-').map(Number);
   const mesActualTitulo = labelMes(claveActual);
   const mesActualLargo = labelMesLargo(claveActual);
@@ -24669,6 +24714,7 @@ function ipCambiarModoGraficoPrincipal(modo){
   document.getElementById('ip-btn-modo-mensual').classList.toggle('activo', !esAnual);
   document.getElementById('ip-controles-anual-1').classList.toggle('hidden', !esAnual);
   document.getElementById('ip-fbar-medidor').classList.toggle('hidden', !esAnual);
+  document.getElementById('ip-medidor-inline').classList.toggle('hidden', !esAnual);
   document.getElementById('ip-titulo-grafico').textContent = esAnual
     ? 'Indicador de Pérdidas Totales (IP_REG)'
     : 'Indicador de Pérdidas Mensual (%) -- sin ventana móvil';
