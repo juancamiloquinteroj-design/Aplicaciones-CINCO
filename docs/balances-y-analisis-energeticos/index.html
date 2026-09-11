@@ -1955,8 +1955,8 @@ tfoot td:first-child{text-align:left}
     <div class="fbar no-exportar" id="ip-fbar-medidor" style="margin-bottom:6px">
       <div id="ip-medidores-activos" style="display:flex;gap:6px;flex-wrap:wrap"></div>
     </div>
-    <!-- Herramientas de análisis del modo Anual -- no tienen sentido en
-         Mensual (no hay ventana móvil que "sombrear", ni tendencia/
+    <!-- Herramientas de análisis del modo Anual -- Tendencia/Proyección/
+         Variación no tienen sentido en Mensual (no hay tendencia/
          proyección de un solo punto) -- pedido explícito: "que no
          permita mezcla de mensual-anual de las variables". Botones
          chicos (.be-modo-btn-sm) -- pedido explícito ("proyección y
@@ -1970,6 +1970,15 @@ tfoot td:first-child{text-align:left}
       <span style="font-size:10.5px;color:var(--text3)">meses</span>
       <button class="be-modo-btn be-modo-btn-sm" id="ip-btn-sombra" onclick="ipToggleSombraVentana()" title="Resalta los 12 meses que alimentan el último punto real">🌓 Sombrear 12 meses</button>
       <button class="be-modo-btn be-modo-btn-sm" id="ip-btn-variacion" onclick="ipToggleVariacion()" title="Muestra la variación contra el mes anterior en las etiquetas">Δ Variación</button>
+    </div>
+    <!-- Exclusivo del modo Mensual -- pedido explícito ("en la ventana
+         móvil del indicador mensual me gustaría un botón que muestre así
+         la franja de los 12 meses con flechas y muestre energía y %
+         anual"): sin cambiar de Vista, resalta sobre el gráfico crudo qué
+         12 meses formarían la ventana móvil y anota su kWh/año y % Anual
+         (IP_REG) -- ver ipPluginBandaAnualMensual. -->
+    <div class="fbar hidden" id="ip-controles-mensual-1" style="margin-bottom:6px">
+      <button class="be-modo-btn be-modo-btn-sm" id="ip-btn-ventana-mensual" onclick="ipToggleVentanaAnualEnMensual()" title="Resalta los últimos 12 meses reales y muestra su Energía y % Anual (IP_Reg), sin cambiar de Vista">🌓 Ventana 12 meses</button>
     </div>
     <!-- Título justo encima de la gráfica, DESPUÉS de todos los filtros --
          pedido explícito ("todo filtro quede encima del titulo"). -->
@@ -14511,6 +14520,19 @@ let IP_MOSTRAR_VARIACION = false;  // etiqueta completa: valor + variación vs. 
 let IP_MEDIDORES_ACTIVOS = [];  // [{usuario_id, datosPorClaveNormal: Map}] -- medidores buscados por código SIC, sobrepuestos en kWh
 let IP_OVERLAYS_ACTIVOS = new Set();  // "nivel:campo" -- variables crudas sobrepuestas en el grafico principal
 let IP_MODO_GRAFICO_PRINCIPAL = 'anual';  // 'anual' (ventana móvil 12m, IP_REG) | 'mensual' (un solo mes, sin ventana) -- botones junto al gráfico principal
+// Botón exclusivo del modo Mensual -- pedido explícito ("en la ventana
+// móvil del indicador mensual me gustaría un botón que muestre así la
+// franja de los 12 meses con flechas y muestre energía y % anual"):
+// resalta los últimos 12 meses reales sobre el gráfico Mensual crudo y
+// anota el kWh/año y % Anual (IP_REG) de esa ventana, sin tener que
+// cambiar a la Vista "Anual (IP_Reg)".
+let IP_VENTANA_ANUAL_EN_MENSUAL = false;
+// Las barras de "Pérdida Mensual (kWh)" arrancan APAGADAS en el modo
+// Mensual -- pedido explícito ("en el mensual no quiero que esté
+// habilitada la pérdida en kWh/mensual, es decir las barras"), mismo
+// patrón que IP_PT_OCULTO/IP_COMERCIAL_PT_OCULTO/IPI_KWH_OCULTO: se
+// puede prender a mano haciendo clic en su nombre en la leyenda.
+let IP_MENSUAL_KWH_OCULTO = true;
 
 const IP_COLUMNAS_NIVEL = {
   1: [["n1_eej","Eej"],["n1_estj","EsTj"],["n1_eprealesj","EPRealesj"],["n1_eeg","EeG"],
@@ -24711,6 +24733,12 @@ function ipToggleSombraVentana(){
   ipRenderChart();
 }
 
+function ipToggleVentanaAnualEnMensual(){
+  IP_VENTANA_ANUAL_EN_MENSUAL = !IP_VENTANA_ANUAL_EN_MENSUAL;
+  document.getElementById('ip-btn-ventana-mensual').classList.toggle('activo', IP_VENTANA_ANUAL_EN_MENSUAL);
+  ipRenderChart();
+}
+
 function ipToggleVariacion(){
   IP_MOSTRAR_VARIACION = !IP_MOSTRAR_VARIACION;
   document.getElementById('ip-btn-variacion').classList.toggle('activo', IP_MOSTRAR_VARIACION);
@@ -24758,6 +24786,69 @@ const ipPluginSombraVentana = {
     ctx.save();
     ctx.fillStyle = dark ? 'rgba(68,114,196,.18)' : 'rgba(68,114,196,.10)';
     ctx.fillRect(Math.max(xIni, chartArea.left), chartArea.top, Math.min(xFin, chartArea.right) - Math.max(xIni, chartArea.left), chartArea.bottom - chartArea.top);
+    ctx.restore();
+  },
+};
+
+// Exclusivo del gráfico Mensual (ipRenderChartPrincipalMensual) -- pedido
+// explícito ("en la ventana móvil del indicador mensual me gustaría un
+// botón que muestre así la franja de los 12 meses con flechas y muestre
+// energía y % anual"): bordes punteados en los 2 extremos de los últimos
+// 12 meses reales + una flecha doble arriba con el kWh/año y el % Anual
+// (IP_REG, mismas cifras ipt_pct/pt_kwh que ya usa la Vista "Anual
+// (IP_Reg)" para ese mismo mes de cierre) -- para ver esa ventana SIN
+// cambiar de Vista.
+const ipPluginBandaAnualMensual = {
+  id: 'bandaAnualMensual',
+  beforeDraw(chart){
+    const cfg = chart.options.plugins.bandaAnualMensual;
+    if(!cfg || !cfg.activo || cfg.ultimoIndice == null) return;
+    const {ctx, chartArea, scales} = chart;
+    const idxFin = cfg.ultimoIndice;
+    const idxIni = Math.max(0, idxFin - 11);
+    const anchoCategoria = scales.x.getPixelForValue(1) - scales.x.getPixelForValue(0);
+    const xIni = Math.max(scales.x.getPixelForValue(idxIni) - anchoCategoria/2, chartArea.left);
+    const xFin = Math.min(scales.x.getPixelForValue(idxFin) + anchoCategoria/2, chartArea.right);
+    const dark = document.documentElement.getAttribute('data-theme')==='dark';
+    ctx.save();
+    ctx.fillStyle = dark ? 'rgba(192,0,0,.12)' : 'rgba(192,0,0,.06)';
+    ctx.fillRect(xIni, chartArea.top, xFin - xIni, chartArea.bottom - chartArea.top);
+    ctx.strokeStyle = '#C00000';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([5, 4]);
+    [xIni, xFin].forEach(x => {
+      ctx.beginPath();
+      ctx.moveTo(x, chartArea.top);
+      ctx.lineTo(x, chartArea.bottom);
+      ctx.stroke();
+    });
+    ctx.setLineDash([]);
+
+    // Flecha doble horizontal arriba, con la etiqueta encima -- mismo
+    // trazo (rojo) que los bordes punteados, para que se lea como una
+    // sola anotación.
+    const yFlecha = chartArea.top + 16;
+    const tam = 6;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(xIni, yFlecha);
+    ctx.lineTo(xFin, yFlecha);
+    ctx.stroke();
+    const puntaFlecha = (x, dir) => {
+      ctx.beginPath();
+      ctx.moveTo(x, yFlecha);
+      ctx.lineTo(x + dir*tam, yFlecha - tam*0.6);
+      ctx.moveTo(x, yFlecha);
+      ctx.lineTo(x + dir*tam, yFlecha + tam*0.6);
+      ctx.stroke();
+    };
+    puntaFlecha(xIni, 1);
+    puntaFlecha(xFin, -1);
+
+    ctx.fillStyle = '#C00000';
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 11px sans-serif';
+    ctx.fillText(cfg.etiqueta || '', (xIni + xFin) / 2, yFlecha - 8);
     ctx.restore();
   },
 };
@@ -24864,15 +24955,19 @@ function ipRegresionLineal(puntos){
 // -- pedido explícito: en Anual sobrepone la variable ANUALIZADA (ventana
 // móvil de 12 meses, igual criterio que PT/IPT) y en Mensual la variable
 // de ESE mes suelto (ver ipValorOverlayAnualizado más abajo) -- nunca las
-// dos mezcladas en el mismo gráfico. Tendencia/Proyección/Sombrear/
-// Variación/Medidor sí son exclusivos del modo Anual (no tienen
-// equivalente mensual con sentido) y se esconden en Mensual.
+// dos mezcladas en el mismo gráfico. Tendencia/Proyección/Variación/
+// Medidor son exclusivos del modo Anual (no tienen equivalente mensual
+// con sentido) y se esconden en Mensual; "Sombrear" tiene su propio
+// equivalente en Mensual ("Ventana 12 meses", #ip-controles-mensual-1 --
+// ver ipPluginBandaAnualMensual), pedido explícito para poder ver la
+// ventana móvil anotada sin cambiar de Vista.
 function ipCambiarModoGraficoPrincipal(modo){
   IP_MODO_GRAFICO_PRINCIPAL = modo;
   const esAnual = modo === 'anual';
   document.getElementById('ip-btn-modo-anual').classList.toggle('activo', esAnual);
   document.getElementById('ip-btn-modo-mensual').classList.toggle('activo', !esAnual);
   document.getElementById('ip-controles-anual-1').classList.toggle('hidden', !esAnual);
+  document.getElementById('ip-controles-mensual-1').classList.toggle('hidden', esAnual);
   document.getElementById('ip-fbar-medidor').classList.toggle('hidden', !esAnual);
   document.getElementById('ip-medidor-inline').classList.toggle('hidden', !esAnual);
   document.getElementById('ip-titulo-grafico').textContent = esAnual
@@ -24900,8 +24995,21 @@ function ipRenderChartPrincipalMensual(){
   });
   const etiquetas = visibles.map(f => labelMes(ipClaveNormal(f)));
 
+  // Respeta lo que el usuario ya haya prendido/apagado a mano en la
+  // leyenda -- mismo criterio que IP_PT_OCULTO/IP_COMERCIAL_PT_OCULTO
+  // (buscado por label, no por índice fijo, para no confundirse si el
+  // chart previo era el de la Vista Anual, que trae otros datasets).
+  if(chIpReg){
+    const dsKwhPrevio = chIpReg.data.datasets.find(d => d.label === 'Pérdida Mensual (kWh)');
+    if(dsKwhPrevio) IP_MENSUAL_KWH_OCULTO = !!dsKwhPrevio.hidden;
+  }
+  document.getElementById('ip-btn-ventana-mensual').classList.toggle('activo', IP_VENTANA_ANUAL_EN_MENSUAL);
+
   const datasets = [
-    {type:'bar', label:'Pérdida Mensual (kWh)', yAxisID:'y', order:2,
+    // Arranca OCULTA -- pedido explícito ("en el mensual no quiero que
+    // esté habilitada la pérdida en kWh/mensual, es decir las barras");
+    // se puede prender a mano haciendo clic en su nombre en la leyenda.
+    {type:'bar', label:'Pérdida Mensual (kWh)', yAxisID:'y', order:2, hidden: IP_MENSUAL_KWH_OCULTO,
       data: visibles.map(f=>f.perdida_mensual_kwh), backgroundColor:'#4472C4', borderColor:'#4472C4', borderWidth:1},
     {type:'line', label:'% Pérdida Mensual', yAxisID:'yPct', order:1,
       data: visibles.map(f=>f.pct_perdida_mensual==null?null:f.pct_perdida_mensual*100), borderColor:'#ED7D31',
@@ -24930,9 +25038,26 @@ function ipRenderChartPrincipalMensual(){
     });
   }
 
+  // Ventana de 12 meses (IP_REG) para anotar arriba del gráfico crudo --
+  // pedido explícito ("un botón que muestre así la franja de los 12
+  // meses con flechas y muestre energía y % anual"). El "último índice"
+  // es el mes más reciente DENTRO de lo visible que ya tenga ipt_pct/
+  // pt_kwh (la ventana móvil de 12 meses completa) -- los últimos 1-2
+  // meses reales suelen no tenerlo todavía (M+3 de IP_REG).
+  let idxVentanaFin = -1;
+  for(let i = visibles.length - 1; i >= 0; i--){
+    if(visibles[i].ipt_pct != null){ idxVentanaFin = i; break; }
+  }
+  let etiquetaVentana = '';
+  if(idxVentanaFin >= 0){
+    const filaVentana = visibles[idxVentanaFin];
+    etiquetaVentana = `${(filaVentana.ipt_pct*100).toFixed(2)}% Anual (IP_Reg) -- ${Math.round(filaVentana.pt_kwh).toLocaleString('es-CO')} kWh/año`;
+  }
+
   if(chIpReg) chIpReg.destroy();
   chIpReg = new Chart(document.getElementById('ch-ip-reg'), {
     data:{ labels: etiquetas, datasets },
+    plugins:[ipPluginBandaAnualMensual],
     options:{
       responsive:true, maintainAspectRatio:false,
       layout:{padding:{top:24, right:28}},
@@ -24948,6 +25073,7 @@ function ipRenderChartPrincipalMensual(){
           zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'},
           limits:{x:{minRange:3}},
         },
+        bandaAnualMensual:{activo: IP_VENTANA_ANUAL_EN_MENSUAL, ultimoIndice: idxVentanaFin>=0?idxVentanaFin:null, etiqueta: etiquetaVentana},
       },
       scales:{
         x:{grid:{display:false}, offset:true,
