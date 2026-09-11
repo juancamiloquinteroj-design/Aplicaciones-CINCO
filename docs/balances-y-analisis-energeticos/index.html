@@ -1470,37 +1470,19 @@ tfoot td:first-child{text-align:left}
         </div>
       </div>
 
-      <!-- Tarjetas -- pedido explícito ("deben mostrar entrada salida,
-           pérdida técnica, pérdida gestionable, tanto en porcentaje y
-           energía, te puedes basar en las tarjetas de alimentadores" +
-           "más pequeñas" + "falta una tarjeta que diga la pérdida total" +
-           "no está mostrando el valor de la pérdida técnica" -- Pérdida
-           Técnica y Pérdida Total son 2 tarjetas DISTINTAS, no hay que
-           confundirlas: Técnica = perdida_tecnica_kwh (solo la técnica);
-           Total = perdida_kwh = Técnica + Gestionable, ver AlimentadorMensual
-           -- coincide con la tarjeta "Pérdida" de Alimentadores). Mismo
-           componente (_alim3Tarjeta) y misma fuente (ALIM_FILAS = Resumen
-           de Alimentadores, ya cacheado) que usa el módulo Alimentadores --
-           para que el número coincida. Grid más angosto (minmax 140px,
-           igual que #alim3-tarjetas) -- pedido explícito "más pequeñas".
-           Sin título de sección (pedido explícito: "las tarjetas no deben
-           tener esto 'Entrada / Salida / Pérdida del mes'"). Sin selector
-           de mes propio (igual que Alimentadores: siempre el último mes
-           disponible) -- dinámicas vía el filtro Zona de arriba.
-           Todo en UNA sola tarjeta con las gráficas de arriba (pedido
-           explícito: "que quede todo como un bloquesito", "no se
-           desperdicie ese espacio, que no se vea el fondo") -- un
-           separador (border-top) en vez de una 2da tarjeta aparte, que
-           dejaba un hueco de fondo visible entre las 2. -->
-      <!-- Tarjetas (grid, ocupan todo el ancho que sobra) + nota de
-           análisis AL LADO, chica (flex:0 1 300px) -- pedido explícito
-           ("quiero el análisis al lado de las tarjetas así sea pequeño").
-           align-items:flex-start para que las tarjetas no se estiren a
-           lo alto de la nota. -->
-      <div style="border-top:1px solid var(--border);margin:18px -22px 0;padding:16px 22px 0;display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap">
-        <div class="inicio-dash-fila" id="pt-tot-cards" style="flex:1 1 420px;margin-bottom:0;gap:8px;grid-template-columns:repeat(auto-fit,minmax(120px,1fr))"></div>
-        <div style="flex:0 1 300px;min-width:240px;font-size:11px;line-height:1.6;color:var(--text2);background:var(--bg);border:1px solid var(--border);border-radius:9px;padding:10px 12px;display:flex;gap:7px">
-          <span style="font-size:15px;flex-shrink:0">📊</span>
+      <!-- Nota general -- pedido explícito ("vas a quitar esas tarjetas y
+           esa nota y se va a dejar una nota general"): reemplaza las 5
+           tarjetas (Entrada/Salida/Técnica/Gestionable/Total) y la nota de
+           análisis por zona que había antes. Un solo párrafo describiendo
+           la metodología (flujos de carga horarios durante todo el mes) y
+           el resultado por Nivel 4/Nivel 3/Nivel 2-1 (Nivel 2-1 = Nivel 2 +
+           Nivel 1 sumados, pedido explícito), Mensual y Anual (12 meses
+           móviles) -- si el rango cargado todavía no completa 12 meses
+           reales, la parte Anual se omite entera (pedido explícito: "si no
+           hay dato anual no colocarlo"). Ver ptTotalesGenerarNotaGeneral(). -->
+      <div style="border-top:1px solid var(--border);margin:18px -22px 0;padding:16px 22px 0">
+        <div style="font-size:12.5px;line-height:1.7;color:var(--text2);background:var(--bg);border:1px solid var(--border);border-radius:9px;padding:12px 14px;display:flex;gap:8px">
+          <span style="font-size:16px;flex-shrink:0">📊</span>
           <span id="pt-tot-nota-analisis">Cargando análisis…</span>
         </div>
       </div>
@@ -20310,26 +20292,6 @@ function _alim3Tarjeta(pref, icono, titulo, mensualAct, anualAct, fmt){
   </div>`;
 }
 
-// Copia chica de _alim3Tarjeta -- pedido explícito ("las tarjetas las
-// quiero más compactas ... que no muestre variaciones") solo para
-// "Pérdidas Técnicas Totales"; la de Alimentadores no se toca (se usa
-// tal cual en su propio módulo, con su ▲▼ de variación). Acá SIN badge
-// de variación -- ver ptTotalesToggleVariacion() para dónde se movió
-// esa información (a la gráfica, con su propio botón).
-function _ptTotTarjetaCompacta(pref, icono, titulo, mensualAct, anualAct, fmt){
-  return `<div class="card inicio-dash-card" style="padding:9px 12px">
-    <div class="card-title" style="font-size:10.5px;line-height:1.2">${icono} ${titulo}</div>
-    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:6px">
-      <span style="font-size:9.5px;color:var(--text3)">Mensual</span>
-      <b style="color:var(--text);font-size:12.5px">${fmt(mensualAct)}</b>
-    </div>
-    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:4px">
-      <span style="font-size:9.5px;color:var(--text3)">Anual (12M)</span>
-      <b style="color:var(--text);font-size:12.5px">${fmt(anualAct)}</b>
-    </div>
-  </div>`;
-}
-
 function alim3RenderTarjetas(filasConClave){
   const cont = document.getElementById('alim3-tarjetas');
   if(!cont) return;
@@ -26668,7 +26630,7 @@ function detalleRenderTarjetas(){
   const fk = v => v==null?'--':`${Math.round(v).toLocaleString('es-CO')} kWh`;
   const fp = v => v==null?'--':`${v.toFixed(2)}%`;
 
-  // Tarjeta compacta de 2 renglones (mismo look que _ptTotTarjetaCompacta).
+  // Tarjeta compacta de 2 renglones.
   const tc = (icono,titulo,l1,v1,l2,v2,c1,c2) => `<div class="card inicio-dash-card" style="padding:9px 12px">
     <div class="card-title" style="font-size:10.5px;line-height:1.2">${icono} ${titulo}</div>
     <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:6px"><span style="font-size:9.5px;color:var(--text3)">${l1}</span><b style="color:${c1||'var(--text)'};font-size:12.5px">${v1}</b></div>
@@ -26762,8 +26724,7 @@ function perdidasIrATab(nombre){
  * coinciden con la sumatoria de la gráfica de Nivel"): antes salían de
  * ALIM_FILAS (Resumen de Alimentadores), una fuente DISTINTA que por
  * diseño no siempre coincide con Circuito/BalanceMensual (metodologías
- * distintas) -- ver ptTotalesRenderCards() más abajo, que sí usa
- * ALIM_FILAS a propósito para coincidir con Alimentadores.
+ * distintas).
  *
  * Mensual / Anual (12M) -- pedido explícito ("debe haber un botón para
  * cambiar a datos anuales" + "debe ser móvil anual como todos los
@@ -26898,7 +26859,7 @@ async function cargarGraficasApiladas(){
   }catch(e){
     // Estas gráficas son un complemento -- si fallan no deben tumbar el resto de la vista.
   }
-  ptTotalesRenderCards();   // pedido explícito: dinámicas, reaccionan a los mismos filtros
+  ptTotalesGenerarNotaGeneral();   // independiente (su propio fetch, SIN filtro de zona/nivel -- ver docstring)
 }
 
 // "Pérdida por Nivel" -- SIEMPRE en Pérdida (kWh, barras), la métrica de
@@ -27146,134 +27107,79 @@ function renderPtTotalesZona(datos, modoAnual, datosPorNivel){
   });
 }
 
-// Tarjetas -- pedido explícito ("deben mostrar entrada salida, pérdida
-// técnica, pérdida gestionable, tanto en porcentaje y energía, te puedes
-// basar en las tarjetas de alimentadores" + "falta una tarjeta que diga
-// la pérdida total" + "no está mostrando el valor de la pérdida técnica"):
-// Técnica y Total son 2 tarjetas DISTINTAS -- Técnica = perdida_tecnica_kwh
-// (solo la técnica); Total = perdida_kwh = Técnica + Gestionable (ver
-// AlimentadorMensual), coincide con la tarjeta "Pérdida" de Alimentadores.
-// Mismo componente (_alim3Tarjeta) y misma fuente (ALIM_FILAS = Resumen de
-// Alimentadores, ya cacheado) -- para que el número coincida con
-// Alimentadores. Sin selector de mes propio, igual que Alimentadores
-// (siempre Mensual = el último mes disponible + Anual 12M) -- dinámicas
-// vía el filtro Zona de arriba.
-async function ptTotalesRenderCards(){
-  const cont = document.getElementById('pt-tot-cards');
-  if(!cont) return;
-  let filas;
-  try{ filas = await _alimAsegurarDatosCargados(); }catch(e){ cont.innerHTML = ''; return; }
-  if(!filas || !filas.length){ cont.innerHTML = ''; return; }
-
-  const zonaSel = mselValores('msel-pt-tot-zona');
-  const filasFiltradas = filas.filter(f => !zonaSel.length || zonaSel.includes(f.zona));
-
-  const porMes = new Map();
-  filasFiltradas.forEach(f=>{
-    const clave = alimN21Clave(f.anio, f.mes);
-    if(!porMes.has(clave)) porMes.set(clave, {anio:f.anio, mes:f.mes, clave, entrada:0, salida:0, perdida:0, tecnica:0, gestionable:0});
-    const g = porMes.get(clave);
-    g.entrada += f.entrada_total || 0;
-    g.salida += f.salida_total || 0;
-    g.perdida += f.perdida_kwh || 0;
-    // f.perdida_tecnica_kwh puede venir null en filas viejas -- se
-    // completa con perdida - gestionable (misma identidad que documenta
-    // AlimentadorMensual) para no dejar el total de Técnica corto.
-    g.tecnica += f.perdida_tecnica_kwh != null ? f.perdida_tecnica_kwh : (f.perdida_kwh || 0) - (f.gestionable_kwh || 0);
-    g.gestionable += f.gestionable_kwh || 0;
-  });
-  const serieBase = [...porMes.values()].sort((a,b)=>(a.anio*12+a.mes)-(b.anio*12+b.mes))
-    .map(f => ({...f, pct: f.entrada ? f.perdida/f.entrada*100 : null, pctTecnica: f.entrada ? f.tecnica/f.entrada*100 : null}));
-  if(serieBase.length < 2){ cont.innerHTML = ''; return; }
-
-  const anual = alimN21Con12Meses(serieBase);
-  const actual = serieBase[serieBase.length-1];
-  const anterior = serieBase[serieBase.length-2];
-  const actual12 = anual.find(f=>f.clave===actual.clave && f.pct12!=null) || null;
-  const anterior12 = anual.find(f=>f.clave===anterior.clave && f.pct12!=null) || null;
-  // alimN21Con12Meses no conoce "tecnica" -- rolling 12M propio, mismo criterio (suma de kWh / suma de entrada).
-  const tecnica12 = v => { const i = serieBase.findIndex(f=>f.clave===v.clave); if(i<11) return null;
-    const ventana = serieBase.slice(i-11, i+1);
-    const t = ventana.reduce((s,f)=>s+f.tecnica,0), e = ventana.reduce((s,f)=>s+f.entrada,0);
-    return {tecnica12: t, pctTecnica12: e ? t/e*100 : null}; };
-  const actualTec12 = tecnica12(actual), anteriorTec12 = tecnica12(anterior);
-
-  const fmtKwh = v => v==null ? '--' : `${Math.round(v).toLocaleString('es-CO')} kWh`;
-  const fmtConPct = (kwh, pct) => kwh==null ? '--' : `${Math.round(kwh).toLocaleString('es-CO')} kWh${pct!=null?` (${pct.toFixed(1)}%)`:''}`;
-  const fmtGest = (kwh, perdida) => kwh==null ? '--' : `${Math.round(kwh).toLocaleString('es-CO')} kWh${perdida?` (${(kwh/perdida*100).toFixed(1)}%)`:''}`;
-
-  cont.innerHTML =
-    _ptTotTarjetaCompacta('pt-tot-c-ent', '⬇️', 'Entrada', actual.entrada, actual12?actual12.entrada12:null, fmtKwh) +
-    _ptTotTarjetaCompacta('pt-tot-c-sal', '⬆️', 'Salida', actual.salida, actual12?actual12.salida12:null, fmtKwh) +
-    _ptTotTarjetaCompacta('pt-tot-c-tec', '📉', 'Pérdida Técnica',
-      fmtConPct(actual.tecnica, actual.pctTecnica), actualTec12 ? fmtConPct(actualTec12.tecnica12, actualTec12.pctTecnica12) : '--', v=>v) +
-    _ptTotTarjetaCompacta('pt-tot-c-gest', '⚙️', 'Pérdida Gestionable',
-      fmtGest(actual.gestionable, actual.perdida), actual12 ? fmtGest(actual12.gestionable12, actual12.perdida12) : '--', v=>v) +
-    _ptTotTarjetaCompacta('pt-tot-c-per', '⚡', 'Pérdida Total',
-      fmtConPct(actual.perdida, actual.pct), actual12 ? fmtConPct(actual12.perdida12, actual12.pct12) : '--', v=>v);
-
-  // Nota de análisis -- pedido explícito ("una nota que analice
-  // resultados de pérdidas técnicas de la respectiva zona" + "la nota
-  // más grande con más análisis"). Varias frases: valor del mes, cambio
-  // MoM, mínimo/máximo y tendencia del rango visible, peso de la
-  // gestionable, y acumulado anual.
-  // Nota de análisis -- reescrita para más claridad (pedido explícito:
-  // "esta nota está mal, no es clara, quiero algo más claro"). Antes cada
-  // línea metía 2-3 datos telegráficos separados por comas/punto y coma
-  // (ej. "En el rango: mín. X (mes), máx. Y (mes); la tendencia subió Z");
-  // ahora cada oración dice UNA sola idea completa, con el verbo explícito
-  // (subió/bajó/representa) en vez de abreviar con signos o "pesa".
+// Nota general -- REEMPLAZA las 5 tarjetas (Entrada/Salida/Técnica/
+// Gestionable/Total) y la nota de análisis por zona que había antes --
+// pedido explícito ("vas a quitar esas tarjetas y esa nota y se va a
+// dejar una nota general"). UN solo párrafo, siempre TODAS las zonas (el
+// estudio es del operador completo, no por zona -- por eso NO se manda
+// zona/nivel a la API, solo "hasta") describiendo la metodología
+// (flujos de carga horarios durante todo el mes) y el resultado
+// Mensual y Anual (12 meses móviles) por Nivel 4 / Nivel 3 / Nivel 2-1
+// (Nivel 2-1 = Nivel 2 + Nivel 1 sumados, pedido explícito: "debes sumar
+// la pérdida técnica del nivel 2 y nivel 1"). Si el rango cargado
+// todavía no completa 12 meses reales, la parte Anual se omite entera
+// (pedido explícito: "si no hay dato anual no colocarlo") -- hoy
+// /perdidas-por-nivel solo tiene datos desde ene-2026, así que esto es
+// lo normal hasta que se acumulen 12 meses.
+async function ptTotalesGenerarNotaGeneral(){
   const notaEl = document.getElementById('pt-tot-nota-analisis');
-  if(notaEl){
-    const zonaTxt = zonaSel.length ? `Zona ${zonaSel.join(', ')}` : 'Todas las zonas';
-    const b = v => `<b>${v}</b>`;
-    const pctActual = actual.pctTecnica;
-    const p = [];
-    p.push(`${b(zonaTxt)} · ${labelMesLargo(actual.clave)}`);
+  if(!notaEl) return;
+  // SOLO "hasta" -- nunca "desde": la ventana de 12 meses necesita el
+  // historial completo hacia atrás para poder rodar bien (mismo criterio
+  // que el resto de la app, ver _anualizarSerieMensual); recortar por
+  // "desde" cortaría esos meses previos y el Anual saldría en null aunque
+  // sí exista, solo porque el filtro Rango del gráfico es más angosto.
+  const hasta = document.getElementById('pt-tot-hasta')?.value || '';
+  const qs = new URLSearchParams();
+  if(hasta) qs.set('hasta', `${hasta}-01`);
 
-    // 1) El dato del mes y cómo cambió vs. el mes anterior -- una sola
-    // idea, con el verbo dicho ("subió"/"bajó"/"se mantuvo") en vez del
-    // signo ▲/▼ solo.
-    if(pctActual!=null){
-      let l = `La pérdida técnica fue de ${b(pctActual.toFixed(2)+'%')}, equivalente a ${b(fmtKwh(actual.tecnica))}.`;
-      if(anterior.pctTecnica!=null){
-        const d = pctActual - anterior.pctTecnica;
-        l += Math.abs(d)<0.005
-          ? ` Se mantuvo prácticamente igual que en ${labelMesLargo(anterior.clave)}.`
-          : ` ${d>0?'Subió':'Bajó'} ${b(Math.abs(d).toFixed(2)+' puntos porcentuales')} frente a ${labelMesLargo(anterior.clave)}.`;
-      }
-      p.push(l);
-    } else {
-      p.push('No hay dato de pérdida técnica para este mes.');
-    }
+  let datos;
+  try{ datos = await apiGet(`/api/perdidas-por-nivel?${qs.toString()}`); }
+  catch(e){ notaEl.textContent = 'No se pudo cargar el análisis.'; return; }
 
-    // 2) Mínimo y máximo del rango visible -- en 2 oraciones separadas en
-    // vez de una sola con mín/máx/tendencia encimados.
-    const dDesde = document.getElementById('pt-tot-desde')?.value || '';
-    const dHasta = document.getElementById('pt-tot-hasta')?.value || '';
-    const conPct = serieBase.filter(f=>f.pctTecnica!=null && (!dDesde || f.clave>=dDesde) && (!dHasta || f.clave<=dHasta));
-    if(conPct.length >= 2){
-      const min = conPct.reduce((a,f)=> f.pctTecnica<a.pctTecnica?f:a);
-      const max = conPct.reduce((a,f)=> f.pctTecnica>a.pctTecnica?f:a);
-      p.push(`En el período mostrado, el mes con menor pérdida técnica fue ${b(labelMesLargo(min.clave))} (${b(min.pctTecnica.toFixed(2)+'%')}) y el de mayor pérdida fue ${b(labelMesLargo(max.clave))} (${b(max.pctTecnica.toFixed(2)+'%')}).`);
-      const tend = conPct[conPct.length-1].pctTecnica - conPct[0].pctTecnica;
-      const tendTxt = Math.abs(tend)<0.05 ? 'se mantuvo estable' :
-        (tend>0 ? `subió ${tend.toFixed(2)} puntos porcentuales` : `bajó ${Math.abs(tend).toFixed(2)} puntos porcentuales`);
-      p.push(`Comparando el inicio y el final de ese período, la pérdida técnica ${b(tendTxt)}.`);
-    }
-
-    // 3) Peso de la gestionable -- "representa" en vez de "pesa".
-    if(actual.perdida > 0){
-      const gp = actual.gestionable / actual.perdida * 100;
-      p.push(`Del total de la pérdida de este mes, la parte gestionable representa el ${b(gp.toFixed(1)+'%')}.`);
-    }
-
-    // 4) Acumulado de los últimos 12 meses -- se explica qué es "12M".
-    if(actualTec12 && actualTec12.pctTecnica12!=null){
-      p.push(`Sumando los últimos 12 meses, la pérdida técnica acumulada es de ${b(actualTec12.pctTecnica12.toFixed(2)+'%')}.`);
-    }
-    notaEl.innerHTML = p.map(linea => `<p style="margin:0 0 6px">${linea}</p>`).join('');
+  const meses = datos?.meses || [];
+  const series = datos?.series || [];
+  if(!meses.length || !series.length){
+    notaEl.textContent = 'Todavía no hay datos suficientes para el estudio de pérdidas técnicas.';
+    return;
   }
+
+  const idxUlt = meses.length - 1;
+  const claveUlt = meses[idxUlt];
+  const valorNivel = (nivel, i) => {
+    const s = series.find(s => String(s.clave) === String(nivel));
+    return s ? (s.valores[i] || 0) : 0;
+  };
+  const n4Mes = valorNivel(4, idxUlt);
+  const n3Mes = valorNivel(3, idxUlt);
+  const n21Mes = valorNivel(2, idxUlt) + valorNivel(1, idxUlt);
+  const totalMes = n4Mes + n3Mes + n21Mes;
+
+  const b = v => `<b>${v}</b>`;
+  const mesTxt = labelMesLargo(claveUlt, false).toUpperCase();
+  const anioTxt = claveUlt.split('-')[0];
+
+  let texto = `Se realiza estudio de pérdidas técnicas donde se realizan flujos de carga horarios durante todo el mes de ${b(mesTxt + ' del ' + anioTxt)}, obteniendo resultados de pérdidas para Nivel 4, Nivel 3 y Nivel 2-1 (suma de Nivel 2 y Nivel 1). `
+    + `La pérdida técnica mensual fue de ${b(fmtGwh(totalMes))}, discriminada en Nivel 4 de ${b(fmtGwh(n4Mes))}, Nivel 3 de ${b(fmtGwh(n3Mes))} y Nivel 2-1 de ${b(fmtGwh(n21Mes))}.`;
+
+  // Anual -- ventana móvil de 12 meses reales terminando en el último mes
+  // disponible (mismo criterio de "12 por posición en el arreglo" que
+  // usa el resto de la app, ver _anualizarSerieMensual) -- solo si ya hay
+  // 12 puntos para completarla.
+  if(idxUlt >= 11){
+    const suma12 = nivel => {
+      const s = series.find(s => String(s.clave) === String(nivel));
+      if(!s) return 0;
+      let acc = 0;
+      for(let k = idxUlt - 11; k <= idxUlt; k++) acc += s.valores[k] || 0;
+      return acc;
+    };
+    const n4Anual = suma12(4), n3Anual = suma12(3), n21Anual = suma12(2) + suma12(1);
+    const totalAnual = n4Anual + n3Anual + n21Anual;
+    texto += ` Sumando los últimos 12 meses, la pérdida técnica anual fue de ${b(fmtGwh(totalAnual) + '/año')}, discriminada en Nivel 4 de ${b(fmtGwh(n4Anual) + '/año')}, Nivel 3 de ${b(fmtGwh(n3Anual) + '/año')} y Nivel 2-1 de ${b(fmtGwh(n21Anual) + '/año')}.`;
+  }
+
+  notaEl.innerHTML = `<p style="margin:0">${texto}</p>`;
 }
 
 /* ---- Valuación económica de Pérdidas Técnicas por Zona ----
