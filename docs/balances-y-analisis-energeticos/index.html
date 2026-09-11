@@ -5403,6 +5403,12 @@ let BE_EDITAR_ID = null;
 let chBalanceEstructura = null;  // un solo chart/canvas para los 3 modos de "Ver Balance" -- se destruye y recrea al cambiar de modo
 let META = {zonas:[], niveles:[], meses:[]};
 let RESUMEN = null;
+// Comparar circuitos -- pedido explícito ("que seleccione dos circuitos
+// en la tabla pueda seleccionar varios... comparar los gráficos"): con 2+
+// alimentadores elegidos, [{nemonico, resumen}] con la serie de CADA UNO
+// por separado (RESUMEN sigue siendo la suma agregada de siempre, la usan
+// las tarjetas de abajo -- ver aplicarFiltros/renderPrincipal).
+let DET_COMPARAR_SERIES = null;
 let RANGO = {start:0, end:0};
 let showProjection = false;   // (feature Proyección retirada -- variable solo por si quedó alguna referencia muerta)
 // Botones opcionales de la gráfica de "Detalle por Circuito" -- apagados
@@ -25545,6 +25551,22 @@ async function aplicarFiltros(){
 
   RESUMEN = await apiGet(`/api/resumen?${qs.toString()}`);
 
+  // 2+ circuitos elegidos -- además de la suma agregada (RESUMEN, la usan
+  // las tarjetas de abajo tal cual siempre), se trae la serie de CADA UNO
+  // por separado para poder compararlos en la gráfica (pedido explícito).
+  if(alimentador.length >= 2){
+    try{
+      DET_COMPARAR_SERIES = await Promise.all(alimentador.map(async nemonico => {
+        const qsUno = new URLSearchParams(qs);
+        qsUno.delete('alimentador');
+        qsUno.append('alimentador', nemonico);
+        return {nemonico, resumen: await apiGet(`/api/resumen?${qsUno.toString()}`)};
+      }));
+    }catch(e){ DET_COMPARAR_SERIES = null; }
+  } else {
+    DET_COMPARAR_SERIES = null;
+  }
+
   renderPrincipal();
   await cargarZonas();
 }
@@ -25802,14 +25824,20 @@ function circVarOrdenar(col){
   circVarRenderTabla();
 }
 
-// Clic en una fila = fija el filtro Alimentador (arriba) a ese circuito
-// puntual -- mismo mecanismo que ya usan las flechas ▲▼ de Usuarios
-// Telemedidos (mselSetSeleccion), dispara solo el onChange del msel, que
-// ya se encarga de refrescar la gráfica "Pérdidas Técnicas". Un segundo
-// clic sobre la misma fila la des-selecciona (vuelve al Total).
+// Clic en una fila = AGREGA (o quita) ese circuito al filtro Alimentador
+// de arriba -- pedido explícito ("que seleccione dos circuitos en la
+// tabla pueda seleccionar varios... comparar los gráficos"): antes un
+// clic reemplazaba TODA la selección por ese único circuito; ahora se
+// puede ir sumando varios y la gráfica de "Pérdidas Técnicas" los muestra
+// como líneas separadas para comparar (ver renderPrincipal/
+// DET_COMPARAR_SERIES). Mismo mecanismo de fondo que ya usan las flechas
+// ▲▼ de Usuarios Telemedidos (mselSetSeleccion), dispara solo el onChange
+// del msel. Click en una fila ya elegida la QUITA de la selección.
 function circVarSeleccionar(nemonico){
-  const yaElegido = mselValores('msel-alimentador').includes(nemonico);
-  mselSetSeleccion('msel-alimentador', yaElegido ? [] : [nemonico]);
+  const actuales = mselValores('msel-alimentador');
+  const yaElegido = actuales.includes(nemonico);
+  const nuevos = yaElegido ? actuales.filter(n => n !== nemonico) : [...actuales, nemonico];
+  mselSetSeleccion('msel-alimentador', nuevos);
   circVarRenderTabla();
 }
 
@@ -25843,7 +25871,7 @@ function circVarRenderTabla(){
       const colorPp = f.deltaPp == null ? 'var(--text3)' : (f.deltaPp >= 0 ? '#C00000' : '#00B050');
       const activa = seleccionActual.has(f.nemonico);
       const nemEsc = f.nemonico.replace(/'/g, "\\'");
-      return `<tr class="circvar-fila${activa ? ' activa' : ''}" onclick="circVarSeleccionar('${nemEsc}')" title="Click para graficar este circuito en Pérdidas Técnicas">
+      return `<tr class="circvar-fila${activa ? ' activa' : ''}" onclick="circVarSeleccionar('${nemEsc}')" title="Click para agregarlo a la gráfica de Pérdidas Técnicas -- elegí varios para compararlos, un click más lo quita">
         <td style="text-align:left;font-weight:700">${f.nemonico}</td>
         <td><span class="zb" style="background:${color}22;color:var(--text)">${f.zona || '--'}</span></td>
         <td>${f.nivel_tension != null ? f.nivel_tension : '--'}</td>
@@ -26021,7 +26049,78 @@ function _detalleReconocimientoConstante(){
 // salvo el botón "➕ Entrada/Salida" (DET_MOSTRAR_ES, 3er eje). El botón
 // "📊 Variación" (DET_MOSTRAR_VAR) agrega el delta mes a mes a las
 // etiquetas -- reemplazó a "Proyección" (pedido explícito).
+// Comparar 2+ circuitos -- pedido explícito ("que seleccione dos
+// circuitos en la tabla pueda seleccionar varios, es decir... comparar
+// los gráficos"). Una línea de Pérdida (kWh) y una de Pérdida (%) POR
+// CIRCUITO (mismo color entre las 2 de un mismo circuito, distinto color
+// por circuito) en vez de una sola línea agregada -- así se ve cuál
+// circuito pierde más kWh y cuál tiene el % más alto, uno al lado del
+// otro. No toca Entrada/Salida/Reconocimiento CREG/Variación (pensados
+// para 1 solo circuito) -- con 2+ elegidos esos botones se ocultan.
+function renderPrincipalComparar(){
+  const ctx = document.getElementById('ch-principal');
+  const dark = document.documentElement.getAttribute('data-theme')==='dark';
+  const tickC = dark ? '#ffffff' : '#000000';
+  const tickXFuerte = dark ? '#ffffff' : '#000000';
+  const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
+
+  const series = DET_COMPARAR_SERIES.filter(s => s.resumen && s.resumen.meses && s.resumen.meses.length);
+  if(!series.length) return;
+  // Unión de meses de todos los circuitos (por si alguno arrancó/terminó
+  // en otro punto) -- ordenada, spanGaps completa los huecos de cada uno.
+  const clavesSet = new Set();
+  series.forEach(s => s.resumen.meses.forEach(m => clavesSet.add(m)));
+  const claves = [...clavesSet].sort();
+  const etiquetas = claves.map(labelMes);
+
+  const datasets = [];
+  series.forEach((s, i) => {
+    const color = PALETA_ZONAS[i % PALETA_ZONAS.length];
+    const porMes = new Map(s.resumen.meses.map((m, idx) => [m, idx]));
+    const kwhV = claves.map(c => { const idx = porMes.get(c); return (idx==null) ? null : (s.resumen.perdidas_kwh[idx] > 0 ? s.resumen.perdidas_kwh[idx] : null); });
+    const pctV = claves.map(c => { const idx = porMes.get(c); return (idx==null) ? null : ((s.resumen.entradas_kwh[idx]>0 && s.resumen.perdidas_kwh[idx]>0) ? s.resumen.perdidas_pct[idx] : null); });
+    datasets.push({type:'line', label:`${s.nemonico} -- Pérdida (kWh)`, data:kwhV, borderColor:color, backgroundColor:'transparent',
+      borderWidth:2.5, pointRadius:2.5, tension:0, spanGaps:true, yAxisID:'y'});
+    datasets.push({type:'line', label:`${s.nemonico} -- Pérdida (%)`, data:pctV, borderColor:color, backgroundColor:'transparent',
+      borderWidth:2, borderDash:[6,3], pointRadius:1.5, tension:0, spanGaps:true, yAxisID:'yPct'});
+  });
+
+  if(chPrincipal) chPrincipal.destroy();
+  chPrincipal = new Chart(ctx, {
+    data:{ labels: etiquetas, datasets },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      layout:{padding:{bottom:20,top:20,right:16,left:8}},
+      interaction:{mode:'index', intersect:false},
+      plugins:{
+        legend:{display:true, position:'bottom', labels:{boxWidth:14, font:{size:11}, color:tickC, padding:14}},
+        tooltip:{callbacks:{label:c=>{
+          const v=c.raw; if(v==null) return null;
+          const esPct = c.dataset.yAxisID==='yPct';
+          return esPct ? `${c.dataset.label}: ${parseFloat(v).toFixed(2)}%` : `${c.dataset.label}: ${v.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`;
+        }}},
+      },
+      scales:{
+        x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:12}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
+        y:{type:'linear', position:'left', beginAtZero:true, grid:{color:gridC},
+          ticks:{color:tickC, font:{size:12}, callback:v=>fmtGwh(v)},
+          title:{display:true, text:'Pérdida (kWh)', color:tickC, font:{size:12}}},
+        yPct:{type:'linear', position:'right', beginAtZero:false, grace:'20%', grid:{drawOnChartArea:false},
+          ticks:{color:tickC, font:{size:12}, callback:v=>v.toFixed(1)+'%'},
+          title:{display:true, text:'Pérdida (%)', color:tickC, font:{size:12}}},
+      },
+    },
+  });
+  detalleRenderTarjetas();
+}
+
 function renderPrincipal(){
+  // Entrada/Salida y Δ Variación son de un solo circuito (triple eje /
+  // etiqueta de variación de UNA serie) -- no aplican comparando varios.
+  const comparando = DET_COMPARAR_SERIES && DET_COMPARAR_SERIES.length >= 2;
+  document.getElementById('det-es-btn')?.classList.toggle('hidden', comparando);
+  document.getElementById('det-var-btn')?.classList.toggle('hidden', comparando);
+  if(comparando) return renderPrincipalComparar();
   if(!RESUMEN) return;
   const ctx = document.getElementById('ch-principal');
   const dark = document.documentElement.getAttribute('data-theme')==='dark';
