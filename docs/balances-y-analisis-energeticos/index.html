@@ -981,6 +981,9 @@ tfoot td:first-child{text-align:left}
 .pt-tab-btn:hover{color:var(--text)}
 .pt-tab-btn.activo{background:var(--card-bg);color:var(--text);border-color:var(--border);
   border-bottom-color:var(--card-bg);border-top:3px solid var(--accent);padding-top:7px;z-index:1}
+/* Contador de alertas dentro de una pestaña (Alertas de Balance) -- gris
+   cuando el conteo es 0, rojo cuando hay algo que revisar. */
+.be-alertas-badge{margin-left:7px;padding:1px 7px;border-radius:9px;font-size:10.5px;font-weight:800}
 /* La pestaña activa queda pegada (margin-bottom:0 en .pt-tabs) al panel
    de abajo -- sin esto, las esquinas redondeadas de .card dejaban ver un
    triangulito de fondo justo debajo de la pestaña (pedido explícito: "que
@@ -4951,35 +4954,75 @@ tfoot td:first-child{text-align:left}
 
   <div class="sec-hdr">
     <div class="sec-title">Alertas de Balance</div>
-    <div class="sec-sub">Medidores atrasados, con anomalías respecto a su consumo habitual, con ajustes manuales activos, o donde tuvo que usarse el respaldo -- más las estructuras con pérdida alta del mes elegido</div>
+    <div class="sec-sub">Anomalías de consumo, medidores sin registro o atrasados, pérdida por encima del máximo típico, respaldo en uso y ajustes manuales -- se genera bajo pedido, no se queda cargando de fondo</div>
   </div>
 
-  <div class="card">
-    <div class="sec-title" style="font-size:13px;margin-bottom:8px">⚠️ Alertas principales</div>
-    <div class="sec-sub" style="margin-bottom:10px">Atraso, anomalías de consumo, ajustes manuales y respaldo en uso -- siempre sobre el estado ACTUAL (hoy)</div>
-    <div id="be-alertas-lista" class="tm-alarma-lista"></div>
+  <!-- Pedido explícito ("me gustaría que fuera como un botón y este me
+       sacara las alertas del día") -- antes las 3 listas se cargaban solas
+       apenas se entraba a esta vista (y de nuevo cada vez que cambiaba un
+       filtro en "Ver Balance"), quedando como listas largas siempre
+       abiertas. Ahora es 100% bajo demanda: nada se pide hasta este click. -->
+  <div class="card" style="text-align:center;padding:22px">
+    <button type="button" id="be-alertas-btn-ver" class="btn-theme" style="width:auto;padding:11px 30px;background:var(--accent);color:#fff;border-color:var(--accent);font-size:14px;font-weight:700" onclick="cargarAlertasBalance()">🔔 Ver Alertas del Día</button>
+    <div id="be-alertas-estado" style="margin-top:10px;font-size:11px;color:var(--text3)"></div>
   </div>
 
-  <div class="card">
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:10px">
-      <div>
-        <div class="sec-title" style="font-size:13px;margin-bottom:2px">📉 Estructuras con pérdida alta</div>
-        <div class="sec-sub">Superaron su máximo típico calculado en el mes elegido</div>
-      </div>
-      <div class="fbar" style="margin:0">
-        <label>Mes</label>
-        <select id="be-alertas-mes" onchange="this.dataset.manual='1'"></select>
-        <label>Año</label>
-        <select id="be-alertas-anio" onchange="this.dataset.manual='1'"></select>
-        <button type="button" class="btn-theme" style="width:auto;padding:6px 14px;background:var(--accent);color:#fff;border-color:var(--accent)" onclick="cargarAlertasBalance()">▶ Ver</button>
+  <div id="be-alertas-resultado" class="hidden">
+
+    <!-- Pestañas estilo Excel (mismo patrón .pt-tabs que el resto de la
+         app) -- una categoría a la vez en vez de 3+ listas largas apiladas. -->
+    <div class="pt-tabs">
+      <button type="button" class="pt-tab-btn activo" id="be-alertas-tab-btn-promedio" onclick="beAlertasIrATab('promedio')">📊 Anomalías de consumo<span id="be-alertas-badge-promedio" class="be-alertas-badge"></span></button>
+      <button type="button" class="pt-tab-btn" id="be-alertas-tab-btn-atraso" onclick="beAlertasIrATab('atraso')">⏱️ Sin registro / Atrasos<span id="be-alertas-badge-atraso" class="be-alertas-badge"></span></button>
+      <button type="button" class="pt-tab-btn" id="be-alertas-tab-btn-perdida" onclick="beAlertasIrATab('perdida')">📉 Pérdida sobre el máximo<span id="be-alertas-badge-perdida" class="be-alertas-badge"></span></button>
+      <button type="button" class="pt-tab-btn" id="be-alertas-tab-btn-respaldo" onclick="beAlertasIrATab('respaldo')">🔁 Respaldo en uso<span id="be-alertas-badge-respaldo" class="be-alertas-badge"></span></button>
+      <button type="button" class="pt-tab-btn" id="be-alertas-tab-btn-ajustes" onclick="beAlertasIrATab('ajustes')">🛠️ Ajustes manuales<span id="be-alertas-badge-ajustes" class="be-alertas-badge"></span></button>
+    </div>
+
+    <div id="be-alertas-tab-promedio">
+      <div class="card">
+        <div class="sec-sub" style="margin-bottom:10px">El último dato reportado se sale de su consumo habitual -- sobre el estado ACTUAL (hoy)</div>
+        <div id="be-alertas-lista" class="tm-alarma-lista"></div>
       </div>
     </div>
-    <div id="be-alertas-perdida-lista" class="tm-alarma-lista"></div>
-  </div>
 
-  <div class="card">
-    <div class="sec-title" style="font-size:13px;margin-bottom:8px">🛠️ Medidas arregladas manualmente</div>
-    <div id="be-alertas-ajustes-lista" class="tm-alarma-lista"></div>
+    <div id="be-alertas-tab-atraso" class="hidden">
+      <div class="card">
+        <div class="sec-sub" style="margin-bottom:10px">Medidores sin dato reciente, o que nunca reportaron -- sobre el estado ACTUAL (hoy)</div>
+        <div id="be-alertas-atraso-lista" class="tm-alarma-lista"></div>
+      </div>
+    </div>
+
+    <div id="be-alertas-tab-perdida" class="hidden">
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:10px">
+          <div class="sec-sub" style="margin:0">Estructuras cuya pérdida % superó su máximo típico en el mes elegido</div>
+          <div class="fbar" style="margin:0">
+            <label>Mes</label>
+            <select id="be-alertas-mes" onchange="this.dataset.manual='1'"></select>
+            <label>Año</label>
+            <select id="be-alertas-anio" onchange="this.dataset.manual='1'"></select>
+            <button type="button" class="btn-theme" style="width:auto;padding:6px 14px;background:var(--accent);color:#fff;border-color:var(--accent)" onclick="cargarAlertasBalance()">▶ Ver</button>
+          </div>
+        </div>
+        <div id="be-alertas-perdida-lista" class="tm-alarma-lista"></div>
+      </div>
+    </div>
+
+    <div id="be-alertas-tab-respaldo" class="hidden">
+      <div class="card">
+        <div class="sec-sub" style="margin-bottom:10px">Puntos con medidor de respaldo configurado, donde el respaldo tuvo que usarse de verdad en los últimos 30 días</div>
+        <div id="be-alertas-respaldo-lista" class="tm-alarma-lista"></div>
+      </div>
+    </div>
+
+    <div id="be-alertas-tab-ajustes" class="hidden">
+      <div class="card">
+        <div class="sec-sub" style="margin-bottom:10px">Medidores con al menos un día de ajuste manual vigente</div>
+        <div id="be-alertas-ajustes-lista" class="tm-alarma-lista"></div>
+      </div>
+    </div>
+
   </div>
 
 </div>
@@ -7110,11 +7153,13 @@ async function mostrarVista(nombre){
     vistaCargada.programaFacturacion = true;
     await cargarProgramaFacturacion();
   }
-  // Las alertas se piden de nuevo cada vez que se entra a esta vista puntual
-  // (no solo la primera vez) -- son datos que cambian seguido (atraso día a
-  // día), a diferencia del resto de Balances por Estructura.
+  // Pedido explícito -- las alertas ya NO se cargan solas al entrar a esta
+  // vista (quedaban como listas largas siempre abiertas); solo se pobla el
+  // filtro Mes/Año para que esté listo si el usuario abre la pestaña
+  // "Pérdida sobre el máximo", el pedido real de datos espera al botón
+  // "🔔 Ver Alertas del Día" (ver cargarAlertasBalance).
   if(nombre==='be-alertas'){
-    await cargarAlertasBalance();
+    _beAlertasPoblarFiltroMes();
   }
   if(nombre==='be-diagramas'){
     await cargarListaDiagramas();
@@ -11602,7 +11647,6 @@ async function cargarListaEstructuras(reintentando){
   }
   renderTablaEstructurasCreadas();
   renderTablaBalanceNivelCreados();
-  cargarAlertasBalance();
 }
 
 // Vuelve Nivel/Tipo/Estructura a "Todos" de una -- sin esto había que
@@ -11712,13 +11756,45 @@ function _beRenderAlertaItem(a){
   </div>`;
 }
 
+// Definición de las 5 pestañas de Alertas de Balance -- clave usada tanto
+// para el id del panel/botón (be-alertas-tab-<clave>) como para filtrar
+// BE_ALERTAS_CACHE por tipo_alerta real del backend.
+const BE_ALERTAS_TABS = [
+  {clave:'promedio', tipo:'promedio', lista:'be-alertas-lista', vacio:'Sin alertas -- todos los medidores están dentro de su consumo habitual.'},
+  {clave:'atraso', tipo:'atraso', lista:'be-alertas-atraso-lista', vacio:'Sin alertas -- todos los medidores están reportando con normalidad.'},
+  {clave:'perdida', tipo:'perdida_alta', lista:'be-alertas-perdida-lista', vacio:'Ninguna estructura superó su máximo típico en este mes.'},
+  {clave:'respaldo', tipo:'respaldo_en_uso', lista:'be-alertas-respaldo-lista', vacio:'Ningún respaldo tuvo que usarse en los últimos 30 días.'},
+  {clave:'ajustes', tipo:'ajuste_manual', lista:'be-alertas-ajustes-lista', vacio:'No hay ajustes manuales vigentes.'},
+];
+
+// Pestañas estilo Excel (mismo patrón .pt-tabs que el resto de la app) --
+// una categoría de alerta a la vez en vez de listas largas apiladas.
+function beAlertasIrATab(nombre){
+  BE_ALERTAS_TABS.forEach(({clave}) => {
+    document.getElementById('be-alertas-tab-'+clave)?.classList.toggle('hidden', clave!==nombre);
+    document.getElementById('be-alertas-tab-btn-'+clave)?.classList.toggle('activo', clave===nombre);
+  });
+}
+
+function _beAlertasSetBadge(clave, n){
+  const el = document.getElementById('be-alertas-badge-'+clave);
+  if(!el) return;
+  el.textContent = String(n);
+  el.style.background = n ? '#C0000022' : 'var(--border)';
+  el.style.color = n ? '#C00000' : 'var(--text3)';
+}
+
+// Pedido explícito ("me gustaría que fuera como un botón y este me sacara
+// las alertas del día") -- este es el ÚNICO lugar que pide /alertas al
+// backend; ya no se dispara solo al entrar a la vista ni al tocar un
+// filtro en "Ver Balance" (ver mostrarVista/cargarListaEstructuras).
 async function cargarAlertasBalance(){
-  const contPrincipales = document.getElementById('be-alertas-lista');
-  const contPerdida = document.getElementById('be-alertas-perdida-lista');
-  const contAjustes = document.getElementById('be-alertas-ajustes-lista');
   _beAlertasPoblarFiltroMes();
+  const boton = document.getElementById('be-alertas-btn-ver');
+  const estado = document.getElementById('be-alertas-estado');
+  const resultado = document.getElementById('be-alertas-resultado');
   if(DEMO){
-    contPrincipales.innerHTML = contPerdida.innerHTML = contAjustes.innerHTML = '<div class="tm-alarma-vacio">No disponible en modo demo (sin conexión al servidor).</div>';
+    estado.textContent = 'No disponible en modo demo (sin conexión al servidor).';
     return;
   }
   const mesSel = document.getElementById('be-alertas-mes');
@@ -11731,39 +11807,42 @@ async function cargarAlertasBalance(){
   const qs = new URLSearchParams();
   if(mesSel.dataset.manual === '1') qs.set('mes', mesSel.value);
   if(anioSel.dataset.manual === '1') qs.set('anio', anioSel.value);
+  boton.disabled = true;
+  boton.textContent = '⏳ Buscando...';
+  estado.textContent = '';
   let datos;
   // Timeout mas generoso que el default (2.5s) -- este endpoint cruza
   // TODAS las estructuras del operador contra su "máximo típico" del mes
   // elegido (categoría 'perdida_alta'), es normal que tarde unos segundos.
   try{ datos = await apiGet(`/api/balances-estructura/alertas?${qs.toString()}`, 15000); }
   catch(e){
-    contPrincipales.innerHTML = contPerdida.innerHTML = contAjustes.innerHTML = '<div class="tm-alarma-vacio">No se pudieron cargar las alertas.</div>';
+    estado.textContent = 'No se pudieron cargar las alertas.';
+    boton.disabled = false;
+    boton.textContent = '🔔 Ver Alertas del Día';
     return;
   }
+  boton.disabled = false;
+  boton.textContent = '🔄 Actualizar Alertas del Día';
   // Refleja el mes/año que realmente se usó -- el elegido a mano, o el
   // default del backend (último mes cerrado) si no se tocó nada todavía.
   const [anioUsado, mesUsado] = (datos.perdida_alta_mes || '').split('-');
   if(anioUsado) anioSel.value = anioUsado;
   if(mesUsado) mesSel.value = String(parseInt(mesUsado,10));
+  estado.textContent = datos.fecha_referencia ? `Datos al ${datos.fecha_referencia}` : '';
 
   BE_ALERTAS_CACHE = datos.alertas || [];
+  resultado.classList.remove('hidden');
   _beRenderAlertasDesdeCache();
 }
 
 function _beRenderAlertasDesdeCache(){
-  const contPrincipales = document.getElementById('be-alertas-lista');
-  const contPerdida = document.getElementById('be-alertas-perdida-lista');
-  const contAjustes = document.getElementById('be-alertas-ajustes-lista');
-  const principales = BE_ALERTAS_CACHE.filter(a => a.tipo_alerta==='atraso' || a.tipo_alerta==='promedio' || a.tipo_alerta==='respaldo_en_uso');
-  const perdidaAlta = BE_ALERTAS_CACHE.filter(a => a.tipo_alerta==='perdida_alta');
-  const ajustes = BE_ALERTAS_CACHE.filter(a => a.tipo_alerta==='ajuste_manual');
-
-  contPrincipales.innerHTML = principales.length ? principales.map(_beRenderAlertaItem).join('')
-    : '<div class="tm-alarma-vacio">Sin alertas -- todos los medidores están reportando con normalidad.</div>';
-  contPerdida.innerHTML = perdidaAlta.length ? perdidaAlta.map(_beRenderAlertaItem).join('')
-    : '<div class="tm-alarma-vacio">Ninguna estructura superó su máximo típico en este mes.</div>';
-  contAjustes.innerHTML = ajustes.length ? ajustes.map(_beRenderAlertaItem).join('')
-    : '<div class="tm-alarma-vacio">No hay ajustes manuales vigentes.</div>';
+  BE_ALERTAS_TABS.forEach(({clave, tipo, lista, vacio}) => {
+    const cont = document.getElementById(lista);
+    const items = BE_ALERTAS_CACHE.filter(a => a.tipo_alerta === tipo);
+    cont.innerHTML = items.length ? items.map(_beRenderAlertaItem).join('')
+      : `<div class="tm-alarma-vacio">${vacio}</div>`;
+    _beAlertasSetBadge(clave, items.length);
+  });
 }
 
 function _beResumenLado(medidores){
