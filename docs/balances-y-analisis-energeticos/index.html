@@ -2870,6 +2870,18 @@ tfoot td:first-child{text-align:left}
   <div id="alim-resumen-vacio" class="card"><div style="color:var(--text3)">Cargando…</div></div>
 
   <div id="alim-resumen-contenido" class="hidden">
+    <!-- 2 pestañas -- pedido explícito ("quiero otra pestaña que sea
+         análisis económico... la misma estructura que en pérdidas
+         técnicas"): la 1 es el contenido de siempre (#alim-resumen-card,
+         sin tocar); la 2 es una copia funcional de la pestaña "Evaluación
+         Económica" de Pérdidas Técnicas (#perdidas-tab-evaluacion), pero
+         calculada con los datos de Alimentadores/Resumen (los 3 niveles:
+         Nivel 4/Nivel 3/N2-1) en vez de los circuitos de Pérdidas
+         Técnicas -- ver alimResumenIrATab. -->
+    <div class="pt-tabs">
+      <button type="button" class="pt-tab-btn activo" id="alim-resumen-tab-btn-resumen" onclick="alimResumenIrATab('resumen')">Resumen por Nivel</button>
+      <button type="button" class="pt-tab-btn" id="alim-resumen-tab-btn-evaluacion" onclick="alimResumenIrATab('evaluacion')">Análisis Económico</button>
+    </div>
     <!-- Un solo cuadro -- pedido explícito ("debe ser un resumen de
          todo"): IP_Reg (Mensual y Anual/12M, con su kWh) arriba, Mes y
          niveles abajo, TODOS mirando el mismo selector de Mes (antes
@@ -2909,7 +2921,7 @@ tfoot td:first-child{text-align:left}
           <div style="display:flex;gap:16px;margin-bottom:20px">
             <div class="resnivel-campo" style="min-width:170px">
               <div class="resnivel-campo-label">Mes</div>
-              <select id="alim-resumen-mes" onchange="alimResumenRenderNiveles()" style="border:1.5px solid var(--border);border-radius:4px;padding:6px 8px;font-weight:700;font-size:13px;color:var(--text);background:var(--card-bg)"></select>
+              <select id="alim-resumen-mes" onchange="alimResumenRenderNiveles();alimResumenRenderEvaluacion();alimResumenRenderEvalChart()" style="border:1.5px solid var(--border);border-radius:4px;padding:6px 8px;font-weight:700;font-size:13px;color:var(--text);background:var(--card-bg)"></select>
             </div>
             <!-- Tarifa G+T+R -- pedido explícito ("como estaba al inicio,
                  eso no se debe tocar"): UNA sola tarifa compartida por los
@@ -2920,7 +2932,7 @@ tfoot td:first-child{text-align:left}
                  son dos cosas distintas. -->
             <div class="resnivel-campo" style="min-width:170px">
               <div class="resnivel-campo-label">Tarifa G+T+R ($/kWh)</div>
-              <input type="number" min="0" step="0.01" placeholder="--" id="alim-resumen-tarifa" oninput="alimResumenActualizarValorizacion()">
+              <input type="number" min="0" step="0.01" placeholder="--" id="alim-resumen-tarifa" oninput="alimResumenActualizarValorizacion();alimResumenRenderEvaluacion();alimResumenRenderEvalChart()">
             </div>
           </div>
           <!-- Título propio + borde -- pedido explícito ("colócalo al
@@ -3031,6 +3043,65 @@ tfoot td:first-child{text-align:left}
           </div>
         </div>
       </div>
+    </div>
+
+    <!-- ---- Pestaña 2: Análisis Económico -- calco de
+         #perdidas-tab-evaluacion (misma tabla por Zona+Nivel/columnas/
+         Factor STN, mismo gráfico Reconocido vs No Reconocido), pero con
+         los datos de Alimentadores/Resumen: Pérdida Técnica por zona sale
+         de /api/resumen?nivel=X&zona=Y (mismo endpoint que usa Pérdidas
+         Técnicas, un fetch por zona -- ver alimResumenEvalAsegurarTecnicaPorZona),
+         el % Reconocido es el MISMO que ya está configurado por nivel en
+         la pestaña 1 (confirmado con el usuario: un solo % para todas las
+         zonas de ese nivel, igual que hace hoy Nivel 3 en su propia
+         Evaluación Económica embebida en el mapa -- _alimResumenLeerPct),
+         y la Tarifa G+T+R es la MISMA de la pestaña 1 (#alim-resumen-tarifa,
+         sin duplicar el campo). -->
+    <div class="card hidden" id="alim-resumen-tab-evaluacion">
+      <div class="valuacion-hdr">
+        <div>
+          <div class="card-title" style="margin-bottom:2px">💰 Evaluación Económica de Pérdidas Técnicas · por Zona</div>
+          <div class="card-sub" id="alim-resumen-eval-sub" style="margin-bottom:0">—</div>
+        </div>
+        <div class="valuacion-hdr-controles">
+          <button type="button" id="alim-resumen-eval-btn-contraer" onclick="alimResumenEvalToggleContraido()"
+            style="padding:5px 11px;border:1px solid var(--accent);border-radius:7px;font-size:11px;font-weight:600;background:transparent;color:var(--accent);cursor:pointer;white-space:nowrap">
+            ▴ Contraer por zona
+          </button>
+          <label style="font-size:12px;color:var(--text3);white-space:nowrap;margin-left:6px" title="Factor para Referir al STN (Datos_XM / TFROC). Valor fijo del mes, no editable.">Factor STN · Nivel</label>
+          <div style="display:flex;align-items:center;gap:5px">
+            <span style="font-size:10.5px;font-weight:700;color:var(--text3)">N2<span id="alim-resumen-eval-pr-2" style="margin-left:3px;display:inline-block;padding:4px 7px;border:1px dashed var(--border);border-radius:6px;font-size:11px;font-weight:700;color:var(--text);background:var(--bg);min-width:58px;text-align:right">1</span></span>
+            <span style="font-size:10.5px;font-weight:700;color:var(--text3)">N3<span id="alim-resumen-eval-pr-3" style="margin-left:3px;display:inline-block;padding:4px 7px;border:1px dashed var(--border);border-radius:6px;font-size:11px;font-weight:700;color:var(--text);background:var(--bg);min-width:58px;text-align:right">1</span></span>
+            <span style="font-size:10.5px;font-weight:700;color:var(--text3)">N4<span id="alim-resumen-eval-pr-4" style="margin-left:3px;display:inline-block;padding:4px 7px;border:1px dashed var(--border);border-radius:6px;font-size:11px;font-weight:700;color:var(--text3);background:var(--bg);min-width:58px;text-align:right">1</span></span>
+          </div>
+        </div>
+      </div>
+      <div class="split-wrap">
+        <div class="tbl-wrap tbl-compacta" id="alim-resumen-eval-tbl-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Zona</th><th style="text-align:center">Nivel</th><th>Recon.<br>CREG (%)</th>
+                <th style="text-align:center">Factor<br>STN</th>
+                <th>Pérd. Téc.<br>(kWh/mes)</th><th>Pérd. Téc.<br>(%)</th>
+                <th>Pérd. ref.<br>STN (kWh/mes)</th><th>Costo total<br>G+T+R ($/mes)</th>
+                <th>Recon. ref.<br>STN (kWh/mes)</th><th>No Recon. ref.<br>STN (kWh/mes)</th>
+                <th>Costo Recon.<br>($/mes)</th><th>Costo No<br>Recon. ($/mes)</th>
+              </tr>
+            </thead>
+            <tbody id="alim-resumen-eval-tb"></tbody>
+            <tfoot id="alim-resumen-eval-tf"></tfoot>
+          </table>
+        </div>
+        <div style="flex:1 1 420px">
+          <div class="card-title" style="text-align:center">Reconocido vs No Reconocido · serie mensual (referido al STN)</div>
+          <div class="chart-wrap" style="height:480px;position:relative">
+            <canvas id="ch-alim-resumen-eval"></canvas>
+            <div id="alim-resumen-eval-chart-vacio" class="hidden" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;color:var(--text3);font-size:12px;padding:24px">Sin datos de pérdida técnica todavía.</div>
+          </div>
+        </div>
+      </div>
+      <div style="font-size:11px;color:var(--text3);margin-top:10px">El Costo G+T+R y el % Reconocido por nivel son los mismos configurados en la pestaña "Resumen por Nivel".</div>
     </div>
   </div>
 </div>
@@ -18919,6 +18990,336 @@ function alimResumenActualizarReconocido(nivelClave){
   _alimResumenActualizarValorizacionNivel(nivelClave);
   _alimResumenActualizarFilaTabla(nivelClave);
   _alimResumenActualizarTotales();
+  // El % Reconocido por nivel también alimenta la pestaña Análisis
+  // Económico (misma fuente, ver alimResumenRenderEvaluacion).
+  alimResumenRenderEvaluacion();
+  alimResumenRenderEvalChart();
+}
+
+// ==========================================================================
+// RESUMEN POR NIVEL · pestaña "Análisis Económico" -- calco de
+// #perdidas-tab-evaluacion (Pérdidas Técnicas) pero para los 3 niveles de
+// Alimentadores (Nivel 4/Nivel 3/N2-1) a la vez, agrupados por Zona+Nivel.
+// Pedido explícito ("quiero otra pestaña que sea análisis económico...
+// misma estructura que en pérdidas técnicas... para todos los niveles").
+// Reusa TODO lo que ya existe en vez de duplicar: el % Reconocido por
+// nivel (_alimResumenLeerPct, mismo que las tarjetas de la pestaña 1,
+// confirmado con el usuario: un solo % para todas las zonas de ese
+// nivel), la Tarifa G+T+R compartida (#alim-resumen-tarifa) y el
+// endpoint /api/valuacion-pr-niveles (Factor STN, ya usado por Nivel 3).
+// La Pérdida Técnica por zona NO está precargada al entrar a Resumen
+// (alimResumenCargar solo trae el total por nivel) -- se pide acá mismo,
+// un fetch por zona a /api/resumen?nivel=X&zona=Y (mismo patrón que usan
+// alimNivel3Cargar/alimN21Cargar para sus propias ALIM_*_TECNICA_POR_ZONA),
+// cacheada y disparada solo la primera vez que se abre esta pestaña.
+// ==========================================================================
+function alimResumenIrATab(nombre){
+  document.getElementById('alim-resumen-card').classList.toggle('hidden', nombre!=='resumen');
+  document.getElementById('alim-resumen-tab-evaluacion').classList.toggle('hidden', nombre!=='evaluacion');
+  document.getElementById('alim-resumen-tab-btn-resumen').classList.toggle('activo', nombre==='resumen');
+  document.getElementById('alim-resumen-tab-btn-evaluacion').classList.toggle('activo', nombre==='evaluacion');
+  if(nombre==='evaluacion') alimResumenCargarEvaluacion();
+  setTimeout(() => window.dispatchEvent(new Event('resize')), 0);
+}
+
+let ALIM_RESUMEN_EVAL_CONTRAIDO = false;
+function alimResumenEvalToggleContraido(){
+  ALIM_RESUMEN_EVAL_CONTRAIDO = !ALIM_RESUMEN_EVAL_CONTRAIDO;
+  const btn = document.getElementById('alim-resumen-eval-btn-contraer');
+  if(btn) btn.textContent = ALIM_RESUMEN_EVAL_CONTRAIDO ? '▾ Expandir zonas' : '▴ Contraer por zona';
+  alimResumenRenderEvaluacion();
+}
+
+// Factor STN -- mismo endpoint/forma que usa Nivel 3 (ALIM_NIVEL3_EVAL_PR3),
+// pero acá se guardan los 4 niveles del payload, no solo el 3, porque esta
+// pestaña necesita N4/N3/N2 (nivelTecnica de N2-1 = 2, ver ALIM_RESUMEN_NIVELES).
+let ALIM_RESUMEN_EVAL_PR = {};           // {mes: {'1':pr,'2':pr,'3':pr,'4':pr}}
+let ALIM_RESUMEN_EVAL_PR_CARGADO = false;
+async function alimResumenEvalAsegurarPr(){
+  if(ALIM_RESUMEN_EVAL_PR_CARGADO || DEMO) return;
+  ALIM_RESUMEN_EVAL_PR_CARGADO = true;
+  try{
+    const r = await apiGet('/api/valuacion-pr-niveles');
+    ALIM_RESUMEN_EVAL_PR = r || {};
+  }catch(e){ ALIM_RESUMEN_EVAL_PR_CARGADO = false; }  // reintenta la próxima
+}
+function _alimResumenEvalPr(mes, nivelTecnica){
+  const pr = ALIM_RESUMEN_EVAL_PR[mes];
+  const v = pr ? +pr[String(nivelTecnica)] : null;
+  return (v > 0) ? v : 1;
+}
+
+// Pérdida Técnica por zona de los 3 niveles -- {nivelClave: {zona: {mes:
+// {perdida,pct,entrada}}}}, mismo formato que ALIM_NIVEL3_TECNICA_POR_ZONA/
+// ALIM_N21_TECNICA_POR_ZONA (_alimNivelTecnicaPorMes).
+let ALIM_RESUMEN_EVAL_TECNICA = {nivel4:{}, nivel3:{}, n21:{}};
+let ALIM_RESUMEN_EVAL_TECNICA_CARGADA = false;
+function _alimResumenEvalZonasDeNivel(nivelClave){
+  if(nivelClave==='nivel4') return [...new Set((ALIM_NIVEL4_FILAS||[]).map(f=>f.estructura).filter(Boolean))].sort();
+  if(nivelClave==='nivel3') return [...new Set((ALIM_NIVEL3_FILAS||[]).map(f=>f.estructura).filter(Boolean))].sort();
+  return [...new Set((ALIM_FILAS||[]).map(f=>f.zona).filter(Boolean))].sort();
+}
+async function alimResumenEvalAsegurarTecnicaPorZona(){
+  if(ALIM_RESUMEN_EVAL_TECNICA_CARGADA || DEMO) return;
+  ALIM_RESUMEN_EVAL_TECNICA_CARGADA = true;
+  async function cargarNivel(nivelClave, nivelParam){
+    const zonas = _alimResumenEvalZonasDeNivel(nivelClave);
+    await Promise.all(zonas.map(async z => {
+      try{
+        const resp = await apiGet(`/api/resumen?${nivelParam}&zona=${encodeURIComponent(z)}`, AUTH_TIMEOUT_MS);
+        ALIM_RESUMEN_EVAL_TECNICA[nivelClave][z] = _alimNivelTecnicaPorMes(resp);
+      }catch(e){
+        ALIM_RESUMEN_EVAL_TECNICA[nivelClave][z] = {};
+      }
+    }));
+  }
+  try{
+    await Promise.all([
+      cargarNivel('nivel4', 'nivel=4'),
+      cargarNivel('nivel3', 'nivel=3'),
+      cargarNivel('n21', 'nivel=1&nivel=2'),
+    ]);
+  }catch(e){ ALIM_RESUMEN_EVAL_TECNICA_CARGADA = false; }
+}
+
+// Respaldo de Entrada por zona/mes -- solo se usa si la respuesta de
+// /api/resumen para esa zona no trajo `entrada` (backend viejo). N4/N3
+// salen del balance real (_alimNivel34MensualPorZona); N2-1 de ALIM_FILAS.
+function _alimResumenEvalEntradaRespaldo(nivelClave){
+  if(nivelClave==='n21'){
+    const mapa = {};
+    (ALIM_FILAS||[]).forEach(f => {
+      if(!f.zona) return;
+      const clave = alimN21Clave(f.anio, f.mes);
+      (mapa[f.zona] = mapa[f.zona] || {})[clave] = (mapa[f.zona][clave] || 0) + (f.entrada_total || 0);
+    });
+    return mapa;
+  }
+  const filas = nivelClave==='nivel4' ? ALIM_NIVEL4_FILAS : ALIM_NIVEL3_FILAS;
+  const porZona = _alimNivel34MensualPorZona(filas || []);
+  const mapa = {};
+  (porZona.zonas || []).forEach(z => {
+    mapa[z] = {};
+    (porZona.porZona[z] || []).forEach(f => { mapa[z][f.clave] = f.entrada; });
+  });
+  return mapa;
+}
+
+function _alimResumenEvalFilasNivel(nivelClave, mes){
+  const zonas = _alimResumenEvalZonasDeNivel(nivelClave);
+  const tecnicaPorZona = ALIM_RESUMEN_EVAL_TECNICA[nivelClave] || {};
+  const entradaRespaldo = _alimResumenEvalEntradaRespaldo(nivelClave);
+  return zonas.map(z => {
+    const t = (tecnicaPorZona[z] || {})[mes] || {};
+    const perdida = t.perdida != null ? t.perdida : 0;
+    const entrada = t.entrada != null ? t.entrada : ((entradaRespaldo[z] || {})[mes] || 0);
+    return {zona: z, perdida, entrada, pct: entrada ? perdida/entrada*100 : null};
+  }).filter(f => f.entrada || f.perdida);
+}
+
+async function alimResumenCargarEvaluacion(){
+  const sub = document.getElementById('alim-resumen-eval-sub');
+  if(sub) sub.textContent = 'Cargando pérdida técnica por zona…';
+  alimResumenRenderEvaluacion();
+  await Promise.all([alimResumenEvalAsegurarPr(), alimResumenEvalAsegurarTecnicaPorZona()]);
+  alimResumenRenderEvaluacion();
+  alimResumenRenderEvalChart();
+}
+
+function alimResumenRenderEvaluacion(){
+  const tb = document.getElementById('alim-resumen-eval-tb');
+  const tf = document.getElementById('alim-resumen-eval-tf');
+  if(!tb || !tf) return;
+  const sel = document.getElementById('alim-resumen-mes');
+  const mes = sel && sel.value;
+  const sub = document.getElementById('alim-resumen-eval-sub');
+  if(!mes){ tb.innerHTML = ''; tf.innerHTML = ''; if(sub) sub.textContent = '—'; return; }
+
+  const costo = parseFloat((document.getElementById('alim-resumen-tarifa')||{}).value) || 0;
+  const fK = n => Math.round(n||0).toLocaleString('es-CO');
+  const f$ = n => '$ '+Math.round(n||0).toLocaleString('es-CO');
+
+  const prMes = ALIM_RESUMEN_EVAL_PR[mes] || {};
+  ['2','3','4'].forEach(n => {
+    const el = document.getElementById(`alim-resumen-eval-pr-${n}`);
+    if(el) el.textContent = ((+prMes[n] > 0) ? +prMes[n] : 1).toFixed(6);
+  });
+
+  let filasHtml = '';
+  let tPT=0, tPref=0, tRef=0, tNoRef=0;
+  ALIM_RESUMEN_NIVELES.forEach(n => {
+    const pct = parseFloat(_alimResumenLeerPct(n.clave)) || 0;
+    const pr = _alimResumenEvalPr(mes, n.nivelTecnica);
+    const filas = _alimResumenEvalFilasNivel(n.clave, mes).sort((a,b) => a.zona.localeCompare(b.zona));
+    if(!filas.length) return;
+    let subPT=0, subPref=0, subRef=0, subNoRef=0;
+    const filasRender = filas.map(f => {
+      // Reconocido/No Reconocido POR ZONA -- cada zona contra su propio
+      // cupo (% del nivel × su propia Entrada), mismo criterio que ya usa
+      // Nivel 3 en su Evaluación Económica embebida en el mapa.
+      const cupoZ = f.entrada * pct/100;
+      const norecZ = Math.max(0, f.perdida - cupoZ);
+      const recZ = f.perdida - norecZ;
+      const perdRef = f.perdida*pr, recRef = recZ*pr, noRecRef = norecZ*pr;
+      subPT+=f.perdida; subPref+=perdRef; subRef+=recRef; subNoRef+=noRecRef;
+      const hayNoRecon = norecZ > 0.5;
+      const nrColor = hayNoRecon ? 'var(--red)' : 'var(--text)';
+      return `<tr${ALIM_RESUMEN_EVAL_CONTRAIDO ? ' class="hidden"' : ''}>
+        <td style="border-right:1px solid var(--border)"><span class="zb" style="background:${colorParaZona(f.zona)}22;color:var(--text)">${f.zona}</span></td>
+        <td style="text-align:center">${n.nombre}</td>
+        <td>${pct.toLocaleString('es-CO',{minimumFractionDigits:2,maximumFractionDigits:2})}%</td>
+        <td style="text-align:center">${pr.toFixed(6)}</td>
+        <td style="color:var(--text);font-weight:700">${fK(f.perdida)}</td>
+        <td>${f.pct!=null ? f.pct.toFixed(2)+'%' : '--'}</td>
+        <td style="color:var(--text);font-weight:600">${fK(perdRef)}</td>
+        <td style="font-weight:700">${f$(perdRef*costo)}</td>
+        <td style="color:var(--text);font-weight:600">${fK(recRef)}</td>
+        <td style="color:${nrColor};font-weight:${hayNoRecon?'700':'400'}">${fK(noRecRef)}</td>
+        <td style="color:var(--text);font-weight:600">${f$(recRef*costo)}</td>
+        <td style="color:${nrColor};font-weight:${hayNoRecon?'700':'400'}">${f$(noRecRef*costo)}</td>
+      </tr>`;
+    }).join('');
+    tPT+=subPT; tPref+=subPref; tRef+=subRef; tNoRef+=subNoRef;
+    const nrRedN = subNoRef > 0.5;
+    const nrcN = nrRedN ? 'var(--red)' : 'var(--text)';
+    filasHtml += filasRender + `<tr style="border-top:1px solid var(--border);background:var(--bg3)">
+      <td colspan="4" style="text-align:right;font-weight:800;color:var(--text2)">Subtotal ${n.nombre}</td>
+      <td style="font-weight:800">${fK(subPT)}</td><td></td>
+      <td style="font-weight:800">${fK(subPref)}</td>
+      <td style="font-weight:800">${f$(subPref*costo)}</td>
+      <td style="font-weight:800">${fK(subRef)}</td>
+      <td style="color:${nrcN};font-weight:800">${fK(subNoRef)}</td>
+      <td style="font-weight:800">${f$(subRef*costo)}</td>
+      <td style="color:${nrcN};font-weight:800">${f$(subNoRef*costo)}</td>
+    </tr>`;
+  });
+
+  tb.innerHTML = filasHtml || `<tr><td colspan="12" style="text-align:center;color:var(--text3);padding:14px">Sin datos de pérdida técnica por zona para ${labelMes(mes)}.</td></tr>`;
+  const nrRed = tNoRef > 0.5;
+  const nrc = nrRed ? 'var(--red)' : 'var(--text)';
+  tf.innerHTML = filasHtml ? `<tr style="border-top:3px double var(--text2);background:var(--bg)">
+    <td colspan="4" style="text-align:right;font-weight:800;color:var(--text2)">TOTAL</td>
+    <td style="font-weight:800">${fK(tPT)}</td><td></td>
+    <td style="font-weight:800">${fK(tPref)}</td>
+    <td style="font-weight:800">${f$(tPref*costo)}</td>
+    <td style="font-weight:800">${fK(tRef)}</td>
+    <td style="color:${nrc};font-weight:800">${fK(tNoRef)}</td>
+    <td style="font-weight:800">${f$(tRef*costo)}</td>
+    <td style="color:${nrc};font-weight:800">${f$(tNoRef*costo)}</td>
+  </tr>` : '';
+
+  if(sub) sub.textContent = `${labelMes(mes)} · ${costo.toLocaleString('es-CO')} $/kWh (G+T+R) · Reconocido = el % configurado por nivel en la pestaña "Resumen por Nivel"`;
+}
+
+let chAlimResumenEval = null;
+function alimResumenRenderEvalChart(){
+  const ctx = document.getElementById('ch-alim-resumen-eval');
+  const vacio = document.getElementById('alim-resumen-eval-chart-vacio');
+  if(!ctx) return;
+  const sel = document.getElementById('alim-resumen-mes');
+  const mesVig = sel && sel.value;
+  const costo = parseFloat((document.getElementById('alim-resumen-tarifa')||{}).value) || 0;
+
+  // Todas las claves (meses) con datos técnica en CUALQUIER zona de
+  // CUALQUIER nivel -- unión, igual criterio que otras series de la app.
+  const clavesSet = new Set();
+  ALIM_RESUMEN_NIVELES.forEach(n => {
+    Object.values(ALIM_RESUMEN_EVAL_TECNICA[n.clave] || {}).forEach(porMes => {
+      Object.keys(porMes).forEach(c => clavesSet.add(c));
+    });
+  });
+  const claves = [...clavesSet].sort().filter(c => c >= '2026-01');
+
+  const puntos = claves.map(c => {
+    let total = 0, noRecon = 0, recon = 0;
+    ALIM_RESUMEN_NIVELES.forEach(n => {
+      const pct = parseFloat(_alimResumenLeerPct(n.clave)) || 0;
+      const pr = _alimResumenEvalPr(c, n.nivelTecnica);
+      _alimResumenEvalFilasNivel(n.clave, c).forEach(f => {
+        const cupoZ = f.entrada * pct/100;
+        const norecZ = Math.max(0, f.perdida - cupoZ);
+        const recZ = f.perdida - norecZ;
+        total += f.perdida*pr; noRecon += norecZ*pr; recon += recZ*pr;
+      });
+    });
+    return {clave:c, total, energiaRecon: recon, costoRecon: recon*costo, costoNoRecon: noRecon*costo};
+  }).filter(p => p.total > 0);
+
+  if(!puntos.length){
+    if(chAlimResumenEval){ chAlimResumenEval.destroy(); chAlimResumenEval = null; }
+    if(vacio) vacio.classList.remove('hidden');
+    ctx.classList.add('hidden');
+    return;
+  }
+  if(vacio) vacio.classList.add('hidden');
+  ctx.classList.remove('hidden');
+
+  const dark = document.documentElement.getAttribute('data-theme')==='dark';
+  const tickC = dark ? '#ffffff' : '#000000';
+  const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
+  const labels = puntos.map(p => labelMes(p.clave));
+  const energiaRecon = puntos.map(p => p.energiaRecon);
+  const costoRecon = puntos.map(p => p.costoRecon);
+  const costoNoRecon = puntos.map(p => p.costoNoRecon);
+  const fD = v => v==null ? '' : '$ '+Math.round(v).toLocaleString('es-CO');
+  const fmtDineroEje = v => v>=1e9 ? '$'+(v/1e9).toFixed(1)+' MM' : v>=1e6 ? '$'+(v/1e6).toFixed(0)+' M' : '$'+Math.round(v).toLocaleString('es-CO');
+  const dlLinea = (color, align) => ({display:true, anchor:'end', align, offset:8,
+    formatter:v=>v?fmtDineroEje(v):'', font:{size:11,weight:'700'}, color});
+  const minEnergia = Math.min(...energiaRecon.filter(v=>v>0));
+  const yKwhMin = isFinite(minEnergia) ? Math.max(0, Math.floor(minEnergia/1e6)*1e6 - 200000) : 0;
+  const colBar = '#A9CCE3', colRecon = '#00A650', colNoRecon = '#C00000';
+
+  if(chAlimResumenEval) chAlimResumenEval.destroy();
+  chAlimResumenEval = new Chart(ctx, {
+    data:{
+      labels,
+      datasets:[
+        {type:'bar', label:'Energía reconocida (kWh/mes)', data: energiaRecon, yAxisID:'yKwh', order:3,
+          backgroundColor:colBar, borderColor:colBar, borderWidth:0, borderRadius:0,
+          categoryPercentage:0.55, barPercentage:0.62,
+          datalabels:{display:true, anchor:'end', align:'start', offset:5, rotation:-90,
+            formatter:v=>v?fmtGwh(v):'', font:{size:10,weight:'800'}, color:'#1b3a5c'}},
+        {type:'line', label:'Costo reconocido ($/mes)', data: costoRecon, yAxisID:'yDinero', order:1,
+          borderColor:colRecon, backgroundColor:'transparent', borderWidth:2.5,
+          pointRadius:3.5, pointHoverRadius:6, pointBackgroundColor:colRecon, pointBorderColor:'#ffffff', pointBorderWidth:1,
+          tension:0, spanGaps:true, datalabels: dlLinea('#0a7a3c','bottom')},
+        {type:'line', label:'Costo NO reconocido ($/mes)', data: costoNoRecon, yAxisID:'yDinero', order:2,
+          borderColor:colNoRecon, backgroundColor:'transparent', borderWidth:2.5,
+          pointRadius:3.5, pointHoverRadius:6, pointBackgroundColor:colNoRecon, pointBorderColor:'#ffffff', pointBorderWidth:1,
+          tension:0, spanGaps:true, datalabels: dlLinea('#C00000','bottom')},
+      ],
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      layout:{padding:{top:26, right:14, left:6, bottom:4}},
+      interaction:{mode:'index', intersect:false},
+      plugins:{
+        legend:{display:true, position:'bottom', labels:{
+          usePointStyle:false, boxWidth:18, boxHeight:12, font:{size:12}, color:tickC, padding:16,
+          generateLabels: (ch) => ch.data.datasets.map((ds,i) => {
+            const oculto = ch.getDatasetMeta(i).hidden;
+            return {text:(oculto?'☐  ':'☑  ')+ds.label, fillStyle:ds.borderColor,
+              strokeStyle:ds.borderColor, lineWidth:0, hidden:oculto, datasetIndex:i};
+          }),
+        }},
+        tooltip:{callbacks:{label:c=>{
+          if(c.raw==null) return null;
+          const esKwh = c.dataset.yAxisID==='yKwh';
+          return `${c.dataset.label}: ${esKwh ? Math.round(c.raw).toLocaleString('es-CO')+' kWh' : fD(c.raw)}`;
+        }}},
+        zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:3}}},
+      },
+      scales:{
+        x:{grid:{display:false}, ticks:{color:tickC, font:{size:11}, maxRotation:0, autoSkip:true, maxTicksLimit:14}},
+        yKwh:{position:'left', min:yKwhMin, grid:{color:gridC},
+          ticks:{color:tickC, font:{size:11}, callback:v=>fmtGwh(v)},
+          title:{display:true, text:'Energía reconocida (kWh/mes)', color:tickC, font:{size:11}}},
+        yDinero:{position:'right', beginAtZero:true, grace:'12%', grid:{drawOnChartArea:false},
+          ticks:{color:tickC, font:{size:11}, callback:v=>fmtDineroEje(v)},
+          title:{display:true, text:'Costo ($/mes)', color:tickC, font:{size:11}}},
+      },
+    },
+  });
 }
 
 async function cargarAlimentadoresModulo(nombreVista){
