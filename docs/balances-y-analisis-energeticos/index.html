@@ -15808,6 +15808,14 @@ function ipiDescargarCsv(){
    (Indicador N2-1, Subestaciones, Alimentadores) comparten el mismo dato
    crudo -- por ahora solo confirman que cargó, en construcción. ---- */
 let ALIM_FILAS = null;
+// Copia SIN filtrar (incluye "Comp") -- pedido explícito ("solo quiero
+// que [los compactos] salgan en Alimentadores ahí en el buscador de
+// nombre Spard, pero no quiero que eso se sume al total"): el buscador
+// de nombre Spard y el detalle de UN circuito puntual (nunca suman
+// nada, es la info de un solo circuito) la usan a ella; todo lo demás
+// (tarjetas/tabla Top/scatter/zonas/N2-1/informes) sigue usando
+// ALIM_FILAS (sin compactos) exactamente como antes.
+let ALIM_FILAS_TODOS = null;
 async function _alimAsegurarDatosCargados(){
   if(ALIM_FILAS) return ALIM_FILAS;
   // Acotado a los últimos 30 meses (no TODO el histórico -- 14k+ filas en
@@ -15832,6 +15840,7 @@ async function _alimAsegurarDatosCargados(){
   // incluido vs. 19.28% real en Power BI -- excluirlos da el número
   // exacto, "necesito que coincida").
   ALIM_FILAS = filas.filter(f => f.tipo !== 'Comp');
+  ALIM_FILAS_TODOS = filas;
   return ALIM_FILAS;
 }
 
@@ -20108,7 +20117,7 @@ function alim3ToggleZona(zona){
   // Si el alimentador elegido queda fuera de la zona activa, se
   // deselecciona -- evita mostrar datos de una zona apagada.
   if(ALIM3_NEMONICO_SEL){
-    const sigueDisponible = ALIM_FILAS.some(f => f.nemonico === ALIM3_NEMONICO_SEL && (!ALIM3_ZONAS_SEL.size || ALIM3_ZONAS_SEL.has(f.zona)));
+    const sigueDisponible = ALIM_FILAS_TODOS.some(f => f.nemonico === ALIM3_NEMONICO_SEL && (!ALIM3_ZONAS_SEL.size || ALIM3_ZONAS_SEL.has(f.zona)));
     if(!sigueDisponible) ALIM3_NEMONICO_SEL = null;
   }
   alim3RecalcularListaCache();
@@ -20135,7 +20144,10 @@ function alim3VisiblesRango(serie){
 let ALIM3_LISTA_CACHE = [];
 function alim3RecalcularListaCache(){
   const vistos = new Map();
-  ALIM_FILAS.forEach(f => {
+  // ALIM_FILAS_TODOS (incluye "Comp") -- pedido explícito: los compactos
+  // sí deben poder buscarse/elegirse acá, aunque no sumen en ningún
+  // total (ver comentario junto a ALIM_FILAS_TODOS).
+  ALIM_FILAS_TODOS.forEach(f => {
     if(ALIM3_ZONAS_SEL.size && !ALIM3_ZONAS_SEL.has(f.zona)) return;
     vistos.set(f.nemonico, f.nombre_spard || f.nemonico);
   });
@@ -20347,7 +20359,10 @@ function alim3RenderSeleccion(){
     alim3RenderChartAgpe(conClave);
     return;
   }
-  const filas = ALIM_FILAS.filter(f => f.nemonico === ALIM3_NEMONICO_SEL).sort((a,b) => (a.anio*12+a.mes)-(b.anio*12+b.mes));
+  // ALIM_FILAS_TODOS -- el elegido puede ser un compacto (solo posible
+  // desde el buscador, ver alim3RecalcularListaCache); es la info de UN
+  // solo circuito, nunca suma nada, así que es seguro traerla de ahí.
+  const filas = ALIM_FILAS_TODOS.filter(f => f.nemonico === ALIM3_NEMONICO_SEL).sort((a,b) => (a.anio*12+a.mes)-(b.anio*12+b.mes));
   if(!filas.length) return;
   const ultima = filas[filas.length-1];
   const etiqueta = ultima.nombre_spard || ALIM3_NEMONICO_SEL;
