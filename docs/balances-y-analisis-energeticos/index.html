@@ -581,6 +581,12 @@ canvas[id^="ch-tride-"]:active{cursor:grabbing}
    "Nombre Spard" queda afuera -- es texto real (nombre del circuito),
    no una etiqueta, y sí necesita una sola línea ancha. */
 #alim3-top-tbl-wrap thead th:not(:first-child){white-space:normal;max-width:58px;line-height:1.2;vertical-align:bottom}
+/* Tabla de "Análisis Económico" (Resumen por Nivel) -- 12 columnas a todo
+   el ancho de la card (pedido explícito: "quiero que la tabla se vea
+   completa, que se vea bien") -- más compacta que .tbl-compacta normal
+   para que quepan las 12 sin scroll horizontal en pantallas normales. */
+#alim-resumen-eval-tbl-wrap table{font-size:10.5px}
+#alim-resumen-eval-tbl-wrap thead th, #alim-resumen-eval-tbl-wrap tbody td, #alim-resumen-eval-tbl-wrap tfoot td{padding:4px 5px}
 .tbl-wrap.tbl-compacta{display:inline-block;max-width:100%}
 .tbl-compacta table{width:auto;font-size:11px}
 .tbl-compacta thead th,.tbl-compacta tbody td,.tbl-compacta tfoot td{padding:4px 6px;border-right:1px solid var(--border)}
@@ -3090,32 +3096,36 @@ tfoot td:first-child{text-align:left}
           </div>
         </div>
       </div>
-      <div class="split-wrap">
-        <div class="tbl-wrap tbl-compacta" id="alim-resumen-eval-tbl-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Zona</th><th style="text-align:center">Nivel</th><th>Recon.<br>CREG (%)</th>
-                <th style="text-align:center">Factor<br>STN</th>
-                <th>Pérd. Total<br>(kWh/mes)</th><th>Pérd. Total<br>(%)</th>
-                <th>Pérd. ref.<br>STN (kWh/mes)</th><th>Costo total<br>G+T+R ($/mes)</th>
-                <th>Recon. ref.<br>STN (kWh/mes)</th><th>No Recon. ref.<br>STN (kWh/mes)</th>
-                <th>Costo Recon.<br>($/mes)</th><th>Costo No<br>Recon. ($/mes)</th>
-              </tr>
-            </thead>
-            <tbody id="alim-resumen-eval-tb"></tbody>
-            <tfoot id="alim-resumen-eval-tf"></tfoot>
-          </table>
-        </div>
-        <div style="flex:1 1 420px">
-          <div class="card-title" style="text-align:center">Reconocido vs No Reconocido · serie mensual (referido al STN)</div>
-          <div class="chart-wrap" style="height:260px;position:relative">
-            <canvas id="ch-alim-resumen-eval"></canvas>
-            <div id="alim-resumen-eval-chart-vacio" class="hidden" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;color:var(--text3);font-size:12px;padding:24px">Sin datos de pérdida todavía.</div>
-          </div>
+      <!-- Tabla a TODO el ancho de la card (no lado a lado con el gráfico
+           como en Pérdidas Técnicas) -- pedido explícito ("quiero que la
+           tabla se vea completa, que se vea bien"): con 12 columnas y
+           números en $, lado a lado con el gráfico quedaba angosta y con
+           scroll horizontal cortando contenido. El gráfico va DEBAJO,
+           también a todo el ancho. -->
+      <div class="tbl-wrap tbl-compacta" id="alim-resumen-eval-tbl-wrap" style="width:100%">
+        <table style="width:100%;table-layout:auto">
+          <thead>
+            <tr>
+              <th>Zona</th><th style="text-align:center">Nivel</th><th>Recon.<br>CREG (%)</th>
+              <th style="text-align:center">Factor<br>STN</th>
+              <th>Pérd. Total<br>(kWh/mes)</th><th>Pérd. Total<br>(%)</th>
+              <th>Pérd. ref.<br>STN (kWh/mes)</th><th>Costo total<br>G+T+R ($/mes)</th>
+              <th>Recon. ref.<br>STN (kWh/mes)</th><th>No Recon. ref.<br>STN (kWh/mes)</th>
+              <th>Costo Recon.<br>($/mes)</th><th>Costo No<br>Recon. ($/mes)</th>
+            </tr>
+          </thead>
+          <tbody id="alim-resumen-eval-tb"></tbody>
+          <tfoot id="alim-resumen-eval-tf"></tfoot>
+        </table>
+      </div>
+      <div style="margin-top:16px">
+        <div class="card-title" style="text-align:center">Reconocido vs No Reconocido · serie mensual (referido al STN)</div>
+        <div class="chart-wrap" style="height:260px;position:relative">
+          <canvas id="ch-alim-resumen-eval"></canvas>
+          <div id="alim-resumen-eval-chart-vacio" class="hidden" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;color:var(--text3);font-size:12px;padding:24px">Sin datos de pérdida todavía.</div>
         </div>
       </div>
-      <div style="font-size:11px;color:var(--text3);margin-top:10px">El % Reconocido por nivel es el mismo configurado en la pestaña "Resumen por Nivel".</div>
+      <div style="font-size:11px;color:var(--text3);margin-top:10px">El % Reconocido por nivel es el mismo configurado en la pestaña "Resumen por Nivel". Nivel 4 usa Pérdida Técnica (el balance sobreestima su pérdida real); Nivel 3 y N2-1 usan Pérdida Total (balance).</div>
     </div>
   </div>
 </div>
@@ -19119,12 +19129,37 @@ function _alimResumenEvalPorZonaNivel(nivelClave){
   if(nivelClave==='nivel3') return _alimNivel34MensualPorZona(ALIM_NIVEL3_FILAS || []);
   return _alimResumenEvalPorZonaN21();
 }
+// Pérdida Técnica de Nivel 4 -- pedido explícito tras revisar en vivo
+// ("toca poner pérdidas técnicas, por el tema de nivel 4 ya que se está
+// perdiendo más energía de la real"): el balance (Entrada-Salida) de
+// Nivel 4 SOBREESTIMA la pérdida real -- se usa la Pérdida Técnica ya
+// calculada (mismo dato que consume el módulo Pérdidas Técnicas,
+// /api/resumen?nivel=4) en vez del balance, SOLO para este nivel. Nivel
+// 4 es un único agregado (sin desglose por zona real), así que un solo
+// fetch alcanza -- no hace falta pedirla por zona como Nivel 3/N2-1.
+// Nivel 3 y N2-1 SIGUEN en Pérdida Total (balance) -- el usuario no pidió
+// cambiarlos y va a explicar aparte cómo debe ir el Factor STN de N2-1.
+let ALIM_RESUMEN_EVAL_TECNICA_N4 = {};   // {mes: {perdida,pct,entrada}}
+let ALIM_RESUMEN_EVAL_TECNICA_N4_CARGADA = false;
+async function alimResumenEvalAsegurarTecnicaN4(){
+  if(ALIM_RESUMEN_EVAL_TECNICA_N4_CARGADA || DEMO) return;
+  ALIM_RESUMEN_EVAL_TECNICA_N4_CARGADA = true;
+  try{
+    const resp = await apiGet('/api/resumen?nivel=4', AUTH_TIMEOUT_MS);
+    ALIM_RESUMEN_EVAL_TECNICA_N4 = _alimNivelTecnicaPorMes(resp);
+  }catch(e){ ALIM_RESUMEN_EVAL_TECNICA_N4_CARGADA = false; }  // reintenta la próxima
+}
+
 function _alimResumenEvalFilasNivel(nivelClave, mes){
   const porZona = _alimResumenEvalPorZonaNivel(nivelClave);
   return (porZona.zonas || []).map(z => {
     const f = (porZona.porZona[z] || []).find(x => x.clave === mes);
-    const perdida = f ? f.perdida : 0;
-    const entrada = f ? f.entrada : 0;
+    let perdida = f ? f.perdida : 0;
+    let entrada = f ? f.entrada : 0;
+    if(nivelClave === 'nivel4'){
+      const t = ALIM_RESUMEN_EVAL_TECNICA_N4[mes];
+      if(t && t.perdida != null){ perdida = t.perdida; if(t.entrada != null) entrada = t.entrada; }
+    }
     return {zona: z, perdida, entrada, pct: entrada ? perdida/entrada*100 : null};
   }).filter(f => f.entrada || f.perdida);
 }
@@ -19133,7 +19168,7 @@ async function alimResumenCargarEvaluacion(){
   const sel = document.getElementById('alim-resumen-mes');
   if(sel && sel.value) alimResumenEvalCargarCosto(sel.value);
   alimResumenRenderEvaluacion();  // ya hay datos sincrónicos -- pinta de una
-  await alimResumenEvalAsegurarPr();  // solo el Factor STN es async
+  await Promise.all([alimResumenEvalAsegurarPr(), alimResumenEvalAsegurarTecnicaN4()]);
   alimResumenRenderEvaluacion();
   alimResumenRenderEvalChart();
 }
