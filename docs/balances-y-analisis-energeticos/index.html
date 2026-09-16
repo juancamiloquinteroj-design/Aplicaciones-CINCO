@@ -572,6 +572,15 @@ canvas[id^="ch-tride-"]:active{cursor:grabbing}
    flex los mande a filas separadas. */
 #alim3-top-tbl-wrap table{font-size:10px}
 #alim3-top-tbl-wrap thead th, #alim3-top-tbl-wrap tbody td{padding:2px 5px}
+/* Encabezados en 2 líneas (pedido explícito: "quiero que la primera fila
+   tenga dos filas para acotar más la tabla") -- sin esto, en
+   table-layout:auto cada columna se ensancha al ancho SIN cortar del
+   título ("Gestionable (kWh)", "Gest x Longitud"...) aunque el dato de
+   abajo sea mucho más corto. Con max-width + white-space:normal el
+   título se parte en 2 líneas y la columna queda del ancho del dato.
+   "Nombre Spard" queda afuera -- es texto real (nombre del circuito),
+   no una etiqueta, y sí necesita una sola línea ancha. */
+#alim3-top-tbl-wrap thead th:not(:first-child){white-space:normal;max-width:58px;line-height:1.2;vertical-align:bottom}
 .tbl-wrap.tbl-compacta{display:inline-block;max-width:100%}
 .tbl-compacta table{width:auto;font-size:11px}
 .tbl-compacta thead th,.tbl-compacta tbody td,.tbl-compacta tfoot td{padding:4px 6px;border-right:1px solid var(--border)}
@@ -20377,7 +20386,7 @@ function alim3RenderTarjetas(filasConClave){
   const serieBase = filasConClave.map(f => ({
     anio: f.anio, mes: f.mes, clave: f.clave,
     entrada: f.entrada_total, salida: f.salida_total, perdida: f.perdida_kwh, pct: f.perdida_pct,
-    gestionable: f.gestionable_kwh,
+    gestionable: f.gestionable_kwh, tecnica: f.perdida_tecnica_kwh,
   })).filter(f => f.pct != null);
   if(serieBase.length < 2){ cont.innerHTML = ''; return; }
   const anual = alimN21Con12Meses(serieBase);
@@ -20401,6 +20410,7 @@ function alim3RenderTarjetas(filasConClave){
     _alim3Tarjeta('alim3-t-ent', '⬇️', 'Entrada', actual.entrada, actual12?actual12.entrada12:null, fmtKwh) +
     _alim3Tarjeta('alim3-t-sal', '⬆️', 'Salida', actual.salida, actual12?actual12.salida12:null, fmtKwh) +
     _alim3Tarjeta('alim3-t-per', '⚡', 'Pérdida', actual.perdida, actual12?actual12.perdida12:null, fmtKwh) +
+    _alim3Tarjeta('alim3-t-tec', '🔧', 'Pérdida Técnica', actual.tecnica, actual12?actual12.tecnica12:null, fmtKwh) +
     _alim3Tarjeta('alim3-t-gest', '⚙️', 'Pérdida Gestionable',
       fmtGest(actual.gestionable, actual.perdida),
       actual12 ? fmtGest(actual12.gestionable12, actual12.perdida12) : '--',
@@ -20413,6 +20423,8 @@ function alim3RenderTarjetas(filasConClave){
   _iniRenderVariacionKwh('alim3-t-sal-var-a', anterior12?anterior12.salida12:null, actual12?actual12.salida12:null, false);
   _iniRenderVariacionKwh('alim3-t-per-var-m', anterior.perdida, actual.perdida, true);
   _iniRenderVariacionKwh('alim3-t-per-var-a', anterior12?anterior12.perdida12:null, actual12?actual12.perdida12:null, true);
+  _iniRenderVariacionKwh('alim3-t-tec-var-m', anterior.tecnica, actual.tecnica, true);
+  _iniRenderVariacionKwh('alim3-t-tec-var-a', anterior12?anterior12.tecnica12:null, actual12?actual12.tecnica12:null, true);
   _iniRenderVariacionKwh('alim3-t-gest-var-m', anterior.gestionable, actual.gestionable, true);
   _iniRenderVariacionKwh('alim3-t-gest-var-a', anterior12?anterior12.gestionable12:null, actual12?actual12.gestionable12:null, true);
   _iniRenderVariacion('alim3-t-pct-var-m', anterior.pct, actual.pct);
@@ -21810,16 +21822,18 @@ function alimN21TecnicaAgregarMensual(zonas){
 // ya ordenada -- null mientras no haya 12 meses de historia disponibles.
 function alimN21Con12Meses(mensual){
   return mensual.map((f,i) => {
-    if(i < 11) return {...f, entrada12:null, salida12:null, perdida12:null, pct12:null, gestionable12:null};
+    if(i < 11) return {...f, entrada12:null, salida12:null, perdida12:null, pct12:null, gestionable12:null, tecnica12:null};
     const ventana = mensual.slice(i-11, i+1);
     const entrada12 = ventana.reduce((s,x)=>s+x.entrada, 0);
     const salida12 = ventana.reduce((s,x)=>s+x.salida, 0);
     const perdida12 = ventana.reduce((s,x)=>s+x.perdida, 0);
-    // gestionable -- opcional (solo lo trae alim3RenderTarjetas); si algún
-    // mes de la ventana no lo tiene, no se suma a medias (null).
+    // gestionable/tecnica -- opcionales (solo los trae alim3RenderTarjetas);
+    // si algún mes de la ventana no los tiene, no se suman a medias (null).
     const gestionable12 = ventana.every(x => x.gestionable != null)
       ? ventana.reduce((s,x)=>s+x.gestionable, 0) : null;
-    return {...f, entrada12, salida12, perdida12, gestionable12, pct12: entrada12 ? perdida12/entrada12*100 : null};
+    const tecnica12 = ventana.every(x => x.tecnica != null)
+      ? ventana.reduce((s,x)=>s+x.tecnica, 0) : null;
+    return {...f, entrada12, salida12, perdida12, gestionable12, tecnica12, pct12: entrada12 ? perdida12/entrada12*100 : null};
   });
 }
 
