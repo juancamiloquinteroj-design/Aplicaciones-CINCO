@@ -20031,7 +20031,7 @@ function alim3RenderChartCircuitos(){
     const filas = ALIM_FILAS.filter(f => f.nemonico === nem).sort((a,b) => (a.anio*12+a.mes)-(b.anio*12+b.mes));
     const mensual = filas.map(f => ({
       clave: alimN21Clave(f.anio,f.mes), perdida: f.perdida_kwh||0,
-      gestionable: f.gestionable_kwh, longitud: f.longitud_total,
+      gestionable: _alim3Gestionable(f.perdida_kwh, f.perdida_tecnica_kwh, f.gestionable_kwh), longitud: f.longitud_total,
     }));
     const visibles = alim3VisiblesRangoCircuitos(mensual);
     const nombre = filas.length ? (filas[filas.length-1].nombre_spard || nem) : nem;
@@ -20185,13 +20185,14 @@ function alim3AgregarZonaMensual(zonaSet){
   for(const f of ALIM_FILAS){
     if(zonaSet && zonaSet.size && !zonaSet.has(f.zona)) continue;
     const clave = alimN21Clave(f.anio, f.mes);
-    if(!mapa.has(clave)) mapa.set(clave, {anio:f.anio, mes:f.mes, clave, entrada_total:0, salida_total:0, perdida_kwh:0, perdida_tecnica_kwh:0, entrada_agpe:0});
+    if(!mapa.has(clave)) mapa.set(clave, {anio:f.anio, mes:f.mes, clave, entrada_total:0, salida_total:0, perdida_kwh:0, perdida_tecnica_kwh:0, entrada_agpe:0, gestionable_kwh:0});
     const a = mapa.get(clave);
     a.entrada_total += f.entrada_total || 0;
     a.salida_total += f.salida_total || 0;
     a.perdida_kwh += f.perdida_kwh || 0;
     a.perdida_tecnica_kwh += f.perdida_tecnica_kwh || 0;
     a.entrada_agpe += f.entrada_agpe || 0;
+    a.gestionable_kwh += f.gestionable_kwh || 0;
   }
   return [...mapa.values()]
     .sort((a,b) => (a.anio*12+a.mes)-(b.anio*12+b.mes))
@@ -20367,17 +20368,34 @@ function alim3RenderSeleccion(){
 // mes -- pedido explícito ("tarjetas pequeñas bonitas... deben empezar
 // desde el gráfico").
 function _alim3Tarjeta(pref, icono, titulo, mensualAct, anualAct, fmt){
+  // Letra más chica -- pedido explícito ("los números de las tarjetas
+  // están muy grandes, coloca un poco más pequeña la letra") -- 12.5px
+  // pasa a 10.5px en el valor grande, y el resto se achica en proporción.
   return `<div class="card inicio-dash-card" style="padding:10px 12px">
-    <div class="card-title" style="font-size:10.5px">${icono} ${titulo}</div>
-    <div style="display:flex;justify-content:space-between;align-items:center;font-size:10px;color:var(--text3);margin-top:5px">
+    <div class="card-title" style="font-size:9.5px">${icono} ${titulo}</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;font-size:9px;color:var(--text3);margin-top:5px">
       <span>Mensual</span>
-      <span style="display:flex;align-items:center;gap:5px"><b style="color:var(--text);font-size:12.5px">${fmt(mensualAct)}</b><span id="${pref}-var-m" class="inicio-variacion"></span></span>
+      <span style="display:flex;align-items:center;gap:5px"><b style="color:var(--text);font-size:10.5px">${fmt(mensualAct)}</b><span id="${pref}-var-m" class="inicio-variacion"></span></span>
     </div>
-    <div style="display:flex;justify-content:space-between;align-items:center;font-size:10px;color:var(--text3);margin-top:4px">
+    <div style="display:flex;justify-content:space-between;align-items:center;font-size:9px;color:var(--text3);margin-top:4px">
       <span>Anual (12M)</span>
-      <span style="display:flex;align-items:center;gap:5px"><b style="color:var(--text);font-size:12.5px">${fmt(anualAct)}</b><span id="${pref}-var-a" class="inicio-variacion"></span></span>
+      <span style="display:flex;align-items:center;gap:5px"><b style="color:var(--text);font-size:10.5px">${fmt(anualAct)}</b><span id="${pref}-var-a" class="inicio-variacion"></span></span>
     </div>
   </div>`;
+}
+
+// Gestionable = Pérdida - Pérdida Técnica cuando ya hay Pérdida Técnica
+// calculada para ese circuito/mes (pedido explícito: "la tarjeta de
+// pérdida gestionable no está haciendo la resta entre pérdida - pérdida
+// técnica" / "si ya se tienen pérdidas técnicas de agosto debería
+// calcular la gestionable"). Antes se usaba tal cual la columna
+// "Gestionable" del CSV (gestionable_kwh) -- que en los datos actuales
+// viene SIEMPRE igual a la Pérdida Total (100%) para todo circuito/mes,
+// porque el backend todavía no la recalcula con la técnica. Si no hay
+// técnica (null/undefined) se deja el valor crudo del CSV, igual que
+// antes -- mismo criterio en tarjetas, tabla Top, scatter e informes.
+function _alim3Gestionable(perdida, tecnica, gestionableCrudo){
+  return (tecnica != null) ? (perdida || 0) - tecnica : gestionableCrudo;
 }
 
 function alim3RenderTarjetas(filasConClave){
@@ -20386,7 +20404,7 @@ function alim3RenderTarjetas(filasConClave){
   const serieBase = filasConClave.map(f => ({
     anio: f.anio, mes: f.mes, clave: f.clave,
     entrada: f.entrada_total, salida: f.salida_total, perdida: f.perdida_kwh, pct: f.perdida_pct,
-    gestionable: f.gestionable_kwh, tecnica: f.perdida_tecnica_kwh,
+    gestionable: _alim3Gestionable(f.perdida_kwh, f.perdida_tecnica_kwh, f.gestionable_kwh), tecnica: f.perdida_tecnica_kwh,
   })).filter(f => f.pct != null);
   if(serieBase.length < 2){ cont.innerHTML = ''; return; }
   const anual = alimN21Con12Meses(serieBase);
@@ -20687,14 +20705,19 @@ function alim3AgregarAnualPorAlimentador(claveFinal){
     if(ALIM3_ZONAS_SEL.size && !ALIM3_ZONAS_SEL.has(f.zona)) continue;
     const idx = f.anio*12 + (f.mes-1);
     if(idx < idxIni || idx > idxFin) continue;
-    if(!porNemonico.has(f.nemonico)) porNemonico.set(f.nemonico, {gestionable:0, perdida:0, meses:0});
+    if(!porNemonico.has(f.nemonico)) porNemonico.set(f.nemonico, {gestionable:0, perdida:0, tecnica:0, tecnicaCompleta:true, meses:0});
     const a = porNemonico.get(f.nemonico);
     a.gestionable += f.gestionable_kwh || 0;
     a.perdida += f.perdida_kwh || 0;
+    if(f.perdida_tecnica_kwh != null) a.tecnica += f.perdida_tecnica_kwh; else a.tecnicaCompleta = false;
     a.meses++;
     a.nemonico = f.nemonico; a.nombre = f.nombre_spard || f.nemonico; a.zona = f.zona; a.longitud = f.longitud_total; a.leyenda = f.leyenda;
   }
-  return [...porNemonico.values()].filter(a => a.meses === 12);
+  // Gestionable = Pérdida - Pérdida Técnica anual, solo si los 12 meses
+  // de la ventana tienen técnica (si no, se deja el crudo del CSV --
+  // mismo criterio que _alim3Gestionable en el resto del módulo).
+  return [...porNemonico.values()].filter(a => a.meses === 12)
+    .map(a => ({...a, gestionable: _alim3Gestionable(a.perdida, a.tecnicaCompleta ? a.tecnica : null, a.gestionable)}));
 }
 
 // AñoMes inmediatamente anterior a `clave` ("AAAA-MM") -- para comparar
@@ -20757,8 +20780,9 @@ function alim3RenderTablaTop(){
     filas = alim3FilasDelMes(ALIM3_MES_TOP).filter(f => f.longitud_total > 0 && f.gestionable_kwh != null).map(f => {
       const perdidaAnterior = anteriorPorNem.get(f.nemonico);
       const deltaPerdidaCrec = (perdidaAnterior!=null && perdidaAnterior) ? ((f.perdida_kwh||0)-perdidaAnterior)/Math.abs(perdidaAnterior)*100 : null;
-      return {nombre:f.nombre_spard || f.nemonico, zona:f.zona, leyenda:f.leyenda||'ok', gestLongitud:f.gestionable_kwh/f.longitud_total, gestionable:f.gestionable_kwh,
-        gestPct: f.perdida_kwh ? f.gestionable_kwh/f.perdida_kwh*100 : null, perdida:f.perdida_kwh, deltaPerdidaCrec, longitud:f.longitud_total};
+      const gest = _alim3Gestionable(f.perdida_kwh, f.perdida_tecnica_kwh, f.gestionable_kwh);
+      return {nombre:f.nombre_spard || f.nemonico, zona:f.zona, leyenda:f.leyenda||'ok', gestLongitud:gest/f.longitud_total, gestionable:gest,
+        gestPct: f.perdida_kwh ? gest/f.perdida_kwh*100 : null, perdida:f.perdida_kwh, deltaPerdidaCrec, longitud:f.longitud_total};
     });
   }
 
@@ -20835,7 +20859,8 @@ function alim3RenderScatter(){
   const filas = esAnual
     ? alim3AgregarAnualPorAlimentador(ALIM3_MES_TOP).filter(a => a.longitud > 0 && a.perdida)
       .map(a => ({gestionable_kwh:a.gestionable, longitud_total:a.longitud, perdida_kwh:a.perdida, leyenda:a.leyenda, nombre_spard:a.nombre}))
-    : alim3FilasDelMes(ALIM3_MES_TOP).filter(f => f.longitud_total > 0 && f.gestionable_kwh != null && f.perdida_kwh);
+    : alim3FilasDelMes(ALIM3_MES_TOP).filter(f => f.longitud_total > 0 && f.gestionable_kwh != null && f.perdida_kwh)
+      .map(f => ({...f, gestionable_kwh: _alim3Gestionable(f.perdida_kwh, f.perdida_tecnica_kwh, f.gestionable_kwh)}));
   const dark = document.documentElement.getAttribute('data-theme')==='dark';
   const tickC = dark ? '#ffffff' : '#000000';
   const tickXFuerte = dark ? '#ffffff' : '#000000';
@@ -30161,8 +30186,9 @@ function _informesFilasAlimentadoresCrecimiento(mesClave){
   const filas = ALIM_FILAS.filter(f => alimN21Clave(f.anio,f.mes)===mesClave && f.longitud_total>0 && f.gestionable_kwh!=null).map(f => {
     const perdidaAnterior = anteriorPorNem.get(f.nemonico);
     const deltaPerdidaCrec = (perdidaAnterior!=null && perdidaAnterior) ? ((f.perdida_kwh||0)-perdidaAnterior)/Math.abs(perdidaAnterior)*100 : null;
-    return {nombre:f.nombre_spard || f.nemonico, zona:f.zona, leyenda:f.leyenda||'ok', gestLongitud:f.gestionable_kwh/f.longitud_total, gestionable:f.gestionable_kwh,
-      gestPct: f.perdida_kwh ? f.gestionable_kwh/f.perdida_kwh*100 : null, perdida:f.perdida_kwh, deltaPerdidaCrec, longitud:f.longitud_total};
+    const gest = _alim3Gestionable(f.perdida_kwh, f.perdida_tecnica_kwh, f.gestionable_kwh);
+    return {nombre:f.nombre_spard || f.nemonico, zona:f.zona, leyenda:f.leyenda||'ok', gestLongitud:gest/f.longitud_total, gestionable:gest,
+      gestPct: f.perdida_kwh ? gest/f.perdida_kwh*100 : null, perdida:f.perdida_kwh, deltaPerdidaCrec, longitud:f.longitud_total};
   });
   const umbral = _alimUmbralCrecimiento('informes-umbral-crecimiento');
   return filas.filter(f => f.deltaPerdidaCrec!=null && f.deltaPerdidaCrec>umbral).sort((a,b)=>b.deltaPerdidaCrec-a.deltaPerdidaCrec);
@@ -30313,12 +30339,15 @@ async function _informesBloquesCrecimientoPorZona(filas, tablaHtmlFn){
 // aunque la propia plantilla no lo mencione).
 function _informesFilasAlimentadoresRecomendacion(mesClave){
   const filas = ALIM_FILAS.filter(f => alimN21Clave(f.anio,f.mes)===mesClave && f.longitud_total>0 && f.gestionable_kwh!=null && f.zona)
-    .map(f => ({
-      nombre: f.nombre_spard || f.nemonico, zona: f.zona, leyenda: f.leyenda || 'ok',
-      gestLongitud: f.gestionable_kwh/f.longitud_total, gestionable: f.gestionable_kwh,
-      gestPct: f.perdida_kwh ? f.gestionable_kwh/f.perdida_kwh*100 : null,
-      longitud: f.longitud_total,
-    }))
+    .map(f => {
+      const gest = _alim3Gestionable(f.perdida_kwh, f.perdida_tecnica_kwh, f.gestionable_kwh);
+      return {
+        nombre: f.nombre_spard || f.nemonico, zona: f.zona, leyenda: f.leyenda || 'ok',
+        gestLongitud: gest/f.longitud_total, gestionable: gest,
+        gestPct: f.perdida_kwh ? gest/f.perdida_kwh*100 : null,
+        longitud: f.longitud_total,
+      };
+    })
     // Pedido explícito ("en las tablas de alimentadores a intervenir solo
     // debe sacar la categoria ok"): antes solo excluía Asociación/
     // Subnormalidad y dejaba pasar Orden Público -- ahora solo entra 'ok'.
