@@ -5,6 +5,12 @@ import {defineConfig} from 'vite';
 
 export default defineConfig(() => {
   return {
+    // Relativo, no absoluto -- esta app se sirve embebida por iframe
+    // dentro de gestion-puntos-medida/ (ver src="./assets/..." del build
+    // anterior); con base absoluta ("/assets/...") el navegador busca los
+    // assets en la raíz del dominio y no en esta subcarpeta -- 404 en
+    // producción.
+    base: './',
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {
