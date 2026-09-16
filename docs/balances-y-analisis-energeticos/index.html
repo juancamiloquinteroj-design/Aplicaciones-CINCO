@@ -2921,7 +2921,7 @@ tfoot td:first-child{text-align:left}
           <div style="display:flex;gap:16px;margin-bottom:20px">
             <div class="resnivel-campo" style="min-width:170px">
               <div class="resnivel-campo-label">Mes</div>
-              <select id="alim-resumen-mes" onchange="alimResumenRenderNiveles();alimResumenRenderEvaluacion();alimResumenRenderEvalChart()" style="border:1.5px solid var(--border);border-radius:4px;padding:6px 8px;font-weight:700;font-size:13px;color:var(--text);background:var(--card-bg)"></select>
+              <select id="alim-resumen-mes" onchange="alimResumenRenderNiveles();alimResumenEvalCargarCosto(this.value);alimResumenRenderEvaluacion();alimResumenRenderEvalChart()" style="border:1.5px solid var(--border);border-radius:4px;padding:6px 8px;font-weight:700;font-size:13px;color:var(--text);background:var(--card-bg)"></select>
             </div>
             <!-- Tarifa G+T+R -- pedido explícito ("como estaba al inicio,
                  eso no se debe tocar"): UNA sola tarifa compartida por los
@@ -2932,7 +2932,7 @@ tfoot td:first-child{text-align:left}
                  son dos cosas distintas. -->
             <div class="resnivel-campo" style="min-width:170px">
               <div class="resnivel-campo-label">Tarifa G+T+R ($/kWh)</div>
-              <input type="number" min="0" step="0.01" placeholder="--" id="alim-resumen-tarifa" oninput="alimResumenActualizarValorizacion();alimResumenRenderEvaluacion();alimResumenRenderEvalChart()">
+              <input type="number" min="0" step="0.01" placeholder="--" id="alim-resumen-tarifa" oninput="alimResumenActualizarValorizacion()">
             </div>
           </div>
           <!-- Título propio + borde -- pedido explícito ("colócalo al
@@ -3048,15 +3048,16 @@ tfoot td:first-child{text-align:left}
     <!-- ---- Pestaña 2: Análisis Económico -- calco de
          #perdidas-tab-evaluacion (misma tabla por Zona+Nivel/columnas/
          Factor STN, mismo gráfico Reconocido vs No Reconocido), pero con
-         los datos de Alimentadores/Resumen: Pérdida Técnica por zona sale
-         de /api/resumen?nivel=X&zona=Y (mismo endpoint que usa Pérdidas
-         Técnicas, un fetch por zona -- ver alimResumenEvalAsegurarTecnicaPorZona),
-         el % Reconocido es el MISMO que ya está configurado por nivel en
-         la pestaña 1 (confirmado con el usuario: un solo % para todas las
-         zonas de ese nivel, igual que hace hoy Nivel 3 en su propia
-         Evaluación Económica embebida en el mapa -- _alimResumenLeerPct),
-         y la Tarifa G+T+R es la MISMA de la pestaña 1 (#alim-resumen-tarifa,
-         sin duplicar el campo). -->
+         los datos de Alimentadores/Resumen y la fórmula que pidió el
+         usuario (NO la del backend de Pérdidas Técnicas): Pérdida TOTAL
+         (balance, ya cargada, sin fetch por zona) × Factor STN = Pérd.
+         ref. STN; Reconocida = % Reconocido del nivel × Pérd. ref. STN;
+         No Reconocida = el resto -- "ahí no se requiere pérdida técnica"
+         (cita textual). El % Reconocido es el MISMO ya configurado por
+         nivel en la pestaña 1 (_alimResumenLeerPct). La Tarifa G+T+R es
+         PROPIA de esta pestaña, por mes (#alim-resumen-eval-costo, mismo
+         mecanismo _costoKey/_costoDeMes que #costo-kwh de Pérdidas
+         Técnicas) -- NO la tarifa de la pestaña 1, que no es por mes. -->
     <div class="card hidden" id="alim-resumen-tab-evaluacion">
       <div class="valuacion-hdr">
         <div>
@@ -3068,6 +3069,19 @@ tfoot td:first-child{text-align:left}
             style="padding:5px 11px;border:1px solid var(--accent);border-radius:7px;font-size:11px;font-weight:600;background:transparent;color:var(--accent);cursor:pointer;white-space:nowrap">
             ▴ Contraer por zona
           </button>
+          <!-- Tarifa POR MES -- pedido explícito ("no veo campo para
+               escribir la tarifa de los meses así como en pérdidas
+               técnicas"): mismo mecanismo que #costo-kwh de Pérdidas
+               Técnicas (_costoKey/_costoDeMes, compartido por mes+operador
+               -- si ya se cargó una tarifa ahí para este mes, aparece acá
+               sola). NO es la misma tarifa de la pestaña 1
+               (#alim-resumen-tarifa, que no es por mes). -->
+          <label style="font-size:12px;color:var(--text3);white-space:nowrap">Costo kWh/mes (G+T+R):</label>
+          <div style="display:flex;align-items:center;gap:4px">
+            <span style="font-size:12px;color:var(--text3)">$</span>
+            <input type="number" id="alim-resumen-eval-costo" value="0" step="1" min="0" oninput="alimResumenEvalGuardarCosto()"
+              style="padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12px;font-weight:700;color:var(--accent);background:var(--bg);width:110px;text-align:right">
+          </div>
           <label style="font-size:12px;color:var(--text3);white-space:nowrap;margin-left:6px" title="Factor para Referir al STN (Datos_XM / TFROC). Valor fijo del mes, no editable.">Factor STN · Nivel</label>
           <div style="display:flex;align-items:center;gap:5px">
             <span style="font-size:10.5px;font-weight:700;color:var(--text3)">N2<span id="alim-resumen-eval-pr-2" style="margin-left:3px;display:inline-block;padding:4px 7px;border:1px dashed var(--border);border-radius:6px;font-size:11px;font-weight:700;color:var(--text);background:var(--bg);min-width:58px;text-align:right">1</span></span>
@@ -3083,7 +3097,7 @@ tfoot td:first-child{text-align:left}
               <tr>
                 <th>Zona</th><th style="text-align:center">Nivel</th><th>Recon.<br>CREG (%)</th>
                 <th style="text-align:center">Factor<br>STN</th>
-                <th>Pérd. Téc.<br>(kWh/mes)</th><th>Pérd. Téc.<br>(%)</th>
+                <th>Pérd. Total<br>(kWh/mes)</th><th>Pérd. Total<br>(%)</th>
                 <th>Pérd. ref.<br>STN (kWh/mes)</th><th>Costo total<br>G+T+R ($/mes)</th>
                 <th>Recon. ref.<br>STN (kWh/mes)</th><th>No Recon. ref.<br>STN (kWh/mes)</th>
                 <th>Costo Recon.<br>($/mes)</th><th>Costo No<br>Recon. ($/mes)</th>
@@ -3095,13 +3109,13 @@ tfoot td:first-child{text-align:left}
         </div>
         <div style="flex:1 1 420px">
           <div class="card-title" style="text-align:center">Reconocido vs No Reconocido · serie mensual (referido al STN)</div>
-          <div class="chart-wrap" style="height:480px;position:relative">
+          <div class="chart-wrap" style="height:260px;position:relative">
             <canvas id="ch-alim-resumen-eval"></canvas>
-            <div id="alim-resumen-eval-chart-vacio" class="hidden" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;color:var(--text3);font-size:12px;padding:24px">Sin datos de pérdida técnica todavía.</div>
+            <div id="alim-resumen-eval-chart-vacio" class="hidden" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;color:var(--text3);font-size:12px;padding:24px">Sin datos de pérdida todavía.</div>
           </div>
         </div>
       </div>
-      <div style="font-size:11px;color:var(--text3);margin-top:10px">El Costo G+T+R y el % Reconocido por nivel son los mismos configurados en la pestaña "Resumen por Nivel".</div>
+      <div style="font-size:11px;color:var(--text3);margin-top:10px">El % Reconocido por nivel es el mismo configurado en la pestaña "Resumen por Nivel".</div>
     </div>
   </div>
 </div>
@@ -19002,16 +19016,24 @@ function alimResumenActualizarReconocido(nivelClave){
 // Alimentadores (Nivel 4/Nivel 3/N2-1) a la vez, agrupados por Zona+Nivel.
 // Pedido explícito ("quiero otra pestaña que sea análisis económico...
 // misma estructura que en pérdidas técnicas... para todos los niveles").
-// Reusa TODO lo que ya existe en vez de duplicar: el % Reconocido por
-// nivel (_alimResumenLeerPct, mismo que las tarjetas de la pestaña 1,
-// confirmado con el usuario: un solo % para todas las zonas de ese
-// nivel), la Tarifa G+T+R compartida (#alim-resumen-tarifa) y el
-// endpoint /api/valuacion-pr-niveles (Factor STN, ya usado por Nivel 3).
-// La Pérdida Técnica por zona NO está precargada al entrar a Resumen
-// (alimResumenCargar solo trae el total por nivel) -- se pide acá mismo,
-// un fetch por zona a /api/resumen?nivel=X&zona=Y (mismo patrón que usan
-// alimNivel3Cargar/alimN21Cargar para sus propias ALIM_*_TECNICA_POR_ZONA),
-// cacheada y disparada solo la primera vez que se abre esta pestaña.
+// Fórmula CORREGIDA por el usuario (no es la del backend de Pérdidas
+// Técnicas, que reparte a prorrata por circuito -- es más simple y NO
+// necesita Pérdida Técnica): por Zona+Nivel, 1) Pérdida TOTAL (balance =
+// Entrada-Salida, ya disponible sin fetch extra) × Factor STN = Pérdida
+// referida al STN; 2) Reconocida = % Reconocido del nivel × esa pérdida
+// referida; 3) No Reconocida = pérdida referida - Reconocida; 4) cada una
+// × Tarifa G+T+R = el costo. "ahí no se requiere pérdida técnica" (cita
+// textual) -- por eso ya no se pide /api/resumen?nivel=X&zona=Y por zona,
+// todo sale de ALIM_NIVEL4_FILAS/ALIM_NIVEL3_FILAS/ALIM_FILAS que ya
+// están cargadas al entrar a Resumen (sin awaits, todo sincrónico salvo
+// el Factor STN). Reusa el % Reconocido por nivel (_alimResumenLeerPct,
+// mismo que las tarjetas de la pestaña 1) y el endpoint
+// /api/valuacion-pr-niveles (Factor STN, ya usado por Nivel 3). La
+// Tarifa G+T+R es PROPIA de esta pestaña, por mes (pedido explícito: "no
+// veo campo para escribir la tarifa de los meses así como en pérdidas
+// técnicas") -- mismo mecanismo que #costo-kwh de Pérdidas Técnicas
+// (_costoKey/_costoDeMes, compartido por mes+operador, NO la tarifa de
+// la pestaña 1 que no es por mes).
 // ==========================================================================
 function alimResumenIrATab(nombre){
   document.getElementById('alim-resumen-card').classList.toggle('hidden', nombre!=='resumen');
@@ -19028,6 +19050,22 @@ function alimResumenEvalToggleContraido(){
   const btn = document.getElementById('alim-resumen-eval-btn-contraer');
   if(btn) btn.textContent = ALIM_RESUMEN_EVAL_CONTRAIDO ? '▾ Expandir zonas' : '▴ Contraer por zona';
   alimResumenRenderEvaluacion();
+}
+
+function alimResumenEvalCargarCosto(mes){
+  const el = document.getElementById('alim-resumen-eval-costo');
+  if(!el || !mes) return;
+  el.value = configGet(_costoKey(mes), '0');
+  el.disabled = !EDITOR || OFFLINE_MODO;
+}
+function alimResumenEvalGuardarCosto(){
+  const sel = document.getElementById('alim-resumen-mes');
+  const mes = sel && sel.value;
+  const el = document.getElementById('alim-resumen-eval-costo');
+  if(!mes || !el) return;
+  if(EDITOR && !OFFLINE_MODO) configSetDebounced(_costoKey(mes), el.value || '0');  // silencioso -- oninput corre en cada tecla
+  alimResumenRenderEvaluacion();
+  alimResumenRenderEvalChart();
 }
 
 // Factor STN -- mismo endpoint/forma que usa Nivel 3 (ALIM_NIVEL3_EVAL_PR3),
@@ -19049,79 +19087,53 @@ function _alimResumenEvalPr(mes, nivelTecnica){
   return (v > 0) ? v : 1;
 }
 
-// Pérdida Técnica por zona de los 3 niveles -- {nivelClave: {zona: {mes:
-// {perdida,pct,entrada}}}}, mismo formato que ALIM_NIVEL3_TECNICA_POR_ZONA/
-// ALIM_N21_TECNICA_POR_ZONA (_alimNivelTecnicaPorMes).
-let ALIM_RESUMEN_EVAL_TECNICA = {nivel4:{}, nivel3:{}, n21:{}};
-let ALIM_RESUMEN_EVAL_TECNICA_CARGADA = false;
-function _alimResumenEvalZonasDeNivel(nivelClave){
-  if(nivelClave==='nivel4') return [...new Set((ALIM_NIVEL4_FILAS||[]).map(f=>f.estructura).filter(Boolean))].sort();
-  if(nivelClave==='nivel3') return [...new Set((ALIM_NIVEL3_FILAS||[]).map(f=>f.estructura).filter(Boolean))].sort();
-  return [...new Set((ALIM_FILAS||[]).map(f=>f.zona).filter(Boolean))].sort();
-}
-async function alimResumenEvalAsegurarTecnicaPorZona(){
-  if(ALIM_RESUMEN_EVAL_TECNICA_CARGADA || DEMO) return;
-  ALIM_RESUMEN_EVAL_TECNICA_CARGADA = true;
-  async function cargarNivel(nivelClave, nivelParam){
-    const zonas = _alimResumenEvalZonasDeNivel(nivelClave);
-    await Promise.all(zonas.map(async z => {
-      try{
-        const resp = await apiGet(`/api/resumen?${nivelParam}&zona=${encodeURIComponent(z)}`, AUTH_TIMEOUT_MS);
-        ALIM_RESUMEN_EVAL_TECNICA[nivelClave][z] = _alimNivelTecnicaPorMes(resp);
-      }catch(e){
-        ALIM_RESUMEN_EVAL_TECNICA[nivelClave][z] = {};
-      }
-    }));
-  }
-  try{
-    await Promise.all([
-      cargarNivel('nivel4', 'nivel=4'),
-      cargarNivel('nivel3', 'nivel=3'),
-      cargarNivel('n21', 'nivel=1&nivel=2'),
-    ]);
-  }catch(e){ ALIM_RESUMEN_EVAL_TECNICA_CARGADA = false; }
-}
-
-// Respaldo de Entrada por zona/mes -- solo se usa si la respuesta de
-// /api/resumen para esa zona no trajo `entrada` (backend viejo). N4/N3
-// salen del balance real (_alimNivel34MensualPorZona); N2-1 de ALIM_FILAS.
-function _alimResumenEvalEntradaRespaldo(nivelClave){
-  if(nivelClave==='n21'){
-    const mapa = {};
-    (ALIM_FILAS||[]).forEach(f => {
-      if(!f.zona) return;
-      const clave = alimN21Clave(f.anio, f.mes);
-      (mapa[f.zona] = mapa[f.zona] || {})[clave] = (mapa[f.zona][clave] || 0) + (f.entrada_total || 0);
-    });
-    return mapa;
-  }
-  const filas = nivelClave==='nivel4' ? ALIM_NIVEL4_FILAS : ALIM_NIVEL3_FILAS;
-  const porZona = _alimNivel34MensualPorZona(filas || []);
-  const mapa = {};
-  (porZona.zonas || []).forEach(z => {
-    mapa[z] = {};
-    (porZona.porZona[z] || []).forEach(f => { mapa[z][f.clave] = f.entrada; });
+// Pérdida TOTAL (balance) por Zona+mes, de cada nivel -- ya cargada al
+// entrar a Resumen (ALIM_NIVEL4_FILAS/ALIM_NIVEL3_FILAS/ALIM_FILAS), sin
+// fetch adicional. N4/N3 vienen del balance diario real
+// (_alimNivel34MensualPorZona ya calcula perdida=entrada-salida); N2-1
+// sale de ALIM_FILAS (columna perdida_kwh del CSV, agregada por zona).
+function _alimResumenEvalPorZonaN21(){
+  const zonas = [...new Set((ALIM_FILAS||[]).map(f=>f.zona).filter(Boolean))].sort();
+  const mapa = new Map();
+  (ALIM_FILAS||[]).forEach(f => {
+    if(!f.zona) return;
+    const clave = alimN21Clave(f.anio, f.mes);
+    if(!mapa.has(clave)) mapa.set(clave, {});
+    const porZona = mapa.get(clave);
+    if(!porZona[f.zona]) porZona[f.zona] = {entrada:0, perdida:0};
+    porZona[f.zona].entrada += f.entrada_total || 0;
+    porZona[f.zona].perdida += f.perdida_kwh || 0;
   });
-  return mapa;
+  const claves = [...mapa.keys()].sort();
+  const porZona = {};
+  zonas.forEach(z => {
+    porZona[z] = claves.map(clave => {
+      const d = mapa.get(clave)[z];
+      return d ? {clave, entrada:d.entrada, perdida:d.perdida} : {clave, entrada:0, perdida:0};
+    });
+  });
+  return {zonas, claves, porZona};
 }
-
+function _alimResumenEvalPorZonaNivel(nivelClave){
+  if(nivelClave==='nivel4') return _alimNivel34MensualPorZona(ALIM_NIVEL4_FILAS || []);
+  if(nivelClave==='nivel3') return _alimNivel34MensualPorZona(ALIM_NIVEL3_FILAS || []);
+  return _alimResumenEvalPorZonaN21();
+}
 function _alimResumenEvalFilasNivel(nivelClave, mes){
-  const zonas = _alimResumenEvalZonasDeNivel(nivelClave);
-  const tecnicaPorZona = ALIM_RESUMEN_EVAL_TECNICA[nivelClave] || {};
-  const entradaRespaldo = _alimResumenEvalEntradaRespaldo(nivelClave);
-  return zonas.map(z => {
-    const t = (tecnicaPorZona[z] || {})[mes] || {};
-    const perdida = t.perdida != null ? t.perdida : 0;
-    const entrada = t.entrada != null ? t.entrada : ((entradaRespaldo[z] || {})[mes] || 0);
+  const porZona = _alimResumenEvalPorZonaNivel(nivelClave);
+  return (porZona.zonas || []).map(z => {
+    const f = (porZona.porZona[z] || []).find(x => x.clave === mes);
+    const perdida = f ? f.perdida : 0;
+    const entrada = f ? f.entrada : 0;
     return {zona: z, perdida, entrada, pct: entrada ? perdida/entrada*100 : null};
   }).filter(f => f.entrada || f.perdida);
 }
 
 async function alimResumenCargarEvaluacion(){
-  const sub = document.getElementById('alim-resumen-eval-sub');
-  if(sub) sub.textContent = 'Cargando pérdida técnica por zona…';
-  alimResumenRenderEvaluacion();
-  await Promise.all([alimResumenEvalAsegurarPr(), alimResumenEvalAsegurarTecnicaPorZona()]);
+  const sel = document.getElementById('alim-resumen-mes');
+  if(sel && sel.value) alimResumenEvalCargarCosto(sel.value);
+  alimResumenRenderEvaluacion();  // ya hay datos sincrónicos -- pinta de una
+  await alimResumenEvalAsegurarPr();  // solo el Factor STN es async
   alimResumenRenderEvaluacion();
   alimResumenRenderEvalChart();
 }
@@ -19135,7 +19147,7 @@ function alimResumenRenderEvaluacion(){
   const sub = document.getElementById('alim-resumen-eval-sub');
   if(!mes){ tb.innerHTML = ''; tf.innerHTML = ''; if(sub) sub.textContent = '—'; return; }
 
-  const costo = parseFloat((document.getElementById('alim-resumen-tarifa')||{}).value) || 0;
+  const costo = parseFloat((document.getElementById('alim-resumen-eval-costo')||{}).value) || 0;
   const fK = n => Math.round(n||0).toLocaleString('es-CO');
   const f$ = n => '$ '+Math.round(n||0).toLocaleString('es-CO');
 
@@ -19154,15 +19166,14 @@ function alimResumenRenderEvaluacion(){
     if(!filas.length) return;
     let subPT=0, subPref=0, subRef=0, subNoRef=0;
     const filasRender = filas.map(f => {
-      // Reconocido/No Reconocido POR ZONA -- cada zona contra su propio
-      // cupo (% del nivel × su propia Entrada), mismo criterio que ya usa
-      // Nivel 3 en su Evaluación Económica embebida en el mapa.
-      const cupoZ = f.entrada * pct/100;
-      const norecZ = Math.max(0, f.perdida - cupoZ);
-      const recZ = f.perdida - norecZ;
-      const perdRef = f.perdida*pr, recRef = recZ*pr, noRecRef = norecZ*pr;
+      // Fórmula pedida por el usuario: Pérdida referida al STN primero,
+      // el % Reconocido se aplica SOBRE esa pérdida referida (no sobre
+      // la Entrada) -- Reconocida = %×PérdRef; No Reconocida = el resto.
+      const perdRef = f.perdida*pr;
+      const recRef = perdRef * pct/100;
+      const noRecRef = perdRef - recRef;
       subPT+=f.perdida; subPref+=perdRef; subRef+=recRef; subNoRef+=noRecRef;
-      const hayNoRecon = norecZ > 0.5;
+      const hayNoRecon = noRecRef > 0.5;
       const nrColor = hayNoRecon ? 'var(--red)' : 'var(--text)';
       return `<tr${ALIM_RESUMEN_EVAL_CONTRAIDO ? ' class="hidden"' : ''}>
         <td style="border-right:1px solid var(--border)"><span class="zb" style="background:${colorParaZona(f.zona)}22;color:var(--text)">${f.zona}</span></td>
@@ -19194,7 +19205,7 @@ function alimResumenRenderEvaluacion(){
     </tr>`;
   });
 
-  tb.innerHTML = filasHtml || `<tr><td colspan="12" style="text-align:center;color:var(--text3);padding:14px">Sin datos de pérdida técnica por zona para ${labelMes(mes)}.</td></tr>`;
+  tb.innerHTML = filasHtml || `<tr><td colspan="12" style="text-align:center;color:var(--text3);padding:14px">Sin datos de pérdida por zona para ${labelMes(mes)}.</td></tr>`;
   const nrRed = tNoRef > 0.5;
   const nrc = nrRed ? 'var(--red)' : 'var(--text)';
   tf.innerHTML = filasHtml ? `<tr style="border-top:3px double var(--text2);background:var(--bg)">
@@ -19208,7 +19219,7 @@ function alimResumenRenderEvaluacion(){
     <td style="color:${nrc};font-weight:800">${f$(tNoRef*costo)}</td>
   </tr>` : '';
 
-  if(sub) sub.textContent = `${labelMes(mes)} · ${costo.toLocaleString('es-CO')} $/kWh (G+T+R) · Reconocido = el % configurado por nivel en la pestaña "Resumen por Nivel"`;
+  if(sub) sub.textContent = `${labelMes(mes)} · ${costo.toLocaleString('es-CO')} $/kWh (G+T+R) · Reconocido = % del nivel (pestaña "Resumen por Nivel") × Pérdida referida al STN`;
 }
 
 let chAlimResumenEval = null;
@@ -19216,17 +19227,13 @@ function alimResumenRenderEvalChart(){
   const ctx = document.getElementById('ch-alim-resumen-eval');
   const vacio = document.getElementById('alim-resumen-eval-chart-vacio');
   if(!ctx) return;
-  const sel = document.getElementById('alim-resumen-mes');
-  const mesVig = sel && sel.value;
-  const costo = parseFloat((document.getElementById('alim-resumen-tarifa')||{}).value) || 0;
+  const costo = parseFloat((document.getElementById('alim-resumen-eval-costo')||{}).value) || 0;
 
-  // Todas las claves (meses) con datos técnica en CUALQUIER zona de
+  // Todas las claves (meses) con dato de pérdida en CUALQUIER zona de
   // CUALQUIER nivel -- unión, igual criterio que otras series de la app.
   const clavesSet = new Set();
   ALIM_RESUMEN_NIVELES.forEach(n => {
-    Object.values(ALIM_RESUMEN_EVAL_TECNICA[n.clave] || {}).forEach(porMes => {
-      Object.keys(porMes).forEach(c => clavesSet.add(c));
-    });
+    (_alimResumenEvalPorZonaNivel(n.clave).claves || []).forEach(c => clavesSet.add(c));
   });
   const claves = [...clavesSet].sort().filter(c => c >= '2026-01');
 
@@ -19236,10 +19243,9 @@ function alimResumenRenderEvalChart(){
       const pct = parseFloat(_alimResumenLeerPct(n.clave)) || 0;
       const pr = _alimResumenEvalPr(c, n.nivelTecnica);
       _alimResumenEvalFilasNivel(n.clave, c).forEach(f => {
-        const cupoZ = f.entrada * pct/100;
-        const norecZ = Math.max(0, f.perdida - cupoZ);
-        const recZ = f.perdida - norecZ;
-        total += f.perdida*pr; noRecon += norecZ*pr; recon += recZ*pr;
+        const perdRef = f.perdida*pr;
+        const recRef = perdRef * pct/100;
+        total += perdRef; recon += recRef; noRecon += perdRef-recRef;
       });
     });
     return {clave:c, total, energiaRecon: recon, costoRecon: recon*costo, costoNoRecon: noRecon*costo};
