@@ -1320,6 +1320,7 @@ tfoot td:first-child{text-align:left}
     <button class="sidebar-sublink" data-vista="alim-analisis-ciclo" data-modulo="alim-analisis-ciclo" onclick="mostrarVista('alim-analisis-ciclo')">Análisis por Ciclo</button>
   </div>
   <button class="sidebar-link" data-vista="temp-entrada" data-modulo="temp-entrada" onclick="mostrarVista('temp-entrada')">Temperatura vs Entrada</button>
+  <button class="sidebar-link" data-vista="aenc-cgm" data-modulo="aenc-cgm" onclick="mostrarVista('aenc-cgm')">AENC vs CGM</button>
   <button class="sidebar-link sidebar-link-padre" id="sidebar-be-padre" data-modulo="balances_estructura" onclick="toggleSubmenuBE()">
     <span>Balances por Estructura</span>
     <span class="sidebar-caret" id="sidebar-be-caret">▾</span>
@@ -4368,6 +4369,54 @@ tfoot td:first-child{text-align:left}
 </div>
 <!-- fin vista-temp-entrada -->
 
+<div id="vista-aenc-cgm" class="vista-modulo hidden">
+  <div class="sec-hdr">
+    <div class="sec-title">AENC vs CGM</div>
+    <div class="sec-sub">Comparación diaria por usuario entre la lectura propia (BD) y la liquidación de XM/AENC (versión TX2) -- carpeta "Novedades CGM".</div>
+  </div>
+
+  <div id="axc-vacio" class="card"><div style="color:var(--text3)">Cargando…</div></div>
+
+  <div id="axc-contenido" class="hidden">
+    <div class="card">
+      <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">
+        <!-- Columna izquierda: buscador + lista de usuarios/fronteras -->
+        <div style="flex:0 0 300px;max-width:300px;display:flex;flex-direction:column;gap:10px">
+          <div>
+            <label style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:700">Usuario / Frontera</label>
+            <input type="text" id="axc-buscar" placeholder="Buscar por nombre o código..." oninput="axcRenderLista()"
+              style="width:100%;margin:6px 0;padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg);box-sizing:border-box">
+          </div>
+          <div class="fbar" style="margin:0;gap:6px">
+            <button type="button" class="be-modo-btn activo" id="axc-cat-btn-" onclick="axcFiltrarCategoria('')">Todos</button>
+            <button type="button" class="be-modo-btn" id="axc-cat-btn-EH" onclick="axcFiltrarCategoria('EH')">EH</button>
+            <button type="button" class="be-modo-btn" id="axc-cat-btn-OC" onclick="axcFiltrarCategoria('OC')">OC</button>
+          </div>
+          <div id="axc-lista" style="max-height:480px;overflow-y:auto;border:1px solid var(--border);border-radius:8px"></div>
+          <span id="axc-conteo" style="font-size:11px;color:var(--text3)"></span>
+        </div>
+
+        <!-- Columna derecha: gráfico + tabla del usuario elegido -->
+        <div style="flex:1;min-width:420px">
+          <div id="axc-titulo-seleccion" style="text-align:center;font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase;margin-bottom:4px">Elige un usuario</div>
+          <div id="axc-subtitulo" style="text-align:center;font-size:11.5px;color:var(--text3);margin-bottom:10px"></div>
+          <div class="chart-wrap" style="height:360px"><canvas id="ch-axc"></canvas></div>
+
+          <div style="max-height:340px;overflow-y:auto;margin-top:18px">
+            <table class="tbl-compacta" style="width:100%">
+              <thead>
+                <tr><th>Fecha</th><th>BD</th><th>TX2</th><th>Diferencia</th><th>Resultado</th></tr>
+              </thead>
+              <tbody id="axc-tabla-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<!-- fin vista-aenc-cgm -->
+
 <!-- ---------------- INFORMES (.docx descargable) ---------------- -->
 <div id="vista-informes" class="vista-modulo hidden">
   <div class="sec-hdr">
@@ -7147,7 +7196,7 @@ function toggleSubmenuAlim(){
   }
 }
 
-let vistaCargada = {perdidas:false, parametrizacion:false, telemedidos:false, balancesEstructura:false, ipReg:false, ipComercial:false, ipInstitucional:false, reportesSspd:false, tridevanados:false, alimResumen:false, alimNivel4:false, alimNivel3:false, alimN21:false, alimSubestaciones:false, alimAlimentadores:false, alimAnalisisCiclo:false, tempEntrada:false, informes:false, programaFacturacion:false};
+let vistaCargada = {perdidas:false, parametrizacion:false, telemedidos:false, balancesEstructura:false, ipReg:false, ipComercial:false, ipInstitucional:false, reportesSspd:false, tridevanados:false, alimResumen:false, alimNivel4:false, alimNivel3:false, alimN21:false, alimSubestaciones:false, alimAlimentadores:false, alimAnalisisCiclo:false, tempEntrada:false, informes:false, programaFacturacion:false, aencCgm:false};
 
 async function mostrarVista(nombre){
   document.querySelectorAll('.vista-modulo').forEach(v=>v.classList.add('hidden'));
@@ -7253,6 +7302,10 @@ async function mostrarVista(nombre){
   if(nombre==='temp-entrada' && !vistaCargada.tempEntrada){
     vistaCargada.tempEntrada = true;
     await tempEntradaCargar();
+  }
+  if(nombre==='aenc-cgm' && !vistaCargada.aencCgm){
+    vistaCargada.aencCgm = true;
+    await axcCargar();
   }
   if(nombre==='informes' && !vistaCargada.informes){
     vistaCargada.informes = true;
@@ -21600,6 +21653,144 @@ async function tempEntradaCargar(){
   tempHorariaCargar();
   tempMapaCargar();
   tempNacCargar();   // independiente del resto -- no depende de la estación del operador, es la red nacional fija
+}
+
+// ==================== AENC vs CGM ====================
+// Comparación diaria por usuario/frontera entre la lectura propia del
+// operador (BD) y la liquidación XM/AENC en versión TX2 -- ver
+// /api/aenc-cgm/usuarios y /api/aenc-cgm/serie (backend/aenc_cgm.py).
+let AXC_USUARIOS = [];
+let AXC_CATEGORIA_FILTRO = '';
+let AXC_SEL = null;   // frontera_codigo elegida
+let AXC_SERIE_CACHE = {};   // {frontera_codigo: respuesta de /serie} -- evita re-pedir al reelegir el mismo usuario
+let chAxc = null;
+
+async function axcCargar(){
+  const vacio = document.getElementById('axc-vacio');
+  const contenido = document.getElementById('axc-contenido');
+  try{
+    const resp = await apiGet('/api/aenc-cgm/usuarios');
+    AXC_USUARIOS = resp.usuarios || [];
+  }catch(e){
+    vacio.innerHTML = `<div style="color:var(--danger, #d9534f)">No se pudo cargar la lista de usuarios AENC vs CGM: ${e.message}</div>`;
+    return;
+  }
+  vacio.classList.add('hidden');
+  contenido.classList.remove('hidden');
+  axcRenderLista();
+}
+
+function axcFiltrarCategoria(cat){
+  AXC_CATEGORIA_FILTRO = cat;
+  ['', 'EH', 'OC'].forEach(c => {
+    document.getElementById(`axc-cat-btn-${c}`).classList.toggle('activo', c === cat);
+  });
+  axcRenderLista();
+}
+
+function axcRenderLista(){
+  const cont = document.getElementById('axc-lista');
+  if(!cont) return;
+  const texto = (document.getElementById('axc-buscar').value || '').trim().toUpperCase();
+  let opciones = AXC_USUARIOS;
+  if(AXC_CATEGORIA_FILTRO) opciones = opciones.filter(u => u.categoria === AXC_CATEGORIA_FILTRO);
+  if(texto) opciones = opciones.filter(u =>
+    (u.usuario_nombre || '').toUpperCase().includes(texto) || (u.frontera_codigo || '').toUpperCase().includes(texto));
+  if(!opciones.length){
+    cont.innerHTML = '<div class="be-buscador-vacio">Sin resultados.</div>';
+  } else {
+    cont.innerHTML = opciones.map(u => {
+      const activo = u.frontera_codigo === AXC_SEL;
+      const noConforme = (u.ultimo_resultado || '').toUpperCase() === 'NO CONFORME';
+      return `<div onclick="axcElegirUsuario('${u.frontera_codigo}')" style="padding:7px 10px;font-size:12px;cursor:pointer;border-bottom:1px solid var(--border);${activo?'background:var(--bg3);font-weight:700;color:var(--accent)':'color:var(--text2)'}">
+        <div>${u.usuario_nombre || u.frontera_codigo} <span style="font-size:10px;color:var(--text3)">(${u.categoria})</span></div>
+        <div style="font-size:10.5px;color:${noConforme?'#d9534f':'var(--text3)'}">${u.frontera_codigo}${u.ultimo_resultado ? ' -- ' + u.ultimo_resultado : ''}</div>
+      </div>`;
+    }).join('');
+  }
+  document.getElementById('axc-conteo').textContent = `${opciones.length} de ${AXC_USUARIOS.length}`;
+}
+
+async function axcElegirUsuario(fronteraCodigo){
+  AXC_SEL = fronteraCodigo;
+  axcRenderLista();
+  document.getElementById('axc-titulo-seleccion').textContent = 'Cargando…';
+  document.getElementById('axc-subtitulo').textContent = '';
+  try{
+    if(!AXC_SERIE_CACHE[fronteraCodigo]){
+      AXC_SERIE_CACHE[fronteraCodigo] = await apiGet(`/api/aenc-cgm/serie?frontera=${encodeURIComponent(fronteraCodigo)}`);
+    }
+  }catch(e){
+    document.getElementById('axc-titulo-seleccion').textContent = 'No se pudo cargar este usuario';
+    document.getElementById('axc-subtitulo').textContent = e.message;
+    return;
+  }
+  const datos = AXC_SERIE_CACHE[fronteraCodigo];
+  document.getElementById('axc-titulo-seleccion').textContent = datos.usuario_nombre || datos.frontera_codigo;
+  document.getElementById('axc-subtitulo').textContent =
+    `${datos.frontera_codigo}${datos.canal ? ' -- Canal ' + datos.canal : ''}${datos.tipo ? ' -- ' + datos.tipo : ''}`;
+  axcRenderChart(datos.serie);
+  axcRenderTabla(datos.serie);
+}
+
+function axcRenderChart(serie){
+  const dark = document.documentElement.getAttribute('data-theme')==='dark';
+  const tickC = dark ? '#ffffff' : '#000000';
+  const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
+
+  const etiquetas = serie.map(f => f.fecha);
+  const bdDatos = serie.map(f => f.bd);
+  const tx2Datos = serie.map(f => f.tx2);
+
+  if(chAxc) chAxc.destroy();
+  chAxc = new Chart(document.getElementById('ch-axc'), {
+    data:{
+      labels: etiquetas,
+      datasets:[
+        {type:'line', label:'BD (lectura propia)', data: bdDatos,
+          borderColor:'#4472C4', backgroundColor:'transparent', borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0},
+        {type:'line', label:'TX2 (AENC/XM)', data: tx2Datos,
+          borderColor:'#ED7D31', backgroundColor:'transparent', borderWidth:2, borderDash:[4,3], pointRadius:1.5, spanGaps:true, tension:0},
+      ],
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      layout:{padding:{top:20, right:20}},
+      interaction:{mode:'index', intersect:false},
+      plugins:{
+        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:12}, color:tickC}},
+        tooltip:{callbacks:{label:c=>{
+          if(c.raw==null) return null;
+          return `${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:2})} kWh`;
+        }}},
+        zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:3}}},
+      },
+      scales:{
+        x:{grid:{display:false}, offset:true,
+          ticks:{color:tickC, font:{size:10}, maxRotation:45, minRotation:45, autoSkip:true, maxTicksLimit:24}},
+        y:{beginAtZero:false, grid:{color:gridC}, ticks:{color:tickC, font:{size:11}}},
+      },
+    },
+  });
+}
+
+function axcRenderTabla(serie){
+  const body = document.getElementById('axc-tabla-body');
+  const f2 = v => v==null ? '--' : v.toLocaleString('es-CO', {maximumFractionDigits:2});
+  const colorResultado = r => {
+    if(!r) return 'var(--text3)';
+    const ru = r.toUpperCase();
+    if(ru === 'NO CONFORME') return '#d9534f';
+    if(ru.startsWith('CONFORME')) return '#2e9e5b';
+    return 'var(--text3)';
+  };
+  body.innerHTML = [...serie].reverse().map(f => `<tr>
+    <td>${f.fecha}</td>
+    <td>${f2(f.bd)}</td>
+    <td>${f2(f.tx2)}</td>
+    <td>${f2(f.diferencia)}</td>
+    <td style="color:${colorResultado(f.resultado)};font-weight:600">${f.resultado || '--'}</td>
+  </tr>`).join('');
 }
 
 const TEMP_ENTRADA_METRICA_INFO = {
