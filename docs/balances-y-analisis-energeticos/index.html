@@ -3818,6 +3818,7 @@ tfoot td:first-child{text-align:left}
       <input type="date" id="alim-sub-hasta" onchange="alimSubRenderTodo()">
       <label style="margin-left:10px">Zona</label>
       <div id="alim-sub-zonas" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+      <span id="alim-sub-conteo" style="margin-left:12px;font-size:11px;color:var(--text3)"></span>
       <button type="button" class="btn-theme" style="width:auto;padding:0 14px;margin-left:auto" onclick="alimSubDescargarCsv()">⬇ Descargar CSV</button>
     </div>
 
@@ -3957,6 +3958,7 @@ tfoot td:first-child{text-align:left}
       <input type="month" id="alim3-hasta" onchange="alim3RenderSeleccion(); alim3RenderTablaVariacion(); alim3RenderChartCircuitos()">
       <label style="margin-left:10px">Zona</label>
       <div id="alim3-zonas" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+      <span id="alim3-conteo" style="margin-left:auto;font-size:11px;color:var(--text3)"></span>
     </div>
 
     <!-- ===== PESTAÑA 1 · Detalle por Alimentador ===== -->
@@ -19419,6 +19421,16 @@ function alimSubSubestacionesDisponibles(){
   )].filter(Boolean).sort();
 }
 
+// Texto dinámico junto al filtro de Zona -- pedido explícito: cuántas
+// subestaciones hay disponibles y, si hay zona(s) activa(s), cuáles.
+function alimSubRenderConteo(){
+  const el = document.getElementById('alim-sub-conteo');
+  if(!el) return;
+  const n = alimSubSubestacionesDisponibles().length;
+  const zonaTxt = ALIM_SUB_ZONAS_SEL.size ? ` en ${[...ALIM_SUB_ZONAS_SEL].sort().join(' + ')}` : '';
+  el.textContent = `${n} subestación${n===1?'':'es'}${zonaTxt}`;
+}
+
 // Click en una zona del croquis (N2-1 o Inicio, solo lectura) -- salta a
 // Subestaciones con esa zona ya filtrada (pedido explícito del usuario:
 // "cuando yo de click en el mapa en alguna zona específico me debe llevar
@@ -19432,6 +19444,7 @@ async function irASubestacionesConZona(zona){
   if(vistaCargada.alimSubestaciones){
     alimSubRenderZonasChips();
     mselSetOpciones('msel-alim-sub-subestacion', alimSubSubestacionesDisponibles().map(s => ({value:s, label:s})));
+    alimSubRenderConteo();
     alimSubRenderTodo();
   }
 }
@@ -19530,6 +19543,7 @@ function alimSubToggleZona(zona){
   // falta) -- evita quedar con una subestación de otra zona seleccionada
   // y los gráficos en blanco.
   mselSetOpciones('msel-alim-sub-subestacion', alimSubSubestacionesDisponibles().map(s => ({value:s, label:s})));
+  alimSubRenderConteo();
   alimSubRenderTodo();
 }
 
@@ -19670,6 +19684,7 @@ async function alimSubCargar(){
   _alimNivelPoblarRangoDefecto('alim-sub', [...new Set(ALIM_FILAS.map(f => alimSubClave(f.anio, f.mes)))].sort());
 
   mselInit('msel-alim-sub-subestacion', 'Subestación', 'Ninguna', alimSubSubestacionesDisponibles().map(s => ({value:s, label:s})), alimSubRenderAlimentadoresYCards, []);
+  alimSubRenderConteo();
 
   alimSubIrATab('subestaciones');
 }
@@ -20605,11 +20620,24 @@ function alim3RenderListaAlimentadores(){
   const texto = (document.getElementById('alim3-buscar').value || '').trim().toUpperCase();
   let opciones = ALIM3_LISTA_CACHE;
   if(texto) opciones = opciones.filter(([nem, nombre]) => nombre.toUpperCase().includes(texto) || nem.toUpperCase().includes(texto));
-  if(!opciones.length){ cont.innerHTML = '<div style="padding:10px;font-size:11px;color:var(--text3)">Sin resultados.</div>'; return; }
-  cont.innerHTML = opciones.map(([nem, nombre]) => {
-    const activo = nem === ALIM3_NEMONICO_SEL;
-    return `<div onclick="alim3ElegirAlimentador('${nem}')" style="padding:7px 10px;font-size:12px;cursor:pointer;border-bottom:1px solid var(--border);${activo?'background:var(--bg3);font-weight:700;color:var(--accent)':'color:var(--text2)'}">${nombre}</div>`;
-  }).join('');
+  if(!opciones.length){ cont.innerHTML = '<div style="padding:10px;font-size:11px;color:var(--text3)">Sin resultados.</div>'; }
+  else{
+    cont.innerHTML = opciones.map(([nem, nombre]) => {
+      const activo = nem === ALIM3_NEMONICO_SEL;
+      return `<div onclick="alim3ElegirAlimentador('${nem}')" style="padding:7px 10px;font-size:12px;cursor:pointer;border-bottom:1px solid var(--border);${activo?'background:var(--bg3);font-weight:700;color:var(--accent)':'color:var(--text2)'}">${nombre}</div>`;
+    }).join('');
+  }
+  alim3RenderConteo();
+}
+
+// Texto dinámico junto al filtro de Zona -- pedido explícito: cuántos
+// alimentadores hay disponibles (según Zona activa), igual que en Subestaciones.
+function alim3RenderConteo(){
+  const el = document.getElementById('alim3-conteo');
+  if(!el) return;
+  const n = ALIM3_LISTA_CACHE.length;
+  const zonaTxt = ALIM3_ZONAS_SEL.size ? ` en ${[...ALIM3_ZONAS_SEL].sort().join(' + ')}` : '';
+  el.textContent = `${n} alimentador${n===1?'':'es'}${zonaTxt}`;
 }
 
 function alim3ElegirAlimentador(nem){
