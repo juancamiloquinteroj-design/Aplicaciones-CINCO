@@ -4400,6 +4400,15 @@ tfoot td:first-child{text-align:left}
         <div style="flex:1;min-width:420px">
           <div id="axc-titulo-seleccion" style="text-align:center;font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase;margin-bottom:4px">Elige un usuario</div>
           <div id="axc-subtitulo" style="text-align:center;font-size:11.5px;color:var(--text3);margin-bottom:10px"></div>
+
+          <div class="fbar" style="margin-bottom:10px">
+            <label>Periodo</label>
+            <input type="month" id="axc-desde" onchange="axcAplicarFiltroPeriodo()">
+            <span style="font-size:11px;color:var(--text3)">→</span>
+            <input type="month" id="axc-hasta" onchange="axcAplicarFiltroPeriodo()">
+            <button type="button" class="be-modo-btn" id="axc-btn-enviar-balance" onclick="axcToggleEnviarBalance()" style="margin-left:auto" disabled>Enviar a Balance por Estructura</button>
+          </div>
+
           <div class="chart-wrap" style="height:360px"><canvas id="ch-axc"></canvas></div>
 
           <div style="max-height:340px;overflow-y:auto;margin-top:18px">
@@ -4409,6 +4418,32 @@ tfoot td:first-child{text-align:left}
               </thead>
               <tbody id="axc-tabla-body"></tbody>
             </table>
+          </div>
+
+          <!-- Panel "Enviar a Balance por Estructura" -- oculto hasta que se elige un usuario y se abre con el botón de arriba. -->
+          <div id="axc-panel-enviar" class="card hidden" style="margin-top:16px;background:var(--bg2)">
+            <div style="font-size:13px;font-weight:700;margin-bottom:10px">Enviar TX2 a Balance por Estructura</div>
+            <div class="fbar">
+              <label style="min-width:70px">Estructura</label>
+              <input type="text" id="axc-env-estructura-input" list="axc-env-estructura-list" placeholder="Buscar estructura..."
+                oninput="axcEnvEstructuraElegida()" style="min-width:280px;flex:1;padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg)">
+              <datalist id="axc-env-estructura-list"></datalist>
+            </div>
+            <div class="fbar" id="axc-env-medidor-wrap" style="display:none">
+              <label style="min-width:70px">Medidor</label>
+              <select id="axc-env-medidor" style="padding:5px 8px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg)"></select>
+            </div>
+            <div class="fbar">
+              <span style="font-size:11px;color:var(--text3)">Usa el periodo elegido arriba. Por defecto solo rellena días vacíos -- para reemplazar un día con dato real, marcá la casilla que aparece después de "Buscar".</span>
+            </div>
+            <div class="fbar">
+              <button type="button" class="be-modo-btn" onclick="axcEnviarBuscar()">Buscar</button>
+              <span id="axc-env-resultado" style="font-size:12px;color:var(--text3)"></span>
+            </div>
+            <div id="axc-env-aplicar-wrap" class="hidden fbar">
+              <button type="button" class="be-modo-btn activo" onclick="axcEnviarAplicar()">Aplicar (<span id="axc-env-conteo">0</span>)</button>
+              <label style="font-size:11px;display:flex;align-items:center;gap:6px" id="axc-env-forzados-wrap"><input type="checkbox" id="axc-env-incluir-forzados" onchange="axcEnvActualizarConteo()">Incluir los que reemplazan un dato real</label>
+            </div>
           </div>
         </div>
       </div>
@@ -21664,6 +21699,11 @@ let AXC_CATEGORIA_FILTRO = '';
 let AXC_SEL = null;   // frontera_codigo elegida
 let AXC_SERIE_CACHE = {};   // {frontera_codigo: respuesta de /serie} -- evita re-pedir al reelegir el mismo usuario
 let chAxc = null;
+// "Enviar a Balance por Estructura" -- ver /api/aenc-cgm/enviar-a-balance/*
+let AXC_ESTRUCTURAS = null;   // cache {id, nombre}[] de /api/balances-estructura (compartido entre usuarios)
+let AXC_ENV_MEDIDORES = [];
+let AXC_ENV_CANDIDATOS = [];
+let AXC_ENV_SEL_MEDIDOR = null;   // {usuarioId, canal, estructuraId}
 
 async function axcCargar(){
   const vacio = document.getElementById('axc-vacio');
@@ -21716,6 +21756,8 @@ async function axcElegirUsuario(fronteraCodigo){
   axcRenderLista();
   document.getElementById('axc-titulo-seleccion').textContent = 'Cargando…';
   document.getElementById('axc-subtitulo').textContent = '';
+  document.getElementById('axc-btn-enviar-balance').disabled = true;
+  document.getElementById('axc-panel-enviar').classList.add('hidden');
   try{
     if(!AXC_SERIE_CACHE[fronteraCodigo]){
       AXC_SERIE_CACHE[fronteraCodigo] = await apiGet(`/api/aenc-cgm/serie?frontera=${encodeURIComponent(fronteraCodigo)}`);
@@ -21729,8 +21771,24 @@ async function axcElegirUsuario(fronteraCodigo){
   document.getElementById('axc-titulo-seleccion').textContent = datos.usuario_nombre || datos.frontera_codigo;
   document.getElementById('axc-subtitulo').textContent =
     `${datos.frontera_codigo}${datos.canal ? ' -- Canal ' + datos.canal : ''}${datos.tipo ? ' -- ' + datos.tipo : ''}`;
-  axcRenderChart(datos.serie);
-  axcRenderTabla(datos.serie);
+  // Reinicia el filtro de periodo a "todo el rango disponible" cada vez que
+  // se elige un usuario nuevo -- pedido explícito de filtro mes/año, pero
+  // sin arrancar recortado si el usuario no lo tocó todavía.
+  document.getElementById('axc-desde').value = '';
+  document.getElementById('axc-hasta').value = '';
+  document.getElementById('axc-btn-enviar-balance').disabled = false;
+  axcAplicarFiltroPeriodo();
+}
+
+function axcAplicarFiltroPeriodo(){
+  const datos = AXC_SERIE_CACHE[AXC_SEL];
+  if(!datos) return;
+  const desde = document.getElementById('axc-desde').value;   // 'YYYY-MM' o ''
+  const hasta = document.getElementById('axc-hasta').value;
+  const visibles = datos.serie.filter(f =>
+    (!desde || f.fecha.slice(0,7) >= desde) && (!hasta || f.fecha.slice(0,7) <= hasta));
+  axcRenderChart(visibles);
+  axcRenderTabla(visibles);
 }
 
 function axcRenderChart(serie){
@@ -21741,6 +21799,12 @@ function axcRenderChart(serie){
   const etiquetas = serie.map(f => f.fecha);
   const bdDatos = serie.map(f => f.bd);
   const tx2Datos = serie.map(f => f.tx2);
+  // Puntos "atípicos" (fuera de promedio -- ver UMBRAL_ATIPICO en el
+  // backend) se resaltan más grandes y en rojo aunque el propio Excel no
+  // los haya marcado "No Conforme" -- pedido explícito tras un pico real
+  // que el Excel dejó pasar como "Conforme TX2" por venir sin BD ese día.
+  const colorPuntoTx2 = ctx => (serie[ctx.dataIndex] && serie[ctx.dataIndex].atipico) ? '#d9534f' : '#ED7D31';
+  const radioPuntoTx2 = ctx => (serie[ctx.dataIndex] && serie[ctx.dataIndex].atipico) ? 5 : 1.5;
 
   if(chAxc) chAxc.destroy();
   chAxc = new Chart(document.getElementById('ch-axc'), {
@@ -21750,7 +21814,8 @@ function axcRenderChart(serie){
         {type:'line', label:'BD (lectura propia)', data: bdDatos,
           borderColor:'#4472C4', backgroundColor:'transparent', borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0},
         {type:'line', label:'TX2 (AENC/XM)', data: tx2Datos,
-          borderColor:'#ED7D31', backgroundColor:'transparent', borderWidth:2, borderDash:[4,3], pointRadius:1.5, spanGaps:true, tension:0},
+          borderColor:'#ED7D31', backgroundColor:'transparent', borderWidth:2, borderDash:[4,3], spanGaps:true, tension:0,
+          pointBackgroundColor: colorPuntoTx2, pointBorderColor: colorPuntoTx2, pointRadius: radioPuntoTx2},
       ],
     },
     options:{
@@ -21759,10 +21824,16 @@ function axcRenderChart(serie){
       interaction:{mode:'index', intersect:false},
       plugins:{
         legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:12}, color:tickC}},
-        tooltip:{callbacks:{label:c=>{
-          if(c.raw==null) return null;
-          return `${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:2})} kWh`;
-        }}},
+        tooltip:{callbacks:{
+          label:c=>{
+            if(c.raw==null) return null;
+            return `${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:2})} kWh`;
+          },
+          afterBody:items=>{
+            const f = serie[items[0]?.dataIndex];
+            return f && f.atipico ? ['⚠ Fuera de promedio'] : [];
+          },
+        }},
         zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:3}}},
       },
       scales:{
@@ -21777,20 +21848,142 @@ function axcRenderChart(serie){
 function axcRenderTabla(serie){
   const body = document.getElementById('axc-tabla-body');
   const f2 = v => v==null ? '--' : v.toLocaleString('es-CO', {maximumFractionDigits:2});
-  const colorResultado = r => {
-    if(!r) return 'var(--text3)';
-    const ru = r.toUpperCase();
-    if(ru === 'NO CONFORME') return '#d9534f';
-    if(ru.startsWith('CONFORME')) return '#2e9e5b';
-    return 'var(--text3)';
-  };
-  body.innerHTML = [...serie].reverse().map(f => `<tr>
-    <td>${f.fecha}</td>
-    <td>${f2(f.bd)}</td>
-    <td>${f2(f.tx2)}</td>
-    <td>${f2(f.diferencia)}</td>
-    <td style="color:${colorResultado(f.resultado)};font-weight:600">${f.resultado || '--'}</td>
-  </tr>`).join('');
+  body.innerHTML = [...serie].reverse().map(f => {
+    const ru = (f.resultado || '').toUpperCase();
+    let texto = f.resultado || '--';
+    let color = 'var(--text3)';
+    if(ru === 'NO CONFORME') color = '#d9534f';
+    else if(ru.startsWith('CONFORME')) color = '#2e9e5b';
+    // "Atípico" pisa la clasificación del Excel SOLO para mostrar en
+    // pantalla -- el campo real en la base sigue siendo el del Excel (ver
+    // docstring de UMBRAL_ATIPICO en el backend).
+    if(f.atipico && ru !== 'NO CONFORME'){
+      texto = (f.resultado ? f.resultado + ' -- ' : '') + 'Atípico (fuera de promedio)';
+      color = '#d9534f';
+    }
+    return `<tr>
+      <td>${f.fecha}</td>
+      <td>${f2(f.bd)}</td>
+      <td>${f2(f.tx2)}</td>
+      <td>${f2(f.diferencia)}</td>
+      <td style="color:${color};font-weight:600">${texto}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ---------- "Enviar a Balance por Estructura" ----------
+function axcToggleEnviarBalance(){
+  const panel = document.getElementById('axc-panel-enviar');
+  const abrir = panel.classList.contains('hidden');
+  panel.classList.toggle('hidden', !abrir);
+  if(abrir) axcEnvPrepararPanel();
+}
+
+async function axcEnvPrepararPanel(){
+  document.getElementById('axc-env-resultado').textContent = '';
+  document.getElementById('axc-env-aplicar-wrap').classList.add('hidden');
+  if(!AXC_ESTRUCTURAS){
+    try{ AXC_ESTRUCTURAS = await apiGet('/api/balances-estructura'); }
+    catch(e){ AXC_ESTRUCTURAS = []; }
+    document.getElementById('axc-env-estructura-list').innerHTML =
+      AXC_ESTRUCTURAS.map(e => `<option value="${e.nombre}">`).join('');
+  }
+}
+
+async function axcEnvEstructuraElegida(){
+  const input = document.getElementById('axc-env-estructura-input');
+  const est = (AXC_ESTRUCTURAS || []).find(e => e.nombre === input.value);
+  const wrap = document.getElementById('axc-env-medidor-wrap');
+  const sel = document.getElementById('axc-env-medidor');
+  document.getElementById('axc-env-aplicar-wrap').classList.add('hidden');
+  if(!est){ wrap.style.display = 'none'; sel.innerHTML = ''; return; }
+  try{
+    AXC_ENV_MEDIDORES = (await apiGet(`/api/aenc-cgm/medidores-estructura?estructura_id=${est.id}`)).medidores || [];
+  }catch(e){
+    AXC_ENV_MEDIDORES = [];
+  }
+  if(!AXC_ENV_MEDIDORES.length){
+    wrap.style.display = 'none'; sel.innerHTML = '';
+    document.getElementById('axc-env-resultado').textContent = 'Esta estructura no tiene medidores configurados.';
+    return;
+  }
+  const idxSugerido = AXC_ENV_MEDIDORES.findIndex(m => m.usuario_id === AXC_SEL);
+  sel.innerHTML = AXC_ENV_MEDIDORES.map((m,i) =>
+    `<option value="${i}" ${i===idxSugerido?'selected':''}>${m.usuario_id} -- ${m.canal} (${m.tipo})</option>`
+  ).join('');
+  wrap.style.display = 'flex';
+  document.getElementById('axc-env-resultado').textContent =
+    idxSugerido >= 0 ? 'Medidor sugerido: coincide con la frontera elegida.' : '';
+}
+
+function axcUltimoDiaMes(mesStr){
+  const [y,m] = mesStr.split('-').map(Number);
+  return `${mesStr}-${String(new Date(y, m, 0).getDate()).padStart(2,'0')}`;
+}
+
+async function axcEnviarBuscar(){
+  const idx = document.getElementById('axc-env-medidor').value;
+  const resultadoEl = document.getElementById('axc-env-resultado');
+  if(idx === '' || idx == null || !AXC_ENV_MEDIDORES[idx]){
+    resultadoEl.textContent = 'Elegí primero una estructura con medidores.';
+    return;
+  }
+  const medidor = AXC_ENV_MEDIDORES[idx];
+  const estInput = document.getElementById('axc-env-estructura-input').value;
+  const est = (AXC_ESTRUCTURAS || []).find(e => e.nombre === estInput);
+  const desdeMes = document.getElementById('axc-desde').value;
+  const hastaMes = document.getElementById('axc-hasta').value;
+  resultadoEl.textContent = 'Buscando…';
+  document.getElementById('axc-env-aplicar-wrap').classList.add('hidden');
+  try{
+    const resp = await apiPost('/api/aenc-cgm/enviar-a-balance/buscar', {
+      frontera_codigo: AXC_SEL,
+      usuario_id: medidor.usuario_id, canal: medidor.canal,
+      fecha_desde: desdeMes ? desdeMes + '-01' : null,
+      fecha_hasta: hastaMes ? axcUltimoDiaMes(hastaMes) : null,
+    });
+    AXC_ENV_CANDIDATOS = resp.candidatos || [];
+    AXC_ENV_SEL_MEDIDOR = {usuarioId: medidor.usuario_id, canal: medidor.canal, estructuraId: est ? est.id : null};
+    if(!AXC_ENV_CANDIDATOS.length){
+      resultadoEl.textContent = 'No hay días para rellenar en este rango (o ya tienen ajuste aplicado antes).';
+      return;
+    }
+    const forzados = AXC_ENV_CANDIDATOS.filter(c => c.forzado).length;
+    resultadoEl.textContent = `${AXC_ENV_CANDIDATOS.length} día(s) encontrados` +
+      (forzados ? `, ${forzados} reemplazarían un dato real existente` : '') + '.';
+    document.getElementById('axc-env-forzados-wrap').style.display = forzados ? 'flex' : 'none';
+    document.getElementById('axc-env-incluir-forzados').checked = false;
+    axcEnvActualizarConteo();
+    document.getElementById('axc-env-aplicar-wrap').classList.remove('hidden');
+  }catch(e){
+    resultadoEl.textContent = 'Error: ' + e.message;
+  }
+}
+
+function axcEnvActualizarConteo(){
+  const incluir = document.getElementById('axc-env-incluir-forzados').checked;
+  const n = incluir ? AXC_ENV_CANDIDATOS.length : AXC_ENV_CANDIDATOS.filter(c => !c.forzado).length;
+  document.getElementById('axc-env-conteo').textContent = n;
+}
+
+async function axcEnviarAplicar(){
+  const resultadoEl = document.getElementById('axc-env-resultado');
+  if(!AXC_ENV_SEL_MEDIDOR || !AXC_ENV_CANDIDATOS.length) return;
+  resultadoEl.textContent = 'Aplicando…';
+  try{
+    const resp = await apiPost('/api/aenc-cgm/enviar-a-balance/aplicar', {
+      frontera_codigo: AXC_SEL,
+      usuario_id: AXC_ENV_SEL_MEDIDOR.usuarioId, canal: AXC_ENV_SEL_MEDIDOR.canal,
+      estructura_id: AXC_ENV_SEL_MEDIDOR.estructuraId,
+      candidatos: AXC_ENV_CANDIDATOS,
+      incluir_forzados: document.getElementById('axc-env-incluir-forzados').checked,
+    });
+    resultadoEl.textContent = `Listo -- ${resp.aplicados} aplicado(s), ${resp.saltados} omitido(s) (ya tenían ajuste o no se incluyeron).`;
+    document.getElementById('axc-env-aplicar-wrap').classList.add('hidden');
+    AXC_ENV_CANDIDATOS = [];
+  }catch(e){
+    resultadoEl.textContent = 'Error: ' + e.message;
+  }
 }
 
 const TEMP_ENTRADA_METRICA_INFO = {
