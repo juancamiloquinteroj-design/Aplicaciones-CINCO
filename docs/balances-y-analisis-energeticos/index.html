@@ -4414,7 +4414,7 @@ tfoot td:first-child{text-align:left}
           <div style="max-height:340px;overflow-y:auto;margin-top:18px">
             <table class="tbl-compacta" style="width:100%">
               <thead>
-                <tr><th>Fecha</th><th>BD</th><th>TX2</th><th>Diferencia</th><th>Resultado</th></tr>
+                <tr><th>Fecha</th><th>BD</th><th>Telemedida</th><th>TX2</th><th>Diferencia</th><th>Resultado</th></tr>
               </thead>
               <tbody id="axc-tabla-body"></tbody>
             </table>
@@ -4443,6 +4443,9 @@ tfoot td:first-child{text-align:left}
             <div id="axc-env-aplicar-wrap" class="hidden fbar">
               <button type="button" class="be-modo-btn activo" onclick="axcEnviarAplicar()">Aplicar (<span id="axc-env-conteo">0</span>)</button>
               <label style="font-size:11px;display:flex;align-items:center;gap:6px" id="axc-env-forzados-wrap"><input type="checkbox" id="axc-env-incluir-forzados" onchange="axcEnvActualizarConteo()">Incluir los que reemplazan un dato real</label>
+            </div>
+            <div id="axc-env-deshacer-wrap" class="hidden fbar">
+              <button type="button" class="be-modo-btn" style="border-color:#d9534f;color:#d9534f" onclick="axcEnviarDeshacer()">↺ Deshacer esta aplicación (<span id="axc-env-deshacer-conteo">0</span>)</button>
             </div>
           </div>
         </div>
@@ -21770,7 +21773,8 @@ async function axcElegirUsuario(fronteraCodigo){
   const datos = AXC_SERIE_CACHE[fronteraCodigo];
   document.getElementById('axc-titulo-seleccion').textContent = datos.usuario_nombre || datos.frontera_codigo;
   document.getElementById('axc-subtitulo').textContent =
-    `${datos.frontera_codigo}${datos.canal ? ' -- Canal ' + datos.canal : ''}${datos.tipo ? ' -- ' + datos.tipo : ''}`;
+    `${datos.frontera_codigo}${datos.canal ? ' -- Canal ' + datos.canal : ''}${datos.tipo ? ' -- ' + datos.tipo : ''}`
+    + (datos.telemedida_disponible ? '' : ' -- sin telemedida identificada para este canal');
   // Reinicia el filtro de periodo a "todo el rango disponible" cada vez que
   // se elige un usuario nuevo -- pedido explícito de filtro mes/año, pero
   // sin arrancar recortado si el usuario no lo tocó todavía.
@@ -21799,6 +21803,7 @@ function axcRenderChart(serie){
   const etiquetas = serie.map(f => f.fecha);
   const bdDatos = serie.map(f => f.bd);
   const tx2Datos = serie.map(f => f.tx2);
+  const telemedidaDatos = serie.map(f => f.telemedida);
   // Puntos "atípicos" (fuera de promedio -- ver UMBRAL_ATIPICO en el
   // backend) se resaltan más grandes y en rojo aunque el propio Excel no
   // los haya marcado "No Conforme" -- pedido explícito tras un pico real
@@ -21811,8 +21816,10 @@ function axcRenderChart(serie){
     data:{
       labels: etiquetas,
       datasets:[
-        {type:'line', label:'BD (lectura propia)', data: bdDatos,
+        {type:'line', label:'BD (lectura propia, Excel XM)', data: bdDatos,
           borderColor:'#4472C4', backgroundColor:'transparent', borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0},
+        {type:'line', label:'Telemedida (Balances por Estructura)', data: telemedidaDatos,
+          borderColor:'#2e9e5b', backgroundColor:'transparent', borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0},
         {type:'line', label:'TX2 (AENC/XM)', data: tx2Datos,
           borderColor:'#ED7D31', backgroundColor:'transparent', borderWidth:2, borderDash:[4,3], spanGaps:true, tension:0,
           pointBackgroundColor: colorPuntoTx2, pointBorderColor: colorPuntoTx2, pointRadius: radioPuntoTx2},
@@ -21864,6 +21871,7 @@ function axcRenderTabla(serie){
     return `<tr>
       <td>${f.fecha}</td>
       <td>${f2(f.bd)}</td>
+      <td>${f2(f.telemedida)}</td>
       <td>${f2(f.tx2)}</td>
       <td>${f2(f.diferencia)}</td>
       <td style="color:${color};font-weight:600">${texto}</td>
@@ -21966,10 +21974,13 @@ function axcEnvActualizarConteo(){
   document.getElementById('axc-env-conteo').textContent = n;
 }
 
+let AXC_ENV_ULTIMA_APLICACION = null;   // {usuarioId, canal, fechas} -- para "Deshacer"
+
 async function axcEnviarAplicar(){
   const resultadoEl = document.getElementById('axc-env-resultado');
   if(!AXC_ENV_SEL_MEDIDOR || !AXC_ENV_CANDIDATOS.length) return;
   resultadoEl.textContent = 'Aplicando…';
+  document.getElementById('axc-env-deshacer-wrap').classList.add('hidden');
   try{
     const resp = await apiPost('/api/aenc-cgm/enviar-a-balance/aplicar', {
       frontera_codigo: AXC_SEL,
@@ -21981,8 +21992,33 @@ async function axcEnviarAplicar(){
     resultadoEl.textContent = `Listo -- ${resp.aplicados} aplicado(s), ${resp.saltados} omitido(s) (ya tenían ajuste o no se incluyeron).`;
     document.getElementById('axc-env-aplicar-wrap').classList.add('hidden');
     AXC_ENV_CANDIDATOS = [];
+    if(resp.fechas_aplicadas && resp.fechas_aplicadas.length){
+      AXC_ENV_ULTIMA_APLICACION = {
+        usuarioId: AXC_ENV_SEL_MEDIDOR.usuarioId, canal: AXC_ENV_SEL_MEDIDOR.canal, fechas: resp.fechas_aplicadas,
+      };
+      document.getElementById('axc-env-deshacer-conteo').textContent = resp.fechas_aplicadas.length;
+      document.getElementById('axc-env-deshacer-wrap').classList.remove('hidden');
+    }
   }catch(e){
     resultadoEl.textContent = 'Error: ' + e.message;
+  }
+}
+
+async function axcEnviarDeshacer(){
+  const resultadoEl = document.getElementById('axc-env-resultado');
+  if(!AXC_ENV_ULTIMA_APLICACION) return;
+  if(!confirm(`¿Deshacer los ${AXC_ENV_ULTIMA_APLICACION.fechas.length} día(s) que se acaban de aplicar? Esos días vuelven a mostrar el dato crudo del medidor.`)) return;
+  resultadoEl.textContent = 'Deshaciendo…';
+  try{
+    const resp = await apiPost('/api/aenc-cgm/enviar-a-balance/deshacer', {
+      usuario_id: AXC_ENV_ULTIMA_APLICACION.usuarioId, canal: AXC_ENV_ULTIMA_APLICACION.canal,
+      fechas: AXC_ENV_ULTIMA_APLICACION.fechas,
+    });
+    resultadoEl.textContent = `Deshecho -- ${resp.borrados} día(s) vuelven al dato crudo.`;
+    document.getElementById('axc-env-deshacer-wrap').classList.add('hidden');
+    AXC_ENV_ULTIMA_APLICACION = null;
+  }catch(e){
+    resultadoEl.textContent = 'Error al deshacer: ' + e.message;
   }
 }
 
