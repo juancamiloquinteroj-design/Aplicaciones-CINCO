@@ -124,7 +124,7 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(
 
 /* SIDEBAR */
 .sidebar-overlay{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:299}
-.sidebar{position:fixed;top:0;left:0;bottom:0;width:230px;background:var(--card-bg);border-right:1px solid var(--border);z-index:300;padding:20px 14px;display:flex;flex-direction:column;gap:4px;box-shadow:var(--shadow)}
+.sidebar{position:fixed;top:0;left:0;bottom:0;width:230px;background:var(--card-bg);border-right:1px solid var(--border);z-index:300;padding:20px 14px;display:flex;flex-direction:column;gap:4px;box-shadow:var(--shadow);overflow-y:auto;overscroll-behavior:contain}
 .sidebar-title{font-size:10px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);margin:0 8px 10px}
 .sidebar-link{display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:8px;border:none;background:none;color:var(--text2);font-size:13px;font-weight:600;text-align:left;cursor:pointer}
 .sidebar-link:hover{background:var(--bg3);color:var(--text)}
@@ -315,6 +315,19 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(
 .ini-n21-cards-compactas .inicio-mes-fila span:last-child{font-size:10.5px}
 .ini-n21-cards-compactas .inicio-variacion{font-size:8.5px;padding:1px 4px}
 .ini-n21-cards-compactas .inicio-dash-fila{gap:8px;margin-bottom:0}
+/* Tarjetas de "Pérdida por Zona" en Subestaciones > Pérdida por
+   alimentadores -- ahora van debajo de la gráfica a ancho completo (antes
+   en una columna al lado), pedido explícito de tarjetas pequeñas. */
+.alim-sub-zonas-cards-chicas{grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:0}
+.alim-sub-zonas-cards-chicas .inicio-dash-card{padding:8px 10px}
+.alim-sub-zonas-cards-chicas .card-title{font-size:10px;margin-bottom:5px}
+.alim-sub-zonas-cards-chicas .inicio-dash-grid{gap:5px}
+.alim-sub-zonas-cards-chicas .inicio-mes-panel{padding:5px 7px}
+.alim-sub-zonas-cards-chicas .inicio-mes-titulo{font-size:8.5px;margin-bottom:3px;padding-bottom:3px}
+.alim-sub-zonas-cards-chicas .inicio-mes-fila{font-size:9.5px;padding:1px 0}
+.alim-sub-zonas-cards-chicas .inicio-mes-fila span:first-child{font-size:8.5px}
+.alim-sub-zonas-cards-chicas .inicio-mes-fila span:last-child{font-size:10.5px}
+.alim-sub-zonas-cards-chicas .inicio-variacion{font-size:8.5px;padding:1px 4px}
 .mod-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;margin-bottom:20px}
 .mod-grid-1linea{grid-template-columns:repeat(9,minmax(0,1fr));gap:8px;overflow-x:auto}
 .mod-grid-1linea .mod-card{padding:14px 10px}
@@ -1013,7 +1026,7 @@ tfoot td:first-child{text-align:left}
 .alim-nivel3-eval-tabla th, .alim-nivel3-eval-tabla td{padding:3px 6px !important;white-space:nowrap}
 .alim-nivel3-eval-tabla td{text-align:right}
 .alim-nivel3-eval-tabla td:first-child{text-align:left}
-#alim-sub-tab-subestaciones>.card:first-child, #alim-sub-tab-alimentadores>.card:first-child{border-top-left-radius:0;border-top-right-radius:0}
+#alim-sub-tab-subestaciones>.card:first-child, #alim-sub-tab-alimentadores>.card:first-child, #alim-sub-tab-comportamiento>.card:first-child{border-top-left-radius:0;border-top-right-radius:0}
 #alim3-tab-detalle>.card:first-child, #alim3-tab-top>.card:first-child, #alim3-tab-variacion>.card:first-child{border-top-left-radius:0;border-top-right-radius:0}
 #ip-tab-anual>.card:first-child, #ip-tab-detalle>.card:first-child, #ip-tab-balance>.card:first-child, #ip-tab-nivel1>.card:first-child{border-top-left-radius:0;border-top-right-radius:0}
 #ip-com-tab-indicador>.card:first-child, #ip-com-tab-detalle>.card:first-child{border-top-left-radius:0;border-top-right-radius:0}
@@ -3808,6 +3821,7 @@ tfoot td:first-child{text-align:left}
     <div class="pt-tabs">
       <button type="button" class="pt-tab-btn activo" id="alim-sub-tab-btn-subestaciones" onclick="alimSubIrATab('subestaciones')">Subestaciones</button>
       <button type="button" class="pt-tab-btn" id="alim-sub-tab-btn-alimentadores" onclick="alimSubIrATab('alimentadores')">Pérdida por alimentadores</button>
+      <button type="button" class="pt-tab-btn" id="alim-sub-tab-btn-comportamiento" onclick="alimSubIrATab('comportamiento')">Cómo se están comportando</button>
     </div>
 
     <!-- Filtro Rango + Zona (chips) + CSV -- ÚNICO nodo, alimSubIrATab() lo
@@ -3886,49 +3900,62 @@ tfoot td:first-child{text-align:left}
 
     </div><!-- /#alim-sub-tab-subestaciones -->
 
+    <!-- Selector de Subestación -- NODO ÚNICO compartido entre "Pérdida por
+         alimentadores" y "Alimentadores -- Cómo se están comportando" (van
+         siempre juntos, ver alimSubRenderAlimentadoresYCards) -- lo mueve
+         alimSubIrATab() igual que #alim-sub-filtro, justo debajo de este. -->
+    <div id="alim-sub-selector-fbar" class="fbar hidden" style="margin-bottom:10px">
+      <label>Subestación</label>
+      <div class="msel" id="msel-alim-sub-subestacion" style="min-width:260px"></div>
+      <span style="font-size:11px;color:var(--text3);margin-left:auto;max-width:320px">Elige una o más subestaciones para ver sus alimentadores -- vacío no muestra nada (son muchos alimentadores para verlos todos juntos).</span>
+    </div>
+
     <!-- ===== PESTAÑA 2 · Pérdida por alimentadores ===== -->
     <div id="alim-sub-tab-alimentadores" class="hidden">
     <div class="card">
-      <div class="fbar" style="margin-bottom:10px">
-        <label>Subestación</label>
-        <div class="msel" id="msel-alim-sub-subestacion" style="min-width:260px"></div>
-        <span style="font-size:11px;color:var(--text3);margin-left:auto;max-width:320px">Elige una o más subestaciones para ver sus alimentadores -- vacío no muestra nada (son muchos alimentadores para verlos todos juntos).</span>
+      <div class="fbar" style="justify-content:center;margin-bottom:8px">
+        <button type="button" class="be-modo-btn activo" id="alim-sub-al-btn-mensual" onclick="alimSubToggleAlModo('mensual')">Mensual</button>
+        <button type="button" class="be-modo-btn" id="alim-sub-al-btn-anual" onclick="alimSubToggleAlModo('anual')">Anual (12M)</button>
+        <button type="button" class="be-modo-btn" id="alim-sub-al-btn-es" style="margin-left:10px" onclick="alimSubToggleAlEntradaSalida()" title="Agrega Entrada/Salida (kWh) al mismo gráfico">Entrada / Salida</button>
+        <button type="button" class="be-modo-btn" id="alim-sub-al-btn-var" onclick="alimSubToggleAlVariacion()" title="Agrega el delta vs. el mes anterior a la etiqueta de Pérdida %">Δ Variación</button>
       </div>
-      <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">
-        <div style="flex:1;min-width:360px">
-          <div class="fbar" style="justify-content:center;margin-bottom:8px">
-            <button type="button" class="be-modo-btn activo" id="alim-sub-al-btn-mensual" onclick="alimSubToggleAlModo('mensual')">Mensual</button>
-            <button type="button" class="be-modo-btn" id="alim-sub-al-btn-anual" onclick="alimSubToggleAlModo('anual')">Anual (12M)</button>
-            <button type="button" class="be-modo-btn" id="alim-sub-al-btn-es" style="margin-left:10px" onclick="alimSubToggleAlEntradaSalida()" title="Agrega Entrada/Salida (kWh) al mismo gráfico">Entrada / Salida</button>
-            <button type="button" class="be-modo-btn" id="alim-sub-al-btn-var" onclick="alimSubToggleAlVariacion()" title="Agrega el delta vs. el mes anterior a la etiqueta de Pérdida %">Δ Variación</button>
-          </div>
-          <!-- Título justo encima de la gráfica, DESPUÉS de todos los
-               filtros -- pedido explícito ("todo filtro quede encima del
-               titulo... para poder recortar y pegar la gráfica que el
-               título corresponda a la gráfica"). -->
-          <div style="text-align:center;margin-bottom:8px">
-            <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Pérdida % por Alimentador</div>
-          </div>
-          <div class="chart-wrap" style="height:420px"><canvas id="ch-alim-sub-alimentadores"></canvas></div>
-        </div>
-        <div style="flex:0 0 500px;max-width:500px">
-          <div class="fbar" style="justify-content:center;margin-bottom:8px">
-            <div style="font-size:13px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Pérdida por Zona</div>
-            <button type="button" class="be-modo-btn activo" id="alim-sub-zona-btn-mensual" style="margin-left:10px" onclick="alimSubToggleModoZona('mensual')">Mensual</button>
-            <button type="button" class="be-modo-btn" id="alim-sub-zona-btn-anual" onclick="alimSubToggleModoZona('anual')">Anual (12M)</button>
-          </div>
-          <div id="alim-sub-zonas-cards" class="inicio-dash-fila" style="margin-bottom:0"></div>
-        </div>
+      <!-- Título justo encima de la gráfica, DESPUÉS de todos los
+           filtros -- pedido explícito ("todo filtro quede encima del
+           titulo... para poder recortar y pegar la gráfica que el
+           título corresponda a la gráfica"). -->
+      <div style="text-align:center;margin-bottom:8px">
+        <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Pérdida % por Alimentador</div>
       </div>
+      <!-- Gráfica a ancho completo -- pedido explícito ("quiero que la
+           gráfica ocupe todo"); antes compartía fila con la columna de
+           tarjetas de zona (flex:0 0 500px) al lado. -->
+      <div class="chart-wrap" style="height:460px"><canvas id="ch-alim-sub-alimentadores"></canvas></div>
 
       <div style="margin-top:18px">
-        <div style="text-align:center;margin-bottom:8px">
-          <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Alimentadores -- Cómo se están comportando</div>
+        <div class="fbar" style="justify-content:center;margin-bottom:8px">
+          <div style="font-size:13px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Pérdida por Zona</div>
+          <button type="button" class="be-modo-btn activo" id="alim-sub-zona-btn-mensual" style="margin-left:10px" onclick="alimSubToggleModoZona('mensual')">Mensual</button>
+          <button type="button" class="be-modo-btn" id="alim-sub-zona-btn-anual" onclick="alimSubToggleModoZona('anual')">Anual (12M)</button>
         </div>
-        <div id="alim-sub-alimentador-cards" class="inicio-dash-fila" style="margin-bottom:0"></div>
+        <!-- Tarjetas pequeñas debajo de la gráfica -- pedido explícito
+             ("las tarjetas de pérdidas por zona debajo de la gráfica,
+             tarjetas pequeñas"). -->
+        <div id="alim-sub-zonas-cards" class="inicio-dash-fila alim-sub-zonas-cards-chicas" style="margin-bottom:0"></div>
       </div>
     </div>
     </div><!-- /#alim-sub-tab-alimentadores -->
+
+    <!-- ===== PESTAÑA 3 · Alimentadores -- Cómo se están comportando =====
+         Pestaña independiente -- pedido explícito. Comparte el selector de
+         Subestación (#alim-sub-selector-fbar) con la pestaña anterior. -->
+    <div id="alim-sub-tab-comportamiento" class="hidden">
+    <div class="card">
+      <div style="text-align:center;margin-bottom:8px">
+        <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Alimentadores -- Cómo se están comportando</div>
+      </div>
+      <div id="alim-sub-alimentador-cards" class="inicio-dash-fila" style="margin-bottom:0"></div>
+    </div>
+    </div><!-- /#alim-sub-tab-comportamiento -->
 
   </div>
 </div>
@@ -19781,16 +19808,27 @@ async function alimSubCargar(){
 }
 
 // Pestañas del módulo Subestaciones (mismo patrón que alimNivel3IrATab):
-// "Subestaciones" / "Pérdida por alimentadores". El nodo #alim-sub-filtro
-// (Rango + Zona + CSV) se mueve al tope de la .card de la pestaña activa.
+// "Subestaciones" / "Pérdida por alimentadores" / "Alimentadores -- Cómo se
+// están comportando" (pestaña independiente, pedido explícito -- antes iba
+// debajo de la gráfica de "Pérdida por alimentadores"). El nodo
+// #alim-sub-filtro (Rango + Zona + CSV) se mueve al tope de la .card de la
+// pestaña activa; #alim-sub-selector-fbar (Subestación) se mueve junto con
+// él, debajo, SOLO en las 2 pestañas que lo usan (comparten selección,
+// ver alimSubRenderAlimentadoresYCards).
 function alimSubIrATab(nombre){
-  ['subestaciones','alimentadores'].forEach(t=>{
+  ['subestaciones','alimentadores','comportamiento'].forEach(t=>{
     document.getElementById('alim-sub-tab-'+t)?.classList.toggle('hidden', t!==nombre);
     document.getElementById('alim-sub-tab-btn-'+t)?.classList.toggle('activo', t===nombre);
   });
   const card = document.querySelector('#alim-sub-tab-'+nombre+' > .card');
   const filtro = document.getElementById('alim-sub-filtro');
   if(card && filtro && filtro.parentElement !== card) card.prepend(filtro);
+  const selector = document.getElementById('alim-sub-selector-fbar');
+  if(selector){
+    const usaSelector = nombre==='alimentadores' || nombre==='comportamiento';
+    selector.classList.toggle('hidden', !usaSelector);
+    if(card && usaSelector && selector.previousElementSibling !== filtro) filtro.insertAdjacentElement('afterend', selector);
+  }
   if(ALIM_FILAS && ALIM_FILAS.length) alimSubRenderTodo();
 }
 
