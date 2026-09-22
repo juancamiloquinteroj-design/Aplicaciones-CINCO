@@ -3999,6 +3999,12 @@ tfoot td:first-child{text-align:left}
             <label style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:700">Nombre Spard</label>
             <input type="text" id="alim3-buscar" placeholder="Buscar..." oninput="alim3RenderListaAlimentadores()"
               style="width:100%;margin:6px 0;padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg);box-sizing:border-box">
+            <!-- Filtro Tipo (Cto/Comp/CC/... -- columna "Tipo" de Resumen de
+                 Alimentadores.csv) -- pedido explícito. Solo acota ESTA
+                 lista/buscador (igual de local que el texto de arriba), no
+                 los totales de Top Alimentadores/Variación. -->
+            <label style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:700">Tipo</label>
+            <div id="alim3-tipos" style="display:flex;gap:4px;flex-wrap:wrap;margin:6px 0"></div>
             <div id="alim3-lista" style="max-height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:8px"></div>
           </div>
           <div>
@@ -20482,6 +20488,11 @@ function alimSubRenderAlimentadorCards(){
    ========================================================================== */
 let ALIM3_ZONAS = [];
 let ALIM3_ZONAS_SEL = new Set();
+// Filtro Tipo (chips "Cto"/"Comp"/"CC"/...) -- lista de valores distintos
+// de la columna "Tipo" presentes en los datos + el subset elegido (vacío =
+// todos). Solo acota la lista/buscador "Nombre Spard", ver alim3ToggleTipo.
+let ALIM3_TIPOS = [];
+let ALIM3_TIPOS_SEL = new Set();
 let ALIM3_NEMONICO_SEL = null;
 let ALIM3_MES_TOP = null;
 let ALIM3_ESP_MODO = 'mensual';  // 'mensual' | 'anual' -- gráfico Entradas/Salidas/Pérdida
@@ -20524,6 +20535,11 @@ async function alim3Cargar(){
 
   ALIM3_ZONAS = [...new Set(ALIM_FILAS.map(f => f.zona).filter(Boolean))].sort();
   alim3RenderZonasChips();
+  // ALIM_FILAS_TODOS (incluye "Comp") -- el filtro Tipo debe poder elegir
+  // también "Comp", que ALIM_FILAS excluye de los totales (ver comentario
+  // junto a ALIM_FILAS_TODOS).
+  ALIM3_TIPOS = [...new Set(ALIM_FILAS_TODOS.map(f => f.tipo).filter(Boolean))].sort();
+  alim3RenderTiposChips();
 
   // Ventana deslizante de 7 meses anclada a Ene-2026 -- ver
   // _alimNivelPoblarRangoDefecto (mismo criterio en toda la app, salvo IP_Reg).
@@ -20706,7 +20722,7 @@ function alim3ToggleZona(zona){
   // Si el alimentador elegido queda fuera de la zona activa, se
   // deselecciona -- evita mostrar datos de una zona apagada.
   if(ALIM3_NEMONICO_SEL){
-    const sigueDisponible = ALIM_FILAS_TODOS.some(f => f.nemonico === ALIM3_NEMONICO_SEL && (!ALIM3_ZONAS_SEL.size || ALIM3_ZONAS_SEL.has(f.zona)));
+    const sigueDisponible = ALIM_FILAS_TODOS.some(f => f.nemonico === ALIM3_NEMONICO_SEL && (!ALIM3_ZONAS_SEL.size || ALIM3_ZONAS_SEL.has(f.zona)) && (!ALIM3_TIPOS_SEL.size || ALIM3_TIPOS_SEL.has(f.tipo)));
     if(!sigueDisponible) ALIM3_NEMONICO_SEL = null;
   }
   alim3RecalcularListaCache();
@@ -20715,6 +20731,31 @@ function alim3ToggleZona(zona){
   alim3RenderTablaTop();
   alim3RenderScatter();
   alim3RenderTablaVariacion();
+}
+
+function alim3RenderTiposChips(){
+  const cont = document.getElementById('alim3-tipos');
+  if(!cont) return;
+  cont.innerHTML = ALIM3_TIPOS.map(t => {
+    const activo = ALIM3_TIPOS_SEL.has(t);
+    return `<button type="button" class="be-modo-btn${activo?' activo':''}" style="padding:3px 9px;font-size:10.5px" onclick="alim3ToggleTipo('${t}')">${t}</button>`;
+  }).join('');
+}
+
+// Filtro Tipo -- SOLO acota la lista/buscador "Nombre Spard" de esta
+// pestaña (Detalle por Alimentador), a diferencia de Zona que también
+// filtra Top Alimentadores/Variación de Pérdida -- pedido explícito era
+// puntual a ese buscador, no a los totales del módulo.
+function alim3ToggleTipo(tipo){
+  if(ALIM3_TIPOS_SEL.has(tipo)) ALIM3_TIPOS_SEL.delete(tipo); else ALIM3_TIPOS_SEL.add(tipo);
+  alim3RenderTiposChips();
+  if(ALIM3_NEMONICO_SEL){
+    const sigueDisponible = ALIM_FILAS_TODOS.some(f => f.nemonico === ALIM3_NEMONICO_SEL && (!ALIM3_ZONAS_SEL.size || ALIM3_ZONAS_SEL.has(f.zona)) && (!ALIM3_TIPOS_SEL.size || ALIM3_TIPOS_SEL.has(f.tipo)));
+    if(!sigueDisponible) ALIM3_NEMONICO_SEL = null;
+  }
+  alim3RecalcularListaCache();
+  alim3RenderListaAlimentadores();
+  alim3RenderSeleccion();
 }
 
 function alim3VisiblesRango(serie){
@@ -20738,6 +20779,7 @@ function alim3RecalcularListaCache(){
   // total (ver comentario junto a ALIM_FILAS_TODOS).
   ALIM_FILAS_TODOS.forEach(f => {
     if(ALIM3_ZONAS_SEL.size && !ALIM3_ZONAS_SEL.has(f.zona)) return;
+    if(ALIM3_TIPOS_SEL.size && !ALIM3_TIPOS_SEL.has(f.tipo)) return;
     vistos.set(f.nemonico, f.nombre_spard || f.nemonico);
   });
   ALIM3_LISTA_CACHE = [...vistos.entries()].sort((a,b) => a[1].localeCompare(b[1]));
@@ -20766,7 +20808,8 @@ function alim3RenderConteo(){
   if(!el) return;
   const n = ALIM3_LISTA_CACHE.length;
   const zonaTxt = ALIM3_ZONAS_SEL.size ? ` en ${[...ALIM3_ZONAS_SEL].sort().join(' + ')}` : '';
-  el.textContent = `${n} alimentador${n===1?'':'es'}${zonaTxt}`;
+  const tipoTxt = ALIM3_TIPOS_SEL.size ? ` (${[...ALIM3_TIPOS_SEL].sort().join(' + ')})` : '';
+  el.textContent = `${n} alimentador${n===1?'':'es'}${zonaTxt}${tipoTxt}`;
 }
 
 function alim3ElegirAlimentador(nem){
