@@ -6030,6 +6030,7 @@ function toggleTheme(){
   localStorage.setItem('pt_theme', next);
   _actualizarTemaCharts();
   _pmSincronizarTema();
+  _suplenciasSincronizarTema();
 }
 
 // ---- Sincronización del iframe "Puntos de Medida" (mismo origen, se
@@ -8272,7 +8273,7 @@ async function entrarCodigoPython(){
 // URL del túnel de Suplencias_App (Flask propio, corre local en el PC del
 // usuario) -- cambia si se reinicia el túnel, igual que API_BASE_URL del
 // backend de Pérdidas Técnicas; verificar acá si el iframe no carga.
-const SUPLENCIAS_URL = 'https://guitar-dist-glasgow-continuously.trycloudflare.com';
+const SUPLENCIAS_URL = 'https://leaving-reunion-deutsche-registered.trycloudflare.com';
 let _suplenciasCargado = false;
 
 function entrarSuplencias(){
@@ -8287,8 +8288,23 @@ function entrarSuplencias(){
 
   if(!_suplenciasCargado){
     _suplenciasCargado = true;
-    document.getElementById('suplencias-iframe').src = SUPLENCIAS_URL;
+    const ifr = document.getElementById('suplencias-iframe');
+    // Suplencias es otro origen (túnel de Cloudflare) -- no se puede tocar
+    // su documento directo como con el iframe de Puntos de Medida (mismo
+    // origen); se le manda el tema actual por postMessage apenas termina
+    // de cargar, y de ahí en más cada vez que cambia (ver toggleTheme()).
+    ifr.addEventListener('load', _suplenciasSincronizarTema);
+    ifr.src = SUPLENCIAS_URL;
   }
+}
+
+function _suplenciasSincronizarTema(){
+  const ifr = document.getElementById('suplencias-iframe');
+  if(!ifr || !ifr.contentWindow) return;
+  const dark = document.documentElement.getAttribute('data-theme')==='dark';
+  try{
+    ifr.contentWindow.postMessage({tipo:'tema', valor: dark ? 'dark' : 'light'}, new URL(SUPLENCIAS_URL).origin);
+  }catch(e){}
 }
 
 async function entrarVisualizador(){
