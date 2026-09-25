@@ -17088,7 +17088,7 @@ function _alimNivelComparativoTarjetasHtml(mensual, tecnicaPorMes, claveSeleccio
 // `sufijo` ('' mensual, '12' anual 12M móvil) elige qué campos leer
 // (entrada/entrada12, etc.) -- misma función para las 2 gráficas lado a
 // lado (Mensual/Anual), igual criterio que alim-n21 (botón/gráfica anual).
-function _alimNivelConstruirChartMensual(cv, mensual, etiquetaNivel, seriesExtra, sufijo, sinRelleno, notaPorClave){
+function _alimNivelConstruirChartMensual(cv, mensual, etiquetaNivel, seriesExtra, sufijo, sinRelleno, notaPorClave, mostrarVar){
   if(!cv) return null;
   sufijo = sufijo || '';
   const campoPct = 'pct'+sufijo, campoEntrada = 'entrada'+sufijo, campoSalida = 'salida'+sufijo, campoPerdida = 'perdida'+sufijo;
@@ -17111,6 +17111,28 @@ function _alimNivelConstruirChartMensual(cv, mensual, etiquetaNivel, seriesExtra
   // entrada y salida"), porque al superponerse las 2 áreas queda una
   // franja de un tono mezclado que no siempre ayuda a leer el gráfico.
   const fillES = sinRelleno ? false : 'origin';
+  // Δ Variación -- pedido explícito ("no coloca nada en el gráfico"): el
+  // botón existía y togleaba su propio estado, pero esta función (usada
+  // por Nivel 3 y Nivel 4) nunca leía ese estado para cambiar nada, era
+  // letra muerta. Mismo patrón que Indicador N2-1 (datalabelsPct).
+  const pctDatosVar = visibles.map(f=>f[campoPct]);
+  const datalabelsPct = mostrarVar ? {
+    display:true, anchor:'end', align:'top', offset:14,
+    formatter:(v,ctx)=>{
+      if(v==null) return '';
+      const base = v.toFixed(2)+'%';
+      const anterior = pctDatosVar[ctx.dataIndex-1];
+      if(anterior==null) return [base, ''];
+      const delta = v - anterior;
+      const icono = delta>=0 ? '▲' : '▼';
+      return [base, `${icono} ${Math.abs(delta).toFixed(2)}pp`];
+    },
+    color:(ctx)=> ['#ED7D31', ipColorVariacion(pctDatosVar[ctx.dataIndex], pctDatosVar[ctx.dataIndex-1], dark?'#aab8d1':'#6b7280')],
+    ...ipEstiloTarjetaVariacion(dark),
+  } : {
+    display:true, anchor:'end', align:'top', offset:12, formatter:v=>v==null?'':v.toFixed(2)+'%',
+    font:{size:10, weight:'700'}, color:'#ED7D31',
+  };
 
   const datasets = [
     {type:'line', label:`Entrada kWh/${etiquetaPeriodo}`, yAxisID:'y', order:5, fill:fillES,
@@ -17122,8 +17144,7 @@ function _alimNivelConstruirChartMensual(cv, mensual, etiquetaNivel, seriesExtra
     {type:'line', label:`Pérdida % ${etiquetaNivel} (${etiquetaPeriodo})`, yAxisID:'yPct', order:1,
       data: visibles.map(f=>f[campoPct]), borderColor:'#ED7D31', backgroundColor:'transparent',
       borderWidth:2.5, pointRadius:2, spanGaps:true, tension:0,
-      datalabels:{display:true, anchor:'end', align:'top', offset:12, formatter:v=>v==null?'':v.toFixed(2)+'%',
-        font:{size:10, weight:'700'}, color:'#ED7D31',}},
+      datalabels: datalabelsPct},
     // Pérdida en kWh/mes -- línea propia (pedido explícito: "no muestra la
     // gráfica de pérdida en kWh/mes en línea"). Va en su propio eje oculto
     // (yPerd) porque es ~1000x más chica que Entrada/Salida: en el eje `y`
@@ -17827,8 +17848,8 @@ function alimNivel4RenderTodo(){
 
   if(chAlimNivel4Ip) chAlimNivel4Ip.destroy();
   chAlimNivel4Ip = ALIM_NIVEL4_IP_MODO==='anual'
-    ? _alimNivelConstruirChartMensual(document.getElementById('ch-alim-nivel4-ip'), anual, 'Nivel 4', null, '12', ALIM_NIVEL4_SIN_RELLENO, _notaPorClave)
-    : _alimNivelConstruirChartMensual(document.getElementById('ch-alim-nivel4-ip'), mensual, 'Nivel 4', null, '', ALIM_NIVEL4_SIN_RELLENO, _notaPorClave);
+    ? _alimNivelConstruirChartMensual(document.getElementById('ch-alim-nivel4-ip'), anual, 'Nivel 4', null, '12', ALIM_NIVEL4_SIN_RELLENO, _notaPorClave, ALIM_NIVEL4_VAR)
+    : _alimNivelConstruirChartMensual(document.getElementById('ch-alim-nivel4-ip'), mensual, 'Nivel 4', null, '', ALIM_NIVEL4_SIN_RELLENO, _notaPorClave, ALIM_NIVEL4_VAR);
   if(chAlimNivel4Tecnica) chAlimNivel4Tecnica.destroy();
   const _cvTec = document.getElementById('ch-alim-nivel4-tecnica');
   if(ALIM_NIVEL4_TEC_MODO === 'anual'){
@@ -18498,8 +18519,8 @@ function alimNivel3RenderTodo(){
 
   if(chAlimNivel3Ip) chAlimNivel3Ip.destroy();
   chAlimNivel3Ip = ALIM_NIVEL3_IP_MODO==='anual'
-    ? _alimNivelConstruirChartMensual(document.getElementById('ch-alim-nivel3-ip'), anual, 'Total (Nivel 3)', _alimNivelSeriesZonasAnual(anual, porZona, ALIM_NIVEL3_ZONAS_SEL), '12', ALIM_NIVEL3_SIN_RELLENO, _notaPorClave)
-    : _alimNivelConstruirChartMensual(document.getElementById('ch-alim-nivel3-ip'), mensual, 'Total (Nivel 3)', _alimNivelSeriesZonas(mensual, porZona, ALIM_NIVEL3_ZONAS_SEL), '', ALIM_NIVEL3_SIN_RELLENO, _notaPorClave);
+    ? _alimNivelConstruirChartMensual(document.getElementById('ch-alim-nivel3-ip'), anual, 'Total (Nivel 3)', _alimNivelSeriesZonasAnual(anual, porZona, ALIM_NIVEL3_ZONAS_SEL), '12', ALIM_NIVEL3_SIN_RELLENO, _notaPorClave, ALIM_NIVEL3_VAR)
+    : _alimNivelConstruirChartMensual(document.getElementById('ch-alim-nivel3-ip'), mensual, 'Total (Nivel 3)', _alimNivelSeriesZonas(mensual, porZona, ALIM_NIVEL3_ZONAS_SEL), '', ALIM_NIVEL3_SIN_RELLENO, _notaPorClave, ALIM_NIVEL3_VAR);
 
   if(chAlimNivel3Tecnica) chAlimNivel3Tecnica.destroy();
   const _cvT3 = document.getElementById('ch-alim-nivel3-tecnica');
