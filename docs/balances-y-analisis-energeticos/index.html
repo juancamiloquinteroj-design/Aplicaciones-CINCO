@@ -1103,9 +1103,11 @@ tfoot td:first-child{text-align:left}
    explícito: reemplaza las 6 tarjetitas sueltas por UNA sola, % grande a
    la izquierda + Entrada/Salida/Pérdida Total/P. Técnica en cuadrícula
    2x2 a la derecha, sin título propio. */
-.alim-resumen-compacta{display:flex;align-items:center;gap:20px;flex-wrap:wrap;border:1px solid var(--border);border-radius:10px;padding:14px 18px;background:var(--bg);margin:16px 0}
+.alim-resumen-compacta{border:1px solid var(--border);border-radius:10px;padding:14px 18px;background:var(--card-bg);margin:16px 0}
+.alim-resumen-compacta-titulo{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text3);margin-bottom:10px}
+.alim-resumen-compacta-fila{display:flex;align-items:center;gap:20px;flex-wrap:wrap}
 .alim-resumen-compacta-pct{flex:0 0 auto;text-align:center;padding-right:18px;border-right:1px solid var(--border)}
-.alim-resumen-compacta-pct .valor{font-size:26px;font-weight:800;color:var(--accent);line-height:1.1}
+.alim-resumen-compacta-pct .valor{font-size:26px;font-weight:800;color:var(--text);line-height:1.1}
 .alim-resumen-compacta-pct .etiqueta{font-size:11px;font-weight:700;color:var(--text3);margin-top:4px;white-space:nowrap}
 .alim-resumen-compacta-grid{flex:1 1 260px;display:grid;grid-template-columns:1fr 1fr;gap:8px 24px}
 .alim-resumen-compacta-grid .etiqueta{font-size:11.5px;color:var(--text3);font-weight:600}
@@ -16960,20 +16962,22 @@ function _alimNivelRenderResumenGrupos(prefijo, datos12, tecnicaPorMes){
   const fk = v => v==null ? '--' : Math.round(v).toLocaleString('es-CO') + ' kWh';
   const fkGrande = v => v==null ? '--' : (v/1e6).toFixed(2) + ' M kWh';
 
-  const tarjetaCompacta = (pct, pctAnterior, entrada, salida, perdidaTotal, perdidaTecnica) => {
+  const tarjetaCompacta = (titulo, pct, pctAnterior, entrada, salida, perdidaTotal, perdidaTecnica) => {
     const dPp = (pct!=null && pctAnterior!=null) ? pct - pctAnterior : null;
-    const colorVar = dPp==null ? null : ipColorVariacion(pct, pctAnterior, 'var(--text2)');
-    const variacionHtml = dPp==null ? '' : ` <span style="color:${colorVar};font-weight:700">(${dPp>=0?'▲':'▼'} ${dPp>=0?'+':'-'}${Math.abs(dPp).toFixed(2)} pp)</span>`;
+    const variacionHtml = dPp==null ? '' : ` (${dPp>=0?'▲':'▼'} ${dPp>=0?'+':'-'}${Math.abs(dPp).toFixed(2)} pp)`;
     return `<div class="alim-resumen-compacta">
-      <div class="alim-resumen-compacta-pct">
-        <div class="valor">${pct==null?'--':pct.toFixed(2)+'%'}</div>
-        <div class="etiqueta">Índice Pérdida${variacionHtml}</div>
-      </div>
-      <div class="alim-resumen-compacta-grid">
-        <div><span class="etiqueta">Entrada:</span> <span class="valor">${fkGrande(entrada)}</span></div>
-        <div><span class="etiqueta">Pérdida Total:</span> <span class="valor" style="color:#ef476f">${fk(perdidaTotal)}</span></div>
-        <div><span class="etiqueta">Salida:</span> <span class="valor">${fkGrande(salida)}</span></div>
-        <div><span class="etiqueta">P. Técnica:</span> <span class="valor">${fk(perdidaTecnica)}</span></div>
+      <div class="alim-resumen-compacta-titulo">${titulo}</div>
+      <div class="alim-resumen-compacta-fila">
+        <div class="alim-resumen-compacta-pct">
+          <div class="valor">${pct==null?'--':pct.toFixed(2)+'%'}</div>
+          <div class="etiqueta">Índice Pérdida${variacionHtml}</div>
+        </div>
+        <div class="alim-resumen-compacta-grid">
+          <div><span class="etiqueta">Entrada:</span> <span class="valor">${fkGrande(entrada)}</span></div>
+          <div><span class="etiqueta">Pérdida Total:</span> <span class="valor">${fk(perdidaTotal)}</span></div>
+          <div><span class="etiqueta">Salida:</span> <span class="valor">${fkGrande(salida)}</span></div>
+          <div><span class="etiqueta">P. Técnica:</span> <span class="valor">${fk(perdidaTecnica)}</span></div>
+        </div>
       </div>
     </div>`;
   };
@@ -16983,7 +16987,7 @@ function _alimNivelRenderResumenGrupos(prefijo, datos12, tecnicaPorMes){
   if(rM.length){
     const a = rM[rM.length-1], p = rM.length >= 2 ? rM[rM.length-2] : null;
     const tec = (tecnicaPorMes && tecnicaPorMes[a.clave]) ? tecnicaPorMes[a.clave].perdida : null;
-    cM.innerHTML = tarjetaCompacta(a.pct, p ? p.pct : null, a.entrada, a.salida, a.perdida, tec);
+    cM.innerHTML = tarjetaCompacta('Indicador Mensual', a.pct, p ? p.pct : null, a.entrada, a.salida, a.perdida, tec);
   } else cM.innerHTML = '<div style="color:var(--text3);font-size:12px">Sin datos para el rango.</div>';
 
   // --- Anual (12 Meses Móvil) ---
@@ -16993,7 +16997,7 @@ function _alimNivelRenderResumenGrupos(prefijo, datos12, tecnicaPorMes){
     // Pérdida Técnica anual (12M) no está disponible acá (tecnicaPorMes
     // solo trae el dato mensual) -- queda en "--" en vez de forzar un
     // cálculo aparte que ningún otro consumidor de esta función necesita.
-    cA.innerHTML = tarjetaCompacta(a.pct12, p ? p.pct12 : null, a.entrada12, a.salida12, a.perdida12, null);
+    cA.innerHTML = tarjetaCompacta('Indicador Anual', a.pct12, p ? p.pct12 : null, a.entrada12, a.salida12, a.perdida12, null);
   } else cA.innerHTML = '<div style="color:var(--text3);font-size:12px">Aún no hay 12 meses de historia.</div>';
 }
 
@@ -24156,33 +24160,35 @@ function alimN21RenderResumen(datos12){
   const fk = v => v==null ? '--' : v.toLocaleString('es-CO', {maximumFractionDigits:0}) + ' kWh';
   const fkGrande = v => v==null ? '--' : (v/1e6).toFixed(2) + ' M kWh';
 
-  const tarjetaCompacta = (pct, pctAnterior, entrada, salida, perdidaTotal) => {
+  const tarjetaCompacta = (titulo, pct, pctAnterior, entrada, salida, perdidaTotal) => {
     const dPp = (pct!=null && pctAnterior!=null) ? pct - pctAnterior : null;
-    const colorVar = dPp==null ? null : ipColorVariacion(pct, pctAnterior, 'var(--text2)');
-    const variacionHtml = dPp==null ? '' : ` <span style="color:${colorVar};font-weight:700">(${dPp>=0?'▲':'▼'} ${dPp>=0?'+':'-'}${Math.abs(dPp).toFixed(2)} pp)</span>`;
+    const variacionHtml = dPp==null ? '' : ` (${dPp>=0?'▲':'▼'} ${dPp>=0?'+':'-'}${Math.abs(dPp).toFixed(2)} pp)`;
     return `<div class="alim-resumen-compacta">
-      <div class="alim-resumen-compacta-pct">
-        <div class="valor">${pct==null?'--':pct.toFixed(2)+'%'}</div>
-        <div class="etiqueta">Índice Pérdida${variacionHtml}</div>
-      </div>
-      <div class="alim-resumen-compacta-grid">
-        <div><span class="etiqueta">Entrada:</span> <span class="valor">${fkGrande(entrada)}</span></div>
-        <div><span class="etiqueta">Pérdida Total:</span> <span class="valor" style="color:#ef476f">${fk(perdidaTotal)}</span></div>
-        <div><span class="etiqueta">Salida:</span> <span class="valor">${fkGrande(salida)}</span></div>
-        <div><span class="etiqueta">P. Técnica:</span> <span class="valor">--</span></div>
+      <div class="alim-resumen-compacta-titulo">${titulo}</div>
+      <div class="alim-resumen-compacta-fila">
+        <div class="alim-resumen-compacta-pct">
+          <div class="valor">${pct==null?'--':pct.toFixed(2)+'%'}</div>
+          <div class="etiqueta">Índice Pérdida${variacionHtml}</div>
+        </div>
+        <div class="alim-resumen-compacta-grid">
+          <div><span class="etiqueta">Entrada:</span> <span class="valor">${fkGrande(entrada)}</span></div>
+          <div><span class="etiqueta">Pérdida Total:</span> <span class="valor">${fk(perdidaTotal)}</span></div>
+          <div><span class="etiqueta">Salida:</span> <span class="valor">${fkGrande(salida)}</span></div>
+          <div><span class="etiqueta">P. Técnica:</span> <span class="valor">--</span></div>
+        </div>
       </div>
     </div>`;
   };
 
   const actual = reales[reales.length-1];
   const anterior = reales[reales.length-2];
-  contMensual.innerHTML = tarjetaCompacta(actual.pct, anterior.pct, actual.entrada, actual.salida, actual.perdida);
+  contMensual.innerHTML = tarjetaCompacta('Indicador Mensual', actual.pct, anterior.pct, actual.entrada, actual.salida, actual.perdida);
 
   const realesAnual = datos12.filter(f => f.pct12 != null);
   if(!realesAnual.length){ contAnual.innerHTML = ''; return; }
   const actual12 = realesAnual[realesAnual.length-1];
   const anterior12 = realesAnual.length >= 2 ? realesAnual[realesAnual.length-2] : null;
-  contAnual.innerHTML = tarjetaCompacta(actual12.pct12, anterior12 ? anterior12.pct12 : null, actual12.entrada12, actual12.salida12, actual12.perdida12);
+  contAnual.innerHTML = tarjetaCompacta('Indicador Anual', actual12.pct12, anterior12 ? anterior12.pct12 : null, actual12.entrada12, actual12.salida12, actual12.perdida12);
 }
 
 // ===== Pestaña "Indicador N2-1 Pérdida Técnica" =====
