@@ -441,6 +441,25 @@ select{padding:6px 10px;border:1px solid var(--border);border-radius:7px;font-si
 
 .chart-wrap{position:relative;height:320px}
 
+/* Botón "ver en pantalla completa" -- pedido explícito ("en cada gráfica
+   un botón pequeño y bonito que se pueda expandir en toda la pantalla"),
+   instalado en TODO .chart-wrap de la app (ver
+   _instalarBotonesExpandirGraficas, corre solo vía MutationObserver, sin
+   tocar cada función de render una por una). Oculto hasta hover para no
+   ensuciar visualmente todas las gráficas todo el tiempo. */
+.chart-expand-btn{
+  position:absolute;top:4px;right:34px;z-index:6;width:24px;height:24px;
+  border:1px solid var(--border);border-radius:6px;background:var(--card-bg);
+  color:var(--text2);font-size:12px;cursor:pointer;display:flex;align-items:center;
+  justify-content:center;opacity:.45;transition:opacity .15s;
+}
+.chart-expand-btn:hover, .chart-expand-btn:focus{opacity:1;color:var(--accent)}
+.chart-wrap.chart-fullscreen{
+  position:fixed !important;inset:14px;z-index:5000;background:var(--card-bg);
+  border-radius:14px;box-shadow:0 12px 40px rgba(0,0,0,.4);padding:16px;
+}
+body.hay-chart-fullscreen{overflow:hidden}
+
 /* Control "acotar el eje Y" -- pedido explícito ("en todas las graficas
    quiero que haya una forma de poder acotar o cambiar el rango en el eje
    y"). Se inyecta solo (ver el plugin ejeYControl, registrado en el JS de
@@ -1026,7 +1045,7 @@ tfoot td:first-child{text-align:left}
 .alim-nivel3-eval-tabla th, .alim-nivel3-eval-tabla td{padding:3px 6px !important;white-space:nowrap}
 .alim-nivel3-eval-tabla td{text-align:right}
 .alim-nivel3-eval-tabla td:first-child{text-align:left}
-#alim-sub-tab-subestaciones>.card:first-child, #alim-sub-tab-alimentadores>.card:first-child, #alim-sub-tab-comportamiento>.card:first-child{border-top-left-radius:0;border-top-right-radius:0}
+#alim-sub-tab-subestaciones>.card:first-child, #alim-sub-tab-alimentadores>.card:first-child, #alim-sub-tab-comportamiento>.card:first-child, #ac-tab-grafica>.card:first-child, #ac-tab-tabla>.card:first-child{border-top-left-radius:0;border-top-right-radius:0}
 #alim3-tab-detalle>.card:first-child, #alim3-tab-top>.card:first-child, #alim3-tab-variacion>.card:first-child{border-top-left-radius:0;border-top-right-radius:0}
 #ip-tab-anual>.card:first-child, #ip-tab-detalle>.card:first-child, #ip-tab-balance>.card:first-child, #ip-tab-nivel1>.card:first-child{border-top-left-radius:0;border-top-right-radius:0}
 #ip-com-tab-indicador>.card:first-child, #ip-com-tab-detalle>.card:first-child{border-top-left-radius:0;border-top-right-radius:0}
@@ -4238,22 +4257,33 @@ tfoot td:first-child{text-align:left}
     <div class="sec-sub">Energía liquidada por ciclo de facturación, mes a mes -- depende de "analisis de ciclos.csv".</div>
   </div>
 
+  <div class="pt-tabs">
+    <button type="button" class="pt-tab-btn activo" id="ac-tab-btn-grafica" onclick="acIrATab('grafica')">Gráfica</button>
+    <button type="button" class="pt-tab-btn" id="ac-tab-btn-tabla" onclick="acIrATab('tabla')">Tabla por Ciclo</button>
+  </div>
+
+  <!-- Filtro Rango/Tipo/Liquidación (+ Mensual/Anual + Borrar) -- ÚNICO
+       nodo, acIrATab() lo mueve al tope de la .card de la pestaña activa,
+       mismo patrón que Subestaciones/Alimentadores. -->
+  <div id="ac-filtro" class="fbar" style="margin-bottom:14px">
+    <label>Rango</label>
+    <input type="month" id="ac-desde" onchange="acAplicarFiltros()">
+    <span style="font-size:11px;color:var(--text3)">→</span>
+    <input type="month" id="ac-hasta" onchange="acAplicarFiltros()">
+    <label style="margin-left:10px">Tipo</label>
+    <select id="ac-tipo" onchange="acAplicarFiltros()"><option value="">Todos</option></select>
+    <label>Liquidación</label>
+    <div class="msel" id="msel-ac-liquidacion"></div>
+    <button type="button" class="btn-theme ip-com-modo-btn activo" id="ac-btn-mensual" style="width:auto;padding:0 16px;margin-left:auto" onclick="acCambiarModo('mensual')">📅 Mensual</button>
+    <button type="button" class="btn-theme ip-com-modo-btn" id="ac-btn-anual" style="width:auto;padding:0 16px" onclick="acCambiarModo('anual')">📆 Anual Móvil</button>
+    <button type="button" class="btn-theme" style="width:auto;padding:0 14px" onclick="acLimpiarFiltros()" title="Vuelve Rango/Tipo/Liquidación/Zona/Subestación/Alimentador/Ciclo a su estado inicial">✕ Borrar filtros</button>
+  </div>
+
+  <!-- ===== PESTAÑA 1 · Gráfica ===== -->
+  <div id="ac-tab-grafica">
   <div class="card">
-    <div class="fbar" style="margin-bottom:14px">
-      <label>Rango</label>
-      <input type="month" id="ac-desde" onchange="acAplicarFiltros()">
-      <span style="font-size:11px;color:var(--text3)">→</span>
-      <input type="month" id="ac-hasta" onchange="acAplicarFiltros()">
-      <label style="margin-left:10px">Tipo</label>
-      <select id="ac-tipo" onchange="acAplicarFiltros()"><option value="">Todos</option></select>
-      <label>Liquidación</label>
-      <div class="msel" id="msel-ac-liquidacion"></div>
-      <button type="button" class="btn-theme ip-com-modo-btn activo" id="ac-btn-mensual" style="width:auto;padding:0 16px;margin-left:auto" onclick="acCambiarModo('mensual')">📅 Mensual</button>
-      <button type="button" class="btn-theme ip-com-modo-btn" id="ac-btn-anual" style="width:auto;padding:0 16px" onclick="acCambiarModo('anual')">📆 Anual Móvil</button>
-      <button type="button" class="btn-theme" style="width:auto;padding:0 14px" onclick="acLimpiarFiltros()" title="Vuelve Rango/Tipo/Liquidación/Zona/Subestación/Alimentador/Ciclo a su estado inicial">✕ Borrar filtros</button>
-    </div>
     <div class="fbar" style="margin-bottom:0">
-      <button type="button" class="be-modo-btn" id="ac-btn-desglosar" onclick="acToggleDesglosar()" title="Con 'Todos' elegido: una línea por cada ciclo, o el total combinado">🔀 Desglosar por Ciclo</button>
+      <button type="button" class="be-modo-btn" id="ac-btn-desglosar" onclick="acToggleDesglosar()" title="Con 'Todos' elegido: una línea por cada ciclo, o el total combinado. Con 2+ ciclos elegidos a mano: una línea por cada uno, o combinados">🔀 Desglosar por Ciclo</button>
       <button type="button" class="be-modo-btn" id="ac-btn-n21" onclick="acToggleN21()" title="Sobrepone la Pérdida N2-1 (%) del alimentador elegido -- solo con exactamente 1 alimentador seleccionado">📉 Pérdida N2-1</button>
       <span id="ac-n21-aviso" style="font-size:11px;color:var(--text3)"></span>
     </div>
@@ -4277,24 +4307,30 @@ tfoot td:first-child{text-align:left}
         <table class="be-tabla-creadas" style="margin-top:6px"><tbody id="ac-datos-ciclo"></tbody></table>
       </div>
     </div>
-  </div>
 
-  <div class="card">
-    <div class="card-title">Ciclo</div>
+    <div class="card-title" style="margin-top:18px">Ciclo</div>
     <div id="ac-ciclos-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:8px;margin-top:10px"></div>
-    <div class="fbar" style="margin:18px 0 0">
+  </div>
+  </div><!-- /#ac-tab-grafica -->
+
+  <!-- ===== PESTAÑA 2 · Tabla por Ciclo -- pedido explícito, antes iba
+       debajo de la gráfica en la misma pantalla. ===== -->
+  <div id="ac-tab-tabla" class="hidden">
+  <div class="card">
+    <div class="fbar" style="margin:0 0 10px">
       <label title="Ventana propia de esta tabla, independiente del Rango de arriba -- por defecto los últimos 12 meses reales, se corre sola al aparecer un mes nuevo">Rango de la tabla</label>
       <input type="month" id="ac-tabla-desde" onchange="acRenderTablaCiclos()">
       <span style="font-size:11px;color:var(--text3)">→</span>
       <input type="month" id="ac-tabla-hasta" onchange="acRenderTablaCiclos()">
     </div>
-    <div class="be-tabla-scroll" style="max-height:720px;margin-top:10px">
+    <div class="be-tabla-scroll" style="max-height:720px">
       <table class="be-tabla-creadas">
         <thead><tr id="ac-tabla-ciclos-head"></tr></thead>
         <tbody id="ac-tabla-ciclos-body"></tbody>
       </table>
     </div>
   </div>
+  </div><!-- /#ac-tab-tabla -->
 </div>
 <!-- fin vista-alim-analisis-ciclo -->
 
@@ -7054,6 +7090,10 @@ function _expEscanear(){
     if(!wrap.style.position) wrap.style.position = 'relative';
     const base = (canvas.id || wrap.id).replace(/^ch-/, '');
     wrap.insertAdjacentHTML('beforeend', _expBotonHtml(wrap.id, 'chart', base));
+    // Botón "ver en pantalla completa" -- pedido explícito, mismo criterio
+    // que el de exportar: se instala UNA vez acá (no hay que tocar cada
+    // función de render), .no-exportar para que html2canvas no lo capture.
+    wrap.insertAdjacentHTML('beforeend', `<button type="button" class="chart-expand-btn no-exportar" title="Ver en pantalla completa" onclick="_chartToggleFullscreen('${wrap.id}',event)">⤢</button>`);
   });
   document.querySelectorAll('.tbl-wrap').forEach(wrap => {
     if(EXP_YA_PROCESADOS.has(wrap)) return;
@@ -7083,6 +7123,34 @@ function _expEscanear(){
   observer.observe(contenedor, {childList: true, subtree: true});
   _expEscanear();
 })();
+
+// Pantalla completa de UNA gráfica puntual -- position:fixed cubriendo casi
+// todo el viewport (ver .chart-wrap.chart-fullscreen), con Escape o el
+// mismo botón (ahora "✕") para volver. Chart.js no se entera solo de que
+// su contenedor cambió de tamaño -- hace falta un resize() explícito
+// después de que el layout se asiente (por eso el requestAnimationFrame).
+function _chartToggleFullscreen(wrapId, ev){
+  if(ev) ev.stopPropagation();
+  const wrap = document.getElementById(wrapId);
+  if(!wrap) return;
+  const expandiendo = !wrap.classList.contains('chart-fullscreen');
+  wrap.classList.toggle('chart-fullscreen', expandiendo);
+  document.body.classList.toggle('hay-chart-fullscreen', expandiendo);
+  const btn = wrap.querySelector('.chart-expand-btn');
+  if(btn){
+    btn.innerHTML = expandiendo ? '✕' : '⤢';
+    btn.title = expandiendo ? 'Cerrar pantalla completa' : 'Ver en pantalla completa';
+  }
+  const canvas = wrap.querySelector('canvas');
+  const chart = canvas && typeof Chart !== 'undefined' ? Chart.getChart(canvas) : null;
+  requestAnimationFrame(() => { if(chart) chart.resize(); });
+}
+document.addEventListener('keydown', e => {
+  if(e.key === 'Escape'){
+    const activo = document.querySelector('.chart-wrap.chart-fullscreen');
+    if(activo) _chartToggleFullscreen(activo.id);
+  }
+});
 
 const ICONO_OJO = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>';
 const ICONO_OJO_TACHADO = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.94 10.94 0 0 1 12 19c-7 0-11-7-11-7a18.5 18.5 0 0 1 5.06-5.94M9.9 4.24A10.94 10.94 0 0 1 12 4c7 0 11 7 11 7a18.5 18.5 0 0 1-2.16 3.19M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
@@ -16142,7 +16210,16 @@ async function _alimAsegurarDatosCargados(){
    grilla de botones de selección única (como el slicer de la referencia
    en Power BI). ---- */
 let AC_FILAS = [];
-let AC_CICLO_SELECCIONADO = null;
+// Set de ciclos elegidos -- vacío = "Todos". Antes era un único valor (o
+// se elegía UN ciclo, o "Todos"), pedido explícito poder elegir un
+// SUBCONJUNTO (ej. ciclos 2 y 5 nada más), como cualquier otro filtro
+// multiselect de la app.
+let AC_CICLOS_SEL = new Set();
+function acEtiquetaCiclos(){
+  if(AC_CICLOS_SEL.size===0) return 'Todos';
+  if(AC_CICLOS_SEL.size===1) return `Ciclo ${[...AC_CICLOS_SEL][0]}`;
+  return `Ciclos ${[...AC_CICLOS_SEL].sort((a,b)=>a-b).join(', ')}`;
+}
 let AC_MODO = 'mensual';   // 'mensual' | 'anual' (ventana móvil de 12 meses -- "consumo/venta anual móvil")
 let AC_MOSTRAR_N21 = false;   // 📉 Pérdida N2-1 sobrepuesta (solo con 1 alimentador elegido)
 let AC_DESGLOSAR_CICLO = false;   // con "Todos" elegido: true = una línea por ciclo, false = el total combinado (por defecto)
@@ -16192,7 +16269,21 @@ async function cargarAnalisisCiclos(){
   mselInit('msel-ac-subestacion', 'Subestación', 'Todas', [], ()=>acAplicarFiltros());
   mselInit('msel-ac-alimentador', 'Nombre Spard', 'Todos', [], ()=>acAplicarFiltros());
 
+  acIrATab('grafica');
   acAplicarFiltros();
+}
+
+// Pestañas "Gráfica" / "Tabla por Ciclo" -- mismo patrón que
+// alim3IrATab/alimSubIrATab: el filtro compartido (#ac-filtro) se mueve al
+// tope de la .card de la pestaña activa.
+function acIrATab(nombre){
+  ['grafica','tabla'].forEach(t=>{
+    document.getElementById('ac-tab-'+t)?.classList.toggle('hidden', t!==nombre);
+    document.getElementById('ac-tab-btn-'+t)?.classList.toggle('activo', t===nombre);
+  });
+  const card = document.querySelector('#ac-tab-'+nombre+' > .card');
+  const filtro = document.getElementById('ac-filtro');
+  if(card && filtro && filtro.parentElement !== card) card.prepend(filtro);
 }
 
 function acRangoMeses(){
@@ -16214,7 +16305,7 @@ function acFiltrosActivos(){
     zona: document.getElementById('ac-zona').value,
     subestaciones: mselValores('msel-ac-subestacion'),
     alimentadores: mselValores('msel-ac-alimentador'),
-    ciclo: AC_CICLO_SELECCIONADO,
+    ciclos: AC_CICLOS_SEL,
   };
 }
 
@@ -16224,7 +16315,7 @@ function acCoincide(f, filtros, excluir){
   if(excluir!=='zona' && filtros.zona && f.zona!==filtros.zona) return false;
   if(excluir!=='subestacion' && filtros.subestaciones.length && !filtros.subestaciones.includes(f.subestacion)) return false;
   if(excluir!=='alimentador' && filtros.alimentadores.length && !filtros.alimentadores.includes(f.alimentador)) return false;
-  if(excluir!=='ciclo' && filtros.ciclo!=null && f.ciclo!==filtros.ciclo) return false;
+  if(excluir!=='ciclo' && filtros.ciclos.size && !filtros.ciclos.has(f.ciclo)) return false;
   return true;
 }
 
@@ -16278,7 +16369,7 @@ function acLimpiarFiltros(){
   document.getElementById('ac-zona').value = '';
   mselSetSeleccion('msel-ac-subestacion', []);
   mselSetSeleccion('msel-ac-alimentador', []);
-  AC_CICLO_SELECCIONADO = null;
+  AC_CICLOS_SEL = new Set();
   AC_MODO = 'mensual';
   document.getElementById('ac-btn-mensual').classList.add('activo');
   document.getElementById('ac-btn-anual').classList.remove('activo');
@@ -16325,7 +16416,7 @@ function acRenderDatosCiclo(){
 
   const filas = acFilasFiltradas(null);
   if(!filas.length){
-    cont.innerHTML = fila('Ciclo', AC_CICLO_SELECCIONADO ?? 'Todos') + fila('Datos', 'Sin datos para este filtro');
+    cont.innerHTML = fila('Ciclo', acEtiquetaCiclos()) + fila('Datos', 'Sin datos para este filtro');
     return;
   }
 
@@ -16346,7 +16437,7 @@ function acRenderDatosCiclo(){
     : null;
 
   cont.innerHTML = [
-    fila('Ciclo', AC_CICLO_SELECCIONADO ?? 'Todos'),
+    fila('Ciclo', acEtiquetaCiclos()),
     fila(`Energía Liquidada (${labelMes(ultimaClave)})`, kwhLiquidada.toLocaleString('es-CO',{maximumFractionDigits:0})+' kWh'),
     fila(`Energía Ponderada (${labelMes(ultimaClave)})`, kwhPonderada.toLocaleString('es-CO',{maximumFractionDigits:0})+' kWh'),
     fila(`Usuarios (${labelMes(ultimaClave)})`, usuarios.toLocaleString('es-CO')),
@@ -16360,17 +16451,22 @@ function acRenderDatosCiclo(){
 function acRenderCiclosGrid(){
   const cont = document.getElementById('ac-ciclos-grid');
   const ciclos = [...new Set(acFilasFiltradas('ciclo').map(f=>f.ciclo))].sort((a,b)=>a-b);
-  // null = "Todos" (suma de todos los ciclos, igual que el Power BI de
-  // referencia sin ningún ciclo elegido en el slicer) -- SIEMPRE válido,
-  // solo se resetea a "Todos" si había un ciclo puntual elegido que ya no
-  // aparece con el filtro actual (nunca se fuerza un ciclo por defecto).
-  if(AC_CICLO_SELECCIONADO!=null && !ciclos.includes(AC_CICLO_SELECCIONADO)) AC_CICLO_SELECCIONADO = null;
+  // Conjunto vacío = "Todos" (suma de todos los ciclos, igual que el Power
+  // BI de referencia sin ningún ciclo elegido en el slicer) -- SIEMPRE
+  // válido. Se descartan del set solo los ciclos puntuales que ya no
+  // aparecen con el filtro actual (los demás quedan tal cual elegidos,
+  // nunca se fuerza un ciclo por defecto ni se limpia todo de un tirón).
+  AC_CICLOS_SEL = new Set([...AC_CICLOS_SEL].filter(c => ciclos.includes(c)));
   // be-modo-btn (no btn-theme) -- btn-theme no tiene estilo ".activo"
   // definido, por eso no se notaba cuál estaba elegido. Botones más
-  // grandes también pedido explícito ("se ven muy pequeños").
-  const botonTodos = `<button type="button" class="be-modo-btn${AC_CICLO_SELECCIONADO==null?' activo':''}" style="padding:10px 4px;font-size:13px" onclick="acSeleccionarCiclo(null)">Todos</button>`;
+  // grandes también pedido explícito ("se ven muy pequeños"). Cada botón
+  // de ciclo se puede combinar con otros (multiselección real, pedido
+  // explícito: "o se selecciona 1 o se seleccionan todos... no se pueden
+  // seleccionar solo 2 o 3") -- "Todos" es la única opción excluyente,
+  // clickearlo limpia cualquier selección puntual.
+  const botonTodos = `<button type="button" class="be-modo-btn${AC_CICLOS_SEL.size===0?' activo':''}" style="padding:10px 4px;font-size:13px" onclick="acSeleccionarCiclo(null)">Todos</button>`;
   cont.innerHTML = botonTodos + ciclos.map(c => `
-    <button type="button" class="be-modo-btn${c===AC_CICLO_SELECCIONADO?' activo':''}" style="padding:10px 4px;font-size:13px" onclick="acSeleccionarCiclo(${c})">${c}</button>
+    <button type="button" class="be-modo-btn${AC_CICLOS_SEL.has(c)?' activo':''}" style="padding:10px 4px;font-size:13px" onclick="acSeleccionarCiclo(${c})">${c}</button>
   `).join('');
 }
 
@@ -16432,7 +16528,7 @@ function acRenderTablaCiclos(){
       celdaVariacion = `<td style="text-align:right;font-weight:700;color:${color}">${alerta}${icono} ${Math.abs(delta).toLocaleString('es-CO',{maximumFractionDigits:0})} (${Math.abs(deltaPct).toFixed(1)}%)</td>`;
     }
 
-    return `<tr style="cursor:pointer;${c===AC_CICLO_SELECCIONADO?'background:var(--bg3)':''}" onclick="acSeleccionarCiclo(${c})">
+    return `<tr style="cursor:pointer;${AC_CICLOS_SEL.has(c)?'background:var(--bg3)':''}" onclick="acSeleccionarCiclo(${c})">
       <td style="font-weight:700">${c}</td>${celdasMes}${celdaVariacion}
     </tr>`;
   }).join('');
@@ -16448,12 +16544,22 @@ function acRenderSubtitulo(){
   const partes = [];
   if(alimentadores.length===1) partes.push(alimentadores[0]);
   else if(alimentadores.length>1) partes.push(`${alimentadores.length} alimentadores`);
-  partes.push(`Ciclo ${AC_CICLO_SELECCIONADO ?? 'Todos'}`);
+  partes.push(acEtiquetaCiclos());
   cont.textContent = partes.join(' -- ');
 }
 
+// "Todos" (ciclo===null) limpia el set entero -- es excluyente con
+// cualquier selección puntual. Un ciclo puntual hace TOGGLE (se agrega si
+// no estaba, se quita si ya estaba) -- así se arman subconjuntos
+// (ej. ciclos 2 y 5) con clicks sucesivos, pedido explícito.
 function acSeleccionarCiclo(ciclo){
-  AC_CICLO_SELECCIONADO = ciclo;
+  if(ciclo==null){
+    AC_CICLOS_SEL = new Set();
+  } else if(AC_CICLOS_SEL.has(ciclo)){
+    AC_CICLOS_SEL.delete(ciclo);
+  } else {
+    AC_CICLOS_SEL.add(ciclo);
+  }
   acAplicarFiltros();
 }
 
@@ -16546,12 +16652,15 @@ function acRenderChart(){
   let etiquetas = [];
   const datasets = [];
 
-  if(AC_CICLO_SELECCIONADO==null && AC_DESGLOSAR_CICLO){
-    // "Todos" + Desglosar activo -- pedido explícito: una línea/área por
-    // CADA ciclo (como el Power BI de referencia sin ningún ciclo
-    // elegido). Con el botón "Desglosar" apagado cae al else de abajo,
-    // que ya suma TODOS los ciclos en una sola línea (filasCompletas no
-    // filtra por ciclo cuando AC_CICLO_SELECCIONADO es null).
+  // Una línea por ciclo cuando: hay 2+ ciclos elegidos a mano (ahí sí
+  // tiene sentido verlos por separado, para eso se eligieron puntuales) o
+  // cuando es "Todos" con el botón Desglosar activo (comportamiento
+  // previo, sin cambios). Con exactamente 1 ciclo elegido siempre es una
+  // sola línea (da igual el botón Desglosar). Con "Todos" y Desglosar
+  // apagado, se combinan en una sola línea (filasCompletas ya viene
+  // filtrada al subconjunto elegido, o a todo si el set está vacío).
+  const dividirPorCiclo = AC_CICLOS_SEL.size>=2 || (AC_CICLOS_SEL.size===0 && AC_DESGLOSAR_CICLO);
+  if(dividirPorCiclo){
     const porCicloClave = new Map();   // ciclo -> Map(clave -> kwh)
     for(const f of filasCompletas){
       if(!porCicloClave.has(f.ciclo)) porCicloClave.set(f.ciclo, new Map());
@@ -16576,7 +16685,8 @@ function acRenderChart(){
       });
     });
   } else {
-    // Un ciclo puntual -- una sola línea (ya viene filtrada a ese ciclo).
+    // 1 ciclo puntual, o "Todos"/varios ciclos combinados en una sola línea
+    // (filasCompletas ya viene filtrada al subconjunto elegido).
     const porClave = new Map();
     for(const f of filasCompletas) porClave.set(acClave(f), (porClave.get(acClave(f))||0) + (f.energia_liquidada_kwh||0));
     let serie = acSerieDesdeMapa(porClave);
@@ -16585,7 +16695,7 @@ function acRenderChart(){
     clavesVisibles = visible.map(f=>f.clave);
     etiquetas = visible.map(f=>labelMes(f.clave));
     datasets.push({
-      type:'line', label:`Ciclo ${AC_CICLO_SELECCIONADO} -- ${etiquetaModo}`, data: visible.map(f=>f.valor), fill:!mostrarN21, spanGaps:true,
+      type:'line', label:`${acEtiquetaCiclos()} -- ${etiquetaModo}`, data: visible.map(f=>f.valor), fill:!mostrarN21, spanGaps:true,
       yAxisID: mostrarN21 ? 'y' : undefined,
       borderColor:'#00b4d8', backgroundColor:'rgba(0,180,216,.35)', borderWidth:2.5, pointRadius:0, tension:0,
       datalabels:{display:false},
