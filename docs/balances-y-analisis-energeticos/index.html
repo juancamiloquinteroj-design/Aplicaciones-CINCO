@@ -3256,20 +3256,16 @@ tfoot td:first-child{text-align:left}
     <!-- ===== PESTAÑA 1 · Indicador de Pérdidas Nivel 4 ===== -->
     <div id="alim-nivel4-tab-ip">
       <div class="card">
-        <div class="alim-n21-grid-2">
-          <div>
-            <div style="text-align:center;margin-bottom:8px">
-              <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Índice de Pérdidas Nivel 4 (Mensual %)</div>
-            </div>
-            <div class="chart-wrap" style="height:320px"><canvas id="ch-alim-nivel4-mensual"></canvas></div>
-          </div>
-          <div>
-            <div style="text-align:center;margin-bottom:8px">
-              <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Índice de Pérdidas Nivel 4 (Anual %)</div>
-            </div>
-            <div class="chart-wrap" style="height:320px"><canvas id="ch-alim-nivel4-anual"></canvas></div>
+        <!-- Un solo gráfico con botón Mensual/Anual -- pedido explícito,
+             mismo cambio que Nivel 3 (antes eran 2 gráficos lado a lado). -->
+        <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:8px;flex-wrap:wrap">
+          <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Índice de Pérdidas Nivel 4 (%)</div>
+          <div style="display:flex;gap:4px">
+            <button type="button" class="be-modo-btn activo" id="alim-nivel4-ip-btn-mensual" onclick="alimNivel4IpModo('mensual')">Mensual</button>
+            <button type="button" class="be-modo-btn" id="alim-nivel4-ip-btn-anual" onclick="alimNivel4IpModo('anual')">Anual (12M)</button>
           </div>
         </div>
+        <div class="chart-wrap" style="height:380px"><canvas id="ch-alim-nivel4-ip"></canvas></div>
         <!-- 2 bloques (Mensual / Anual 12M) igual que Indicador N2-1
              (pedido explícito). -->
         <div class="alim-n21-resumen-grupos">
@@ -3639,20 +3635,17 @@ tfoot td:first-child{text-align:left}
         <button type="button" class="be-modo-btn" id="alim-n21-btn-es" onclick="alimN21ToggleEntradaSalida()" title="Oculta/muestra Entrada y Salida Total en las 2 gráficas, para ver mejor Pérdida y %">Entrada / Salida</button>
       </div>
 
-      <div class="alim-n21-grid-2">
-        <div>
-          <div style="text-align:center;margin-bottom:8px">
-            <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Pérdidas Mensuales</div>
-          </div>
-          <div class="chart-wrap" style="height:340px"><canvas id="ch-alim-n21-mensual"></canvas></div>
-        </div>
-        <div>
-          <div style="text-align:center;margin-bottom:8px">
-            <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Pérdidas Anuales (12M Móvil)</div>
-          </div>
-          <div class="chart-wrap" style="height:340px"><canvas id="ch-alim-n21-anual"></canvas></div>
+      <!-- Un solo gráfico con botón Mensual/Anual -- pedido explícito,
+           mismo cambio que Nivel 3/Nivel 4 (antes eran 2 gráficos lado a
+           lado). -->
+      <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:8px;flex-wrap:wrap">
+        <div style="font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Pérdidas (Indicador total N2-1)</div>
+        <div style="display:flex;gap:4px">
+          <button type="button" class="be-modo-btn activo" id="alim-n21-ip-btn-mensual" onclick="alimN21IpModo('mensual')">Mensual</button>
+          <button type="button" class="be-modo-btn" id="alim-n21-ip-btn-anual" onclick="alimN21IpModo('anual')">Anual (12M)</button>
         </div>
       </div>
+      <div class="chart-wrap" style="height:400px"><canvas id="ch-alim-n21-ip"></canvas></div>
 
       <div class="alim-n21-resumen-grupos">
         <div class="alim-n21-grupo-tarjetas">
@@ -16803,7 +16796,14 @@ let ALIM_NIVEL3_TABLA_MOSTRAR_ES = false;
 // _alimNivel3TecnicaProyectada. Apagado por defecto (no mezclar dato
 // proyectado con real sin que el usuario lo pida).
 let ALIM_NIVEL3_TABLA_PROYECTAR = false;
-let chAlimNivel4Mensual = null, chAlimNivel4Anual = null, chAlimNivel4Tecnica = null, chAlimNivel4ImportExport = null;
+let chAlimNivel4Ip = null, chAlimNivel4Tecnica = null, chAlimNivel4ImportExport = null;
+let ALIM_NIVEL4_IP_MODO = 'mensual';
+function alimNivel4IpModo(m){
+  ALIM_NIVEL4_IP_MODO = m;
+  document.getElementById('alim-nivel4-ip-btn-mensual').classList.toggle('activo', m==='mensual');
+  document.getElementById('alim-nivel4-ip-btn-anual').classList.toggle('activo', m==='anual');
+  alimNivel4RenderTodo();
+}
 let chAlimNivel3Ip = null, chAlimNivel3Tecnica = null;
 let ALIM_NIVEL3_IP_MODO = 'mensual';
 function alimNivel3IpModo(m){
@@ -17731,7 +17731,7 @@ function alimNivel4GuardarAnalisis(){
   configSetDebounced(_analisisKeyN4(mes), txt || null);  // oninput -- una tecla no dispara un PUT por sí sola
   // El tooltip de las gráficas lee ALIM_NIVEL4_ANALISIS en vivo -- basta
   // un update sin animación para que tomen el texto nuevo.
-  [chAlimNivel4Mensual, chAlimNivel4Anual, chAlimNivel4Tecnica].forEach(c => { if(c) c.update('none'); });
+  [chAlimNivel4Ip, chAlimNivel4Tecnica].forEach(c => { if(c) c.update('none'); });
 }
 // Cambio del selector de mes de la caja de análisis.
 function alimNivel4AnalisisSelCambio(){
@@ -17825,10 +17825,10 @@ function alimNivel4RenderTodo(){
   // de esta vista (pedido explícito).
   const _notaPorClave = c => ALIM_NIVEL4_ANALISIS[c] || null;
 
-  if(chAlimNivel4Mensual) chAlimNivel4Mensual.destroy();
-  chAlimNivel4Mensual = _alimNivelConstruirChartMensual(document.getElementById('ch-alim-nivel4-mensual'), mensual, 'Nivel 4', null, '', ALIM_NIVEL4_SIN_RELLENO, _notaPorClave);
-  if(chAlimNivel4Anual) chAlimNivel4Anual.destroy();
-  chAlimNivel4Anual = _alimNivelConstruirChartMensual(document.getElementById('ch-alim-nivel4-anual'), anual, 'Nivel 4', null, '12', ALIM_NIVEL4_SIN_RELLENO, _notaPorClave);
+  if(chAlimNivel4Ip) chAlimNivel4Ip.destroy();
+  chAlimNivel4Ip = ALIM_NIVEL4_IP_MODO==='anual'
+    ? _alimNivelConstruirChartMensual(document.getElementById('ch-alim-nivel4-ip'), anual, 'Nivel 4', null, '12', ALIM_NIVEL4_SIN_RELLENO, _notaPorClave)
+    : _alimNivelConstruirChartMensual(document.getElementById('ch-alim-nivel4-ip'), mensual, 'Nivel 4', null, '', ALIM_NIVEL4_SIN_RELLENO, _notaPorClave);
   if(chAlimNivel4Tecnica) chAlimNivel4Tecnica.destroy();
   const _cvTec = document.getElementById('ch-alim-nivel4-tecnica');
   if(ALIM_NIVEL4_TEC_MODO === 'anual'){
@@ -22941,7 +22941,22 @@ function tempNacDetenerPlay(){
 // cualquier otro operador con sus propios códigos.
 let ALIM_N21_ZONAS = [];
 let ALIM_N21_ZONAS_SEL = new Set();
-let chAlimN21Mensual = null, chAlimN21Anual = null, chAlimN21Zonas = null;
+let chAlimN21Ip = null, chAlimN21Zonas = null;
+let ALIM_N21_IP_MODO = 'mensual';
+function alimN21IpModo(m){
+  ALIM_N21_IP_MODO = m;
+  document.getElementById('alim-n21-ip-btn-mensual').classList.toggle('activo', m==='mensual');
+  document.getElementById('alim-n21-ip-btn-anual').classList.toggle('activo', m==='anual');
+  const datos12 = alimN21Con12Meses(alimN21AgregarMensual(ALIM_N21_ZONAS_SEL));
+  alimN21RenderChartIp(datos12);
+}
+// Antes llamaba SIEMPRE las 2 funciones (una gráfica mensual + otra
+// anual); ahora solo una a la vez comparte el mismo canvas/instancia,
+// según el modo elegido.
+function alimN21RenderChartIp(datos12){
+  if(ALIM_N21_IP_MODO==='anual') alimN21RenderChartAnual(datos12);
+  else alimN21RenderChartMensual(datos12);
+}
 // Δ Variación (etiqueta valor + delta vs. mes anterior en Pérdida %, mismo
 // patrón que IP_Reg) y ocultar Entrada/Salida -- UN solo botón de cada uno,
 // compartido entre Mensual y Anual (pedido explícito, antes eran 2+2).
@@ -23413,8 +23428,7 @@ function alimN21RenderDonutZonas(datosPorZona){
 
 function alimN21RenderTodo(){
   const datos12 = alimN21Con12Meses(alimN21AgregarMensual(ALIM_N21_ZONAS_SEL));
-  alimN21RenderChartMensual(datos12);
-  alimN21RenderChartAnual(datos12);
+  alimN21RenderChartIp(datos12);
   alimN21RenderChartZonas();
   alimN21RenderTablaZonas();
   alimN21RenderResumen(datos12);
@@ -23817,15 +23831,13 @@ function alimN21RenderTablaZonas(){
 function alimN21ToggleVariacion(){
   ALIM_N21_VAR = !ALIM_N21_VAR;
   const datos12 = alimN21Con12Meses(alimN21AgregarMensual(ALIM_N21_ZONAS_SEL));
-  alimN21RenderChartMensual(datos12);
-  alimN21RenderChartAnual(datos12);
+  alimN21RenderChartIp(datos12);
 }
 
 function alimN21ToggleEntradaSalida(){
   ALIM_N21_OCULTAR_ES = !ALIM_N21_OCULTAR_ES;
   const datos12 = alimN21Con12Meses(alimN21AgregarMensual(ALIM_N21_ZONAS_SEL));
-  alimN21RenderChartMensual(datos12);
-  alimN21RenderChartAnual(datos12);
+  alimN21RenderChartIp(datos12);
 }
 
 // Mismo botón "▨ Relleno" que ya tienen Nivel 4/Nivel 3 (quita el
@@ -23835,8 +23847,7 @@ function alimN21ToggleRelleno(){
   ALIM_N21_SIN_RELLENO = !ALIM_N21_SIN_RELLENO;
   document.getElementById('alim-n21-btn-relleno').classList.toggle('activo', ALIM_N21_SIN_RELLENO);
   const datos12 = alimN21Con12Meses(alimN21AgregarMensual(ALIM_N21_ZONAS_SEL));
-  alimN21RenderChartMensual(datos12);
-  alimN21RenderChartAnual(datos12);
+  alimN21RenderChartIp(datos12);
 }
 
 // Pestaña "Indicador N2-1 Pérdida Técnica" -- mismos botones que la
@@ -23884,7 +23895,7 @@ function alimN21DescargarCsv(){
 // "Δ Variación" agrega el delta vs. mes anterior a las etiquetas de
 // Pérdida kWh y % -- mismo patrón que ipRenderChart (IP_Reg).
 function alimN21RenderChartMensual(datos12){
-  const cv = document.getElementById('ch-alim-n21-mensual');
+  const cv = document.getElementById('ch-alim-n21-ip');
   if(!cv) return;
   const visibles = alimN21Visibles(datos12);
   if(!visibles.length) return;
@@ -23921,8 +23932,8 @@ function alimN21RenderChartMensual(datos12){
     font:{size:10, weight:'700'}, color:'#ED7D31',
   };
 
-  if(chAlimN21Mensual) chAlimN21Mensual.destroy();
-  chAlimN21Mensual = new Chart(cv, {
+  if(chAlimN21Ip) chAlimN21Ip.destroy();
+  chAlimN21Ip = new Chart(cv, {
     data:{
       labels: etiquetas,
       datasets:[
@@ -23968,7 +23979,7 @@ function alimN21RenderChartMensual(datos12){
 // Pérdidas Anuales -- mismas 4 series, en ventana móvil de 12 meses, con
 // los mismos 2 botones (Entrada/Salida, Δ Variación) en estado independiente.
 function alimN21RenderChartAnual(datos12){
-  const cv = document.getElementById('ch-alim-n21-anual');
+  const cv = document.getElementById('ch-alim-n21-ip');
   if(!cv) return;
   const visibles = alimN21Visibles(datos12).filter(f => f.pct12 != null);
   if(!visibles.length) return;
@@ -24005,8 +24016,8 @@ function alimN21RenderChartAnual(datos12){
     font:{size:10, weight:'700'}, color:'#ED7D31',
   };
 
-  if(chAlimN21Anual) chAlimN21Anual.destroy();
-  chAlimN21Anual = new Chart(cv, {
+  if(chAlimN21Ip) chAlimN21Ip.destroy();
+  chAlimN21Ip = new Chart(cv, {
     data:{
       labels: etiquetas,
       datasets:[
