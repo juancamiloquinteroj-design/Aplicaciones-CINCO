@@ -3396,7 +3396,7 @@ tfoot td:first-child{text-align:left}
       <span style="font-size:11px;color:var(--text3)">→</span>
       <input type="month" id="alim-nivel3-hasta" onchange="alimNivel3RenderTodo()">
       <label style="margin-left:10px">Zona</label>
-      <div id="alim-nivel3-zonas" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+      <div class="msel" id="msel-alim-nivel3-zona"></div>
       <button type="button" class="be-modo-btn be-icon-btn" id="alim-nivel3-btn-var" style="margin-left:auto" onclick="alimNivel3ToggleVariacion()" title="Variación">Δ</button>
       <button type="button" class="be-modo-btn be-icon-btn" id="alim-nivel3-btn-relleno" onclick="alimNivel3ToggleRelleno()" title="Relleno">▨</button>
       <button type="button" class="be-modo-btn be-icon-btn activo" id="alim-nivel3-ip-btn-mensual" onclick="alimNivel3IpModo('mensual')" title="Mensual">M</button>
@@ -3632,7 +3632,7 @@ tfoot td:first-child{text-align:left}
       <span style="font-size:11px;color:var(--text3)">→</span>
       <input type="month" id="alim-n21-hasta" onchange="alimN21RenderTodo()">
       <label style="margin-left:10px" title="Filtra las gráficas y tablas de todas las pestañas -- vacío = todas las zonas.">Zona</label>
-      <div id="alim-n21-zonas" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+      <div class="msel" id="msel-alim-n21-zona"></div>
       <!-- Variación/Relleno de las 2 pestañas con gráficas (Total y
            Técnica) -- pedido explícito: sin texto, junto a Descargar CSV,
            el nombre completo solo en el title. -->
@@ -3882,7 +3882,7 @@ tfoot td:first-child{text-align:left}
       <span style="font-size:11px;color:var(--text3)">→</span>
       <input type="date" id="alim-sub-hasta" onchange="alimSubRenderTodo()">
       <label style="margin-left:10px">Zona</label>
-      <div id="alim-sub-zonas" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+      <div class="msel" id="msel-alim-sub-zona"></div>
       <span id="alim-sub-conteo" style="margin-left:12px;font-size:11px;color:var(--text3)"></span>
       <button type="button" class="be-modo-btn be-icon-btn" id="alim-sub-top-btn-var" style="margin-left:auto" onclick="alimSubToggleTopVar()" title="Variación (Top Subestaciones)">Δ</button>
       <button type="button" class="be-modo-btn be-icon-btn" id="alim-sub-al-btn-var" onclick="alimSubToggleAlVariacion()" title="Variación (Pérdida % por Alimentador)">Δ</button>
@@ -4035,7 +4035,7 @@ tfoot td:first-child{text-align:left}
       <span style="font-size:11px;color:var(--text3)">→</span>
       <input type="month" id="alim3-hasta" onchange="alim3RenderSeleccion(); alim3RenderTablaVariacion(); alim3RenderChartCircuitos()">
       <label style="margin-left:10px">Zona</label>
-      <div id="alim3-zonas" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+      <div class="msel" id="msel-alim3-zona"></div>
       <span id="alim3-conteo" style="margin-left:auto;font-size:11px;color:var(--text3)"></span>
     </div>
 
@@ -17999,22 +17999,16 @@ async function alimNivel3Cargar(){
   alimNivel3IrATab('ip');
 }
 
-// Filtro de Zona -- BOTONES/chips (pedido explícito: "que sean mejor
-// botones"). Mismo patrón visual que Indicador N2-1 (colorParaZona,
-// relleno si está activa). Estado en ALIM_NIVEL3_ZONAS_SEL.
+// Filtro de Zona -- desplegable .msel (pedido explícito: "en todos los
+// filtros que haya zona quiero lista desplegable"), mismo componente que
+// ya usan Pérdidas Técnicas/IP Institucional. Conserva multi-selección
+// (checkboxes dentro del desplegable) -- Nivel 3 ya había tenido esto
+// antes y se revirtió a botones a pedido explícito en su momento; esta
+// vez es un pedido nuevo y explícito en sentido contrario.
 function alimNivel3RenderZonasChips(){
-  const cont = document.getElementById('alim-nivel3-zonas');
-  if(!cont) return;
-  cont.innerHTML = (ALIM_NIVEL3_ZONAS||[]).map(z => {
-    const activa = ALIM_NIVEL3_ZONAS_SEL.has(z);
-    return `<button type="button" class="be-modo-btn${activa?' activo':''}" onclick="alimNivel3ToggleZona('${z}')">${z}</button>`;
-  }).join('');
-}
-function alimNivel3ToggleZona(zona){
-  if(ALIM_NIVEL3_ZONAS_SEL.has(zona)) ALIM_NIVEL3_ZONAS_SEL.delete(zona);
-  else ALIM_NIVEL3_ZONAS_SEL.add(zona);
-  alimNivel3RenderZonasChips();
-  alimNivel3RenderTodo();
+  mselInit('msel-alim-nivel3-zona', 'Zona', 'Todas',
+    (ALIM_NIVEL3_ZONAS||[]).map(z => ({value:z, label:z})),
+    alimNivel3RenderTodo, [...ALIM_NIVEL3_ZONAS_SEL]);
 }
 
 // Pestañas del módulo IP Nivel 3 (mismo patrón que perdidasIrATab).
@@ -18549,6 +18543,8 @@ function _alimNivel3TecnicaPorMesFiltrada(zonasSel){
 function alimNivel3RenderTodo(){
   const filas = ALIM_NIVEL3_FILAS || [];
   if(!filas.length) return;
+  // Zona sale del desplegable .msel.
+  ALIM_NIVEL3_ZONAS_SEL = new Set(mselValores('msel-alim-nivel3-zona'));
   const mensualCompleto = _alimNivel34MensualTotal(filas, ALIM_NIVEL3_ZONAS_SEL);
   const datos12Completo = alimN21Con12Meses(mensualCompleto);
   const mensual = _alimNivelVisibles(mensualCompleto, 'alim-nivel3');
@@ -19920,18 +19916,17 @@ function alimSubColor(indice, total){
   return `hsl(${hue}, 65%, 52%)`;
 }
 
+// Filtro de Zona -- desplegable .msel (pedido explícito: "en todos los
+// filtros que haya zona quiero lista desplegable"), multi-selección vía
+// checkboxes dentro del desplegable.
 function alimSubRenderZonasChips(){
-  const cont = document.getElementById('alim-sub-zonas');
-  if(!cont) return;
-  cont.innerHTML = ALIM_SUB_ZONAS.map(z => {
-    const activa = ALIM_SUB_ZONAS_SEL.has(z);
-    return `<button type="button" class="be-modo-btn${activa?' activo':''}" onclick="alimSubToggleZona('${z}')">${z}</button>`;
-  }).join('');
+  mselInit('msel-alim-sub-zona', 'Zona', 'Todas',
+    (ALIM_SUB_ZONAS||[]).map(z => ({value:z, label:z})),
+    alimSubOnCambioZona, [...ALIM_SUB_ZONAS_SEL]);
 }
 
-function alimSubToggleZona(zona){
-  if(ALIM_SUB_ZONAS_SEL.has(zona)) ALIM_SUB_ZONAS_SEL.delete(zona); else ALIM_SUB_ZONAS_SEL.add(zona);
-  alimSubRenderZonasChips();
+function alimSubOnCambioZona(){
+  ALIM_SUB_ZONAS_SEL = new Set(mselValores('msel-alim-sub-zona'));
   // mselSetOpciones ya descarta sola cualquier subestación elegida que no
   // pertenezca a la zona nueva (y dispara su propio onChange si hizo
   // falta) -- evita quedar con una subestación de otra zona seleccionada
@@ -20983,18 +20978,17 @@ function alim3RenderChartCircuitos(){
   });
 }
 
+// Filtro de Zona -- desplegable .msel (pedido explícito: "en todos los
+// filtros que haya zona quiero lista desplegable"), multi-selección vía
+// checkboxes dentro del desplegable.
 function alim3RenderZonasChips(){
-  const cont = document.getElementById('alim3-zonas');
-  if(!cont) return;
-  cont.innerHTML = ALIM3_ZONAS.map(z => {
-    const activa = ALIM3_ZONAS_SEL.has(z);
-    return `<button type="button" class="be-modo-btn${activa?' activo':''}" onclick="alim3ToggleZona('${z}')">${z}</button>`;
-  }).join('');
+  mselInit('msel-alim3-zona', 'Zona', 'Todas',
+    (ALIM3_ZONAS||[]).map(z => ({value:z, label:z})),
+    alim3OnCambioZona, [...ALIM3_ZONAS_SEL]);
 }
 
-function alim3ToggleZona(zona){
-  if(ALIM3_ZONAS_SEL.has(zona)) ALIM3_ZONAS_SEL.delete(zona); else ALIM3_ZONAS_SEL.add(zona);
-  alim3RenderZonasChips();
+function alim3OnCambioZona(){
+  ALIM3_ZONAS_SEL = new Set(mselValores('msel-alim3-zona'));
   // Si el alimentador elegido queda fuera de la zona activa, se
   // deselecciona -- evita mostrar datos de una zona apagada.
   if(ALIM3_NEMONICO_SEL){
@@ -23143,21 +23137,13 @@ function alimN21Con12Meses(mensual){
   });
 }
 
-// El chip toma el color de la zona (colorParaZona, parametrizado) en vez del
-// acento genérico -- relleno cuando está activo, apenas tintado si no.
+// Filtro de Zona -- desplegable .msel (pedido explícito: "en todos los
+// filtros que haya zona quiero lista desplegable"), multi-selección vía
+// checkboxes dentro del desplegable.
 function alimN21RenderZonasChips(){
-  const cont = document.getElementById('alim-n21-zonas');
-  if(!cont) return;
-  cont.innerHTML = ALIM_N21_ZONAS.map(z => {
-    const activa = ALIM_N21_ZONAS_SEL.has(z);
-    return `<button type="button" class="be-modo-btn${activa?' activo':''}" onclick="alimN21ToggleZona('${z}')">${z}</button>`;
-  }).join('');
-}
-
-function alimN21ToggleZona(zona){
-  if(ALIM_N21_ZONAS_SEL.has(zona)) ALIM_N21_ZONAS_SEL.delete(zona); else ALIM_N21_ZONAS_SEL.add(zona);
-  alimN21RenderZonasChips();
-  alimN21RenderTodo();
+  mselInit('msel-alim-n21-zona', 'Zona', 'Todas',
+    (ALIM_N21_ZONAS||[]).map(z => ({value:z, label:z})),
+    alimN21RenderTodo, [...ALIM_N21_ZONAS_SEL]);
 }
 
 function alimN21Visibles(datos){
@@ -23513,6 +23499,8 @@ function alimN21RenderDonutZonas(datosPorZona){
 }
 
 function alimN21RenderTodo(){
+  // Zona sale del desplegable .msel.
+  ALIM_N21_ZONAS_SEL = new Set(mselValores('msel-alim-n21-zona'));
   const datos12 = alimN21Con12Meses(alimN21AgregarMensual(ALIM_N21_ZONAS_SEL));
   alimN21RenderChartIp(datos12);
   alimN21RenderChartZonas();
