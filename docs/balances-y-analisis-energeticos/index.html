@@ -16942,14 +16942,21 @@ function _alimNivelTecnicaPorMes(resumenResp){
 function _alimNivelRenderResumenGrupos(prefijo, datos12, tecnicaPorMes, modo){
   const cont = document.getElementById(prefijo+'-resumen');
   if(!cont) return;
-  // Unidad consistente en las 4 celdas (pedido explícito: "problema de
-  // unidades que sea todo el kWh/mes") -- antes Entrada/Salida decían
-  // "M kWh" sin período y Pérdida Total/P. Técnica "kWh" a secas.
+  // Unidad consistente en las 4 celdas, número completo (pedido explícito:
+  // "deberia ser 155.000.000 kWh/mes" -- nada de abreviar a "M kWh").
   const sufijo = modo==='anual' ? '/12M' : '/Mes';
   const fk = v => v==null ? '--' : Math.round(v).toLocaleString('es-CO') + ' kWh'+sufijo;
-  const fkGrande = v => v==null ? '--' : (v/1e6).toFixed(2) + ' M kWh'+sufijo;
+  // Variación vs. el período anterior para cada valor de la cuadrícula
+  // (pedido explícito: "que en la tarjeta mostrara la variación que hubo
+  // de entrada salida, perdida, perdida tecnica") -- mismo patrón ▲/▼ que
+  // ya se usaba solo para el % Índice Pérdida.
+  const dTxt = (actual, anterior) => {
+    if(actual==null || anterior==null) return '';
+    const d = actual - anterior;
+    return ` <span style="color:var(--text3);font-weight:600">${d>=0?'▲':'▼'} ${Math.round(Math.abs(d)).toLocaleString('es-CO')}</span>`;
+  };
 
-  const tarjetaCompacta = (titulo, pct, pctAnterior, entrada, salida, perdidaTotal, perdidaTecnica) => {
+  const tarjetaCompacta = (titulo, pct, pctAnterior, entrada, entradaAnt, salida, salidaAnt, perdidaTotal, perdidaTotalAnt, perdidaTecnica, perdidaTecnicaAnt) => {
     const dPp = (pct!=null && pctAnterior!=null) ? pct - pctAnterior : null;
     const variacionHtml = dPp==null ? '' : ` (${dPp>=0?'▲':'▼'} ${dPp>=0?'+':'-'}${Math.abs(dPp).toFixed(2)} pp)`;
     return `<div class="alim-resumen-compacta">
@@ -16960,10 +16967,10 @@ function _alimNivelRenderResumenGrupos(prefijo, datos12, tecnicaPorMes, modo){
           <div class="etiqueta">Índice Pérdida${variacionHtml}</div>
         </div>
         <div class="alim-resumen-compacta-grid">
-          <div><span class="etiqueta">Entrada:</span> <span class="valor">${fkGrande(entrada)}</span></div>
-          <div><span class="etiqueta">Pérdida Total:</span> <span class="valor">${fk(perdidaTotal)}</span></div>
-          <div><span class="etiqueta">Salida:</span> <span class="valor">${fkGrande(salida)}</span></div>
-          <div><span class="etiqueta">P. Técnica:</span> <span class="valor">${fk(perdidaTecnica)}</span></div>
+          <div><span class="etiqueta">Entrada:</span> <span class="valor">${fk(entrada)}</span>${dTxt(entrada, entradaAnt)}</div>
+          <div><span class="etiqueta">Pérdida Total:</span> <span class="valor">${fk(perdidaTotal)}</span>${dTxt(perdidaTotal, perdidaTotalAnt)}</div>
+          <div><span class="etiqueta">Salida:</span> <span class="valor">${fk(salida)}</span>${dTxt(salida, salidaAnt)}</div>
+          <div><span class="etiqueta">P. Técnica:</span> <span class="valor">${fk(perdidaTecnica)}</span>${dTxt(perdidaTecnica, perdidaTecnicaAnt)}</div>
         </div>
       </div>
     </div>`;
@@ -16977,14 +16984,19 @@ function _alimNivelRenderResumenGrupos(prefijo, datos12, tecnicaPorMes, modo){
       const a = rA[rA.length-1], p = rA.length >= 2 ? rA[rA.length-2] : null;
       // Pérdida Técnica anual (12M) no está disponible acá (tecnicaPorMes
       // solo trae el dato mensual) -- queda en "--".
-      cont.innerHTML = tarjetaCompacta('Indicador Anual', a.pct12, p ? p.pct12 : null, a.entrada12, a.salida12, a.perdida12, null);
+      cont.innerHTML = tarjetaCompacta('Indicador Anual', a.pct12, p ? p.pct12 : null,
+        a.entrada12, p ? p.entrada12 : null, a.salida12, p ? p.salida12 : null,
+        a.perdida12, p ? p.perdida12 : null, null, null);
     } else cont.innerHTML = '<div style="color:var(--text3);font-size:12px">Aún no hay 12 meses de historia.</div>';
   } else {
     const rM = (datos12||[]).filter(f => f.pct != null);
     if(rM.length){
       const a = rM[rM.length-1], p = rM.length >= 2 ? rM[rM.length-2] : null;
       const tec = (tecnicaPorMes && tecnicaPorMes[a.clave]) ? tecnicaPorMes[a.clave].perdida : null;
-      cont.innerHTML = tarjetaCompacta('Indicador Mensual', a.pct, p ? p.pct : null, a.entrada, a.salida, a.perdida, tec);
+      const tecAnt = (p && tecnicaPorMes && tecnicaPorMes[p.clave]) ? tecnicaPorMes[p.clave].perdida : null;
+      cont.innerHTML = tarjetaCompacta('Indicador Mensual', a.pct, p ? p.pct : null,
+        a.entrada, p ? p.entrada : null, a.salida, p ? p.salida : null,
+        a.perdida, p ? p.perdida : null, tec, tecAnt);
     } else cont.innerHTML = '<div style="color:var(--text3);font-size:12px">Sin datos para el rango.</div>';
   }
 }
@@ -24147,10 +24159,16 @@ function alimN21RenderResumen(datos12){
   // filtro de arriba -- mismo patrón que Nivel 3/Nivel 4.
   const modo = ALIM_N21_IP_MODO;
   const sufijo = modo==='anual' ? '/12M' : '/Mes';
-  const fk = v => v==null ? '--' : v.toLocaleString('es-CO', {maximumFractionDigits:0}) + ' kWh'+sufijo;
-  const fkGrande = v => v==null ? '--' : (v/1e6).toFixed(2) + ' M kWh'+sufijo;
+  // Número completo, sin abreviar a "M kWh" (pedido explícito) + variación
+  // vs. el período anterior para cada valor (mismo patrón que Nivel 3/4).
+  const fk = v => v==null ? '--' : Math.round(v).toLocaleString('es-CO') + ' kWh'+sufijo;
+  const dTxt = (actual, anterior) => {
+    if(actual==null || anterior==null) return '';
+    const d = actual - anterior;
+    return ` <span style="color:var(--text3);font-weight:600">${d>=0?'▲':'▼'} ${Math.round(Math.abs(d)).toLocaleString('es-CO')}</span>`;
+  };
 
-  const tarjetaCompacta = (titulo, pct, pctAnterior, entrada, salida, perdidaTotal) => {
+  const tarjetaCompacta = (titulo, pct, pctAnterior, entrada, entradaAnt, salida, salidaAnt, perdidaTotal, perdidaTotalAnt) => {
     const dPp = (pct!=null && pctAnterior!=null) ? pct - pctAnterior : null;
     const variacionHtml = dPp==null ? '' : ` (${dPp>=0?'▲':'▼'} ${dPp>=0?'+':'-'}${Math.abs(dPp).toFixed(2)} pp)`;
     return `<div class="alim-resumen-compacta">
@@ -24161,9 +24179,9 @@ function alimN21RenderResumen(datos12){
           <div class="etiqueta">Índice Pérdida${variacionHtml}</div>
         </div>
         <div class="alim-resumen-compacta-grid">
-          <div><span class="etiqueta">Entrada:</span> <span class="valor">${fkGrande(entrada)}</span></div>
-          <div><span class="etiqueta">Pérdida Total:</span> <span class="valor">${fk(perdidaTotal)}</span></div>
-          <div><span class="etiqueta">Salida:</span> <span class="valor">${fkGrande(salida)}</span></div>
+          <div><span class="etiqueta">Entrada:</span> <span class="valor">${fk(entrada)}</span>${dTxt(entrada, entradaAnt)}</div>
+          <div><span class="etiqueta">Pérdida Total:</span> <span class="valor">${fk(perdidaTotal)}</span>${dTxt(perdidaTotal, perdidaTotalAnt)}</div>
+          <div><span class="etiqueta">Salida:</span> <span class="valor">${fk(salida)}</span>${dTxt(salida, salidaAnt)}</div>
           <div><span class="etiqueta">P. Técnica:</span> <span class="valor">--</span></div>
         </div>
       </div>
@@ -24175,13 +24193,17 @@ function alimN21RenderResumen(datos12){
     if(!realesAnual.length){ cont.innerHTML = '<div style="color:var(--text3);font-size:12px">Aún no hay 12 meses de historia.</div>'; return; }
     const actual12 = realesAnual[realesAnual.length-1];
     const anterior12 = realesAnual.length >= 2 ? realesAnual[realesAnual.length-2] : null;
-    cont.innerHTML = tarjetaCompacta('Indicador Anual', actual12.pct12, anterior12 ? anterior12.pct12 : null, actual12.entrada12, actual12.salida12, actual12.perdida12);
+    cont.innerHTML = tarjetaCompacta('Indicador Anual', actual12.pct12, anterior12 ? anterior12.pct12 : null,
+      actual12.entrada12, anterior12 ? anterior12.entrada12 : null, actual12.salida12, anterior12 ? anterior12.salida12 : null,
+      actual12.perdida12, anterior12 ? anterior12.perdida12 : null);
   } else {
     const reales = datos12.filter(f => f.pct != null);
     if(reales.length < 2){ cont.innerHTML = '<div style="color:var(--text3);font-size:12px">Sin datos para el rango.</div>'; return; }
     const actual = reales[reales.length-1];
     const anterior = reales[reales.length-2];
-    cont.innerHTML = tarjetaCompacta('Indicador Mensual', actual.pct, anterior.pct, actual.entrada, actual.salida, actual.perdida);
+    cont.innerHTML = tarjetaCompacta('Indicador Mensual', actual.pct, anterior.pct,
+      actual.entrada, anterior.entrada, actual.salida, anterior.salida,
+      actual.perdida, anterior.perdida);
   }
 }
 
