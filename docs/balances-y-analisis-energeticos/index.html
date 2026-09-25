@@ -1099,6 +1099,18 @@ tfoot td:first-child{text-align:left}
 .be-resumen-tile .valor{font-size:14.5px;font-weight:800;color:var(--text);line-height:1.25}
 .be-resumen-tile .sub{font-size:10px;color:var(--text3);margin-top:3px}
 
+/* Tarjeta compacta de resumen (Nivel 3/Nivel 4/Indicador N2-1) -- pedido
+   explícito: reemplaza las 6 tarjetitas sueltas por UNA sola, % grande a
+   la izquierda + Entrada/Salida/Pérdida Total/P. Técnica en cuadrícula
+   2x2 a la derecha, sin título propio. */
+.alim-resumen-compacta{display:flex;align-items:center;gap:20px;flex-wrap:wrap;border:1px solid var(--border);border-radius:10px;padding:14px 18px;background:var(--bg);margin:16px 0}
+.alim-resumen-compacta-pct{flex:0 0 auto;text-align:center;padding-right:18px;border-right:1px solid var(--border)}
+.alim-resumen-compacta-pct .valor{font-size:26px;font-weight:800;color:var(--accent);line-height:1.1}
+.alim-resumen-compacta-pct .etiqueta{font-size:11px;font-weight:700;color:var(--text3);margin-top:4px;white-space:nowrap}
+.alim-resumen-compacta-grid{flex:1 1 260px;display:grid;grid-template-columns:1fr 1fr;gap:8px 24px}
+.alim-resumen-compacta-grid .etiqueta{font-size:11.5px;color:var(--text3);font-weight:600}
+.alim-resumen-compacta-grid .valor{font-size:13px;font-weight:800;color:var(--text)}
+
 /* Editar Estructura -- modal */
 .be-editar-modal{width:min(920px,94vw);max-height:88vh;overflow-y:auto}
 .be-editar-sec{margin-top:18px;padding-top:14px;border-top:1px solid var(--border)}
@@ -3269,14 +3281,8 @@ tfoot td:first-child{text-align:left}
         <!-- 2 bloques (Mensual / Anual 12M) igual que Indicador N2-1
              (pedido explícito). -->
         <div class="alim-n21-resumen-grupos">
-          <div class="alim-n21-grupo-tarjetas">
-            <div class="be-tabla-creadas-titulo">Mensual</div>
-            <div class="be-resumen-cards" id="alim-nivel4-resumen-mensual"></div>
-          </div>
-          <div class="alim-n21-grupo-tarjetas alim-n21-grupo-anual">
-            <div class="be-tabla-creadas-titulo">Anual (12 Meses Móvil)</div>
-            <div class="be-resumen-cards" id="alim-nivel4-resumen-anual"></div>
-          </div>
+          <div id="alim-nivel4-resumen-mensual"></div>
+          <div id="alim-nivel4-resumen-anual"></div>
         </div>
       </div>
     </div>
@@ -3388,14 +3394,8 @@ tfoot td:first-child{text-align:left}
         </div>
         <div class="chart-wrap" style="height:380px"><canvas id="ch-alim-nivel3-ip"></canvas></div>
         <div class="alim-n21-resumen-grupos">
-          <div class="alim-n21-grupo-tarjetas">
-            <div class="be-tabla-creadas-titulo">Mensual</div>
-            <div class="be-resumen-cards" id="alim-nivel3-resumen-mensual"></div>
-          </div>
-          <div class="alim-n21-grupo-tarjetas alim-n21-grupo-anual">
-            <div class="be-tabla-creadas-titulo">Anual (12 Meses Móvil)</div>
-            <div class="be-resumen-cards" id="alim-nivel3-resumen-anual"></div>
-          </div>
+          <div id="alim-nivel3-resumen-mensual"></div>
+          <div id="alim-nivel3-resumen-anual"></div>
         </div>
       </div>
     </div>
@@ -3648,14 +3648,8 @@ tfoot td:first-child{text-align:left}
       <div class="chart-wrap" style="height:400px"><canvas id="ch-alim-n21-ip"></canvas></div>
 
       <div class="alim-n21-resumen-grupos">
-        <div class="alim-n21-grupo-tarjetas">
-          <div class="be-tabla-creadas-titulo">Mensual</div>
-          <div class="be-resumen-cards" id="alim-n21-resumen-mensual"></div>
-        </div>
-        <div class="alim-n21-grupo-tarjetas alim-n21-grupo-anual">
-          <div class="be-tabla-creadas-titulo">Anual (12 Meses Móvil)</div>
-          <div class="be-resumen-cards" id="alim-n21-resumen-anual"></div>
-        </div>
+        <div id="alim-n21-resumen-mensual"></div>
+        <div id="alim-n21-resumen-anual"></div>
       </div>
     </div>
 
@@ -16952,50 +16946,54 @@ function _alimNivelTecnicaPorMes(resumenResp){
 // que Indicador N2-1 (pedido explícito). `datos12` = serie visible con
 // pct y pct12; `tecnicaPorMes` = mapa clave -> {perdida,pct} (se agrega
 // una tarjeta "Pérdida Técnica" al bloque Mensual).
+// Tarjeta compacta de resumen -- pedido explícito, reemplaza las 6
+// tarjetitas sueltas (Indicador/Variación/Entrada/Salida/Pérdida Total/
+// Pérdida Técnica) por UNA sola: el % grande a la izquierda (con la
+// variación metida en la misma etiqueta, no aparte) + Entrada/Salida/
+// Pérdida Total/P. Técnica en una cuadrícula 2x2 a la derecha. Sin
+// título de "Vista Mensual/Anual" propio -- pedido explícito ("pero sin
+// el título"), el card-title de afuera (Mensual / Anual 12M) ya dice eso.
 function _alimNivelRenderResumenGrupos(prefijo, datos12, tecnicaPorMes){
   const cM = document.getElementById(prefijo+'-resumen-mensual');
   const cA = document.getElementById(prefijo+'-resumen-anual');
   if(!cM || !cA) return;
   const fk = v => v==null ? '--' : Math.round(v).toLocaleString('es-CO') + ' kWh';
-  const tile = (etq, val, sub, color, destacada) => `<div class="be-resumen-tile${destacada?' alim-n21-tile-destacada':''}">
-    <div class="etiqueta">${etq}</div>
-    <div class="valor"${color?` style="color:${color}"`:''}>${val}</div>
-    ${sub?`<div class="sub">${sub}</div>`:''}
-  </div>`;
+  const fkGrande = v => v==null ? '--' : (v/1e6).toFixed(2) + ' M kWh';
+
+  const tarjetaCompacta = (pct, pctAnterior, entrada, salida, perdidaTotal, perdidaTecnica) => {
+    const dPp = (pct!=null && pctAnterior!=null) ? pct - pctAnterior : null;
+    const colorVar = dPp==null ? null : ipColorVariacion(pct, pctAnterior, 'var(--text2)');
+    const variacionHtml = dPp==null ? '' : ` <span style="color:${colorVar};font-weight:700">(${dPp>=0?'▲':'▼'} ${dPp>=0?'+':'-'}${Math.abs(dPp).toFixed(2)} pp)</span>`;
+    return `<div class="alim-resumen-compacta">
+      <div class="alim-resumen-compacta-pct">
+        <div class="valor">${pct==null?'--':pct.toFixed(2)+'%'}</div>
+        <div class="etiqueta">Índice Pérdida${variacionHtml}</div>
+      </div>
+      <div class="alim-resumen-compacta-grid">
+        <div><span class="etiqueta">Entrada:</span> <span class="valor">${fkGrande(entrada)}</span></div>
+        <div><span class="etiqueta">Pérdida Total:</span> <span class="valor" style="color:#ef476f">${fk(perdidaTotal)}</span></div>
+        <div><span class="etiqueta">Salida:</span> <span class="valor">${fkGrande(salida)}</span></div>
+        <div><span class="etiqueta">P. Técnica:</span> <span class="valor">${fk(perdidaTecnica)}</span></div>
+      </div>
+    </div>`;
+  };
 
   // --- Mensual ---
   const rM = (datos12||[]).filter(f => f.pct != null);
   if(rM.length){
     const a = rM[rM.length-1], p = rM.length >= 2 ? rM[rM.length-2] : null;
-    const mA = labelMes(a.clave);
-    const dPp = p ? a.pct - p.pct : null;
     const tec = (tecnicaPorMes && tecnicaPorMes[a.clave]) ? tecnicaPorMes[a.clave].perdida : null;
-    cM.innerHTML = [
-      tile('Indicador Mensual', a.pct.toFixed(2)+'%', mA),
-      tile('Variación Mensual', dPp==null ? '--' : `${dPp>=0?'▲':'▼'} ${Math.abs(dPp).toFixed(2)} pp`,
-        p ? `${labelMes(p.clave)} → ${mA}` : '', dPp==null ? null : ipColorVariacion(a.pct, p.pct, 'var(--text2)')),
-      tile('Entrada kWh Mensual', fk(a.entrada), mA),
-      tile('Salida kWh Mensual', fk(a.salida), mA),
-      tile('Pérdida Total Mensual', fk(a.perdida), mA),
-      tile('Pérdida Técnica Mensual', fk(tec), mA),
-    ].join('');
+    cM.innerHTML = tarjetaCompacta(a.pct, p ? p.pct : null, a.entrada, a.salida, a.perdida, tec);
   } else cM.innerHTML = '<div style="color:var(--text3);font-size:12px">Sin datos para el rango.</div>';
 
   // --- Anual (12 Meses Móvil) ---
   const rA = (datos12||[]).filter(f => f.pct12 != null);
   if(rA.length){
-    const a = rA[rA.length-1];
-    const cards = [tile('Indicador Anual (12M)', a.pct12.toFixed(2)+'%', labelMes(a.clave), null, true)];
-    if(rA.length >= 2){
-      const p = rA[rA.length-2], dPp = a.pct12 - p.pct12;
-      cards.push(tile('Variación Anual', `${dPp>=0?'▲':'▼'} ${Math.abs(dPp).toFixed(2)} pp`, `${labelMes(p.clave)} → ${labelMes(a.clave)}`, ipColorVariacion(a.pct12, p.pct12, 'var(--text2)')));
-    }
-    cards.push(
-      tile('Entrada kWh Anual (12M)', fk(a.entrada12), labelMes(a.clave)),
-      tile('Salida kWh Anual (12M)', fk(a.salida12), labelMes(a.clave)),
-      tile('Pérdida kWh Anual (12M)', fk(a.perdida12), labelMes(a.clave)),
-    );
-    cA.innerHTML = cards.join('');
+    const a = rA[rA.length-1], p = rA.length >= 2 ? rA[rA.length-2] : null;
+    // Pérdida Técnica anual (12M) no está disponible acá (tecnicaPorMes
+    // solo trae el dato mensual) -- queda en "--" en vez de forzar un
+    // cálculo aparte que ningún otro consumidor de esta función necesita.
+    cA.innerHTML = tarjetaCompacta(a.pct12, p ? p.pct12 : null, a.entrada12, a.salida12, a.perdida12, null);
   } else cA.innerHTML = '<div style="color:var(--text3);font-size:12px">Aún no hay 12 meses de historia.</div>';
 }
 
@@ -24144,55 +24142,47 @@ function alimN21RenderChartZonas(){
 // iguales; cada uno con Entrada, Salida, Pérdida e Indicador (%) + su
 // variación vs. el mes anterior. El % Anual usa "alim-n21-tile-destacada"
 // (más grande, borde de acento) -- es el indicador headline del grupo.
+// Tarjeta compacta (mismo diseño que Nivel 3/Nivel 4 -- pedido explícito):
+// % grande + variación en la etiqueta, Entrada/Salida/Pérdida Total en
+// cuadrícula 2x2. No hay Pérdida Técnica acá (es el indicador TOTAL,
+// Entrada-Salida -- la técnica vive en la pestaña de al lado), esa celda
+// queda en "--".
 function alimN21RenderResumen(datos12){
   const contMensual = document.getElementById('alim-n21-resumen-mensual');
   const contAnual = document.getElementById('alim-n21-resumen-anual');
   if(!contMensual || !contAnual) return;
   const reales = datos12.filter(f => f.pct != null);
   if(reales.length < 2){ contMensual.innerHTML = ''; contAnual.innerHTML = ''; return; }
+  const fk = v => v==null ? '--' : v.toLocaleString('es-CO', {maximumFractionDigits:0}) + ' kWh';
+  const fkGrande = v => v==null ? '--' : (v/1e6).toFixed(2) + ' M kWh';
+
+  const tarjetaCompacta = (pct, pctAnterior, entrada, salida, perdidaTotal) => {
+    const dPp = (pct!=null && pctAnterior!=null) ? pct - pctAnterior : null;
+    const colorVar = dPp==null ? null : ipColorVariacion(pct, pctAnterior, 'var(--text2)');
+    const variacionHtml = dPp==null ? '' : ` <span style="color:${colorVar};font-weight:700">(${dPp>=0?'▲':'▼'} ${dPp>=0?'+':'-'}${Math.abs(dPp).toFixed(2)} pp)</span>`;
+    return `<div class="alim-resumen-compacta">
+      <div class="alim-resumen-compacta-pct">
+        <div class="valor">${pct==null?'--':pct.toFixed(2)+'%'}</div>
+        <div class="etiqueta">Índice Pérdida${variacionHtml}</div>
+      </div>
+      <div class="alim-resumen-compacta-grid">
+        <div><span class="etiqueta">Entrada:</span> <span class="valor">${fkGrande(entrada)}</span></div>
+        <div><span class="etiqueta">Pérdida Total:</span> <span class="valor" style="color:#ef476f">${fk(perdidaTotal)}</span></div>
+        <div><span class="etiqueta">Salida:</span> <span class="valor">${fkGrande(salida)}</span></div>
+        <div><span class="etiqueta">P. Técnica:</span> <span class="valor">--</span></div>
+      </div>
+    </div>`;
+  };
+
   const actual = reales[reales.length-1];
   const anterior = reales[reales.length-2];
-  const mesActual = labelMes(actual.clave);
-  const mesAnterior = labelMes(anterior.clave);
-  const fk = v => v==null ? '--' : v.toLocaleString('es-CO', {maximumFractionDigits:0}) + ' kWh';
-
-  const tarjeta = (etiqueta, valor, sub, colorValor) => `<div class="be-resumen-tile">
-    <div class="etiqueta">${etiqueta}</div>
-    <div class="valor"${colorValor ? ` style="color:${colorValor}"` : ''}>${valor}</div>
-    ${sub ? `<div class="sub">${sub}</div>` : ''}
-  </div>`;
-  const tarjetaDestacada = (etiqueta, valor, sub) => `<div class="be-resumen-tile alim-n21-tile-destacada">
-    <div class="etiqueta">${etiqueta}</div>
-    <div class="valor">${valor}</div>
-    ${sub ? `<div class="sub">${sub}</div>` : ''}
-  </div>`;
-
-  const deltaPctMensual = actual.pct - anterior.pct;
-  const colorPctMensual = ipColorVariacion(actual.pct, anterior.pct, 'var(--text2)');
-  contMensual.innerHTML = [
-    tarjeta('Indicador Mensual', actual.pct.toFixed(2)+'%', mesActual),
-    tarjeta('Variación Mensual', `${deltaPctMensual>=0?'▲':'▼'} ${Math.abs(deltaPctMensual).toFixed(2)} pp`, `${mesAnterior} → ${mesActual}`, colorPctMensual),
-    tarjeta('Entrada kWh Mensual', fk(actual.entrada), mesActual),
-    tarjeta('Salida kWh Mensual', fk(actual.salida), mesActual),
-    tarjeta('Pérdida kWh Mensual', fk(actual.perdida), mesActual),
-  ].join('');
+  contMensual.innerHTML = tarjetaCompacta(actual.pct, anterior.pct, actual.entrada, actual.salida, actual.perdida);
 
   const realesAnual = datos12.filter(f => f.pct12 != null);
   if(!realesAnual.length){ contAnual.innerHTML = ''; return; }
   const actual12 = realesAnual[realesAnual.length-1];
-  const tarjetasAnual = [tarjetaDestacada('Indicador Anual (12M)', actual12.pct12.toFixed(2)+'%', labelMes(actual12.clave))];
-  if(realesAnual.length >= 2){
-    const anterior12 = realesAnual[realesAnual.length-2];
-    const deltaPct12 = actual12.pct12 - anterior12.pct12;
-    const colorPct12 = ipColorVariacion(actual12.pct12, anterior12.pct12, 'var(--text2)');
-    tarjetasAnual.push(tarjeta('Variación Anual', `${deltaPct12>=0?'▲':'▼'} ${Math.abs(deltaPct12).toFixed(2)} pp`, `${labelMes(anterior12.clave)} → ${labelMes(actual12.clave)}`, colorPct12));
-  }
-  tarjetasAnual.push(
-    tarjeta('Entrada kWh Anual (12M)', fk(actual12.entrada12), labelMes(actual12.clave)),
-    tarjeta('Salida kWh Anual (12M)', fk(actual12.salida12), labelMes(actual12.clave)),
-    tarjeta('Pérdida kWh Anual (12M)', fk(actual12.perdida12), labelMes(actual12.clave)),
-  );
-  contAnual.innerHTML = tarjetasAnual.join('');
+  const anterior12 = realesAnual.length >= 2 ? realesAnual[realesAnual.length-2] : null;
+  contAnual.innerHTML = tarjetaCompacta(actual12.pct12, anterior12 ? anterior12.pct12 : null, actual12.entrada12, actual12.salida12, actual12.perdida12);
 }
 
 // ===== Pestaña "Indicador N2-1 Pérdida Técnica" =====
