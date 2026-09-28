@@ -5251,65 +5251,80 @@ tfoot td:first-child{text-align:left}
         <button type="button" class="be-editar-btn" onclick="abrirModalEditarEstructura(BE_ACTIVA_ID)">✎ Editar</button>
       </div>
     </div>
-    <div id="be-chart-nota" class="tm-modal-msg" style="text-align:center"></div>
-
-    <!-- "Calcular datos típicos" y el rango de fechas (Mes anterior/Desde/
-         Hasta/Graficar/zoom, y su variante Mensual/Anual) se movieron a la
-         tarjeta de filtros de arriba (#be-ver-rango-grupo y
-         #be-tipicos-calc-bar en #be-ver-filtros-card) -- pedido explícito
-         ("movamos esos dos filtros de fecha a esa posición"). El toggle
-         Pérdida vs. técnica/Entrada-Salida se movió a la barra del título
-         (#be-tipo-toggle, arriba). -->
-    <div id="be-comparacion-vacio" class="be-comparacion-vacio hidden">Esta estructura no tiene un circuito de Pérdidas Técnicas vinculado -- entra a "✎ Editar" para elegirlo y poder comparar.</div>
-
-    <div class="chart-wrap" id="be-chart-wrap" style="height:420px"><canvas id="ch-balance-estructura"></canvas></div>
-
-    <!-- Las 2 opciones del gráfico (antes pegadas debajo del título, a la
-         derecha) se movieron acá, debajo del gráfico -- pedido explícito
-         ("colocarlas en otro lado para que el grafico quede mas cerca al
-         titulo y se pueda acomodar mejor la tarjeta de fallas"). Mismos
-         IDs/onclick de siempre. -->
-    <div style="display:flex;justify-content:flex-end;gap:16px;flex-wrap:wrap;margin:-6px 0 10px">
-      <div id="be-clientes-en-salida-wrap">
-        <label style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--text3);cursor:pointer" title="La Salida de red (línea roja) no incluye los puntos marcados 'Es cliente' ni los clientes SIEC -- se muestran aparte en la tabla. Esta opción los suma a la línea del gráfico para ver la salida TOTAL.">
-          <!-- Tildado por defecto -- pedido explícito ("Que venga tildado
-               por defecto"): la Salida del gráfico de Entrada/Salida suma
-               clientes/SIEC desde el primer render, sin tener que tildarlo
-               a mano cada vez. -->
-          <input type="checkbox" id="be-incluir-clientes-salida" checked onchange="if(BE_MODO_GRAFICO===2) renderChartBalanceEstructura(BE_CONSUMO_DATOS, BE_MODO_GRAFICO)">
-          Incluir clientes/SIEC en la Salida del gráfico
-        </label>
-      </div>
-      <div id="be-tipicos-toggle-grafico-wrap">
-        <label style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--text3);cursor:pointer">
-          <input type="checkbox" id="be-tipicos-en-grafico" disabled onchange="if(BE_MODO_GRAFICO!==3) renderChartBalanceEstructura(BE_CONSUMO_DATOS, BE_MODO_GRAFICO)">
-          Mostrar límites típicos en el gráfico
-        </label>
-      </div>
-      <!-- Botón chico para ver los valores de la Pérdida técnica sobre el
-           gráfico diario -- antes esa línea no tenía ni puntos ni
-           etiquetas, no había forma de leer el número sin pasar el mouse
-           encima -- pedido explícito ("un botón pequeño que me coloque
-           los datos de pérdida técnica en el gráfico"). Apagado por
-           defecto -- con un rango de varios meses se satura de números;
-           solo aplica al modo "Pérdida vs. técnica" (modo 1). -->
-      <div id="be-tecnica-datos-toggle-wrap">
-        <label style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--text3);cursor:pointer">
-          <input type="checkbox" id="be-tecnica-datos-en-grafico" onchange="_beActualizarClienteChart()">
-          🔢 Ver datos de pérdida técnica
-        </label>
+    <!-- Toggle Gráfico/Tabla: reemplaza uno por el otro en el mismo lugar,
+         mismo mecanismo (.be-modo-btn/.activo) que Mensual/Anual/Diario --
+         pedido explícito ("me refiero que se reemplace el grafico por la
+         tabla asi como caundo se cambiaba de mensual y anual"). Vive fuera
+         de los dos bloques para seguir visible sin importar cuál está
+         oculto. -->
+    <div style="display:flex;justify-content:center;margin:0 0 10px">
+      <div id="be-vista-toggle" style="display:inline-flex;align-items:center;gap:4px">
+        <button type="button" class="be-modo-btn activo" data-vista="grafico" onclick="beSeleccionarVista('grafico')">📈 Gráfico</button>
+        <button type="button" class="be-modo-btn" data-vista="tabla" onclick="beSeleccionarVista('tabla')">📋 Tabla</button>
       </div>
     </div>
 
-    <div class="be-resumen-cards">
-      <div id="be-resumen-cards-auto" style="display:contents"></div>
-      <div class="be-resumen-tile" id="be-tipicos-card">
-        <div class="etiqueta">Datos típicos</div>
-        <div class="valor" id="be-tipicos-resultado">Sin calcular aún</div>
+    <div id="be-chart-bloque">
+      <div id="be-chart-nota" class="tm-modal-msg" style="text-align:center"></div>
+
+      <!-- "Calcular datos típicos" y el rango de fechas (Mes anterior/Desde/
+           Hasta/Graficar/zoom, y su variante Mensual/Anual) se movieron a la
+           tarjeta de filtros de arriba (#be-ver-rango-grupo y
+           #be-tipicos-calc-bar en #be-ver-filtros-card) -- pedido explícito
+           ("movamos esos dos filtros de fecha a esa posición"). El toggle
+           Pérdida vs. técnica/Entrada-Salida se movió a la barra del título
+           (#be-tipo-toggle, arriba). -->
+      <div id="be-comparacion-vacio" class="be-comparacion-vacio hidden">Esta estructura no tiene un circuito de Pérdidas Técnicas vinculado -- entra a "✎ Editar" para elegirlo y poder comparar.</div>
+
+      <div class="chart-wrap" id="be-chart-wrap" style="height:420px"><canvas id="ch-balance-estructura"></canvas></div>
+
+      <!-- Las 2 opciones del gráfico (antes pegadas debajo del título, a la
+           derecha) se movieron acá, debajo del gráfico -- pedido explícito
+           ("colocarlas en otro lado para que el grafico quede mas cerca al
+           titulo y se pueda acomodar mejor la tarjeta de fallas"). Mismos
+           IDs/onclick de siempre. -->
+      <div style="display:flex;justify-content:flex-end;gap:16px;flex-wrap:wrap;margin:-6px 0 10px">
+        <div id="be-clientes-en-salida-wrap">
+          <label style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--text3);cursor:pointer" title="La Salida de red (línea roja) no incluye los puntos marcados 'Es cliente' ni los clientes SIEC -- se muestran aparte en la tabla. Esta opción los suma a la línea del gráfico para ver la salida TOTAL.">
+            <!-- Tildado por defecto -- pedido explícito ("Que venga tildado
+                 por defecto"): la Salida del gráfico de Entrada/Salida suma
+                 clientes/SIEC desde el primer render, sin tener que tildarlo
+                 a mano cada vez. -->
+            <input type="checkbox" id="be-incluir-clientes-salida" checked onchange="if(BE_MODO_GRAFICO===2) renderChartBalanceEstructura(BE_CONSUMO_DATOS, BE_MODO_GRAFICO)">
+            Incluir clientes/SIEC en la Salida del gráfico
+          </label>
+        </div>
+        <div id="be-tipicos-toggle-grafico-wrap">
+          <label style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--text3);cursor:pointer">
+            <input type="checkbox" id="be-tipicos-en-grafico" disabled onchange="if(BE_MODO_GRAFICO!==3) renderChartBalanceEstructura(BE_CONSUMO_DATOS, BE_MODO_GRAFICO)">
+            Mostrar límites típicos en el gráfico
+          </label>
+        </div>
+        <!-- Botón chico para ver los valores de la Pérdida técnica sobre el
+             gráfico diario -- antes esa línea no tenía ni puntos ni
+             etiquetas, no había forma de leer el número sin pasar el mouse
+             encima -- pedido explícito ("un botón pequeño que me coloque
+             los datos de pérdida técnica en el gráfico"). Apagado por
+             defecto -- con un rango de varios meses se satura de números;
+             solo aplica al modo "Pérdida vs. técnica" (modo 1). -->
+        <div id="be-tecnica-datos-toggle-wrap">
+          <label style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--text3);cursor:pointer">
+            <input type="checkbox" id="be-tecnica-datos-en-grafico" onchange="_beActualizarClienteChart()">
+            🔢 Ver datos de pérdida técnica
+          </label>
+        </div>
+      </div>
+
+      <div class="be-resumen-cards">
+        <div id="be-resumen-cards-auto" style="display:contents"></div>
+        <div class="be-resumen-tile" id="be-tipicos-card">
+          <div class="etiqueta">Datos típicos</div>
+          <div class="valor" id="be-tipicos-resultado">Sin calcular aún</div>
+        </div>
       </div>
     </div>
 
-    <div class="be-tabla-creadas-wrap">
+    <div class="be-tabla-creadas-wrap hidden" id="be-tabla-bloque">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:12px;padding-bottom:12px;border-bottom:1px dashed var(--border)">
         <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
           <div class="be-tabla-creadas-titulo" style="margin-bottom:0">Balance diario</div>
@@ -5318,8 +5333,6 @@ tfoot td:first-child{text-align:left}
         </div>
         <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;justify-content:flex-end">
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-            <!-- Quitar el gráfico y dejar solo la tabla -- pedido explícito. -->
-            <button type="button" class="be-btn-respaldo" id="be-btn-ocultar-grafico" onclick="beToggleGraficoBalance()">▴ Ocultar gráfico</button>
             <button type="button" class="be-editar-btn" onclick="beExportarCsv()" title="Exportar el balance de este rango a CSV">⬇ Exportar CSV</button>
             <button type="button" class="be-btn-respaldo" id="be-btn-detalle-medidor" onclick="beToggleDetalleMedidor()">▾ Ocultar detalle por medidor</button>
           </div>
@@ -8487,7 +8500,7 @@ async function entrarCodigoPython(){
 // URL del túnel de Suplencias_App (Flask propio, corre local en el PC del
 // usuario) -- cambia si se reinicia el túnel, igual que API_BASE_URL del
 // backend de Pérdidas Técnicas; verificar acá si el iframe no carga.
-const SUPLENCIAS_URL = 'https://species-huge-ticket-customized.trycloudflare.com';
+const SUPLENCIAS_URL = 'https://owner-jose-asia-gallery.trycloudflare.com';
 let _suplenciasCargado = false;
 
 function entrarSuplencias(){
