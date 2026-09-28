@@ -4126,7 +4126,17 @@ tfoot td:first-child{text-align:left}
       <input type="month" id="alim3-hasta" onchange="alim3RenderSeleccion(); alim3RenderTablaVariacion(); alim3RenderChartCircuitos()">
       <label style="margin-left:10px">Zona</label>
       <div class="msel" id="msel-alim3-zona"></div>
-      <span id="alim3-conteo" style="margin-left:auto;font-size:11px;color:var(--text3)"></span>
+      <span id="alim3-conteo" style="font-size:11px;color:var(--text3)"></span>
+      <!-- M/A/Δ de "Detalle por Alimentador" -- pedido explícito ("los
+           filtros que están debajo del título... los quiero en la parte
+           superior derecha donde dice 214 alimentadores"), antes centrados
+           encima de la gráfica. Solo íconos, mismo criterio del resto de
+           la app. -->
+      <span id="alim3-esp-modo-wrap" style="display:inline-flex;gap:3px;margin-left:auto">
+        <button type="button" class="be-modo-btn be-icon-btn activo" id="alim3-esp-btn-mensual" onclick="alim3ToggleEspModo('mensual')" title="Mensual">M</button>
+        <button type="button" class="be-modo-btn be-icon-btn" id="alim3-esp-btn-anual" onclick="alim3ToggleEspModo('anual')" title="Anual (12M)">A</button>
+        <button type="button" class="be-modo-btn be-icon-btn" id="alim3-esp-btn-var" onclick="alim3ToggleEspVariacion()" title="Variación">Δ</button>
+      </span>
     </div>
 
     <!-- ===== PESTAÑA 1 · Detalle por Alimentador ===== -->
@@ -4147,10 +4157,12 @@ tfoot td:first-child{text-align:left}
             <div id="alim3-tipos" style="display:flex;gap:4px;flex-wrap:wrap;margin:6px 0"></div>
             <div id="alim3-lista" style="max-height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:8px"></div>
           </div>
-          <div>
-            <label style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:700">Indicador</label>
-            <div id="alim3-indicador" style="margin-top:6px;font-size:12px"></div>
-          </div>
+          <!-- Etiqueta "Indicador" y el texto "Suma de X alimentadores.
+               Elige uno de la lista..." quitados -- pedido explícito. El
+               div queda (sin encabezado) para cuando SÍ se elige un
+               alimentador puntual, que sigue mostrando su tabla de
+               Zona/Subestación/Municipio/etc (alim3RenderIndicador). -->
+          <div id="alim3-indicador" style="font-size:12px"></div>
           <div>
             <label style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:700">Comentarios</label>
             <div id="alim3-comentarios" class="ip-comentario-caja" style="margin-top:6px;font-size:11.5px;padding:10px 12px"></div>
@@ -4170,14 +4182,14 @@ tfoot td:first-child{text-align:left}
                dinámico. Las tarjetas se movieron DEBAJO de la gráfica
                (pedido explícito) -- de paso, así tampoco quedan en medio
                del título y la gráfica compitiendo por ese lugar. -->
-          <div class="fbar" style="justify-content:center;margin-bottom:4px">
-            <button type="button" class="be-modo-btn activo" id="alim3-esp-btn-mensual" onclick="alim3ToggleEspModo('mensual')" title="Mensual">M</button>
-            <button type="button" class="be-modo-btn" id="alim3-esp-btn-anual" onclick="alim3ToggleEspModo('anual')" title="Anual (12M)">A</button>
-            <button type="button" class="be-modo-btn be-icon-btn" id="alim3-esp-btn-var" onclick="alim3ToggleEspVariacion()" title="Variación">Δ</button>
-          </div>
+          <!-- M/A/Δ subidos al filtro de arriba (#alim3-esp-modo-wrap) --
+               pedido explícito. -->
           <div class="chart-wrap" style="height:400px"><canvas id="ch-alim3-esp"></canvas></div>
 
-          <div id="alim3-tarjetas" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-top:16px"></div>
+          <!-- Tarjetas mismo diseño que Nivel 3/Nivel 4 (.alim-resumen-compacta:
+               % grande + grid Entrada/Salida/Pérdida/Técnica/Gestionable) --
+               pedido explícito, antes 6 tarjetitas sueltas (_alim3Tarjeta). -->
+          <div id="alim3-tarjetas" style="display:flex;gap:16px;flex-wrap:wrap;margin-top:16px"></div>
         </div>
       </div>
 
@@ -21094,6 +21106,10 @@ function alim3IrATab(nombre){
   const card = document.querySelector('#alim3-tab-'+nombre+' > .card');
   const filtro = document.getElementById('alim3-filtro');
   if(card && filtro && filtro.parentElement !== card) card.prepend(filtro);
+  // El M/A/Δ del filtro compartido solo aplica al gráfico de "Detalle por
+  // Alimentador" -- se oculta en las demás pestañas (mismo criterio que
+  // Nivel 4/Nivel 3/N2-1/Subestaciones, pedido explícito ya aplicado ahí).
+  document.getElementById('alim3-esp-modo-wrap')?.classList.toggle('hidden', nombre !== 'detalle');
   alim3RenderTodo();
 }
 
@@ -21512,13 +21528,15 @@ function alim3RenderSeleccion(){
     // zona elegida), como en PowerBI, en vez de dejar todo en blanco --
     // pedido explícito.
     const zonasTxt = ALIM3_ZONAS_SEL.size ? [...ALIM3_ZONAS_SEL].sort().join(' + ') : 'Todas las zonas';
-    const nCircuitos = new Set(ALIM_FILAS.filter(f => !ALIM3_ZONAS_SEL.size || ALIM3_ZONAS_SEL.has(f.zona)).map(f => f.nemonico)).size;
     const etiqueta = `Total -- ${zonasTxt}`;
     if(titulo) titulo.textContent = etiqueta;
     // Título dinámico -- pedido explícito ("debe cambiar de acuerdo con
     // los filtros"): mismo alimentador/zona que el título de arriba.
     if(tituloTecnica) tituloTecnica.textContent = `Pérdida Total Vs Pérdida Técnica -- ${etiqueta}`;
-    document.getElementById('alim3-indicador').innerHTML = `<div style="font-size:11px;color:var(--text3);line-height:1.6">Suma de <b style="color:var(--text)">${nCircuitos}</b> alimentadores.<br>Elige uno de la lista para ver su detalle individual.</div>`;
+    // Texto "Suma de X alimentadores. Elige uno de la lista..." quitado --
+    // pedido explícito (se deja vacío hasta que se elija un alimentador
+    // puntual, ver alim3RenderIndicador más abajo).
+    document.getElementById('alim3-indicador').innerHTML = '';
     document.getElementById('alim3-comentarios').innerHTML = '<p style="margin:0;color:var(--text3)">Elige un alimentador puntual para ver sus comentarios.</p>';
 
     const conClave = alim3AgregarZonaMensual(ALIM3_ZONAS_SEL);
@@ -21547,27 +21565,6 @@ function alim3RenderSeleccion(){
   alim3RenderChartAgpe(conClave);
 }
 
-// Tarjetas pequeñas Entrada/Salida/Pérdida kWh/Pérdida % del alimentador
-// elegido -- Mensual y Anual (12M) juntos, con la variación del último
-// mes -- pedido explícito ("tarjetas pequeñas bonitas... deben empezar
-// desde el gráfico").
-function _alim3Tarjeta(pref, icono, titulo, mensualAct, anualAct, fmt){
-  // Letra más chica -- pedido explícito ("los números de las tarjetas
-  // están muy grandes, coloca un poco más pequeña la letra") -- 12.5px
-  // pasa a 10.5px en el valor grande, y el resto se achica en proporción.
-  return `<div class="card inicio-dash-card" style="padding:10px 12px">
-    <div class="card-title" style="font-size:9.5px">${icono} ${titulo}</div>
-    <div style="display:flex;justify-content:space-between;align-items:center;font-size:9px;color:var(--text3);margin-top:5px">
-      <span>Mensual</span>
-      <span style="display:flex;align-items:center;gap:5px"><b style="color:var(--text);font-size:10.5px">${fmt(mensualAct)}</b><span id="${pref}-var-m" class="inicio-variacion"></span></span>
-    </div>
-    <div style="display:flex;justify-content:space-between;align-items:center;font-size:9px;color:var(--text3);margin-top:4px">
-      <span>Anual (12M)</span>
-      <span style="display:flex;align-items:center;gap:5px"><b style="color:var(--text);font-size:10.5px">${fmt(anualAct)}</b><span id="${pref}-var-a" class="inicio-variacion"></span></span>
-    </div>
-  </div>`;
-}
-
 // Gestionable = Pérdida - Pérdida Técnica cuando ya hay Pérdida Técnica
 // calculada para ese circuito/mes (pedido explícito: "la tarjeta de
 // pérdida gestionable no está haciendo la resta entre pérdida - pérdida
@@ -21582,6 +21579,13 @@ function _alim3Gestionable(perdida, tecnica, gestionableCrudo){
   return (tecnica != null) ? (perdida || 0) - tecnica : gestionableCrudo;
 }
 
+// Mismo diseño de tarjeta que Nivel 3/Nivel 4 (.alim-resumen-compacta: %
+// grande "Índice Pérdida" + grid Entrada/Salida/Pérdida/Técnica/
+// Gestionable) -- pedido explícito ("cambia cómo están escritas esas
+// tarjetas, quiero que sea así como están en Nivel 3 y Nivel 4"), antes 6
+// tarjetitas sueltas (_alim3Tarjeta, con Mensual/Anual apilados adentro de
+// cada una). Acá van 2 tarjetas lado a lado (Mensual/Anual), mismo
+// contenido que antes pero con el diseño/las clases CSS de Nivel 3/4.
 function alim3RenderTarjetas(filasConClave){
   const cont = document.getElementById('alim3-tarjetas');
   if(!cont) return;
@@ -21597,40 +21601,46 @@ function alim3RenderTarjetas(filasConClave){
   const actual12 = anual.find(f => f.clave===actual.clave && f.pct12!=null) || null;
   const anterior12 = anual.find(f => f.clave===anterior.clave && f.pct12!=null) || null;
 
-  const fmtKwh = v => v==null ? '--' : `${Math.round(v).toLocaleString('es-CO')} kWh`;
-  const fmtPct = v => v==null ? '--' : `${v.toFixed(2)}%`;
-  // Pérdida Gestionable -- pedido explícito ("quiero que también aparezca
-  // la gestionable... en porcentaje y en kWh"): una sola tarjeta con las
-  // dos unidades juntas -- kWh y, entre paréntesis, qué % de la Pérdida
-  // total es gestionable (misma fórmula que "Gestionable % Top" de Top
-  // Alimentadores más abajo en este mismo módulo, para no inventar una
-  // segunda definición de "% gestionable").
-  const fmtGest = (kwh, perdida) => kwh==null ? '--'
-    : `${Math.round(kwh).toLocaleString('es-CO')} kWh${perdida ? ` (${(kwh/perdida*100).toFixed(1)}%)` : ''}`;
+  const fk = v => v==null ? '--' : Math.round(v).toLocaleString('es-CO') + ' kWh';
+  const dTxt = (a, b) => {
+    if(a==null || b==null) return '';
+    const d = a - b;
+    return ` <span style="color:var(--text3);font-weight:600">${d>=0?'▲':'▼'} ${Math.round(Math.abs(d)).toLocaleString('es-CO')}</span>`;
+  };
 
-  cont.innerHTML =
-    _alim3Tarjeta('alim3-t-ent', '⬇️', 'Entrada', actual.entrada, actual12?actual12.entrada12:null, fmtKwh) +
-    _alim3Tarjeta('alim3-t-sal', '⬆️', 'Salida', actual.salida, actual12?actual12.salida12:null, fmtKwh) +
-    _alim3Tarjeta('alim3-t-per', '⚡', 'Pérdida', actual.perdida, actual12?actual12.perdida12:null, fmtKwh) +
-    _alim3Tarjeta('alim3-t-tec', '🔧', 'Pérdida Técnica', actual.tecnica, actual12?actual12.tecnica12:null, fmtKwh) +
-    _alim3Tarjeta('alim3-t-gest', '⚙️', 'Pérdida Gestionable',
-      fmtGest(actual.gestionable, actual.perdida),
-      actual12 ? fmtGest(actual12.gestionable12, actual12.perdida12) : '--',
-      v => v) +
-    _alim3Tarjeta('alim3-t-pct', '📉', 'Pérdida %', actual.pct, actual12?actual12.pct12:null, fmtPct);
+  const tarjeta = (titulo, pct, pctAnt, entrada, entradaAnt, salida, salidaAnt, perdida, perdidaAnt, tecnica, tecnicaAnt, gestionable, gestionableAnt) => {
+    const dPp = (pct!=null && pctAnt!=null) ? pct - pctAnt : null;
+    const variacionHtml = dPp==null ? '' : ` (${dPp>=0?'▲':'▼'} ${dPp>=0?'+':'-'}${Math.abs(dPp).toFixed(2)} pp)`;
+    return `<div class="alim-resumen-compacta" style="margin:0">
+      <div class="alim-resumen-compacta-titulo">${titulo}</div>
+      <div class="alim-resumen-compacta-fila">
+        <div class="alim-resumen-compacta-pct">
+          <div class="valor">${pct==null?'--':pct.toFixed(2)+'%'}</div>
+          <div class="etiqueta">Índice Pérdida${variacionHtml}</div>
+        </div>
+        <div class="alim-resumen-compacta-grid">
+          <div><span class="etiqueta">Entrada:</span> <span class="valor">${fk(entrada)}</span>${dTxt(entrada, entradaAnt)}</div>
+          <div><span class="etiqueta">Pérdida:</span> <span class="valor">${fk(perdida)}</span>${dTxt(perdida, perdidaAnt)}</div>
+          <div><span class="etiqueta">Salida:</span> <span class="valor">${fk(salida)}</span>${dTxt(salida, salidaAnt)}</div>
+          <div><span class="etiqueta">P. Técnica:</span> <span class="valor">${fk(tecnica)}</span>${dTxt(tecnica, tecnicaAnt)}</div>
+          <div><span class="etiqueta">P. Gestionable:</span> <span class="valor">${fk(gestionable)}</span>${dTxt(gestionable, gestionableAnt)}</div>
+        </div>
+      </div>
+    </div>`;
+  };
 
-  _iniRenderVariacionKwh('alim3-t-ent-var-m', anterior.entrada, actual.entrada, false);
-  _iniRenderVariacionKwh('alim3-t-ent-var-a', anterior12?anterior12.entrada12:null, actual12?actual12.entrada12:null, false);
-  _iniRenderVariacionKwh('alim3-t-sal-var-m', anterior.salida, actual.salida, false);
-  _iniRenderVariacionKwh('alim3-t-sal-var-a', anterior12?anterior12.salida12:null, actual12?actual12.salida12:null, false);
-  _iniRenderVariacionKwh('alim3-t-per-var-m', anterior.perdida, actual.perdida, true);
-  _iniRenderVariacionKwh('alim3-t-per-var-a', anterior12?anterior12.perdida12:null, actual12?actual12.perdida12:null, true);
-  _iniRenderVariacionKwh('alim3-t-tec-var-m', anterior.tecnica, actual.tecnica, true);
-  _iniRenderVariacionKwh('alim3-t-tec-var-a', anterior12?anterior12.tecnica12:null, actual12?actual12.tecnica12:null, true);
-  _iniRenderVariacionKwh('alim3-t-gest-var-m', anterior.gestionable, actual.gestionable, true);
-  _iniRenderVariacionKwh('alim3-t-gest-var-a', anterior12?anterior12.gestionable12:null, actual12?actual12.gestionable12:null, true);
-  _iniRenderVariacion('alim3-t-pct-var-m', anterior.pct, actual.pct);
-  _iniRenderVariacion('alim3-t-pct-var-a', anterior12?anterior12.pct12:null, actual12?actual12.pct12:null);
+  const cardMensual = tarjeta('Indicador Mensual', actual.pct, anterior.pct,
+    actual.entrada, anterior.entrada, actual.salida, anterior.salida,
+    actual.perdida, anterior.perdida, actual.tecnica, anterior.tecnica,
+    actual.gestionable, anterior.gestionable);
+  const cardAnual = actual12
+    ? tarjeta('Indicador Anual (12M)', actual12.pct12, anterior12?anterior12.pct12:null,
+        actual12.entrada12, anterior12?anterior12.entrada12:null, actual12.salida12, anterior12?anterior12.salida12:null,
+        actual12.perdida12, anterior12?anterior12.perdida12:null, actual12.tecnica12, anterior12?anterior12.tecnica12:null,
+        actual12.gestionable12, anterior12?anterior12.gestionable12:null)
+    : '<div style="color:var(--text3);font-size:12px">Aún no hay 12 meses de historia.</div>';
+
+  cont.innerHTML = `<div style="flex:1 1 340px">${cardMensual}</div><div style="flex:1 1 340px">${cardAnual}</div>`;
 }
 
 function alim3RenderIndicador(ultima){
