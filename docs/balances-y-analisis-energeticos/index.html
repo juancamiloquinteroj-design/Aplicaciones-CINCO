@@ -4188,6 +4188,14 @@ tfoot td:first-child{text-align:left}
         <input type="number" id="alim3-var-umbral-crecimiento" value="5" min="0" step="0.5" style="width:48px" onchange="alim3RenderTablaVariacion()" title="Umbral de Var. Pérdida (%) para el botón Crecimiento">
         <span style="font-size:11px;color:var(--text3)">%</span>
       </span>
+      <!-- %/kWh-km de "Comparativo de Circuitos" (mini-pestaña Gráfica de
+           Variación de Pérdida) -- mismo pedido explícito, sigue siendo
+           texto corto (%, kWh/km) porque no hay un ícono claro para esa
+           unidad. -->
+      <span id="alim3-var-grafica-wrap" class="hidden" style="display:inline-flex;gap:3px;margin-left:auto">
+        <button type="button" class="be-modo-btn be-icon-btn activo" id="alim3-circuitos-btn-pct" onclick="alim3ToggleModoCircuitos('pct')" title="%">%</button>
+        <button type="button" class="be-modo-btn" id="alim3-circuitos-btn-km" onclick="alim3ToggleModoCircuitos('km')" title="kWh/km">kWh/km</button>
+      </span>
     </div>
 
     <!-- ===== PESTAÑA 1 · Detalle por Alimentador ===== -->
@@ -4324,15 +4332,11 @@ tfoot td:first-child{text-align:left}
            una gráfica y tabla al lado quiero que genere dos pestañas") --
            antes lado a lado en este flex. -->
       <div class="pt-tabs" style="margin-bottom:12px">
-        <button type="button" class="pt-tab-btn activo" data-minitab-btn-grupo="alim3-variacion" data-minitab-btn="grafica" onclick="miniTabsIr('alim3-variacion','grafica')">Gráfica</button>
-        <button type="button" class="pt-tab-btn" data-minitab-btn-grupo="alim3-variacion" data-minitab-btn="tabla" onclick="miniTabsIr('alim3-variacion','tabla')">Tabla</button>
+        <button type="button" class="pt-tab-btn activo" data-minitab-btn-grupo="alim3-variacion" data-minitab-btn="grafica" onclick="miniTabsIr('alim3-variacion','grafica');alim3ActualizarControlesVariacion()">Gráfica</button>
+        <button type="button" class="pt-tab-btn" data-minitab-btn-grupo="alim3-variacion" data-minitab-btn="tabla" onclick="miniTabsIr('alim3-variacion','tabla');alim3ActualizarControlesVariacion()">Tabla</button>
       </div>
       <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">
         <div data-minitab-grupo="alim3-variacion" data-minitab="grafica" style="flex:1;min-width:360px">
-          <div class="fbar" style="justify-content:center;margin-bottom:8px">
-            <button type="button" class="be-modo-btn activo" id="alim3-circuitos-btn-pct" onclick="alim3ToggleModoCircuitos('pct')">%</button>
-            <button type="button" class="be-modo-btn" id="alim3-circuitos-btn-km" onclick="alim3ToggleModoCircuitos('km')">kWh/km</button>
-          </div>
           <div class="msel" id="msel-alim3-circuitos" style="margin-bottom:10px"></div>
           <!-- no-exportar -- pedido explícito ("sale sin el titulo"): sin
                esta clase, _expTextoTitulo agarraba esta fila ("Rango →")
@@ -21110,7 +21114,9 @@ async function alim3Cargar(){
 // "Detalle por Alimentador" / "Top Alimentadores" / "Variación de Pérdida".
 // El nodo #alim3-filtro (Rango + Zona) se mueve al tope de la .card de la
 // pestaña activa.
+let ALIM3_TAB_ACTUAL = 'detalle';
 function alim3IrATab(nombre){
+  ALIM3_TAB_ACTUAL = nombre;
   ['detalle','top','variacion'].forEach(t=>{
     document.getElementById('alim3-tab-'+t)?.classList.toggle('hidden', t!==nombre);
     document.getElementById('alim3-tab-btn-'+t)?.classList.toggle('activo', t===nombre);
@@ -21126,9 +21132,23 @@ function alim3IrATab(nombre){
   document.getElementById('alim3-tipo-wrap')?.classList.toggle('hidden', nombre !== 'detalle');
   document.getElementById('alim3-picker-wrap')?.classList.toggle('hidden', nombre !== 'detalle');
   document.getElementById('alim3-top-modo-wrap')?.classList.toggle('hidden', nombre !== 'top');
-  document.getElementById('alim3-var-modo-wrap')?.classList.toggle('hidden', nombre !== 'variacion');
+  alim3ActualizarControlesVariacion();
   if(nombre !== 'detalle') alim3CerrarLista();
   alim3RenderTodo();
+}
+
+// Mes Anterior/Crecimiento (tabla) vs %/kWh-km (gráfica "Comparativo de
+// Circuitos") de "Variación de Pérdida" -- pedido explícito ("los sigo
+// viendo en el centro, debe ser en la parte superior derecha"): cada par
+// solo aplica a SU mini-pestaña (Tabla/Gráfica) DENTRO de esta pestaña, así
+// que además de estar en "variación" hace falta chequear cuál mini-pestaña
+// está activa -- mismo criterio que alimSubActualizarControlesVar.
+function alim3ActualizarControlesVariacion(){
+  const panelTabla = document.querySelector('[data-minitab-grupo="alim3-variacion"][data-minitab="tabla"]');
+  const enTabla = !!panelTabla && !panelTabla.classList.contains('hidden');
+  const enVariacion = ALIM3_TAB_ACTUAL === 'variacion';
+  document.getElementById('alim3-var-modo-wrap')?.classList.toggle('hidden', !(enVariacion && enTabla));
+  document.getElementById('alim3-var-grafica-wrap')?.classList.toggle('hidden', !(enVariacion && !enTabla));
 }
 
 function alim3RenderTodo(){
