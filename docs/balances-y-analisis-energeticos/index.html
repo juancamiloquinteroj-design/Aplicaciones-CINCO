@@ -3966,10 +3966,25 @@ tfoot td:first-child{text-align:left}
            (alimSubActualizarControlesVar): el de Top en Subestaciones +
            mini-pestaña Tabla, el de Alimentadores en la pestaña Pérdida
            por alimentadores -- nunca los 2 a la vez. -->
-      <span id="alim-sub-top-var-wrap" class="hidden" style="display:inline-flex">
-        <button type="button" class="be-modo-btn be-icon-btn" id="alim-sub-top-btn-var" onclick="alimSubToggleTopVar()" title="Variación (Top Subestaciones)">Δ</button>
+      <span id="alim-sub-top-var-wrap" class="hidden" style="display:inline-flex;align-items:center;gap:4px">
+        <!-- "Crecimiento >" -- pedido explícito ("la que haya tenido un
+             crecimiento superior al 5% que se exporte") -- subido acá
+             arriba a la derecha junto con Variación y Descargar CSV,
+             antes centrado encima de la tabla. -->
+        <button type="button" class="be-modo-btn be-icon-btn" id="alim-sub-top-btn-crecimiento" onclick="alimSubToggleTopCrecimiento()" title="Crecimiento > -- muestra solo las subestaciones con Var. Pérdida (%) mayor al umbral de al lado vs. el mes anterior, para exportar"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-10"/><path d="M15 5h6v6"/></svg></button>
+        <input type="number" id="alim-sub-top-umbral-crecimiento" value="5" min="0" step="0.5" style="width:48px" onchange="alimSubRenderTablaTop()" title="Umbral de Var. Pérdida (%) para el botón Crecimiento">
+        <span style="font-size:11px;color:var(--text3)">%</span>
+        <button type="button" class="be-modo-btn be-icon-btn activo" id="alim-sub-top-btn-var" onclick="alimSubToggleTopVar()" title="Variación (Top Subestaciones)">Δ</button>
       </span>
-      <span id="alim-sub-al-var-wrap" class="hidden" style="display:inline-flex">
+      <span id="alim-sub-al-var-wrap" class="hidden" style="display:inline-flex;gap:3px">
+        <!-- M/A único de "Pérdida por alimentadores" -- pedido explícito
+             ("se repite los botones de Mensual y Anual... los quiero en la
+             parte superior derecha en la esquina así como Nivel 3 o Nivel
+             4"): antes había 2 pares (este gráfico y "Pérdida por Zona")
+             siempre visibles juntos abajo. Ahora uno solo, acá arriba, y
+             maneja los 2 a la vez (alimSubToggleAlModo). -->
+        <button type="button" class="be-modo-btn be-icon-btn activo" id="alim-sub-al-btn-mensual" onclick="alimSubToggleAlModo('mensual')" title="Mensual">M</button>
+        <button type="button" class="be-modo-btn be-icon-btn" id="alim-sub-al-btn-anual" onclick="alimSubToggleAlModo('anual')" title="Anual (12M)">A</button>
         <button type="button" class="be-modo-btn be-icon-btn" id="alim-sub-al-btn-var" onclick="alimSubToggleAlVariacion()" title="Variación (Pérdida % por Alimentador)">Δ</button>
       </span>
       <button type="button" class="btn-theme" style="width:auto;padding:0 14px" onclick="alimSubDescargarCsv()">⬇ Descargar CSV</button>
@@ -3998,32 +4013,18 @@ tfoot td:first-child{text-align:left}
           <div id="alim-sub-heatmap" class="hidden"></div>
         </div>
         <div data-minitab-grupo="sub-principal" data-minitab="tabla" class="hidden" style="flex:1 1 480px">
-          <!-- Título y subtítulo quitados -- pedido explícito. -->
-          <div style="text-align:center;margin-bottom:8px">
-            <!-- pedido explícito: "la que haya tenido un crecimiento
-                 superior al 5% que se exporte" -- filtra a esas y las
-                 ordena de mayor a menor; el botón ⬇ de exportar (arriba a
-                 la derecha de la tabla) ya sale solo en cualquier tabla.
-                 El umbral (antes fijo en 5%) ahora lo digita el usuario --
-                 pedido explícito ("quiero mejor que el usuario digite la
-                 variacion"). -->
-            <span style="display:inline-flex;align-items:center;gap:4px;margin-top:6px">
-              <button type="button" class="be-modo-btn" id="alim-sub-top-btn-crecimiento" onclick="alimSubToggleTopCrecimiento()" title="Muestra solo las subestaciones con Var. Pérdida (%) mayor al umbral de al lado vs. el mes anterior, para exportar">Crecimiento &gt;</button>
-              <input type="number" id="alim-sub-top-umbral-crecimiento" value="5" min="0" step="0.5" style="width:56px" onchange="alimSubRenderTablaTop()" title="Umbral de Var. Pérdida (%) para el botón Crecimiento">%
-            </span>
-          </div>
-          <!-- Tabla + ranking visual (barras) lado a lado -- pedido
-               explícito ("al lado de esa tabla hay que hacer algo como un
-               gráfico que permita analizar o diagrama"). -->
+          <!-- Título, subtítulo y nombre de la gráfica ("Ranking Visual
+               Top 15") quitados -- pedido explícito. Crecimiento/Variación/
+               Descargar CSV subidos arriba a la derecha, ver
+               #alim-sub-top-var-wrap en el filtro compartido. -->
           <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start">
-            <div class="tbl-wrap tbl-compacta" id="alim-sub-tbl-top-wrap" style="max-height:420px;overflow-y:auto;flex:1 1 420px">
+            <div class="tbl-wrap tbl-compacta alimsub-mostrar-var" id="alim-sub-tbl-top-wrap" style="max-height:420px;overflow-y:auto;flex:1 1 420px">
               <table>
                 <thead><tr><th style="text-align:left">Subestación</th><th>Zona</th><th>Entrada</th><th class="alimsub-col-var">Δ Entrada</th><th>Salida</th><th class="alimsub-col-var">Δ Salida</th><th>Pérdida</th><th class="alimsub-col-var">Δ pp</th><th>Var. Pérdida %</th><th>Pérd. Mensual %</th><th>Pérd. Anual</th></tr></thead>
                 <tbody id="alim-sub-tabla-top"></tbody>
               </table>
             </div>
             <div style="flex:1 1 360px;min-width:300px">
-              <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--text3);text-align:center;margin-bottom:6px">Ranking Visual (Top 15)</div>
               <div class="chart-wrap" style="height:420px"><canvas id="ch-alim-sub-top"></canvas></div>
             </div>
           </div>
@@ -4037,19 +4038,23 @@ tfoot td:first-child{text-align:left}
          alimentadores" y "Alimentadores -- Cómo se están comportando" (van
          siempre juntos, ver alimSubRenderAlimentadoresYCards) -- lo mueve
          alimSubIrATab() igual que #alim-sub-filtro, justo debajo de este. -->
+    <!-- Texto de ayuda quitado -- pedido explícito. -->
     <div id="alim-sub-selector-fbar" class="fbar hidden" style="margin-bottom:10px">
       <label>Subestación</label>
       <div class="msel" id="msel-alim-sub-subestacion" style="min-width:260px"></div>
-      <span style="font-size:11px;color:var(--text3);margin-left:auto;max-width:320px">Elige una o más subestaciones para ver sus alimentadores -- vacío no muestra nada (son muchos alimentadores para verlos todos juntos).</span>
     </div>
 
     <!-- ===== PESTAÑA 2 · Pérdida por alimentadores ===== -->
+    <!-- M/A único -- pedido explícito ("se repite los botones de Mensual y
+         Anual, los quiero en la parte superior derecha... así como Nivel 3
+         o Nivel 4"): antes había 2 pares (este gráfico Y "Pérdida por
+         Zona" más abajo) siempre visibles juntos. Ahora es uno solo,
+         arriba en el filtro compartido (#alim-sub-al-var-wrap), y maneja
+         los 2 a la vez (alimSubToggleAlModo). -->
     <div id="alim-sub-tab-alimentadores" class="hidden">
     <div class="card">
       <div class="fbar" style="justify-content:center;margin-bottom:8px">
-        <button type="button" class="be-modo-btn activo" id="alim-sub-al-btn-mensual" onclick="alimSubToggleAlModo('mensual')" title="Mensual">M</button>
-        <button type="button" class="be-modo-btn" id="alim-sub-al-btn-anual" onclick="alimSubToggleAlModo('anual')" title="Anual (12M)">A</button>
-        <button type="button" class="be-modo-btn" id="alim-sub-al-btn-es" style="margin-left:10px" onclick="alimSubToggleAlEntradaSalida()" title="Agrega Entrada/Salida (kWh) al mismo gráfico">Entrada / Salida</button>
+        <button type="button" class="be-modo-btn" id="alim-sub-al-btn-es" onclick="alimSubToggleAlEntradaSalida()" title="Agrega Entrada/Salida (kWh) al mismo gráfico">Entrada / Salida</button>
       </div>
       <!-- Título justo encima de la gráfica, DESPUÉS de todos los
            filtros -- pedido explícito ("todo filtro quede encima del
@@ -4066,8 +4071,6 @@ tfoot td:first-child{text-align:left}
       <div style="margin-top:18px">
         <div class="fbar" style="justify-content:center;margin-bottom:8px">
           <div style="font-size:13px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Pérdida por Zona</div>
-          <button type="button" class="be-modo-btn activo" id="alim-sub-zona-btn-mensual" style="margin-left:10px" onclick="alimSubToggleModoZona('mensual')" title="Mensual">M</button>
-          <button type="button" class="be-modo-btn" id="alim-sub-zona-btn-anual" onclick="alimSubToggleModoZona('anual')" title="Anual (12M)">A</button>
         </div>
         <!-- Tarjetas pequeñas debajo de la gráfica -- pedido explícito
              ("las tarjetas de pérdidas por zona debajo de la gráfica,
@@ -20638,9 +20641,14 @@ function alimSubToggleTopVar(){
 // pero agrupando por "nemonico" en vez de "subestacion".
 let ALIM_SUB_AL_MODO = 'mensual';  // 'mensual' | 'anual' -- gráfico "Pérdida % por Alimentador"
 
+// Maneja el gráfico "Pérdida % por Alimentador" Y el panel "Pérdida por
+// Zona" a la vez -- pedido explícito (antes eran 2 pares M/A separados que
+// se veían "repetidos"; ver #alim-sub-al-var-wrap en el filtro de arriba).
 function alimSubToggleAlModo(modo){
   ALIM_SUB_AL_MODO = modo;
+  ALIM_SUB_ZONA_PANEL_MODO = modo;
   alimSubRenderChartAlimentadores();
+  alimSubRenderZonaPanel();
 }
 
 function alimSubToggleAlEntradaSalida(){
@@ -20832,13 +20840,6 @@ function alimSubRenderChartAlimentadores(){
   // el mapa Leaflet). Forzar un resize() en el siguiente frame lo
   // corrige sin apostar a un setTimeout con un número fijo de ms.
   requestAnimationFrame(() => { if(chAlimSubAlimentadores) chAlimSubAlimentadores.resize(); });
-}
-
-function alimSubToggleModoZona(modo){
-  ALIM_SUB_ZONA_PANEL_MODO = modo;
-  document.getElementById('alim-sub-zona-btn-mensual').classList.toggle('activo', modo==='mensual');
-  document.getElementById('alim-sub-zona-btn-anual').classList.toggle('activo', modo==='anual');
-  alimSubRenderZonaPanel();
 }
 
 // Panel de referencia rápida "Pérdida por Zona" al lado de "Pérdida % por
