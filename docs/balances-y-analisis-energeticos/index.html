@@ -418,7 +418,8 @@ select{padding:6px 10px;border:1px solid var(--border);border-radius:7px;font-si
 /* Toggle Pérdida vs. técnica/Entrada-Salida, ahora solo-ícono junto al
    título de la estructura -- pedido explícito ("mas pequeña que sea
    sutil... que se vea ahi elegante"). */
-#be-tipo-toggle .be-modo-btn{padding:4px 8px;font-size:10.5px;white-space:nowrap}
+#be-tipo-toggle .be-modo-btn,
+#be-vista-toggle .be-modo-btn{padding:4px 8px;font-size:10.5px;white-space:nowrap}
 .ip-config-compacta .fbar{margin-bottom:0;gap:8px}
 .ip-config-compacta label{font-size:9.5px}
 .ip-config-compacta select,
@@ -5203,27 +5204,10 @@ tfoot td:first-child{text-align:left}
         <button type="button" class="be-editar-btn" onclick="beBorrarFiltrosVer()" title="Volver el filtro de Nivel/Tipo/Estructura a 'Todos'">✕ Borrar filtros</button>
       </div>
     </div>
-    <!-- "¿A qué otra(s) estructura(s) afecta esta medida?" (el desplegable
-         scoped a la estructura activa) quitado -- pedido explícito. Este
-         buscador general queda siempre visible (antes se ocultaba con una
-         estructura activa a favor del desplegable, ver
-         _beActualizarWidgetMedidorAfecta). -->
-    <div id="be-medidor-afecta-busqueda" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);max-width:460px;position:relative">
-      <label style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text3);display:block;margin-bottom:5px">
-        ¿A qué estructura(s) afecta un medidor? -- el mismo punto puede estar en varias
-      </label>
-      <div class="be-buscador">
-        <input type="text" id="be-medidor-afecta-buscar" placeholder="Buscar medidor por nombre o código..." autocomplete="off"
-          oninput="beBuscarMedidorAfecta(this)" onfocus="beBuscarMedidorAfecta(this)"
-          onkeydown="beBuscadorMedidorAfectaTecla(event,this)" onblur="beBuscadorCerrarDiferido(this)">
-        <div class="be-buscador-lista hidden"></div>
-      </div>
-      <div id="be-medidor-afecta-resultado"></div>
-    </div>
   </div>
 
   <div id="be-chart-card" class="card hidden">
-    <div style="display:flex;align-items:center;justify-content:center;gap:10px;position:relative;margin-bottom:10px;padding:0 175px">
+    <div style="display:flex;align-items:center;justify-content:center;gap:10px;position:relative;margin-bottom:10px;padding:0 220px">
       <div id="be-chart-titulo" style="text-align:center;font-size:15px;font-weight:800;color:var(--text);text-transform:uppercase"></div>
       <!-- Alerta pequeña, pegada al botón Editar -- pedido explícito
            ("esa alerta esta muy grande... yo la quiero pequeña al lado
@@ -5248,19 +5232,16 @@ tfoot td:first-child{text-align:left}
       </div>
       <div style="position:absolute;right:0;display:flex;align-items:center;gap:8px">
         <div id="be-medidas-fallas-alerta" class="hidden"></div>
+        <!-- Toggle Gráfico/Tabla subido a la barra del título, junto a
+             "Editar" -- pedido explícito ("quiero esos botones en la parte
+             superior"). Mismo mecanismo (.be-modo-btn/.activo) que
+             Mensual/Anual/Diario: reemplaza uno por el otro en el mismo
+             lugar (#be-chart-bloque / #be-tabla-bloque, ver beSeleccionarVista). -->
+        <div id="be-vista-toggle" style="display:flex;align-items:center;gap:4px">
+          <button type="button" class="be-modo-btn activo" data-vista="grafico" onclick="beSeleccionarVista('grafico')">📈 Gráfico</button>
+          <button type="button" class="be-modo-btn" data-vista="tabla" onclick="beSeleccionarVista('tabla')">📋 Tabla</button>
+        </div>
         <button type="button" class="be-editar-btn" onclick="abrirModalEditarEstructura(BE_ACTIVA_ID)">✎ Editar</button>
-      </div>
-    </div>
-    <!-- Toggle Gráfico/Tabla: reemplaza uno por el otro en el mismo lugar,
-         mismo mecanismo (.be-modo-btn/.activo) que Mensual/Anual/Diario --
-         pedido explícito ("me refiero que se reemplace el grafico por la
-         tabla asi como caundo se cambiaba de mensual y anual"). Vive fuera
-         de los dos bloques para seguir visible sin importar cuál está
-         oculto. -->
-    <div style="display:flex;justify-content:center;margin:0 0 10px">
-      <div id="be-vista-toggle" style="display:inline-flex;align-items:center;gap:4px">
-        <button type="button" class="be-modo-btn activo" data-vista="grafico" onclick="beSeleccionarVista('grafico')">📈 Gráfico</button>
-        <button type="button" class="be-modo-btn" data-vista="tabla" onclick="beSeleccionarVista('tabla')">📋 Tabla</button>
       </div>
     </div>
 
@@ -10696,75 +10677,6 @@ function _beCircuitoMostrarSeleccion(inputId, hiddenId, circuitoId){
   const circuito = circuitoId ? BE_CIRCUITOS.find(c=>String(c.id)===String(circuitoId)) : null;
   document.getElementById(inputId).value = circuito ? (circuito.nombre || circuito.nemonico) : '';
   document.getElementById(hiddenId).value = circuito ? circuito.id : '';
-}
-
-// ---- "¿A qué estructura(s) afecta un medidor?" -- un mismo punto (ej. el
-// lado de BT de un trafo) puede ser a la vez entrada de la barra y salida
-// del trafo, así que buscar por medidor y no por estructura es la única
-// forma de ver TODO lo que un dato real está afectando de una. Usa SIEMPRE
-// BE_ESTRUCTURAS_TODAS (sin el filtro de nivel/tipo de "Ver Balance") --
-// si el medidor afecta una estructura fuera del filtro activo, igual tiene
-// que aparecer.
-function _beMedidorAfectaCandidatos(){
-  const vistos = new Set();
-  (BE_ESTRUCTURAS_TODAS||[]).forEach(e=>{
-    [...(e.entradas||[]), ...(e.salidas||[])].forEach(m=>vistos.add(m.usuario_id));
-  });
-  return [...vistos];
-}
-
-function beBuscarMedidorAfecta(input){
-  const texto = input.value.trim().toLowerCase();
-  const lista = input.nextElementSibling;
-  if(!texto){ lista.classList.add('hidden'); lista.innerHTML=''; return; }
-  const candidatos = _beMedidorAfectaCandidatos().filter(u=>u.toLowerCase().includes(texto)).slice(0,20);
-  lista.innerHTML = candidatos.length
-    ? candidatos.map((u,i)=>`<div class="be-buscador-opt${i===0?' activa':''}" data-usuario="${_mselEsc(u)}" onmousedown="beElegirMedidorAfecta(event,this)">${_mselEsc(u)}</div>`).join('')
-    : '<div class="be-buscador-vacio">Sin resultados</div>';
-  lista.classList.remove('hidden');
-}
-
-function beElegirMedidorAfecta(ev, opt){
-  ev.preventDefault();
-  const lista = opt.parentElement;
-  const input = lista.previousElementSibling;
-  const usuarioId = opt.dataset.usuario;
-  input.value = usuarioId;
-  lista.classList.add('hidden');
-  _beMostrarEstructurasAfectadas(usuarioId);
-}
-
-function beBuscadorMedidorAfectaTecla(ev, input){
-  const lista = input.nextElementSibling;
-  if(lista.classList.contains('hidden')) return;
-  const opts = [...lista.querySelectorAll('.be-buscador-opt')];
-  if(!opts.length) return;
-  let idx = opts.findIndex(o=>o.classList.contains('activa'));
-  if(ev.key==='ArrowDown'){ ev.preventDefault(); idx=(idx+1+opts.length)%opts.length; }
-  else if(ev.key==='ArrowUp'){ ev.preventDefault(); idx=(idx-1+opts.length)%opts.length; }
-  else if(ev.key==='Enter'){ ev.preventDefault(); if(idx>=0) beElegirMedidorAfecta(ev, opts[idx]); return; }
-  else if(ev.key==='Escape'){ lista.classList.add('hidden'); return; }
-  else return;
-  opts.forEach(o=>o.classList.remove('activa'));
-  opts[idx].classList.add('activa');
-}
-
-function _beMostrarEstructurasAfectadas(usuarioId, contenedorId, excluirEstructuraId){
-  const cont = document.getElementById(contenedorId || 'be-medidor-afecta-resultado');
-  const filas = [];
-  (BE_ESTRUCTURAS_TODAS||[]).forEach(e=>{
-    if(excluirEstructuraId!=null && e.id===excluirEstructuraId) return;
-    (e.entradas||[]).forEach(m=>{ if(m.usuario_id===usuarioId) filas.push({estructura:e, tipo:'entrada', canal:m.canal}); });
-    (e.salidas||[]).forEach(m=>{ if(m.usuario_id===usuarioId) filas.push({estructura:e, tipo:'salida', canal:m.canal}); });
-  });
-  if(!filas.length){
-    cont.innerHTML = `<div class="tm-alarma-vacio" style="padding:8px 0">${excluirEstructuraId!=null ? 'No se usa en ninguna otra estructura.' : `"${_mselEsc(usuarioId)}" no está usado en ninguna estructura.`}</div>`;
-    return;
-  }
-  cont.innerHTML = `<div style="font-size:11px;color:var(--text3);margin:8px 0 4px">Afecta ${filas.length} estructura(s):</div>`
-    + filas.map(f=>`<div class="tm-alarma-item" style="margin-bottom:6px" onclick="verBalanceEstructura(${f.estructura.id})">
-        <div class="nom">${_mselEsc(f.estructura.nombre)} <span style="color:var(--text3);font-weight:400">-- ${f.tipo} · ${_mselEsc(BE_NOMBRES_CANAL_CORTO[f.canal]||f.canal)}</span></div>
-      </div>`).join('');
 }
 
 // Cuando hay una estructura activa, el buscador libre (para TODO el
