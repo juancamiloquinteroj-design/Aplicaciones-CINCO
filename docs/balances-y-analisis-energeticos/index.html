@@ -3298,8 +3298,16 @@ tfoot td:first-child{text-align:left}
       <input type="month" id="alim-nivel4-hasta" onchange="alimNivel4RenderTodo()">
       <button type="button" class="be-modo-btn be-icon-btn" id="alim-nivel4-btn-var" style="margin-left:auto" onclick="alimNivel4ToggleVariacion()" title="Variación">Δ</button>
       <button type="button" class="be-modo-btn be-icon-btn" id="alim-nivel4-btn-relleno" onclick="alimNivel4ToggleRelleno()" title="Relleno">▨</button>
-      <button type="button" class="be-modo-btn be-icon-btn activo" id="alim-nivel4-ip-btn-mensual" onclick="alimNivel4IpModo('mensual')" title="Mensual">M</button>
-      <button type="button" class="be-modo-btn be-icon-btn" id="alim-nivel4-ip-btn-anual" onclick="alimNivel4IpModo('anual')" title="Anual (12M)">A</button>
+      <!-- Este M/A solo controla el gráfico de la pestaña "Indicador
+           Pérdidas Nivel 4" (ch-alim-nivel4-ip) -- en "Pérdida Técnica
+           Nivel 4" se oculta (alimNivel4IrATab) porque esa pestaña ya
+           tiene su PROPIO M/A arriba a la derecha de su gráfica, y tener
+           los 2 pares a la vez confundía (pedido explícito: "solo debería
+           existir los de la parte superior derecha"). -->
+      <span id="alim-nivel4-ip-modo-wrap" style="display:inline-flex;gap:3px">
+        <button type="button" class="be-modo-btn be-icon-btn activo" id="alim-nivel4-ip-btn-mensual" onclick="alimNivel4IpModo('mensual')" title="Mensual">M</button>
+        <button type="button" class="be-modo-btn be-icon-btn" id="alim-nivel4-ip-btn-anual" onclick="alimNivel4IpModo('anual')" title="Anual (12M)">A</button>
+      </span>
       <button type="button" class="btn-theme" style="width:auto;padding:0 14px" onclick="alimNivel4DescargarCsv()">⬇ Descargar CSV</button>
     </div>
 
@@ -3415,8 +3423,13 @@ tfoot td:first-child{text-align:left}
       <div class="msel" id="msel-alim-nivel3-zona"></div>
       <button type="button" class="be-modo-btn be-icon-btn" id="alim-nivel3-btn-var" style="margin-left:auto" onclick="alimNivel3ToggleVariacion()" title="Variación">Δ</button>
       <button type="button" class="be-modo-btn be-icon-btn" id="alim-nivel3-btn-relleno" onclick="alimNivel3ToggleRelleno()" title="Relleno">▨</button>
-      <button type="button" class="be-modo-btn be-icon-btn activo" id="alim-nivel3-ip-btn-mensual" onclick="alimNivel3IpModo('mensual')" title="Mensual">M</button>
-      <button type="button" class="be-modo-btn be-icon-btn" id="alim-nivel3-ip-btn-anual" onclick="alimNivel3IpModo('anual')" title="Anual (12M)">A</button>
+      <!-- Este M/A solo controla el gráfico de "Indicador Pérdidas Nivel 3"
+           (ch-alim-nivel3-ip) -- en "Pérdida Técnica Nivel 3" se oculta
+           (alimNivel3IrATab), ver comentario igual en Nivel 4. -->
+      <span id="alim-nivel3-ip-modo-wrap" style="display:inline-flex;gap:3px">
+        <button type="button" class="be-modo-btn be-icon-btn activo" id="alim-nivel3-ip-btn-mensual" onclick="alimNivel3IpModo('mensual')" title="Mensual">M</button>
+        <button type="button" class="be-modo-btn be-icon-btn" id="alim-nivel3-ip-btn-anual" onclick="alimNivel3IpModo('anual')" title="Anual (12M)">A</button>
+      </span>
       <button type="button" class="btn-theme" style="width:auto;padding:0 14px" onclick="alimNivel3DescargarCsv()">⬇ Descargar CSV</button>
     </div>
 
@@ -3681,7 +3694,9 @@ tfoot td:first-child{text-align:left}
     <!-- ===== PESTAÑA 1 · Indicador total N2-1 ===== -->
     <div id="alim-n21-tab-total">
     <div class="card">
-      <div class="fbar" style="justify-content:center;margin-bottom:10px">
+      <!-- A la derecha, debajo del filtro de arriba -- pedido explícito
+           (antes centrado). -->
+      <div class="fbar" style="justify-content:flex-end;margin-bottom:10px">
         <button type="button" class="be-modo-btn" id="alim-n21-btn-es" onclick="alimN21ToggleEntradaSalida()" title="Oculta/muestra Entrada y Salida Total en las 2 gráficas, para ver mejor Pérdida y %">Entrada / Salida</button>
       </div>
 
@@ -17893,6 +17908,12 @@ function alimNivel4IrATab(nombre){
   const card = document.querySelector('#alim-nivel4-tab-'+nombre+' > .card');
   const filtro = document.getElementById('alim-nivel4-filtro');
   if(card && filtro && filtro.parentElement !== card) card.prepend(filtro);
+  // El M/A del filtro compartido SOLO afecta el gráfico de "Indicador
+  // Pérdidas Nivel 4" (ALIM_NIVEL4_IP_MODO) -- en cualquier otra pestaña
+  // no cambia nada (pedido explícito: en "Pérdida Técnica" salía duplicado
+  // con el M/A propio de esa pestaña, arriba a la derecha; en otras
+  // pestañas quedaba un control muerto que no hacía nada al tocarlo).
+  document.getElementById('alim-nivel4-ip-modo-wrap')?.classList.toggle('hidden', nombre !== 'ip');
   if((ALIM_NIVEL4_FILAS||[]).length) alimNivel4RenderTodo();
 }
 
@@ -18140,6 +18161,11 @@ function alimNivel3IrATab(nombre){
   const card = document.querySelector('#alim-nivel3-tab-'+nombre+' > .card');
   const filtro = document.getElementById('alim-nivel3-filtro');
   if(card && filtro && filtro.parentElement !== card) card.prepend(filtro);
+  // Ver comentario igual en alimNivel4IrATab -- el M/A del filtro solo
+  // afecta ALIM_NIVEL3_IP_MODO (gráfico de "Indicador Pérdidas Nivel 3"),
+  // en las demás pestañas (incluida "Comparativo Zonas", donde no cambiaba
+  // nada al tocarlo -- pedido explícito) se oculta.
+  document.getElementById('alim-nivel3-ip-modo-wrap')?.classList.toggle('hidden', nombre !== 'ip');
   if((ALIM_NIVEL3_FILAS||[]).length) alimNivel3RenderTodo();
   if(nombre === 'mapa') alimNivel3CargarMapa();
 }
