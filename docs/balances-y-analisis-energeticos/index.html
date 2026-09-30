@@ -13758,36 +13758,10 @@ async function renderResumenEstructura(){
   const tecnicaActual = tecnicaPorMes[mesActual];
   const tecnicaAnterior = tecnicaPorMes[mesAnterior];
 
-  // Desglose de Pérdidas -- pedido explícito con captura de referencia:
-  // una barra de Total (100%, referencia) y 2 debajo (Técnica/Gestionable
-  // = "no técnica"), cada una proporcional a su parte del Total. Solo si
-  // hay circuito vinculado con dato técnico ESTE mes -- si no, se omite
-  // entera (no hay con qué partir la pérdida).
-  let desgloseHtml = '';
-  if(rActual.diasEntrada && tecnicaActual != null && rActual.perdida > 0){
-    const gestionable = Math.max(0, rActual.perdida - tecnicaActual);
-    const pctTec = Math.min(100, tecnicaActual / rActual.perdida * 100);
-    const pctGes = Math.min(100, gestionable / rActual.perdida * 100);
-    const fkCorto = v => (v/1000).toLocaleString('es-CO',{maximumFractionDigits:0}) + 'k kWh';
-    desgloseHtml = `<div class="alim-resumen-compacta-desglose">
-      <div class="alim-resumen-compacta-desglose-titulo">Desglose de Pérdidas (kWh)</div>
-      <div class="arcd-fila">
-        <span class="arcd-etq">Total</span>
-        <div class="arcd-barra-wrap"><div class="arcd-barra" style="width:100%;background:var(--text3)"></div></div>
-        <span class="arcd-val">${fkCorto(rActual.perdida)}</span>
-      </div>
-      <div class="arcd-fila">
-        <span class="arcd-etq">Técnica</span>
-        <div class="arcd-barra-wrap"><div class="arcd-barra" style="width:${pctTec}%;background:#00B0F0"></div></div>
-        <span class="arcd-val">${fkCorto(tecnicaActual)} (${pctTec.toFixed(0)}%)</span>
-      </div>
-      <div class="arcd-fila">
-        <span class="arcd-etq">Gestionable</span>
-        <div class="arcd-barra-wrap"><div class="arcd-barra" style="width:${pctGes}%;background:#ED7D31"></div></div>
-        <span class="arcd-val">${fkCorto(gestionable)} (${pctGes.toFixed(0)}%)</span>
-      </div>
-    </div>`;
-  }
+  // Desglose de Pérdidas (3 barras) -- función compartida con Nivel 3/4 y
+  // Alimentadores (_alimResumenDesglose); se omite sola si no hay dato
+  // técnico ese mes (no hay con qué partir la pérdida).
+  const desgloseHtml = _alimResumenDesglose(rActual.diasEntrada?rActual.perdida:null, tecnicaActual);
 
   cont.innerHTML = `<div class="alim-resumen-compacta" style="grid-column:1/-1;margin:0">
     <div class="alim-resumen-compacta-titulo">Indicador Mensual</div>
@@ -17197,6 +17171,42 @@ function _alimNivelTecnicaPorMes(resumenResp){
 // Pérdida Total/P. Técnica en una cuadrícula 2x2 a la derecha. Sin
 // título de "Vista Mensual/Anual" propio -- pedido explícito ("pero sin
 // el título"), el card-title de afuera (Mensual / Anual 12M) ya dice eso.
+// Desglose de Pérdidas -- 3 barras horizontales (Total arriba a 100% de
+// referencia, Técnica y Gestionable debajo, cada una proporcional a su
+// parte del Total) -- pedido explícito con captura de referencia ("una
+// barra encima y dos barras debajo, Pérdida técnica y no técnica... 3
+// barras"). Compartido por todas las tarjetas .alim-resumen-compacta que
+// tengan Pérdida Total Y Pérdida Técnica disponibles ese período (Nivel
+// 3/4, Alimentadores, Ver Balance -- ver renderResumenEstructura). N2-1
+// queda afuera a propósito: su pestaña "Total" no trae dato técnico (vive
+// en la pestaña de al lado) y su pestaña "Técnica" ya ES la técnica, no
+// hay un total aparte que partir.
+function _alimResumenDesglose(perdidaTotal, perdidaTecnica){
+  if(perdidaTotal == null || perdidaTecnica == null || perdidaTotal <= 0) return '';
+  const gestionable = Math.max(0, perdidaTotal - perdidaTecnica);
+  const pctTec = Math.min(100, perdidaTecnica / perdidaTotal * 100);
+  const pctGes = Math.min(100, gestionable / perdidaTotal * 100);
+  const fkCorto = v => (v/1000).toLocaleString('es-CO', {maximumFractionDigits:0}) + 'k kWh';
+  return `<div class="alim-resumen-compacta-desglose">
+    <div class="alim-resumen-compacta-desglose-titulo">Desglose de Pérdidas (kWh)</div>
+    <div class="arcd-fila">
+      <span class="arcd-etq">Total</span>
+      <div class="arcd-barra-wrap"><div class="arcd-barra" style="width:100%;background:var(--text3)"></div></div>
+      <span class="arcd-val">${fkCorto(perdidaTotal)}</span>
+    </div>
+    <div class="arcd-fila">
+      <span class="arcd-etq">Técnica</span>
+      <div class="arcd-barra-wrap"><div class="arcd-barra" style="width:${pctTec}%;background:#00B0F0"></div></div>
+      <span class="arcd-val">${fkCorto(perdidaTecnica)} (${pctTec.toFixed(0)}%)</span>
+    </div>
+    <div class="arcd-fila">
+      <span class="arcd-etq">Gestionable</span>
+      <div class="arcd-barra-wrap"><div class="arcd-barra" style="width:${pctGes}%;background:#ED7D31"></div></div>
+      <span class="arcd-val">${fkCorto(gestionable)} (${pctGes.toFixed(0)}%)</span>
+    </div>
+  </div>`;
+}
+
 function _alimNivelRenderResumenGrupos(prefijo, datos12, tecnicaPorMes, modo){
   const cont = document.getElementById(prefijo+'-resumen');
   if(!cont) return;
@@ -17230,6 +17240,7 @@ function _alimNivelRenderResumenGrupos(prefijo, datos12, tecnicaPorMes, modo){
           <div><span class="etiqueta">Salida:</span> <span class="valor">${fk(salida)}</span>${dTxt(salida, salidaAnt)}</div>
           <div><span class="etiqueta">P. Técnica:</span> <span class="valor">${fk(perdidaTecnica)}</span>${dTxt(perdidaTecnica, perdidaTecnicaAnt)}</div>
         </div>
+        ${_alimResumenDesglose(perdidaTotal, perdidaTecnica)}
       </div>
     </div>`;
   };
@@ -21794,6 +21805,7 @@ function alim3RenderTarjetas(filasConClave){
           <div><span class="etiqueta">% Pérdida Total:</span> <span class="valor">${fpct(pctTotal)}</span>${dPct(pctTotal, pctTotalAnt)}</div>
           <div><span class="etiqueta">% Pérdida Gestionable:</span> <span class="valor">${fpct(pctGestionable)}</span>${dPct(pctGestionable, pctGestionableAnt)}</div>
         </div>
+        ${_alimResumenDesglose(perdida, tecnica)}
       </div>
     </div>`;
   };
