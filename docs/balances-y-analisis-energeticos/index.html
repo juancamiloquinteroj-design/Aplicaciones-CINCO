@@ -1114,6 +1114,18 @@ tfoot td:first-child{text-align:left}
 .alim-resumen-compacta-grid .etiqueta{font-size:13px;color:var(--text3);font-weight:700}
 .alim-resumen-compacta-grid .valor{font-size:15px;font-weight:800;color:var(--text)}
 .alim-resumen-compacta-delta{font-size:11px;font-weight:600;color:var(--text3)}
+/* Desglose de Pérdidas -- pedido explícito con captura de referencia:
+   3 barras horizontales (Total arriba a 100%, Técnica y Gestionable
+   debajo, cada una proporcional a su parte del Total). Por ahora solo en
+   Ver Balance (ver renderResumenEstructura) -- ahí es donde se pidió. */
+.alim-resumen-compacta-desglose{flex:1 1 220px;min-width:200px}
+.alim-resumen-compacta-desglose-titulo{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text3);margin-bottom:8px}
+.arcd-fila{display:flex;align-items:center;gap:8px;margin-bottom:5px}
+.arcd-fila:last-child{margin-bottom:0}
+.arcd-etq{flex:0 0 auto;width:68px;font-size:11px;font-weight:700;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.arcd-barra-wrap{flex:1 1 auto;height:9px;border-radius:5px;background:var(--bg3);overflow:hidden}
+.arcd-barra{height:100%;border-radius:5px;transition:width .25s}
+.arcd-val{flex:0 0 auto;font-size:11px;font-weight:700;color:var(--text);white-space:nowrap}
 /* Versión mini -- tarjeta movida arriba del gráfico (antes el título+botón
    Mensual/Anual), pedido explícito de que quede "más pequeña" para que el
    gráfico se expanda hacia abajo. */
@@ -13721,32 +13733,78 @@ async function renderResumenEstructura(){
   const rAnterior = _resumenMes(mesAnterior);
   const rActual = _resumenMes(mesActual);
 
-  const fk = v => v.toLocaleString('es-CO',{maximumFractionDigits:0})+' kWh';
-  const tarjeta = (etiqueta, valor, sub) => `<div class="be-resumen-tile">
-    <div class="etiqueta">${_mselEsc(etiqueta)}</div>
-    <div class="valor">${valor}</div>
-    ${sub?`<div class="sub">${sub}</div>`:''}
-  </div>`;
+  // Mismo diseño de tarjeta que Nivel 3/Nivel 4/N2-1/Alimentadores
+  // (.alim-resumen-compacta) -- pedido explícito ("esa tabla tarjeta se
+  // sigue viendo como mal... hagamos esa estética que te envío"). Antes
+  // era un grid de 6 .be-resumen-tile sueltas, sin relación visual con el
+  // resto de la app.
+  const fk = v => v==null ? '--' : Math.round(v).toLocaleString('es-CO') + ' kWh/Mes';
+  const dTxt = (actual, anterior) => {
+    if(actual==null || anterior==null) return '';
+    const d = actual - anterior;
+    return ` <span class="alim-resumen-compacta-delta">${d>=0?'▲':'▼'} ${Math.round(Math.abs(d)).toLocaleString('es-CO')}</span>`;
+  };
+  const dPp = (rActual.pct!=null && rAnterior.pct!=null) ? rActual.pct - rAnterior.pct : null;
+  const variacionHtml = dPp==null ? '' : ` (${dPp>=0?'▲':'▼'} ${dPp>=0?'+':'-'}${Math.abs(dPp).toFixed(2)} pp)`;
 
-  let ultimaTecnica = 'Sin circuito vinculado';
-  if(BE_COMPARACION_DATOS && BE_COMPARACION_DATOS.perdida_tecnica_kwh){
-    const idx = BE_COMPARACION_DATOS.perdida_tecnica_kwh.length - 1 -
-      [...BE_COMPARACION_DATOS.perdida_tecnica_kwh].reverse().findIndex(v=>v!=null);
-    if(idx >= 0 && BE_COMPARACION_DATOS.perdida_tecnica_kwh[idx]!=null){
-      ultimaTecnica = `${fk(BE_COMPARACION_DATOS.perdida_tecnica_kwh[idx])} (${labelMes(BE_COMPARACION_DATOS.meses[idx])})`;
-    }else{
-      ultimaTecnica = 'Sin datos técnicos aún';
-    }
+  // Pérdida técnica del mes (Pérdidas Técnicas, CSV oficial vía el
+  // circuito vinculado en "Editar Estructura") -- por mes, no "el último
+  // dato que haya" como antes, para poder compararla mes a mes igual que
+  // el resto de la tarjeta.
+  const tecnicaPorMes = {};
+  if(BE_COMPARACION_DATOS && BE_COMPARACION_DATOS.meses){
+    BE_COMPARACION_DATOS.meses.forEach((m,i)=>{ tecnicaPorMes[m] = BE_COMPARACION_DATOS.perdida_tecnica_kwh[i]; });
+  }
+  const tecnicaActual = tecnicaPorMes[mesActual];
+  const tecnicaAnterior = tecnicaPorMes[mesAnterior];
+
+  // Desglose de Pérdidas -- pedido explícito con captura de referencia:
+  // una barra de Total (100%, referencia) y 2 debajo (Técnica/Gestionable
+  // = "no técnica"), cada una proporcional a su parte del Total. Solo si
+  // hay circuito vinculado con dato técnico ESTE mes -- si no, se omite
+  // entera (no hay con qué partir la pérdida).
+  let desgloseHtml = '';
+  if(rActual.diasEntrada && tecnicaActual != null && rActual.perdida > 0){
+    const gestionable = Math.max(0, rActual.perdida - tecnicaActual);
+    const pctTec = Math.min(100, tecnicaActual / rActual.perdida * 100);
+    const pctGes = Math.min(100, gestionable / rActual.perdida * 100);
+    const fkCorto = v => (v/1000).toLocaleString('es-CO',{maximumFractionDigits:0}) + 'k kWh';
+    desgloseHtml = `<div class="alim-resumen-compacta-desglose">
+      <div class="alim-resumen-compacta-desglose-titulo">Desglose de Pérdidas (kWh)</div>
+      <div class="arcd-fila">
+        <span class="arcd-etq">Total</span>
+        <div class="arcd-barra-wrap"><div class="arcd-barra" style="width:100%;background:var(--text3)"></div></div>
+        <span class="arcd-val">${fkCorto(rActual.perdida)}</span>
+      </div>
+      <div class="arcd-fila">
+        <span class="arcd-etq">Técnica</span>
+        <div class="arcd-barra-wrap"><div class="arcd-barra" style="width:${pctTec}%;background:#00B0F0"></div></div>
+        <span class="arcd-val">${fkCorto(tecnicaActual)} (${pctTec.toFixed(0)}%)</span>
+      </div>
+      <div class="arcd-fila">
+        <span class="arcd-etq">Gestionable</span>
+        <div class="arcd-barra-wrap"><div class="arcd-barra" style="width:${pctGes}%;background:#ED7D31"></div></div>
+        <span class="arcd-val">${fkCorto(gestionable)} (${pctGes.toFixed(0)}%)</span>
+      </div>
+    </div>`;
   }
 
-  cont.innerHTML = [
-    tarjeta('Estructura', _mselEsc(estructura ? estructura.nombre : '--'), estructura?`Nivel ${estructura.nivel_tension}`:''),
-    tarjeta('Pérdida -- mes actual', rActual.diasEntrada ? `${fk(rActual.perdida)} (${rActual.pct.toFixed(2)}%)` : 'Sin datos aún', `${labelMes(mesActual)} · ${rActual.diasEntrada} día(s) con dato`),
-    tarjeta('Pérdida -- mes anterior', rAnterior.diasEntrada ? `${fk(rAnterior.perdida)} (${rAnterior.pct.toFixed(2)}%)` : 'Sin datos', `${labelMes(mesAnterior)} · ${rAnterior.diasEntrada} día(s) con dato`),
-    tarjeta('Última pérdida técnica', ultimaTecnica, 'Pérdidas Técnicas (CSV oficial)'),
-    tarjeta('Entrada -- mes anterior', rAnterior.diasEntrada ? fk(rAnterior.entrada) : '--', `${rAnterior.diasEntrada} día(s) con dato`),
-    tarjeta('Salida -- mes anterior', rAnterior.diasSalida ? fk(rAnterior.salida) : '--', `${rAnterior.diasSalida} día(s) con dato`),
-  ].join('');
+  cont.innerHTML = `<div class="alim-resumen-compacta" style="grid-column:1/-1;margin:0">
+    <div class="alim-resumen-compacta-titulo">Indicador Mensual</div>
+    <div class="alim-resumen-compacta-fila">
+      <div class="alim-resumen-compacta-pct">
+        <div class="valor">${rActual.pct==null?'--':rActual.pct.toFixed(2)+'%'}</div>
+        <div class="etiqueta">Índice Pérdida${variacionHtml}</div>
+      </div>
+      <div class="alim-resumen-compacta-grid">
+        <div><span class="etiqueta">Entrada:</span> <span class="valor">${fk(rActual.diasEntrada?rActual.entrada:null)}</span>${dTxt(rActual.diasEntrada?rActual.entrada:null, rAnterior.diasEntrada?rAnterior.entrada:null)}</div>
+        <div><span class="etiqueta">Pérdida Total:</span> <span class="valor">${fk(rActual.diasEntrada?rActual.perdida:null)}</span>${dTxt(rActual.diasEntrada?rActual.perdida:null, rAnterior.diasEntrada?rAnterior.perdida:null)}</div>
+        <div><span class="etiqueta">Salida:</span> <span class="valor">${fk(rActual.diasSalida?rActual.salida:null)}</span>${dTxt(rActual.diasSalida?rActual.salida:null, rAnterior.diasSalida?rAnterior.salida:null)}</div>
+        <div><span class="etiqueta">P. Técnica:</span> <span class="valor">${fk(tecnicaActual)}</span>${dTxt(tecnicaActual, tecnicaAnterior)}</div>
+      </div>
+      ${desgloseHtml}
+    </div>
+  </div>`;
 }
 
 function _bePuntoTieneBack(p){ return !!(p.usuario_id_back && p.canal_back); }
