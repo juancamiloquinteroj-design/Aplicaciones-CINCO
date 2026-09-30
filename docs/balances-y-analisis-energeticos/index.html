@@ -5189,7 +5189,6 @@ tfoot td:first-child{text-align:left}
           <input type="date" id="be-hasta">
           <button type="button" class="be-editar-btn" onclick="beMoverMes(1)" title="Mes siguiente">►</button>
           <button type="button" class="btn-theme" style="width:auto;padding:5px 10px" onclick="verBalanceEstructura(BE_ACTIVA_ID)" title="Aplicar el rango de fechas elegido">▶ Graficar</button>
-          <button type="button" class="be-editar-btn" onclick="if(chBalanceEstructura) chBalanceEstructura.resetZoom()" title="Volver al zoom original">⤢</button>
         </div>
         <div id="be-filtro-mensual" class="fbar hidden" style="margin:0">
           <input type="month" id="be-comp-desde" onchange="this.dataset.manual='1'">
@@ -5197,17 +5196,18 @@ tfoot td:first-child{text-align:left}
           <button type="button" class="btn-theme" style="width:auto;padding:5px 10px" onclick="beRecargarFiltroMensual()" title="Aplicar el rango de fechas elegido">▶ Graficar</button>
           <button type="button" class="be-modo-btn" id="be-btn-entrada-comp" onclick="beToggleEntradaComparacion()">⊕ Entrada</button>
           <button type="button" class="be-modo-btn" id="be-btn-salida-comp" onclick="beToggleSalidaComparacion()">⊖ Salida</button>
-          <button type="button" class="be-editar-btn" onclick="if(chBalanceEstructura) chBalanceEstructura.resetZoom()" title="Volver al zoom original">⤢</button>
         </div>
       </div>
     </div>
+    <!-- "Datos típicos" pasó de filtro en línea a botón + ventana emergente
+         -- pedido explícito ("sea un botón para datos típicos se abre una
+         ventana emergente esto para calcular los datos típicos"). Mismos
+         IDs de siempre (be-tipicos-desde/hasta/msg) adentro del modal --
+         calcularTipicosEstructuraActiva() no cambia. -->
     <div id="be-tipicos-calc-bar" class="be-ver-filtro-grupo hidden">
       <div class="be-ver-filtro-grupo-titulo">Datos típicos</div>
       <div class="be-ver-filtro-grupo-fila">
-        <input type="month" id="be-tipicos-desde">
-        <input type="month" id="be-tipicos-hasta">
-        <button type="button" class="be-editar-btn" onclick="calcularTipicosEstructuraActiva()">Calcular</button>
-        <span id="be-tipicos-msg"></span>
+        <button type="button" class="be-editar-btn" onclick="abrirModalTipicos()">📐 Calcular datos típicos</button>
       </div>
     </div>
     <div id="be-filtro-cliente" class="be-ver-filtro-grupo hidden">
@@ -5219,7 +5219,14 @@ tfoot td:first-child{text-align:left}
     <div class="be-ver-filtro-grupo" style="margin-left:auto">
       <div class="be-ver-filtro-grupo-titulo">Acción</div>
       <div class="be-ver-filtro-grupo-fila">
-        <button type="button" class="be-editar-btn" onclick="beBorrarFiltrosVer()" title="Volver el filtro de Nivel/Tipo/Estructura a 'Todos'">✕ Borrar filtros</button>
+        <!-- Ícono filtro+X en vez de "✕ Borrar filtros" -- pedido explícito
+             ("el de borrar filtro sea X con símbolo de filtro"). SVG
+             (Lucide "filter-x") en vez de emoji -- se ve nítido en los 2
+             temas vía stroke="currentColor", cosa que un emoji no garantiza
+             igual de bien en todos los sistemas operativos. -->
+        <button type="button" class="be-editar-btn be-icon-btn" onclick="beBorrarFiltrosVer()" title="Borrar filtros (Nivel/Tipo/Estructura vuelven a 'Todos')">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M13.013 3H2l8 9.46V19l4 2v-8.54l.9-1.055"/><path d="m22 3-5 5"/><path d="m17 3 5 5"/></svg>
+        </button>
       </div>
     </div>
   </div>
@@ -5722,6 +5729,35 @@ tfoot td:first-child{text-align:left}
   </div>
 </div>
 
+<!-- ---------------- BALANCE DIARIO · DATOS TÍPICOS (ventana emergente) ----------------
+     Antes era un filtro más en la tarjeta de arriba -- pedido explícito
+     ("sea un botón para datos típicos se abre una ventana emergente esto
+     para calcular los datos típicos"). Mismos IDs de siempre
+     (be-tipicos-desde/hasta/msg) -- calcularTipicosEstructuraActiva() no
+     cambió, solo dónde viven sus inputs en el HTML. El resultado
+     (promedio/máx/mín) sigue viviendo aparte, en la tarjeta
+     #be-tipicos-card debajo del gráfico -- no hace falta cerrar este modal
+     para verlo. -->
+<div id="modal-be-tipicos" class="tm-modal-overlay hidden" onclick="if(event.target===this) cerrarModalTipicos()">
+  <div class="tm-modal">
+    <div class="tm-modal-title">Calcular datos típicos</div>
+    <div class="tm-modal-sub">Elige el rango de meses con el que se calcula el promedio/máximo/mínimo de Pérdida % de esta estructura.</div>
+    <div class="be-field" style="margin-top:12px">
+      <label>Desde</label>
+      <input type="month" id="be-tipicos-desde">
+    </div>
+    <div class="be-field" style="margin-top:8px">
+      <label>Hasta</label>
+      <input type="month" id="be-tipicos-hasta">
+    </div>
+    <div id="be-tipicos-msg" class="tm-modal-msg" style="margin-top:6px"></div>
+    <div class="tm-modal-botones">
+      <button class="btn-theme" style="width:auto;padding:8px 16px;background:transparent;color:var(--text2);border:1px solid var(--border)" onclick="cerrarModalTipicos()">Cerrar</button>
+      <button class="btn-theme" style="width:auto;padding:8px 16px" onclick="calcularTipicosEstructuraActiva()">Calcular</button>
+    </div>
+  </div>
+</div>
+
 <!-- ---------------- BALANCE DIARIO · EXPORTAR CSV (rango a elegir) ---------------- -->
 <div id="modal-be-exportar" class="tm-modal-overlay hidden" onclick="if(event.target===this) beCancelarExportarCsv()">
   <div class="tm-modal">
@@ -5953,6 +5989,13 @@ if(window.ChartDataLabels){
 //    grande, y tooltip con esquinas redondeadas y más aire -- look más
 //    pulido, menos "por defecto de librería".
 Chart.defaults.font.family = '"Segoe UI", system-ui, -apple-system, sans-serif';
+// Ejes y leyenda más grandes en TODAS las gráficas -- pedido explícito
+// ("todos los ejes mas grandes tamaño de letra y leyenda de todas las
+// graficas"). Este default global cubre cualquier gráfica que no fije su
+// propio tamaño de letra; las que sí lo fijaban a mano (ticks:{...font:
+// {size:N}...} / legend labels font:{size:N}) se subieron +2 una por una
+// (ver el perl -pi que acompañó este cambio).
+Chart.defaults.font.size = 13;
 Chart.defaults.elements.line.tension = 0;
 // Margen automático arriba/abajo del rango real de los datos en TODOS los
 // ejes lineales -- pedido explícito ("cuando exporto en png sale cortada
@@ -7569,7 +7612,21 @@ async function mostrarVista(nombre){
   }
   if(esBalancesEstructura && !vistaCargada.balancesEstructura){
     vistaCargada.balancesEstructura = true;
+    // Por defecto, la primera vez que se entra a "Ver Balance" arranca en
+    // Nivel 4 -- pedido explícito ("que aparezca en nivel 4 algo
+    // seleccionado"), en vez de la pantalla vacía de siempre. Se fija
+    // ANTES de cargarBalancesEstructura() para que su propio
+    // cargarListaEstructuras() interno ya lo use de una, sin repetir la
+    // consulta.
+    if(nombre==='be-ver') document.getElementById('be-filtro-nivel').value = '4';
     await cargarBalancesEstructura();
+    // Si Nivel 4 no dejó nada ya elegido solo (ver "soloZ" en
+    // cargarListaEstructuras -- Nivel 4 normalmente cae ahí), se elige la
+    // primera estructura de la lista como respaldo, para no dejar la
+    // pantalla vacía.
+    if(nombre==='be-ver' && BE_ACTIVA_ID==null && BE_ESTRUCTURAS && BE_ESTRUCTURAS.length){
+      verBalanceEstructura(BE_ESTRUCTURAS[0].id);
+    }
   }
   if(nombre==='ip-reg' && !vistaCargada.ipReg){
     vistaCargada.ipReg = true;
@@ -7786,14 +7843,14 @@ function iniIpRenderChartSobreponer(){
       layout:{padding:{top:24, right:20}},
       interaction:{mode:'index', intersect:false},
       plugins:{
-        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:12}, color:tickC}},
+        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:14}, color:tickC}},
         tooltip:{callbacks:{label:c=> c.raw==null?null:`${c.dataset.label}: ${c.raw.toFixed(2)}%`}},
         zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:3}}},
       },
       scales:{
         x:{grid:{display:false}, offset:true,
           ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
-        y:{beginAtZero:false, grid:{color:gridC}, ticks:{color:tickC, font:{size:11}, callback:v=>v.toFixed(1)+'%'},
+        y:{beginAtZero:false, grid:{color:gridC}, ticks:{color:tickC, font:{size:13}, callback:v=>v.toFixed(1)+'%'},
           title:{display:true, text:'Pérdida (%)', color:tickC, font:{size:11}}},
       },
     },
@@ -7852,7 +7909,7 @@ function ipiRenderChartAnualInicio(){
       layout:{padding:{top:24, right:20}},
       interaction:{mode:'index', intersect:false},
       plugins:{
-        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:12}, color:tickC}},
+        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:14}, color:tickC}},
         tooltip:{callbacks:{label:c=>{
           if(c.raw==null) return null;
           return c.dataset.yAxisID==='yPct' ? `${c.dataset.label}: ${c.raw.toFixed(2)}%` : `${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`;
@@ -7863,10 +7920,10 @@ function ipiRenderChartAnualInicio(){
         x:{grid:{display:false}, offset:true,
           ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
         yPct:{type:'linear', position:'left', grid:{color:gridC},
-          ticks:{color:tickC, font:{size:11}, callback:v=>v.toFixed(1)+'%'},
+          ticks:{color:tickC, font:{size:13}, callback:v=>v.toFixed(1)+'%'},
           title:{display:true, text:'% Pérdida Mensual', color:tickC, font:{size:11}}},
         y:{position:'right', grid:{drawOnChartArea:false},
-          ticks:{color:tickC, font:{size:10}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
+          ticks:{color:tickC, font:{size:12}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
           title:{display:true, text:'Pérdida Mensual (kWh)', color:tickC, font:{size:10}},
           afterFit:ax=>{ax.width=Math.max(ax.width,60)}},
       },
@@ -11056,17 +11113,17 @@ function beAgregadoZonaRenderChart(datos, zona, tipo, nivel){
       plugins:{
         title:{display:true, text: `${zona} ${etiquetaTipo}${nivel?' · Nivel '+nivel:''}`,
           color:tickC, font:{size:12, weight:'700'}},
-        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:12}, color:tickC}},
+        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:14}, color:tickC}},
         tooltip:{callbacks:{label:c=> c.raw==null?null:`${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:2})}${c.dataset.yAxisID==='yPct'?'%':' kWh'}`}},
         zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:3}}},
       },
       scales:{
         x:{grid:{display:false}, offset:true, ticks:{color:tickC, font:{size:10, weight:'600'}, maxRotation:0, minRotation:0}},
         y:{position:'left', grid:{color:gridC},
-          ticks:{color:tickC, font:{size:10}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
+          ticks:{color:tickC, font:{size:12}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
           title:{display:true, text:'Energía (kWh)', color:tickC, font:{size:10}}},
         yPct:{type:'linear', position:'right', grace:'20%', grid:{drawOnChartArea:false},
-          ticks:{color:tickC, font:{size:10}, callback:v=>v.toFixed(0)+'%'}},
+          ticks:{color:tickC, font:{size:12}, callback:v=>v.toFixed(0)+'%'}},
       },
     },
   });
@@ -13154,7 +13211,7 @@ async function renderChartBalanceEstructura(datos, modo){
       layout:{padding:{top:22}},
       interaction:{mode:'index', intersect:false},
       plugins:{
-        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:12}, color:tickC}},
+        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:14}, color:tickC}},
         tooltip:{callbacks:{label:c=>{
           const v = c.raw==null ? 0 : c.raw;
           return c.dataset.label==='Pérdida %' ? `Pérdida %: ${v.toFixed(2)}%` : `${c.dataset.label}: ${v.toLocaleString('es-CO',{maximumFractionDigits:2})} kWh`;
@@ -13202,17 +13259,17 @@ async function renderChartBalanceEstructura(datos, modo){
         // Sin forzar el cero, el eje se ajusta a lo que realmente varían los
         // datos y el hueco (=la pérdida) se nota de verdad.
         yKwh:{type:'linear', position:'left', beginAtZero: modo!==2, grace:'15%', grid:{color:gridC},
-          ticks:{color:tickC, font:{size:11}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
+          ticks:{color:tickC, font:{size:13}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
           title:{display:true, text:yKwhTitulo, color:tickC, font:{size:11}}},
         ...(usaPct ? {
           yPct:{type:'linear', position:'right', grace:'20%', grid:{drawOnChartArea:false},
-            ticks:{color:tickC, font:{size:11}, callback:v=>v.toFixed(1)+'%'},
+            ticks:{color:tickC, font:{size:13}, callback:v=>v.toFixed(1)+'%'},
             afterFit:ax=>{ax.width=Math.max(ax.width,70)},
             title:{display:true, text:'Pérdida %', color:tickC, font:{size:11}}, offset:true},
         } : {}),
         ...(hayCliente ? {
           yCliente:{type:'linear', position:'right', grid:{drawOnChartArea:false},
-            ticks:{color:tickC, font:{size:11}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
+            ticks:{color:tickC, font:{size:13}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
             afterFit:ax=>{ax.width=Math.max(ax.width,70)},
             title:{display:true, text:'Cliente (kWh)', color:tickC, font:{size:11}}, offset:true},
         } : {}),
@@ -13389,7 +13446,7 @@ function renderChartComparacionEstructura(datos){
         if(puntos.length) beIrADiarioDelMes(datos.meses[puntos[0].index]);
       },
       plugins:{
-        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:12}, color:tickC}},
+        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:14}, color:tickC}},
         tooltip:{callbacks:{label:c=>{
           const v = c.raw==null ? 0 : c.raw;
           return c.dataset.label==='Pérdida %' ? `Pérdida %: ${v.toFixed(2)}%` : `${c.dataset.label}: ${v.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`;
@@ -13403,10 +13460,10 @@ function renderChartComparacionEstructura(datos){
       scales:{
         x:{ grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false} },
         y:{ beginAtZero:true, grace:'15%', grid:{color:gridC},
-          ticks:{color:tickC, font:{size:11}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
+          ticks:{color:tickC, font:{size:13}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
           title:{display:true, text:'Pérdida (kWh/mes)', color:tickC, font:{size:11}} },
         yPct:{type:'linear', position:'right', grace:'20%', grid:{drawOnChartArea:false},
-          ticks:{color:tickC, font:{size:11}, callback:v=>v.toFixed(1)+'%'},
+          ticks:{color:tickC, font:{size:13}, callback:v=>v.toFixed(1)+'%'},
           afterFit:ax=>{ax.width=Math.max(ax.width,70)},
           title:{display:true, text:'Pérdida %', color:tickC, font:{size:11}}, offset:true},
         // Eje propio (compartido por Entrada y Salida) SIN mostrar ticks/
@@ -13422,7 +13479,7 @@ function renderChartComparacionEstructura(datos){
           grid:{drawOnChartArea:false, drawTicks:false}, ticks:{display:false}, border:{display:false}},
         ...(hayCliente ? {
           yCliente:{type:'linear', position:'right', grid:{drawOnChartArea:false},
-            ticks:{color:tickC, font:{size:11}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
+            ticks:{color:tickC, font:{size:13}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
             afterFit:ax=>{ax.width=Math.max(ax.width,70)},
             title:{display:true, text:'Cliente (kWh)', color:tickC, font:{size:11}}, offset:true},
         } : {}),
@@ -13558,7 +13615,7 @@ function renderChartMovilAnual(datos){
         if(puntos.length) beIrADiarioDelMes(datos.meses[puntos[0].index]);
       },
       plugins:{
-        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:12}, color:tickC}},
+        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:14}, color:tickC}},
         tooltip:{callbacks:{label:c=>{
           const v = c.raw==null ? 0 : c.raw;
           return c.dataset.label==='Pérdida % móvil anual' ? `Pérdida % móvil anual: ${v.toFixed(2)}%` : `${c.dataset.label}: ${v.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`;
@@ -13572,17 +13629,17 @@ function renderChartMovilAnual(datos){
       scales:{
         x:{ grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false} },
         y:{ beginAtZero:true, grace:'15%', grid:{color:gridC},
-          ticks:{color:tickC, font:{size:11}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
+          ticks:{color:tickC, font:{size:13}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
           title:{display:true, text:'Pérdida móvil anual (kWh/12 meses)', color:tickC, font:{size:11}} },
         yPct:{type:'linear', position:'right', grace:'20%', grid:{drawOnChartArea:false},
-          ticks:{color:tickC, font:{size:11}, callback:v=>v.toFixed(1)+'%'},
+          ticks:{color:tickC, font:{size:13}, callback:v=>v.toFixed(1)+'%'},
           afterFit:ax=>{ax.width=Math.max(ax.width,70)},
           title:{display:true, text:'Pérdida % móvil anual', color:tickC, font:{size:11}}, offset:true},
         yVolumen:{type:'linear', position:'right',
           grid:{drawOnChartArea:false, drawTicks:false}, ticks:{display:false}, border:{display:false}},
         ...(hayCliente ? {
           yCliente:{type:'linear', position:'right', grid:{drawOnChartArea:false},
-            ticks:{color:tickC, font:{size:11}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
+            ticks:{color:tickC, font:{size:13}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
             afterFit:ax=>{ax.width=Math.max(ax.width,70)},
             title:{display:true, text:'Cliente (kWh)', color:tickC, font:{size:11}}, offset:true},
         } : {}),
@@ -14124,6 +14181,15 @@ function beCancelarBorrarAjuste(){
   BE_BORRAR_PENDIENTE = null;
   document.getElementById('modal-be-borrar-ajuste').classList.add('hidden');
   cargarTablaBalance();
+}
+
+function abrirModalTipicos(){
+  document.getElementById('be-tipicos-msg').textContent = '';
+  document.getElementById('modal-be-tipicos').classList.remove('hidden');
+}
+
+function cerrarModalTipicos(){
+  document.getElementById('modal-be-tipicos').classList.add('hidden');
 }
 
 async function beConfirmarBorrarAjuste(){
@@ -14866,7 +14932,7 @@ function renderTelemedida(datos, canales){
       layout:{padding:{top:22}},
       interaction:{mode:'index', intersect:false},
       plugins:{
-        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:10}, color:tickC,
+        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:12}, color:tickC,
           filter:item=>!item.text.startsWith('Tendencia') && !item.text.startsWith('Límite')}},
         tooltip:{callbacks:{
           label:c=>`${c.dataset.label}: ${(c.raw==null?0:c.raw).toLocaleString('es-CO',{maximumFractionDigits:2})} kWh`,
@@ -14908,7 +14974,7 @@ function renderTelemedida(datos, canales){
             },
           },
         },
-        y:{beginAtZero:true, grid:{color:gridC}, ticks:{color:tickC, font:{size:11}, callback:v=>v.toLocaleString('es-CO')+' kWh'}},
+        y:{beginAtZero:true, grid:{color:gridC}, ticks:{color:tickC, font:{size:13}, callback:v=>v.toLocaleString('es-CO')+' kWh'}},
       },
     },
   });
@@ -15937,7 +16003,7 @@ function ipiRenderChart(){
       layout:{padding:{top:30, right:36, left:16, bottom:4}},
       interaction:{mode:'index', intersect:false},
       plugins:{
-        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:10}, color:tickC,
+        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:12}, color:tickC,
           filter:item=>!item.text.startsWith('Proyección (banda')}},
         // El % de esta línea suele ser lo único visible (kWh arranca
         // oculto) -- si Variación está activa, se agrega acá también la
@@ -15972,7 +16038,7 @@ function ipiRenderChart(){
           ticks:{color:IPI_COLOR_PCT, font:{size:12}, callback:v=>v.toFixed(1)+'%'},
           title:{display:true, text:'Pérdida (%)', color:IPI_COLOR_PCT, font:{size:12}}},
         y:{position:'right', grid:{drawOnChartArea:false},
-          ticks:{color:tickC, font:{size:11}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
+          ticks:{color:tickC, font:{size:13}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
           title:{display:true, text:'kWh', color:tickC, font:{size:11}}},
       },
     },
@@ -16189,12 +16255,12 @@ function ipiRenderBarras(){
       // barras se ve sin color porque las barras solo traen
       // backgroundColor. Acá se vuelve al cuadrito clásico, que sí toma
       // el backgroundColor de cada zona.
-      plugins:{legend:{display:true, position:'bottom', labels:{usePointStyle:false, boxWidth:12, font:{size:10}, color:tickC,
+      plugins:{legend:{display:true, position:'bottom', labels:{usePointStyle:false, boxWidth:12, font:{size:12}, color:tickC,
         filter:item=>item.text!=='Total'}}},
       scales:{
         x:{stacked:true, grid:{display:false}, ticks:{color:tickXFuerte, font:{size:11}}},
         y:{stacked:true, beginAtZero:true, grid:{color:gridC},
-          ticks:{color:tickC, font:{size:11}, callback:v=> esKwh ? fmtGwh(v) : v.toFixed(0)+'%'}},
+          ticks:{color:tickC, font:{size:13}, callback:v=> esKwh ? fmtGwh(v) : v.toFixed(0)+'%'}},
       },
     },
   });
@@ -16224,7 +16290,7 @@ function ipiRenderDona(){
         // usePointStyle:false por la misma razón que en ipiRenderBarras --
         // sin esto la leyenda salía sin color (dibujaba una línea con
         // borderColor, que acá es blanco/negro, no el color de cada zona).
-        legend:{display:true, position:'bottom', labels:{usePointStyle:false, boxWidth:12, font:{size:11}, color:tickC}},
+        legend:{display:true, position:'bottom', labels:{usePointStyle:false, boxWidth:12, font:{size:13}, color:tickC}},
         tooltip:{callbacks:{label:c=>{
           const pct = total ? (c.raw/total*100) : 0;
           return `${c.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh (${pct.toFixed(1)}%)`;
@@ -16823,7 +16889,7 @@ function acRenderChart(){
       // explícito: que solo se vea el dato de la línea bajo el puntero.
       interaction:{mode:'nearest', intersect:true},
       plugins:{
-        legend:{display:true, position:'top', align:'start', labels:{boxWidth:10, font:{size:12}, color:tickC}},
+        legend:{display:true, position:'top', align:'start', labels:{boxWidth:10, font:{size:14}, color:tickC}},
         tooltip:{callbacks:{label:c=>{
           if(c.raw==null) return null;
           return c.dataset.yAxisID==='yPct' ? `${c.dataset.label}: ${c.raw.toFixed(2)}%` : `${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`;
@@ -16831,11 +16897,11 @@ function acRenderChart(){
       },
       scales: mostrarN21 ? {
         x:{grid:{display:false}, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}}},
-        y:{position:'left', beginAtZero:false, grid:{color:gridC}, ticks:{color:tickC, font:{size:11}, callback:v=>fmtGwh(v)}, title:{display:true, text:'Venta (kWh)', color:tickC, font:{size:11}}},
+        y:{position:'left', beginAtZero:false, grid:{color:gridC}, ticks:{color:tickC, font:{size:13}, callback:v=>fmtGwh(v)}, title:{display:true, text:'Venta (kWh)', color:tickC, font:{size:11}}},
         yPct:{position:'right', beginAtZero:true, grid:{drawOnChartArea:false}, ticks:{color:'#ED7D31', font:{size:11}, callback:v=>v.toFixed(1)+'%'}, title:{display:true, text:'Pérdida N2-1 (%)', color:'#ED7D31', font:{size:11}}},
       } : {
         x:{grid:{display:false}, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}}},
-        y:{beginAtZero:false, grid:{color:gridC}, ticks:{color:tickC, font:{size:11}, callback:v=>fmtGwh(v)}},
+        y:{beginAtZero:false, grid:{color:gridC}, ticks:{color:tickC, font:{size:13}, callback:v=>fmtGwh(v)}},
       },
     },
   });
@@ -17293,7 +17359,7 @@ function _alimNivelConstruirChartMensual(cv, mensual, etiquetaNivel, seriesExtra
       layout:{padding:{top:28, right:20}},
       interaction:{mode:'index', intersect:false},
       plugins:{
-        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:12}, color:tickC}},
+        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:14}, color:tickC}},
         tooltip:{callbacks:{
           label:c=>{
             if(c.raw==null) return null;
@@ -17312,10 +17378,10 @@ function _alimNivelConstruirChartMensual(cv, mensual, etiquetaNivel, seriesExtra
       scales:{
         x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
         yPct:{type:'linear', position:'right', grid:{drawOnChartArea:false}, stacked:apilarZonas,
-          ticks:{color:tickC, font:{size:11}, callback:v=>v.toFixed(1)+'%'},
+          ticks:{color:tickC, font:{size:13}, callback:v=>v.toFixed(1)+'%'},
           title:{display:true, text:`Pérdida ${etiquetaNivel} (%)`, color:tickC, font:{size:11}}},
         y:{position:'left', grid:{color:gridC},
-          ticks:{color:tickC, font:{size:10}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
+          ticks:{color:tickC, font:{size:12}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
           title:{display:true, text:'Energía (kWh)', color:tickC, font:{size:10}}},
         yPerd:{type:'linear', position:'right', display:false, min:0, max:yPerdMax},
       },
@@ -17487,7 +17553,7 @@ function _alimNivelConstruirChartTecnica(cv, mensual, tecnicaPorMes, etiquetaNiv
       layout:{padding:{top:36, right:20, bottom:28}},
       interaction:{mode:'index', intersect:false},
       plugins:{
-        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:12}, color:tickC}},
+        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:14}, color:tickC}},
         tooltip:{
           callbacks:{
             label:c=> c.raw==null?null:`${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`,
@@ -17507,7 +17573,7 @@ function _alimNivelConstruirChartTecnica(cv, mensual, tecnicaPorMes, etiquetaNiv
       scales:{
         x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
         y:{position:'left', grid:{color:gridC},
-          ticks:{color:tickC, font:{size:10}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
+          ticks:{color:tickC, font:{size:12}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
           title:{display:true, text:'Pérdida (kWh)', color:tickC, font:{size:10}}},
       },
     },
@@ -17754,13 +17820,13 @@ function alimNivel3RenderChartZonasComparativo(){
       layout:{padding:{top:24, right:20}},
       interaction:{mode:'index', intersect:false},
       plugins:{
-        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:12}, color:tickC}},
+        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:14}, color:tickC}},
         tooltip:{callbacks:{label:c=> c.raw==null?null:`${c.dataset.label}: ${c.raw.toFixed(2)}%`}},
         zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:3}}},
       },
       scales:{
         x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
-        y:{grid:{color:gridC}, ticks:{color:tickC, font:{size:11}, callback:v=>v.toFixed(0)+'%'},
+        y:{grid:{color:gridC}, ticks:{color:tickC, font:{size:13}, callback:v=>v.toFixed(0)+'%'},
           title:{display:true, text:'Pérdida (%)', color:tickC, font:{size:11}}},
       },
     },
@@ -17826,14 +17892,14 @@ function _alimNivel4ConstruirChartImportExport(cv, mensual){
       layout:{padding:{top:20, right:20}},
       interaction:{mode:'index', intersect:false},
       plugins:{
-        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:12}, color:tickC}},
+        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:14}, color:tickC}},
         tooltip:{callbacks:{label:c=> c.raw==null?null:`${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`}},
         zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:3}}},
       },
       scales:{
         x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
         y:{position:'left', grid:{color:gridC},
-          ticks:{color:tickC, font:{size:10}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
+          ticks:{color:tickC, font:{size:12}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
           title:{display:true, text:'Energía (kWh)', color:tickC, font:{size:10}}},
       },
     },
@@ -18575,7 +18641,7 @@ function alimNivel3RenderEvalChart(porZona){
       interaction:{mode:'index', intersect:false},
       plugins:{
         legend:{display:true, position:'bottom', labels:{
-          usePointStyle:false, boxWidth:18, boxHeight:12, font:{size:12}, color:tickC, padding:16,
+          usePointStyle:false, boxWidth:18, boxHeight:12, font:{size:14}, color:tickC, padding:16,
           generateLabels: (ch) => ch.data.datasets.map((ds,i) => {
             const oculto = ch.getDatasetMeta(i).hidden;
             return {text:(oculto?'☐  ':'☑  ')+ds.label, fillStyle:ds.borderColor,
@@ -18589,12 +18655,12 @@ function alimNivel3RenderEvalChart(porZona){
         }}},
       },
       scales:{
-        x:{grid:{display:false}, ticks:{color:tickC, font:{size:11}, maxRotation:0, autoSkip:true, maxTicksLimit:14}},
+        x:{grid:{display:false}, ticks:{color:tickC, font:{size:13}, maxRotation:0, autoSkip:true, maxTicksLimit:14}},
         yKwh:{position:'left', min:yKwhMin, grid:{color:gridC},
-          ticks:{color:tickC, font:{size:11}, callback:v=>fmtGwh(v)},
+          ticks:{color:tickC, font:{size:13}, callback:v=>fmtGwh(v)},
           title:{display:true, text:'Energía reconocida (kWh/mes)', color:tickC, font:{size:11}}},
         yDinero:{position:'right', beginAtZero:true, grace:'12%', grid:{drawOnChartArea:false},
-          ticks:{color:tickC, font:{size:11}, callback:v=>fmtDineroEje(v)},
+          ticks:{color:tickC, font:{size:13}, callback:v=>fmtDineroEje(v)},
           title:{display:true, text:'Costo ($/mes)', color:tickC, font:{size:11}}},
       },
     },
@@ -19875,7 +19941,7 @@ function alimResumenRenderEvalChart(){
       interaction:{mode:'index', intersect:false},
       plugins:{
         legend:{display:true, position:'bottom', labels:{
-          usePointStyle:false, boxWidth:18, boxHeight:12, font:{size:12}, color:tickC, padding:16,
+          usePointStyle:false, boxWidth:18, boxHeight:12, font:{size:14}, color:tickC, padding:16,
           generateLabels: (ch) => ch.data.datasets.map((ds,i) => {
             const oculto = ch.getDatasetMeta(i).hidden;
             return {text:(oculto?'☐  ':'☑  ')+ds.label, fillStyle:ds.borderColor,
@@ -19890,12 +19956,12 @@ function alimResumenRenderEvalChart(){
         zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:3}}},
       },
       scales:{
-        x:{grid:{display:false}, ticks:{color:tickC, font:{size:11}, maxRotation:0, autoSkip:true, maxTicksLimit:14}},
+        x:{grid:{display:false}, ticks:{color:tickC, font:{size:13}, maxRotation:0, autoSkip:true, maxTicksLimit:14}},
         yKwh:{position:'left', min:yKwhMin, grid:{color:gridC},
-          ticks:{color:tickC, font:{size:11}, callback:v=>fmtGwh(v)},
+          ticks:{color:tickC, font:{size:13}, callback:v=>fmtGwh(v)},
           title:{display:true, text:'Energía reconocida (kWh/mes)', color:tickC, font:{size:11}}},
         yDinero:{position:'right', beginAtZero:true, grace:'12%', grid:{drawOnChartArea:false},
-          ticks:{color:tickC, font:{size:11}, callback:v=>fmtDineroEje(v)},
+          ticks:{color:tickC, font:{size:13}, callback:v=>fmtDineroEje(v)},
           title:{display:true, text:'Costo ($/mes)', color:tickC, font:{size:11}}},
       },
     },
@@ -20312,15 +20378,19 @@ function alimSubRenderChartSubestaciones(){
     options:{
       responsive:true, maintainAspectRatio:false,
       layout:{padding:{top:20, right:20}},
-      interaction:{mode:'index', intersect:false},
+      // nearest/intersect:true -- pedido explícito ("puntero mouse muestre
+      // del dato donde estoy parado"): con 'index' mostraba TODAS las
+      // series a la vez al pasar el mouse por cualquier punto del eje X,
+      // igual bug que ya se había corregido antes en "Venta por Ciclo".
+      interaction:{mode:'nearest', intersect:true},
       plugins:{
-        legend:{display:true, position:'bottom', labels:{boxWidth:10, font:{size:11}, color:tickC}},
+        legend:{display:true, position:'bottom', labels:{boxWidth:10, font:{size:13}, color:tickC}},
         tooltip:{callbacks:{label:c => c.raw==null ? null : `${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`}},
         zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:3}}},
       },
       scales:{
         x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
-        y:{grid:{color:gridC}, ticks:{color:tickC, font:{size:11}, callback:v=>v.toLocaleString('es-CO')},
+        y:{grid:{color:gridC}, ticks:{color:tickC, font:{size:13}, callback:v=>v.toLocaleString('es-CO')},
           title:{display:true, text: nombreMetrica, color:tickC, font:{size:11}}},
       },
     },
@@ -20376,15 +20446,19 @@ function alimSubRenderChartVariacion(){
     options:{
       responsive:true, maintainAspectRatio:false,
       layout:{padding:{top:26, right:20}},
-      interaction:{mode:'index', intersect:false},
+      // nearest/intersect:true -- pedido explícito ("puntero mouse muestre
+      // del dato donde estoy parado"): con 'index' mostraba TODAS las
+      // series a la vez al pasar el mouse por cualquier punto del eje X,
+      // igual bug que ya se había corregido antes en "Venta por Ciclo".
+      interaction:{mode:'nearest', intersect:true},
       plugins:{
-        legend:{display:true, position:'bottom', labels:{boxWidth:10, font:{size:11}, color:tickC}},
+        legend:{display:true, position:'bottom', labels:{boxWidth:10, font:{size:13}, color:tickC}},
         tooltip:{callbacks:{label:c => c.raw==null ? null : `${c.dataset.label}: ${c.raw>=0?'+':''}${c.raw.toFixed(1)}% vs. mes anterior`}},
         zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:3}}},
       },
       scales:{
         x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
-        y:{grid:{color:gridC}, ticks:{color:tickC, font:{size:11}, callback:v=>v.toFixed(0)+'%'},
+        y:{grid:{color:gridC}, ticks:{color:tickC, font:{size:13}, callback:v=>v.toFixed(0)+'%'},
           title:{display:true, text:`Variación de ${nombreMetrica} vs. mes anterior (%)`, color:tickC, font:{size:11}}},
       },
     },
@@ -20564,7 +20638,7 @@ function alimSubRenderChartTop(filas){
         tooltip:{callbacks:{label:c=> `${etiqueta}: ${c.raw==null?'--':c.raw.toFixed(2)+'%'}`}},
       },
       scales:{
-        x:{grid:{color:gridC}, ticks:{color:tickC, font:{size:10}, callback:v=>v.toFixed(0)+'%'}},
+        x:{grid:{color:gridC}, ticks:{color:tickC, font:{size:12}, callback:v=>v.toFixed(0)+'%'}},
         y:{grid:{display:false}, ticks:{color:tickC, font:{size:10, weight:'600'}}},
       },
     },
@@ -20733,12 +20807,12 @@ function alimSubRenderChartAlimentadores(){
 
   const scales = {
     x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
-    yPct:{type:'linear', position:'left', grid:{color:gridC}, ticks:{color:tickC, font:{size:11}, callback:v=>v.toFixed(0)+'%'},
+    yPct:{type:'linear', position:'left', grid:{color:gridC}, ticks:{color:tickC, font:{size:13}, callback:v=>v.toFixed(0)+'%'},
       title:{display:true, text: esAnual ? 'Pérdida Anual 12M (%)' : 'Pérdida (%)', color:tickC, font:{size:11}}},
   };
   if(ALIM_SUB_AL_MOSTRAR_ES){
     scales.y = {type:'linear', position:'right', grid:{drawOnChartArea:false},
-      ticks:{color:tickC, font:{size:10}, callback:v=>v.toLocaleString('es-CO')},
+      ticks:{color:tickC, font:{size:12}, callback:v=>v.toLocaleString('es-CO')},
       title:{display:true, text:'Energía (kWh)', color:tickC, font:{size:10}}};
   }
 
@@ -20760,7 +20834,7 @@ function alimSubRenderChartAlimentadores(){
       },
       onHover:(evt, elementos) => { evt.native.target.style.cursor = elementos.length ? 'pointer' : 'default'; },
       plugins:{
-        legend:{display:true, position:'bottom', labels:{boxWidth:10, font:{size:11}, color:tickC}},
+        legend:{display:true, position:'bottom', labels:{boxWidth:10, font:{size:13}, color:tickC}},
         tooltip:{callbacks:{label:c => {
           if(c.raw==null) return null;
           if(c.dataset.yAxisID==='y') return `${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`;
@@ -21194,12 +21268,12 @@ function alim3RenderChartCircuitos(){
       // su etiqueta (más ancho que el punto) se salía y se veía cortado.
       layout:{padding:{top:26, right:16}},
       plugins:{
-        legend:{display:true, position:'bottom', labels:{boxWidth:10, font:{size:11}, color:tickC}},
+        legend:{display:true, position:'bottom', labels:{boxWidth:10, font:{size:13}, color:tickC}},
         tooltip:{callbacks:{label:c => c.raw==null ? null : `${c.dataset.label}: ${fmtY(c.raw)}${esPct?'':' kWh/km'}`}},
       },
       scales:{
-        x:{grid:{display:false}, offset:true, ticks:{color:tickC, font:{size:10}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
-        y:{ticks:{color:tickC, font:{size:10}, callback:fmtY},
+        x:{grid:{display:false}, offset:true, ticks:{color:tickC, font:{size:12}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
+        y:{ticks:{color:tickC, font:{size:12}, callback:fmtY},
           title:{display:true, text: esPct ? 'Pérdida Gestionable (%)' : 'Pérdida Gestionable (kWh/km)', color:tickC, font:{size:10}}},
       },
     },
@@ -21777,7 +21851,7 @@ function alim3RenderChartEsp(filasConClave){
       layout:{padding:{top:28, right:20}},
       interaction:{mode:'index', intersect:false},
       plugins:{
-        legend:{display:true, position:'bottom', labels:{boxWidth:10, font:{size:11}, color:tickC}},
+        legend:{display:true, position:'bottom', labels:{boxWidth:10, font:{size:13}, color:tickC}},
         // Al pasar el mouse SIEMPRE se ve la variación vs. el punto
         // anterior (pp o kWh según la serie), esté prendido o no el botón
         // "Δ Variación" -- ese botón solo controla la etiqueta fija sobre
@@ -21799,9 +21873,9 @@ function alim3RenderChartEsp(filasConClave){
       },
       scales:{
         x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:9, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
-        y:{position:'left', grid:{color:gridC}, ticks:{color:tickC, font:{size:10}, callback:v=>v.toLocaleString('es-CO')},
+        y:{position:'left', grid:{color:gridC}, ticks:{color:tickC, font:{size:12}, callback:v=>v.toLocaleString('es-CO')},
           title:{display:true, text: esAnual?'Energía Anual 12M (kWh)':'Energía (kWh)', color:tickC, font:{size:10}}},
-        yPct:{type:'linear', position:'right', grid:{drawOnChartArea:false}, ticks:{color:tickC, font:{size:10}, callback:v=>v.toFixed(0)+'%'},
+        yPct:{type:'linear', position:'right', grid:{drawOnChartArea:false}, ticks:{color:tickC, font:{size:12}, callback:v=>v.toFixed(0)+'%'},
           title:{display:true, text: esAnual?'Pérdida Anual 12M (%)':'Pérdida (%)', color:tickC, font:{size:10}}},
       },
     },
@@ -21835,13 +21909,13 @@ function alim3RenderChartTecnica(filasConClave){
       layout:{padding:{top:16, right:16}},
       interaction:{mode:'index', intersect:false},
       plugins:{
-        legend:{display:true, position:'bottom', labels:{boxWidth:10, font:{size:11}, color:tickC}},
+        legend:{display:true, position:'bottom', labels:{boxWidth:10, font:{size:13}, color:tickC}},
         tooltip:{callbacks:{label:c => c.raw==null?null:`${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`}},
         zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:3}}},
       },
       scales:{
         x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:9, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
-        y:{grid:{color:gridC}, ticks:{color:tickC, font:{size:10}, callback:v=>v.toLocaleString('es-CO')}, title:{display:true, text:'kWh', color:tickC, font:{size:10}}},
+        y:{grid:{color:gridC}, ticks:{color:tickC, font:{size:12}, callback:v=>v.toLocaleString('es-CO')}, title:{display:true, text:'kWh', color:tickC, font:{size:10}}},
       },
     },
   });
@@ -21878,7 +21952,7 @@ function alim3RenderChartAgpe(filasConClave){
       },
       scales:{
         x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:9, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
-        y:{grid:{color:gridC}, ticks:{color:tickC, font:{size:10}, callback:v=>v.toLocaleString('es-CO')}, title:{display:true, text:'kWh', color:tickC, font:{size:10}}},
+        y:{grid:{color:gridC}, ticks:{color:tickC, font:{size:12}, callback:v=>v.toLocaleString('es-CO')}, title:{display:true, text:'kWh', color:tickC, font:{size:10}}},
       },
     },
   });
@@ -22107,13 +22181,13 @@ function alim3RenderScatter(){
       responsive:true, maintainAspectRatio:false,
       layout:{padding:{top:16, right:16}},
       plugins:{
-        legend:{display:true, position:'bottom', labels:{boxWidth:10, font:{size:11}, color:tickC}},
+        legend:{display:true, position:'bottom', labels:{boxWidth:10, font:{size:13}, color:tickC}},
         tooltip:{callbacks:{label:c => `${c.raw.nombre}: ${c.raw.x.toFixed(1)}% · ${c.raw.y.toFixed(1)}`}},
       },
       scales:{
         x:{type:'linear', min:0, max:100, grid:{color:gridC}, ticks:{color:tickXFuerte, font:{size:10}, callback:v=>v+'%'},
           title:{display:true, text:'Gestionable % Top', color:tickC, font:{size:10}}},
-        y:{grid:{color:gridC}, ticks:{color:tickC, font:{size:10}}, title:{display:true, text:'Gest x Longitud', color:tickC, font:{size:10}}},
+        y:{grid:{color:gridC}, ticks:{color:tickC, font:{size:12}}, title:{display:true, text:'Gest x Longitud', color:tickC, font:{size:10}}},
       },
     },
   });
@@ -22471,7 +22545,7 @@ function axcRenderChart(serie){
       layout:{padding:{top:20, right:20}},
       interaction:{mode:'index', intersect:false},
       plugins:{
-        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:12}, color:tickC}},
+        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:14}, color:tickC}},
         tooltip:{callbacks:{
           label:c=>{
             if(c.raw==null) return null;
@@ -22486,8 +22560,8 @@ function axcRenderChart(serie){
       },
       scales:{
         x:{grid:{display:false}, offset:true,
-          ticks:{color:tickC, font:{size:10}, maxRotation:45, minRotation:45, autoSkip:true, maxTicksLimit:24}},
-        y:{beginAtZero:false, grid:{color:gridC}, ticks:{color:tickC, font:{size:11}}},
+          ticks:{color:tickC, font:{size:12}, maxRotation:45, minRotation:45, autoSkip:true, maxTicksLimit:24}},
+        y:{beginAtZero:false, grid:{color:gridC}, ticks:{color:tickC, font:{size:13}}},
       },
     },
   });
@@ -22735,7 +22809,7 @@ function tempEntradaRender(){
       layout:{padding:{top:20, right:20}},
       interaction:{mode:'index', intersect:false},
       plugins:{
-        legend:{display:true, position:'bottom', labels:{boxWidth:10, font:{size:11}, color:tickC}},
+        legend:{display:true, position:'bottom', labels:{boxWidth:10, font:{size:13}, color:tickC}},
         tooltip:{callbacks:{label:c => {
           if(c.raw==null) return null;
           return c.dataset.yAxisID==='yTemp' ? `${c.dataset.label}: ${c.raw.toFixed(1)}${TEMP_ENTRADA_UNIDAD}` : `${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`;
@@ -22744,7 +22818,7 @@ function tempEntradaRender(){
       },
       scales:{
         x:{grid:{display:false}, ticks:{color:tickXFuerte, font:{size:9, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
-        y:{position:'left', grid:{color:gridC}, ticks:{color:tickC, font:{size:10}, callback:v=>v.toLocaleString('es-CO')},
+        y:{position:'left', grid:{color:gridC}, ticks:{color:tickC, font:{size:12}, callback:v=>v.toLocaleString('es-CO')},
           title:{display:true, text:entradaTitulo, color:tickC, font:{size:10}}},
         yTemp:{type:'linear', position:'right', grid:{drawOnChartArea:false}, ticks:{color:colorVar, font:{size:10}, callback:v=>v.toFixed(0)+TEMP_ENTRADA_UNIDAD},
           title:{display:true, text:`${infoVar.nombre} (${TEMP_ENTRADA_UNIDAD})`, color:colorVar, font:{size:10}}},
@@ -22804,7 +22878,7 @@ function tempHorariaRender(filas){
       },
       scales:{
         x:{grid:{display:false}, ticks:{color:tickXFuerte, font:{size:9, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
-        y:{grid:{color:gridC}, ticks:{color:tickC, font:{size:10}, callback:v=>v.toFixed(0)+'°C'},
+        y:{grid:{color:gridC}, ticks:{color:tickC, font:{size:12}, callback:v=>v.toFixed(0)+'°C'},
           title:{display:true, text:'Temperatura (°C)', color:tickC, font:{size:10}}},
       },
     },
@@ -23745,13 +23819,13 @@ function alimN21RenderBarrasZonas(){
     options:{
       responsive:true, maintainAspectRatio:false,
       plugins:{
-        legend:{display:true, position:'bottom', labels:{boxWidth:10, font:{size:11}, color:tickC}},
+        legend:{display:true, position:'bottom', labels:{boxWidth:10, font:{size:13}, color:tickC}},
         tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${Math.round(c.raw).toLocaleString('es-CO')} kWh`}},
         datalabels:{display:false},
       },
       scales:{
         x:{ticks:{color:tickC, font:{size:10, weight:'700'}}, grid:{display:false}},
-        y:{ticks:{color:tickC, font:{size:9}, callback:v=>v.toLocaleString('es-CO')}, grid:{color:gridC}},
+        y:{ticks:{color:tickC, font:{size:11}, callback:v=>v.toLocaleString('es-CO')}, grid:{color:gridC}},
       },
     },
   });
@@ -24333,7 +24407,7 @@ function alimN21RenderChartMensual(datos12){
       layout:{padding:{top:28, right:20}},
       interaction:{mode:'index', intersect:false},
       plugins:{
-        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:12}, color:tickC}},
+        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:14}, color:tickC}},
         tooltip:{callbacks:{label:c=>{
           if(c.raw==null) return null;
           return c.dataset.yAxisID==='yPct' ? `${c.dataset.label}: ${c.raw.toFixed(2)}%` : `${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`;
@@ -24343,10 +24417,10 @@ function alimN21RenderChartMensual(datos12){
       scales:{
         x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
         yPct:{type:'linear', position:'right', grid:{drawOnChartArea:false},
-          ticks:{color:tickC, font:{size:11}, callback:v=>v.toFixed(1)+'%'},
+          ticks:{color:tickC, font:{size:13}, callback:v=>v.toFixed(1)+'%'},
           title:{display:true, text:'Pérdida Zonal (%)', color:tickC, font:{size:11}}},
         y:{position:'left', grid:{color:gridC},
-          ticks:{color:tickC, font:{size:10}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
+          ticks:{color:tickC, font:{size:12}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
           title:{display:true, text:'Energía (kWh)', color:tickC, font:{size:10}}},
       },
     },
@@ -24417,7 +24491,7 @@ function alimN21RenderChartAnual(datos12){
       layout:{padding:{top:28, right:20}},
       interaction:{mode:'index', intersect:false},
       plugins:{
-        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:12}, color:tickC}},
+        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:14}, color:tickC}},
         tooltip:{callbacks:{label:c=>{
           if(c.raw==null) return null;
           return c.dataset.yAxisID==='yPct' ? `${c.dataset.label}: ${c.raw.toFixed(2)}%` : `${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`;
@@ -24427,10 +24501,10 @@ function alimN21RenderChartAnual(datos12){
       scales:{
         x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
         yPct:{type:'linear', position:'right', grid:{drawOnChartArea:false},
-          ticks:{color:tickC, font:{size:11}, callback:v=>v.toFixed(1)+'%'},
+          ticks:{color:tickC, font:{size:13}, callback:v=>v.toFixed(1)+'%'},
           title:{display:true, text:'Pérdida N21 Anual (%)', color:tickC, font:{size:11}}},
         y:{position:'left', grid:{color:gridC},
-          ticks:{color:tickC, font:{size:10}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
+          ticks:{color:tickC, font:{size:12}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
           title:{display:true, text:'Energía Anual (kWh)', color:tickC, font:{size:10}}},
       },
     },
@@ -24480,7 +24554,7 @@ function alimN21RenderChartZonas(){
       layout:{padding:{top:24, right:20}},
       interaction:{mode:'index', intersect:false},
       plugins:{
-        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:12}, color:tickC}},
+        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:14}, color:tickC}},
         tooltip:{callbacks:{label:c=>{
           if(c.raw==null) return null;
           return `${c.dataset.label}: ${c.raw.toFixed(2)}%`;
@@ -24489,7 +24563,7 @@ function alimN21RenderChartZonas(){
       },
       scales:{
         x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
-        y:{grid:{color:gridC}, ticks:{color:tickC, font:{size:11}, callback:v=>v.toFixed(0)+'%'},
+        y:{grid:{color:gridC}, ticks:{color:tickC, font:{size:13}, callback:v=>v.toFixed(0)+'%'},
           title:{display:true, text:'Pérdida (%)', color:tickC, font:{size:11}}},
       },
     },
@@ -24643,7 +24717,7 @@ function alimN21RenderChartTecMensual(datos12){
       layout:{padding:{top:28, right:20}},
       interaction:{mode:'index', intersect:false},
       plugins:{
-        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:12}, color:tickC}},
+        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:14}, color:tickC}},
         tooltip:{callbacks:{label:c=>{
           if(c.raw==null) return null;
           return `${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`;
@@ -24653,7 +24727,7 @@ function alimN21RenderChartTecMensual(datos12){
       scales:{
         x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
         y:{position:'left', grid:{color:gridC},
-          ticks:{color:tickC, font:{size:10}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
+          ticks:{color:tickC, font:{size:12}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
           title:{display:true, text:'Energía (kWh)', color:tickC, font:{size:10}}},
       },
     },
@@ -24727,7 +24801,7 @@ function alimN21RenderChartTecAnual(datos12){
       layout:{padding:{top:28, right:20}},
       interaction:{mode:'index', intersect:false},
       plugins:{
-        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:12}, color:tickC}},
+        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:14}, color:tickC}},
         tooltip:{callbacks:{label:c=>{
           if(c.raw==null) return null;
           return `${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`;
@@ -24737,7 +24811,7 @@ function alimN21RenderChartTecAnual(datos12){
       scales:{
         x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
         y:{position:'left', grid:{color:gridC},
-          ticks:{color:tickC, font:{size:10}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
+          ticks:{color:tickC, font:{size:12}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
           title:{display:true, text:'Energía Anual (kWh)', color:tickC, font:{size:10}}},
       },
     },
@@ -24919,10 +24993,10 @@ function ipComercialRenderChart(){
       // pegado al rango real de los datos (ej. 20.6%-22.2%) y una variación
       // de menos de 2 puntos porcentuales se ve como un electrocardiograma.
       yPct:{type:'linear', position:'left', min:16, grid:{color:gridC},
-        ticks:{color:tickC, font:{size:11}, callback:v=>v.toFixed(1)+'%'},
+        ticks:{color:tickC, font:{size:13}, callback:v=>v.toFixed(1)+'%'},
         title:{display:true, text:'Pérdida Anual (%)', color:tickC, font:{size:11}}},
       y:{position:'right', grid:{drawOnChartArea:false},
-        ticks:{color:tickC, font:{size:11}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
+        ticks:{color:tickC, font:{size:13}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
         title:{display:true, text:'Pérdida Anual (kWh)', color:tickC, font:{size:11}}},
     };
   }else{
@@ -24945,7 +25019,7 @@ function ipComercialRenderChart(){
     scales = {
       x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
       y:{grid:{color:gridC},
-        ticks:{color:tickC, font:{size:11}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
+        ticks:{color:tickC, font:{size:13}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
         title:{display:true, text:'Energía Anual (12M, kWh)', color:tickC, font:{size:11}}},
     };
   }
@@ -24961,7 +25035,7 @@ function ipComercialRenderChart(){
       layout:{padding:{top:28, right:36, left:16, bottom:4}},
       interaction:{mode:'index', intersect:false},
       plugins:{
-        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:10}, color:tickC,
+        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:12}, color:tickC,
           filter:item=>!item.text.startsWith('Proyección (banda')}},
         tooltip:{callbacks:{label:c=>{
           if(c.raw==null) return null;
@@ -25175,7 +25249,7 @@ function ipComercialRenderChartMensual(){
       layout:{padding:{top:24, right:20}},
       interaction:{mode:'index', intersect:false},
       plugins:{
-        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:12}, color:tickC}},
+        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:14}, color:tickC}},
         tooltip:{callbacks:{label:c=>{
           if(c.raw==null) return null;
           return c.dataset.yAxisID==='yPct' ? `${c.dataset.label}: ${c.raw.toFixed(2)}%` : `${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`;
@@ -25189,10 +25263,10 @@ function ipComercialRenderChartMensual(){
       scales:{
         x:{grid:{display:false}, ticks:{color:tickXFuerte, font:{size:9, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
         yPct:{type:'linear', position:'left', grid:{color:gridC},
-          ticks:{color:tickC, font:{size:10}, callback:v=>v.toFixed(1)+'%'},
+          ticks:{color:tickC, font:{size:12}, callback:v=>v.toFixed(1)+'%'},
           title:{display:true, text:'% Pérdida Mensual', color:tickC, font:{size:10}}},
         y:{position:'right', grid:{drawOnChartArea:false},
-          ticks:{color:tickC, font:{size:9}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
+          ticks:{color:tickC, font:{size:11}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
           title:{display:true, text:'Energía Comprada (kWh)', color:tickC, font:{size:9}}},
       },
     },
@@ -26195,9 +26269,9 @@ function tridRenderGraficas(filasXm){
       data:{labels: etiquetas, datasets},
       options:{
         responsive:true, maintainAspectRatio:false,
-        interaction:{mode:'index', intersect:false},
+      interaction:{mode:'index', intersect:false},
         plugins:{
-          legend:{display:true, position:'bottom', labels:{boxWidth:10, font:{size:12}, color:tickC}},
+          legend:{display:true, position:'bottom', labels:{boxWidth:10, font:{size:14}, color:tickC}},
           zoom:{
             pan:{enabled:true, mode:'x'},
             zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'},
@@ -26205,8 +26279,8 @@ function tridRenderGraficas(filasXm){
           },
         },
         scales:{
-          x:{grid:{display:false}, ticks:{color:tickC, font:{size:9}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
-          y:{grid:{color:gridC}, ticks:{color:tickC, font:{size:9}, callback:v=>v.toLocaleString('es-CO')}},
+          x:{grid:{display:false}, ticks:{color:tickC, font:{size:11}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
+          y:{grid:{color:gridC}, ticks:{color:tickC, font:{size:11}, callback:v=>v.toLocaleString('es-CO')}},
         },
       },
     });
@@ -26779,7 +26853,7 @@ function ipRenderChartPrincipalMensual(){
       layout:{padding:{top:24, right:28}},
       interaction:{mode:'index', intersect:false},
       plugins:{
-        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:12}, color:tickC}},
+        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:14}, color:tickC}},
         tooltip:{callbacks:{label:c=>{
           if(c.raw==null) return null;
           return c.dataset.yAxisID==='yPct' ? `${c.dataset.label}: ${c.raw.toFixed(3)}%` : `${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`;
@@ -26795,10 +26869,10 @@ function ipRenderChartPrincipalMensual(){
         x:{grid:{display:false}, offset:true,
           ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
         yPct:{type:'linear', position:'left', grid:{color:gridC},
-          ticks:{color:tickC, font:{size:11}, callback:v=>v.toFixed(1)+'%'},
+          ticks:{color:tickC, font:{size:13}, callback:v=>v.toFixed(1)+'%'},
           title:{display:true, text:'% Pérdida Mensual', color:tickC, font:{size:11}}},
         y:{position:'right', grid:{drawOnChartArea:false},
-          ticks:{color:tickC, font:{size:11}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
+          ticks:{color:tickC, font:{size:13}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
           title:{display:true, text:'Pérdida Mensual (kWh)', color:tickC, font:{size:11}},
           afterFit:ax=>{ax.width=Math.max(ax.width,60)}},
       },
@@ -26975,7 +27049,7 @@ function ipRenderChart(){
       layout:{padding:{top:24, right:28}},
       interaction:{mode:'index', intersect:false},
       plugins:{
-        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:10}, color:tickC,
+        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:12}, color:tickC,
           filter:item=>!item.text.startsWith('Proyección (banda')}},
         tooltip:{callbacks:{label:c=>{
           if(c.raw==null) return null;
@@ -26992,10 +27066,10 @@ function ipRenderChart(){
         x:{grid:{display:false}, offset:true,
           ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
         yPct:{type:'linear', position:'left', grid:{color:gridC},
-          ticks:{color:tickC, font:{size:11}, callback:v=>v.toFixed(1)+'%'},
+          ticks:{color:tickC, font:{size:13}, callback:v=>v.toFixed(1)+'%'},
           title:{display:true, text:'IPT (%)', color:tickC, font:{size:11}}},
         y:{position:'right', grid:{drawOnChartArea:false},
-          ticks:{color:tickC, font:{size:11}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
+          ticks:{color:tickC, font:{size:13}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
           title:{display:true, text:'PT (kWh)', color:tickC, font:{size:11}},
           afterFit:ax=>{ax.width=Math.max(ax.width,60)}},
       },
@@ -27041,7 +27115,7 @@ function ipRenderChartNivel1(){
       layout:{padding:{top:24, right:28}},
       interaction:{mode:'index', intersect:false},
       plugins:{
-        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:12}, color:tickC}},
+        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:14}, color:tickC}},
         tooltip:{callbacks:{label:c=>{
           if(c.raw==null) return null;
           return c.dataset.yAxisID==='yPct' ? `${c.dataset.label}: ${c.raw.toFixed(3)}%` : `${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`;
@@ -27056,10 +27130,10 @@ function ipRenderChartNivel1(){
         x:{grid:{display:false}, offset:true,
           ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
         yPct:{type:'linear', position:'left', grid:{color:gridC},
-          ticks:{color:tickC, font:{size:11}, callback:v=>v.toFixed(1)+'%'},
+          ticks:{color:tickC, font:{size:13}, callback:v=>v.toFixed(1)+'%'},
           title:{display:true, text:'IPTj,1,t (%)', color:'#31859B', font:{size:11}}},
         y:{position:'right', grid:{drawOnChartArea:false},
-          ticks:{color:tickC, font:{size:11}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
+          ticks:{color:tickC, font:{size:13}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
           title:{display:true, text:'PTj,1,t (kWh)', color:tickC, font:{size:11}},
           afterFit:ax=>{ax.width=Math.max(ax.width,60)}},
       },
@@ -27204,7 +27278,7 @@ function ipRenderChartAnualInicio(){
       layout:{padding:{top:24, right:20}},
       interaction:{mode:'index', intersect:false},
       plugins:{
-        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:12}, color:tickC}},
+        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:14}, color:tickC}},
         tooltip:{callbacks:{label:c=>{
           if(c.raw==null) return null;
           return c.dataset.yAxisID==='yPct' ? `${c.dataset.label}: ${c.raw.toFixed(3)}%` : `${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`;
@@ -27219,10 +27293,10 @@ function ipRenderChartAnualInicio(){
         x:{grid:{display:false}, offset:true,
           ticks:{color:tickXFuerte, font:{size:10, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
         yPct:{type:'linear', position:'left', grid:{color:gridC},
-          ticks:{color:tickC, font:{size:11}, callback:v=>v.toFixed(1)+'%'},
+          ticks:{color:tickC, font:{size:13}, callback:v=>v.toFixed(1)+'%'},
           title:{display:true, text:'IPT (%)', color:tickC, font:{size:11}}},
         y:{position:'right', grid:{drawOnChartArea:false},
-          ticks:{color:tickC, font:{size:10}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
+          ticks:{color:tickC, font:{size:12}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
           title:{display:true, text:'PT (kWh)', color:tickC, font:{size:10}},
           afterFit:ax=>{ax.width=Math.max(ax.width,60)}},
       },
@@ -28182,7 +28256,7 @@ function renderPrincipalComparar(){
       layout:{padding:{bottom:20,top:20,right:16,left:8}},
       interaction:{mode:'index', intersect:false},
       plugins:{
-        legend:{display:true, position:'bottom', labels:{boxWidth:14, font:{size:11}, color:tickC, padding:14}},
+        legend:{display:true, position:'bottom', labels:{boxWidth:14, font:{size:13}, color:tickC, padding:14}},
         tooltip:{callbacks:{label:c=>{
           const v=c.raw; if(v==null) return null;
           const esPct = c.dataset.yAxisID==='yPct';
@@ -28192,10 +28266,10 @@ function renderPrincipalComparar(){
       scales:{
         x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:12}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
         y:{type:'linear', position:'left', beginAtZero:true, grid:{color:gridC},
-          ticks:{color:tickC, font:{size:12}, callback:v=>fmtGwh(v)},
+          ticks:{color:tickC, font:{size:14}, callback:v=>fmtGwh(v)},
           title:{display:true, text:'Pérdida (kWh)', color:tickC, font:{size:12}}},
         yPct:{type:'linear', position:'right', beginAtZero:false, grace:'20%', grid:{drawOnChartArea:false},
-          ticks:{color:tickC, font:{size:12}, callback:v=>v.toFixed(1)+'%'},
+          ticks:{color:tickC, font:{size:14}, callback:v=>v.toFixed(1)+'%'},
           title:{display:true, text:'Pérdida (%)', color:tickC, font:{size:12}}},
       },
     },
@@ -28273,7 +28347,7 @@ function renderPrincipal(){
       layout:{padding:{bottom:20,top:20,right:16,left:8}},
       interaction:{mode:'index', intersect:false},
       plugins:{
-        legend:{display:true, position:'bottom', labels:{boxWidth:14, font:{size:11}, color:tickC, padding:14}},
+        legend:{display:true, position:'bottom', labels:{boxWidth:14, font:{size:13}, color:tickC, padding:14}},
         // El hover SIEMPRE muestra la variación (no depende del botón
         // "📊 Variación", que solo controla la etiqueta permanente). El
         // tooltip clasifica % vs kWh por el yAxisID real del dataset
@@ -28294,16 +28368,16 @@ function renderPrincipal(){
         // al borde del eje).
         x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:12}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
         y:{type:'linear', position:'left', beginAtZero:true, grid:{color:gridC},
-          ticks:{color:tickC, font:{size:12}, callback:v=>fmtGwh(v)},
+          ticks:{color:tickC, font:{size:14}, callback:v=>fmtGwh(v)},
           title:{display:true, text:'Pérdida (kWh)', color:tickC, font:{size:12}}},
         yPct:{type:'linear', position:'right', beginAtZero:false, grace:'20%', grid:{drawOnChartArea:false},
-          ticks:{color:tickC, font:{size:12}, callback:v=>v.toFixed(1)+'%'},
+          ticks:{color:tickC, font:{size:14}, callback:v=>v.toFixed(1)+'%'},
           title:{display:true, text:'Pérdida (%)', color:tickC, font:{size:12}}},
         // Triple eje -- solo existe si el botón "➕ Entrada/Salida" está
         // activo (pedido explícito, aceptado así por el usuario: "si uno
         // lo añade queda con triple eje").
         ...(DET_MOSTRAR_ES ? {yVolumen:{type:'linear', position:'right', beginAtZero:true, grid:{drawOnChartArea:false},
-          ticks:{color:tickC, font:{size:12}, callback:v=>fmtGwh(v)},
+          ticks:{color:tickC, font:{size:14}, callback:v=>fmtGwh(v)},
           afterFit:ax=>{ax.width=Math.max(ax.width,90)},
           title:{display:true, text:'Entrada/Salida (kWh)', color:tickC, font:{size:12}}}} : {}),
       },
@@ -28646,11 +28720,11 @@ function renderPtTotalesNivel(datos, modoAnual){
     options:{
       responsive:true, maintainAspectRatio:false,
       layout:{padding:{top:24}},
-      plugins:{legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:10}, color:tickC,
+      plugins:{legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:12}, color:tickC,
         filter:item=>item.text!=='Total'}}},
       scales:{
-        x:{stacked:true, grid:{display:false}, ticks:{color:tickC, font:{size:11}}},
-        y:{stacked:true, beginAtZero:true, grid:{color:gridC}, ticks:{color:tickC, font:{size:11}, callback:v=>fmtGwh(v)}},
+        x:{stacked:true, grid:{display:false}, ticks:{color:tickC, font:{size:13}}},
+        y:{stacked:true, beginAtZero:true, grid:{color:gridC}, ticks:{color:tickC, font:{size:13}, callback:v=>fmtGwh(v)}},
       },
     },
   });
@@ -28810,7 +28884,7 @@ function renderPtTotalesZona(datos, modoAnual, datosPorNivel){
       layout:{padding:{top:24, left:8, right:8}},
       interaction:{mode:'index', intersect:false},
       plugins:{
-        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:12}, color:tickC}},
+        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:14}, color:tickC}},
         // Pedido explícito ("cuando coloco el mouse encima no aparece la
         // variación, quiero que aparezca"): el hover SIEMPRE la muestra
         // (no depende del botón "📊 Variación", que solo controla la
@@ -28826,9 +28900,9 @@ function renderPtTotalesZona(datos, modoAnual, datosPorNivel){
         }}},
       },
       scales:{
-        x:{grid:{display:false}, offset:true, ticks:{color:tickC, font:{size:11}}},
+        x:{grid:{display:false}, offset:true, ticks:{color:tickC, font:{size:13}}},
         yKwh:{position:'left', beginAtZero:true, grace:'15%', grid:{color:gridC},
-          ticks:{color:tickC, font:{size:11}, callback:v=>fmtGwh(v)},
+          ticks:{color:tickC, font:{size:13}, callback:v=>fmtGwh(v)},
           title:{display:true, text:'Pérdida Técnica (kWh)', color:tickC, font:{size:11}}},
         // SIN beginAtZero -- pedido explícito ("no hay una buena
         // distribución del eje Y"): la pérdida % se mueve en un rango
@@ -28837,7 +28911,7 @@ function renderPtTotalesZona(datos, modoAnual, datosPorNivel){
         // distinguían 1.5% de 1.6%. Con grace y un decimal en los ticks,
         // la línea usa el alto completo del eje.
         yPct:{position:'right', beginAtZero:false, grace:'25%', grid:{drawOnChartArea:false},
-          ticks:{color:tickC, font:{size:11}, callback:v=>v.toFixed(1)+'%'},
+          ticks:{color:tickC, font:{size:13}, callback:v=>v.toFixed(1)+'%'},
           title:{display:true, text:'Pérdida Técnica (%)', color:tickC, font:{size:11}}},
       },
     },
@@ -29173,7 +29247,7 @@ function renderValuacionChart(){
       interaction:{mode:'index', intersect:false},
       plugins:{
         legend:{display:true, position:'bottom', labels:{
-          usePointStyle:false, boxWidth:18, boxHeight:12, font:{size:12}, color:tickC, padding:16,
+          usePointStyle:false, boxWidth:18, boxHeight:12, font:{size:14}, color:tickC, padding:16,
           // Recuadro de color lleno (pedido: "no se ven los colores de la
           // leyenda") -- se arma a mano para que cada uno lleve su color.
           generateLabels: (ch) => ch.data.datasets.map((ds,i) => {
@@ -29189,12 +29263,12 @@ function renderValuacionChart(){
         }}},
       },
       scales:{
-        x:{grid:{display:false}, ticks:{color:tickC, font:{size:11}, maxRotation:0, autoSkip:true, maxTicksLimit:14}},
+        x:{grid:{display:false}, ticks:{color:tickC, font:{size:13}, maxRotation:0, autoSkip:true, maxTicksLimit:14}},
         yKwh:{position:'left', min:yKwhMin, grid:{color:gridC},
-          ticks:{color:tickC, font:{size:11}, callback:v=>fmtGwh(v)},
+          ticks:{color:tickC, font:{size:13}, callback:v=>fmtGwh(v)},
           title:{display:true, text:'Energía reconocida (kWh/mes)', color:tickC, font:{size:11}}},
         yDinero:{position:'right', beginAtZero:true, grace:'12%', grid:{drawOnChartArea:false},
-          ticks:{color:tickC, font:{size:11}, callback:v=>fmtDineroEje(v)},
+          ticks:{color:tickC, font:{size:13}, callback:v=>fmtDineroEje(v)},
           title:{display:true, text:'Costo ($/mes)', color:tickC, font:{size:11}}},
       },
     },
@@ -33321,7 +33395,7 @@ function pfRenderChartMensual(){
       responsive:true, maintainAspectRatio:false,
       plugins:{legend:{display:false}, tooltip:{callbacks:{label:c=>`${c.raw} día(s)`}}},
       scales:{
-        x:{grid:{display:false}, ticks:{color:tickC, font:{size:10}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
+        x:{grid:{display:false}, ticks:{color:tickC, font:{size:12}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
         y:{beginAtZero:true, ticks:{color:tickC, precision:0, stepSize:1}},
       },
     },
