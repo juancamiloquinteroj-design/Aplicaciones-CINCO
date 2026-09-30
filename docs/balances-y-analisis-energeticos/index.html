@@ -1120,12 +1120,16 @@ tfoot td:first-child{text-align:left}
    Ver Balance (ver renderResumenEstructura) -- ahí es donde se pidió. */
 .alim-resumen-compacta-desglose{flex:1 1 220px;min-width:200px}
 .alim-resumen-compacta-desglose-titulo{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--text3);margin-bottom:8px}
-.arcd-fila{display:flex;align-items:center;gap:8px;margin-bottom:5px}
-.arcd-fila:last-child{margin-bottom:0}
-.arcd-etq{flex:0 0 auto;width:68px;font-size:11px;font-weight:700;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.arcd-barra-wrap{flex:1 1 auto;height:9px;border-radius:5px;background:var(--bg3);overflow:hidden}
-.arcd-barra{height:100%;border-radius:5px;transition:width .25s}
-.arcd-val{flex:0 0 auto;font-size:11px;font-weight:700;color:var(--text);white-space:nowrap}
+/* Una sola barra apilada (Técnica|Gestionable, ancho proporcional a su
+   parte del Total) con el dato ADENTRO de cada segmento -- pedido
+   explícito con boceto ("yo las quiero asi... con leyenda de colores y
+   los datos dentro de la grafica"), reemplaza las 3 barras sueltas de
+   antes (una por Total/Técnica/Gestionable). */
+.arcd-barra-stack{display:flex;height:24px;border-radius:6px;overflow:hidden;background:var(--bg3)}
+.arcd-seg{display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;padding:0 5px;text-shadow:0 1px 1px rgba(0,0,0,.35)}
+.arcd-leyenda{display:flex;gap:14px;margin-top:7px;flex-wrap:wrap}
+.arcd-leyenda span{display:inline-flex;align-items:center;font-size:10.5px;font-weight:600;color:var(--text3)}
+.arcd-sw{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px}
 /* Versión mini -- tarjeta movida arriba del gráfico (antes el título+botón
    Mensual/Anual), pedido explícito de que quede "más pequeña" para que el
    gráfico se expanda hacia abajo. */
@@ -17171,38 +17175,38 @@ function _alimNivelTecnicaPorMes(resumenResp){
 // Pérdida Total/P. Técnica en una cuadrícula 2x2 a la derecha. Sin
 // título de "Vista Mensual/Anual" propio -- pedido explícito ("pero sin
 // el título"), el card-title de afuera (Mensual / Anual 12M) ya dice eso.
-// Desglose de Pérdidas -- 3 barras horizontales (Total arriba a 100% de
-// referencia, Técnica y Gestionable debajo, cada una proporcional a su
-// parte del Total) -- pedido explícito con captura de referencia ("una
-// barra encima y dos barras debajo, Pérdida técnica y no técnica... 3
-// barras"). Compartido por todas las tarjetas .alim-resumen-compacta que
-// tengan Pérdida Total Y Pérdida Técnica disponibles ese período (Nivel
-// 3/4, Alimentadores, Ver Balance -- ver renderResumenEstructura). N2-1
-// queda afuera a propósito: su pestaña "Total" no trae dato técnico (vive
-// en la pestaña de al lado) y su pestaña "Técnica" ya ES la técnica, no
-// hay un total aparte que partir.
+// Desglose de Pérdidas -- una sola barra apilada Técnica|Gestionable
+// (ancho proporcional a su parte del Total), dato adentro de cada
+// segmento + leyenda de colores debajo -- pedido explícito con boceto
+// ("yo las quiero asi... con leyenda de colores y los datos dentro de la
+// grafica"; antes eran 3 barras sueltas Total/Técnica/Gestionable).
+// Compartido por las tarjetas .alim-resumen-compacta donde Pérdida
+// Técnica es de verdad un SUBCONJUNTO de Pérdida Total (mismo origen de
+// datos) -- hoy solo Alimentadores (_alim3Gestionable, mismo CSV) y Ver
+// Balance (circuito vinculado a ESA estructura puntual). Nivel 3/4 se
+// dejó AFUERA a propósito: su "P. Técnica" sale del CSV oficial de
+// Pérdidas Técnicas (otra fuente, otro alcance) y su "Pérdida Total" sale
+// del balance Entrada-Salida de Alimentadores -- no son comparables (se
+// vio en vivo: Nivel 4 mostraba Técnica en 1.84M kWh contra un Total de
+// apenas 195k kWh, un "105%" sin sentido). El guard de abajo
+// (perdidaTecnica > perdidaTotal) es la misma protección por si este
+// desajuste apareciera en otro lado.
 function _alimResumenDesglose(perdidaTotal, perdidaTecnica){
   if(perdidaTotal == null || perdidaTecnica == null || perdidaTotal <= 0) return '';
+  if(perdidaTecnica > perdidaTotal) return '';
   const gestionable = Math.max(0, perdidaTotal - perdidaTecnica);
-  const pctTec = Math.min(100, perdidaTecnica / perdidaTotal * 100);
-  const pctGes = Math.min(100, gestionable / perdidaTotal * 100);
+  const pctTec = perdidaTecnica / perdidaTotal * 100;
+  const pctGes = 100 - pctTec;
   const fkCorto = v => (v/1000).toLocaleString('es-CO', {maximumFractionDigits:0}) + 'k kWh';
   return `<div class="alim-resumen-compacta-desglose">
-    <div class="alim-resumen-compacta-desglose-titulo">Desglose de Pérdidas (kWh)</div>
-    <div class="arcd-fila">
-      <span class="arcd-etq">Total</span>
-      <div class="arcd-barra-wrap"><div class="arcd-barra" style="width:100%;background:var(--text3)"></div></div>
-      <span class="arcd-val">${fkCorto(perdidaTotal)}</span>
+    <div class="alim-resumen-compacta-desglose-titulo">Desglose de Pérdidas (kWh) -- Total: ${fkCorto(perdidaTotal)}</div>
+    <div class="arcd-barra-stack">
+      <div class="arcd-seg" style="width:${pctTec}%;background:#00B0F0">${fkCorto(perdidaTecnica)} (${pctTec.toFixed(0)}%)</div>
+      <div class="arcd-seg" style="width:${pctGes}%;background:#ED7D31">${fkCorto(gestionable)} (${pctGes.toFixed(0)}%)</div>
     </div>
-    <div class="arcd-fila">
-      <span class="arcd-etq">Técnica</span>
-      <div class="arcd-barra-wrap"><div class="arcd-barra" style="width:${pctTec}%;background:#00B0F0"></div></div>
-      <span class="arcd-val">${fkCorto(perdidaTecnica)} (${pctTec.toFixed(0)}%)</span>
-    </div>
-    <div class="arcd-fila">
-      <span class="arcd-etq">Gestionable</span>
-      <div class="arcd-barra-wrap"><div class="arcd-barra" style="width:${pctGes}%;background:#ED7D31"></div></div>
-      <span class="arcd-val">${fkCorto(gestionable)} (${pctGes.toFixed(0)}%)</span>
+    <div class="arcd-leyenda">
+      <span><i class="arcd-sw" style="background:#00B0F0"></i>Técnica</span>
+      <span><i class="arcd-sw" style="background:#ED7D31"></i>Gestionable</span>
     </div>
   </div>`;
 }
@@ -17240,7 +17244,11 @@ function _alimNivelRenderResumenGrupos(prefijo, datos12, tecnicaPorMes, modo){
           <div><span class="etiqueta">Salida:</span> <span class="valor">${fk(salida)}</span>${dTxt(salida, salidaAnt)}</div>
           <div><span class="etiqueta">P. Técnica:</span> <span class="valor">${fk(perdidaTecnica)}</span>${dTxt(perdidaTecnica, perdidaTecnicaAnt)}</div>
         </div>
-        ${_alimResumenDesglose(perdidaTotal, perdidaTecnica)}
+        <!-- Sin Desglose de Pérdidas acá a propósito: "P. Técnica" sale del
+             CSV oficial de Pérdidas Técnicas (otro alcance/fuente) y
+             "Pérdida Total" del balance Entrada-Salida de Alimentadores --
+             no son comparables (se vio en vivo un "105% técnica" sin
+             sentido). Ver comentario de _alimResumenDesglose. -->
       </div>
     </div>`;
   };
