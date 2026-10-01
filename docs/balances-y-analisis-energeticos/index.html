@@ -5803,8 +5803,12 @@ tfoot td:first-child{text-align:left}
       </div>
       <div class="be-field">
         <label style="display:flex;align-items:center;gap:6px;cursor:pointer" title="Marca esto si la medición de Salida de esta línea es un 'integrador' que YA incluye el consumo de los clientes SIEC/Telegestionados aguas abajo -- si no, sumarlos de Clientes SIEC.xlsx los cuenta dos veces.">
-          <input type="checkbox" id="beed-excluir-siec"> Tiene integrador -- no sumar clientes SIEC/Telegestionados
+          <input type="checkbox" id="beed-excluir-siec" onchange="_beedToggleSiecFecha()"> Tiene integrador -- no sumar clientes SIEC/Telegestionados
         </label>
+        <div id="beed-excluir-siec-fecha-wrap" class="hidden" style="margin-top:8px;display:flex;align-items:center;gap:8px">
+          <label style="font-size:12.5px;color:var(--text2)">¿Desde qué fecha aplica este cambio?</label>
+          <input type="date" id="beed-excluir-siec-fecha">
+        </div>
       </div>
     </div>
     <div id="beed-msg-metadatos" class="tm-modal-msg"></div>
@@ -14811,6 +14815,10 @@ async function recargarModalEditarEstructura(){
   document.getElementById('beed-tipo').value = datos.tipo || '';
   document.getElementById('beed-nota').value = datos.nota || '';
   document.getElementById('beed-excluir-siec').checked = !!datos.excluir_siec;
+  BE_EDITAR_SIEC_ORIGINAL = !!datos.excluir_siec;
+  BE_EDITAR_SIEC_DESDE_ORIGINAL = datos.excluir_siec_desde || null;
+  document.getElementById('beed-excluir-siec-fecha').value = '';
+  document.getElementById('beed-excluir-siec-fecha-wrap').classList.add('hidden');
   _beCircuitoMostrarSeleccion('beed-circuito-buscar', 'beed-circuito', datos.circuito_id);
   _beActualizarEtiquetasEntradaSalida('beed-tipo', 'beed-etiqueta-entrada', 'beed-etiqueta-salida');
   document.getElementById('beed-zona').innerHTML = '<option value="">Elige una zona...</option>' + BE_ZONAS.map(z=>`<option value="${_mselEsc(z)}">${_mselEsc(z)}</option>`).join('');
@@ -14821,6 +14829,27 @@ async function recargarModalEditarEstructura(){
   renderPuntosEditor('salida', datos.salidas);
   document.getElementById('beed-nuevo-entrada').innerHTML = '';
   document.getElementById('beed-nuevo-salida').innerHTML = '';
+}
+
+// Guardan el valor cargado del servidor para "Tiene integrador" -- al
+// guardar, si el checkbox cambió respecto a esto, hay que pedir la
+// fecha de aplicación (al marcarlo Y al desmarcarlo, pedido explícito);
+// si no cambió, se reenvía la fecha que ya tenía para no perderla (este
+// formulario guarda TODOS los campos juntos en un solo PUT, incluido si
+// solo se tocó otro campo como la nota).
+let BE_EDITAR_SIEC_ORIGINAL = false;
+let BE_EDITAR_SIEC_DESDE_ORIGINAL = null;
+
+function _beedToggleSiecFecha(){
+  const checked = document.getElementById('beed-excluir-siec').checked;
+  const wrap = document.getElementById('beed-excluir-siec-fecha-wrap');
+  const input = document.getElementById('beed-excluir-siec-fecha');
+  if(checked !== BE_EDITAR_SIEC_ORIGINAL){
+    wrap.classList.remove('hidden');
+    if(!input.value) input.value = new Date().toISOString().slice(0,10);
+  } else {
+    wrap.classList.add('hidden');
+  }
 }
 
 async function guardarMetadatosEstructura(){
@@ -14836,9 +14865,21 @@ async function guardarMetadatosEstructura(){
   const nota = document.getElementById('beed-nota').value.trim();
   const zona = document.getElementById('beed-zona').value;
   const excluir_siec = document.getElementById('beed-excluir-siec').checked;
+  let excluir_siec_desde = BE_EDITAR_SIEC_DESDE_ORIGINAL;
+  if(excluir_siec !== BE_EDITAR_SIEC_ORIGINAL){
+    excluir_siec_desde = document.getElementById('beed-excluir-siec-fecha').value || '';
+    if(!excluir_siec_desde){
+      msg.className = 'tm-modal-msg err';
+      msg.textContent = `Indicá desde qué fecha aplica ${excluir_siec ? 'marcar' : 'desmarcar'} "Tiene integrador".`;
+      return;
+    }
+  }
   try{
-    await apiPut(`/api/balances-estructura/${BE_EDITAR_ID}`, {nombre, nivel_tension, tipo, zona, circuito_id, nota, excluir_siec});
+    await apiPut(`/api/balances-estructura/${BE_EDITAR_ID}`, {nombre, nivel_tension, tipo, zona, circuito_id, nota, excluir_siec, excluir_siec_desde});
     msg.textContent = 'Cambios guardados.';
+    BE_EDITAR_SIEC_ORIGINAL = excluir_siec;
+    BE_EDITAR_SIEC_DESDE_ORIGINAL = excluir_siec_desde || null;
+    document.getElementById('beed-excluir-siec-fecha-wrap').classList.add('hidden');
     await cargarListaEstructuras();
     if(BE_ACTIVA_ID === BE_EDITAR_ID) verBalanceEstructura(BE_ACTIVA_ID);
   }catch(e){
