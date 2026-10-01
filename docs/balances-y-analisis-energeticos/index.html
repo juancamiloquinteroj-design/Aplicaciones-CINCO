@@ -6308,22 +6308,37 @@ const tmPluginFondoExcel = {
   beforeDraw(chart){
     if(!chart.chartArea) return;
     const {ctx, chartArea: {left, top, right, bottom}} = chart;
-    const dark = document.documentElement.getAttribute('data-theme')==='dark';
-    const grad = ctx.createLinearGradient(0, top, 0, bottom);
-    if(dark){
-      // Mismo degradado que Excel en tema oscuro (gris oscuro, NO un velo
-      // blanco translúcido casi invisible) -- pedido explícito ("cuando
-      // cambio a fondo oscuro no se ve la garfia asi fondo oscuro coo en
-      // excel"). Mismos tonos --bg2/--bg3 que ya usa el resto de la app.
-      grad.addColorStop(0, '#1c2333');
-      grad.addColorStop(1, '#11151f');
-    } else {
-      grad.addColorStop(0, '#ffffff');
-      grad.addColorStop(1, '#f2f2f2');
-    }
+    // Si en Personalización se eligió un fondo de gráficas específico
+    // (independiente del tema de la página), pinta TODO el canvas con
+    // ese color -- no solo el chartArea -- para que no quede un margen
+    // sin pintar (donde van ejes/leyenda) con el fondo de la tarjeta
+    // detrás, que fue justo el bug reportado ("no esta cambiando el
+    // fondo y no hace contraste con la letra": la mitad del canvas
+    // quedaba con el degradado de tema y la otra mitad transparente).
+    const fondoKey = localStorage.getItem('pt_chart_bg') || 'auto';
+    const fondoElegido = fondoKey!=='auto' && typeof PT_FONDOS_GRAFICO!=='undefined'
+      ? PT_FONDOS_GRAFICO.find(c=>c.key===fondoKey) : null;
     ctx.save();
-    ctx.fillStyle = grad;
-    ctx.fillRect(left, top, right-left, bottom-top);
+    if(fondoElegido){
+      ctx.fillStyle = fondoElegido.css;
+      ctx.fillRect(0, 0, chart.width, chart.height);
+    } else {
+      const dark = document.documentElement.getAttribute('data-theme')==='dark';
+      const grad = ctx.createLinearGradient(0, top, 0, bottom);
+      if(dark){
+        // Mismo degradado que Excel en tema oscuro (gris oscuro, NO un velo
+        // blanco translúcido casi invisible) -- pedido explícito ("cuando
+        // cambio a fondo oscuro no se ve la garfia asi fondo oscuro coo en
+        // excel"). Mismos tonos --bg2/--bg3 que ya usa el resto de la app.
+        grad.addColorStop(0, '#1c2333');
+        grad.addColorStop(1, '#11151f');
+      } else {
+        grad.addColorStop(0, '#ffffff');
+        grad.addColorStop(1, '#f2f2f2');
+      }
+      ctx.fillStyle = grad;
+      ctx.fillRect(left, top, right-left, bottom-top);
+    }
     ctx.restore();
   },
 };
@@ -6417,7 +6432,14 @@ function _pmIframeListo(){
 // una (son decenas en toda la app).
 function _actualizarTemaCharts(){
   if(typeof Chart === 'undefined') return;
-  const dark = document.documentElement.getAttribute('data-theme')==='dark';
+  // El texto de ejes/leyenda tiene que contrastar con el fondo REAL de
+  // la gráfica: si hay un fondo de gráficas elegido en Personalización
+  // (independiente del tema general), ese manda sobre el tema de la
+  // página -- si no, se usa el tema de la página como siempre.
+  const fondoKey = localStorage.getItem('pt_chart_bg') || 'auto';
+  const fondoElegido = (fondoKey!=='auto' && typeof PT_FONDOS_GRAFICO!=='undefined')
+    ? PT_FONDOS_GRAFICO.find(c=>c.key===fondoKey) : null;
+  const dark = fondoElegido ? !!fondoElegido.oscuro : document.documentElement.getAttribute('data-theme')==='dark';
   const tickC = dark ? '#ffffff' : '#000000';
   const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
   document.querySelectorAll('canvas').forEach(cv => {
@@ -6460,12 +6482,15 @@ const PT_FUENTES = {
 // Fondo de .chart-wrap -- aparte del fondo general, pedido explícito.
 // 'auto' = transparent (toma el color de la tarjeta que lo contiene,
 // comportamiento de siempre si no se toca nada acá).
+// oscuro: true/false le dice a _actualizarTemaCharts() si el texto de
+// ejes/leyenda debe salir blanco o negro contra ESTE fondo puntual
+// (null en 'auto' porque ahí manda el tema general, no un valor fijo).
 const PT_FONDOS_GRAFICO = [
-  {key:'auto', label:'Como la tarjeta', css:'transparent'},
-  {key:'blanco', label:'Blanco', css:'#ffffff'},
-  {key:'negro', label:'Negro', css:'#000000'},
-  {key:'gris-claro', label:'Gris claro', css:'#eef2f6'},
-  {key:'gris-oscuro', label:'Gris oscuro', css:'#1c2333'},
+  {key:'auto', label:'Como la tarjeta', css:'transparent', oscuro:null},
+  {key:'blanco', label:'Blanco', css:'#ffffff', oscuro:false},
+  {key:'negro', label:'Negro', css:'#000000', oscuro:true},
+  {key:'gris-claro', label:'Gris claro', css:'#eef2f6', oscuro:false},
+  {key:'gris-oscuro', label:'Gris oscuro', css:'#1c2333', oscuro:true},
 ];
 
 function abrirModalPersonalizacion(){
@@ -6551,11 +6576,14 @@ function elegirFuente(key){
 function elegirFondoGraficos(key){
   const c = PT_FONDOS_GRAFICO.find(x=>x.key===key);
   if(!c) return;
-  // Puro CSS (background:var(--chart-bg) en .chart-wrap) -- no hace
-  // falta tocar Chart.js ni repintar nada, el canvas de cada gráfica ya
-  // es transparente y deja ver lo que tenga detrás.
   document.documentElement.style.setProperty('--chart-bg', c.css);
   localStorage.setItem('pt_chart_bg', key);
+  // tmPluginFondoExcel pinta este fondo directo sobre el canvas (ver su
+  // beforeDraw) y el color de ticks/leyenda tiene que contrastar con ESE
+  // fondo, no con el tema general de la página -- por eso hace falta
+  // repintar acá (antes no hacía falta, cuando esto era "puro CSS" y el
+  // canvas quedaba transparente mostrando la tarjeta detrás).
+  _actualizarTemaCharts();
   abrirModalPersonalizacion();
 }
 
