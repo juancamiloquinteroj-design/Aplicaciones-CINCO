@@ -94,13 +94,32 @@
   --accent:#00b4d8;--accent2:#0096c7;--amber:#f4a261;--green:#06d6a0;--red:#ef476f;--purple:#7b2fff;
   --bg:#f0f4f8;--bg2:#ffffff;--bg3:#e8edf4;--border:#d5dde8;--text:#111827;--text2:#4b5e7a;--text3:#8a9ab5;
   --nav-bg:rgba(255,255,255,0.95);--card-bg:#ffffff;--shadow:0 4px 24px rgba(0,0,0,0.08);--shadow-sm:0 2px 8px rgba(0,0,0,0.05);
+  --app-font:'Segoe UI',system-ui,-apple-system,sans-serif;
 }
+/* "Negro" -- variante oscura de siempre, queda como la de por defecto
+   (sin necesidad de [data-dark-variant] -- así nadie que ya tenía el
+   modo oscuro activado ve un cambio hasta que elija otra a propósito). */
 [data-theme="dark"]{
   --bg:#0a0a0a;--bg2:#000000;--bg3:#1c2333;--border:#2a3448;--text:#e2e8f0;--text2:#8899b5;--text3:#6d82a3;
   --nav-bg:rgba(0,0,0,0.96);--card-bg:#000000;--shadow:0 4px 24px rgba(0,0,0,0.35);--shadow-sm:0 2px 8px rgba(0,0,0,0.25);
 }
+/* Más variantes de fondo oscuro -- pedido explícito ("permite elegir
+   múltiples colores... que pregunte qué fondo quiero"), ver
+   abrirModalPersonalizacion()/elegirVarianteOscura(). Mismas 3 letras
+   (--text/--text2/--text3) ya clarísimas en las 3 -- el pedido original
+   ("que todas las letras sean blancas") ya se cumplía con la variante
+   "negro" de siempre; estas solo cambian el FONDO, el texto sigue
+   siendo claro en las 3. */
+[data-theme="dark"][data-dark-variant="azulado"]{
+  --bg:#0d1420;--bg2:#0a0f1a;--bg3:#1a2638;--border:#2d3f56;--text:#e8edf5;--text2:#92a7c4;--text3:#6b8099;
+  --nav-bg:rgba(10,15,26,0.96);--card-bg:#0f1826;--shadow:0 4px 24px rgba(0,0,0,0.35);--shadow-sm:0 2px 8px rgba(0,0,0,0.25);
+}
+[data-theme="dark"][data-dark-variant="carbon"]{
+  --bg:#1a1a1a;--bg2:#141414;--bg3:#262626;--border:#3d3d3d;--text:#f0f0ec;--text2:#b5b0a6;--text3:#8a8578;
+  --nav-bg:rgba(20,20,20,0.96);--card-bg:#1e1e1e;--shadow:0 4px 24px rgba(0,0,0,0.35);--shadow-sm:0 2px 8px rgba(0,0,0,0.25);
+}
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;transition:background .3s,color .3s}
+body{font-family:var(--app-font);background:var(--bg);color:var(--text);min-height:100vh;transition:background .3s,color .3s}
 
 .navbar{position:sticky;top:0;z-index:200;background:var(--nav-bg);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:14px;padding:0 24px;height:58px}
 .btn-menu{width:34px;height:34px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);cursor:pointer;font-size:16px;color:var(--text)}
@@ -1271,8 +1290,32 @@ tfoot td:first-child{text-align:left}
     <button class="btn-logout hidden" id="btn-suite" onclick="volverASuite()" title="Volver al selector de módulos">🧩 Módulos</button>
     <button class="btn-logout hidden" id="btn-logout" onclick="cerrarSesion()">Salir</button>
     <button class="btn-theme" onclick="toggleTheme()" title="Cambiar tema">🌓</button>
+    <!-- Personalización (fondo oscuro + tipo de letra) -- pedido explícito
+         ("permite elegir múltiples colores... que pregunte qué fondo
+         quiero, el tipo de letra"). Separado del botón Claro/Oscuro de
+         siempre -- ese sigue siendo el toggle rápido de 1 click. -->
+    <button class="btn-theme" onclick="abrirModalPersonalizacion()" title="Personalizar apariencia (fondo, letra)">🎨</button>
   </div>
 </nav>
+
+<!-- ---------------- PERSONALIZAR APARIENCIA (fondo + letra) ---------------- -->
+<div id="modal-personalizacion" class="tm-modal-overlay hidden" onclick="if(event.target===this) cerrarModalPersonalizacion()">
+  <div class="tm-modal" style="width:min(480px,92vw)">
+    <div class="tm-modal-title">Personalizar apariencia</div>
+    <div class="tm-modal-sub">Elegí el fondo y el tipo de letra de toda la aplicación -- se guarda en este navegador.</div>
+    <div class="be-field" style="margin-top:14px">
+      <label>Fondo</label>
+      <div id="pz-fondo-swatches" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px"></div>
+    </div>
+    <div class="be-field" style="margin-top:16px">
+      <label>Tipo de letra</label>
+      <div id="pz-fuente-botones" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"></div>
+    </div>
+    <div class="tm-modal-botones">
+      <button class="btn-theme" style="width:auto;padding:8px 16px" onclick="cerrarModalPersonalizacion()">Listo</button>
+    </div>
+  </div>
+</div>
 
 <!-- ==================== LOGIN ==================== -->
 <div id="login-screen" class="login-wrap">
@@ -6359,7 +6402,104 @@ function _actualizarTemaCharts(){
     chart.update('none');
   });
 }
-(function(){ const t=localStorage.getItem('pt_theme'); if(t) document.documentElement.setAttribute('data-theme',t); })();
+// ---- Personalización de apariencia (fondo oscuro + tipo de letra) --
+// pedido explícito ("permite elegir múltiples colores en el cambio de
+// fondo... que pregunte qué fondo quiero, el tipo de letra"). Separado
+// del botón Claro/Oscuro de siempre (toggleTheme), que sigue siendo el
+// atajo rápido de 1 click -- esto es para elegir CUÁL oscuro y la letra.
+const PT_VARIANTES_FONDO = [
+  {theme:'light', variante:null, label:'Claro', bg:'#f0f4f8', texto:'#111827'},
+  {theme:'dark', variante:'negro', label:'Oscuro', bg:'#0a0a0a', texto:'#e2e8f0'},
+  {theme:'dark', variante:'azulado', label:'Azul noche', bg:'#0d1420', texto:'#e8edf5'},
+  {theme:'dark', variante:'carbon', label:'Gris carbón', bg:'#1a1a1a', texto:'#f0f0ec'},
+];
+const PT_FUENTES = {
+  segoe: {label:'Segoe UI', css:'"Segoe UI", system-ui, -apple-system, sans-serif'},
+  arial: {label:'Arial', css:'Arial, Helvetica, sans-serif'},
+  georgia: {label:'Georgia', css:'Georgia, "Times New Roman", serif'},
+  verdana: {label:'Verdana', css:'Verdana, Geneva, sans-serif'},
+  consolas: {label:'Consolas', css:'Consolas, "Courier New", monospace'},
+};
+
+function abrirModalPersonalizacion(){
+  const html = document.documentElement;
+  const temaActual = html.getAttribute('data-theme') || 'light';
+  const varianteActual = html.getAttribute('data-dark-variant') || 'negro';
+  const fuenteActual = localStorage.getItem('pt_font') || 'segoe';
+
+  document.getElementById('pz-fondo-swatches').innerHTML = PT_VARIANTES_FONDO.map(v => {
+    const activo = temaActual===v.theme && (v.theme==='light' || varianteActual===v.variante);
+    return `<div onclick="elegirFondo('${v.theme}', ${v.variante?`'${v.variante}'`:'null'})" style="cursor:pointer;text-align:center;width:76px">
+      <div style="width:76px;height:50px;border-radius:9px;background:${v.bg};color:${v.texto};display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;border:2px solid ${activo?'var(--accent)':'var(--border)'};box-shadow:${activo?'0 0 0 2px var(--accent)':'none'}">Aa</div>
+      <div style="font-size:10.5px;margin-top:5px;color:${activo?'var(--accent)':'var(--text3)'};font-weight:${activo?'700':'600'}">${v.label}</div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('pz-fuente-botones').innerHTML = Object.entries(PT_FUENTES).map(([key,f]) =>
+    `<button type="button" class="be-modo-btn${fuenteActual===key?' activo':''}" style="font-family:${f.css}" onclick="elegirFuente('${key}')">${f.label}</button>`
+  ).join('');
+
+  document.getElementById('modal-personalizacion').classList.remove('hidden');
+}
+
+function cerrarModalPersonalizacion(){
+  document.getElementById('modal-personalizacion').classList.add('hidden');
+}
+
+function elegirFondo(theme, variante){
+  const html = document.documentElement;
+  const eraDark = html.getAttribute('data-theme')==='dark';
+  html.setAttribute('data-theme', theme);
+  localStorage.setItem('pt_theme', theme);
+  if(variante){
+    html.setAttribute('data-dark-variant', variante);
+    localStorage.setItem('pt_dark_variant', variante);
+  }
+  // Los charts solo necesitan repintarse si cambió claro<->oscuro de
+  // verdad (ticks/cuadrícula blancos o negros) -- entre variantes DE
+  // oscuro (negro/azulado/carbón) el texto blanco de los charts ya se ve
+  // bien contra cualquiera de los 3 fondos, no hace falta tocar nada.
+  if(eraDark !== (theme==='dark')){
+    _actualizarTemaCharts();
+    _pmSincronizarTema();
+    _suplenciasSincronizarTema();
+  }
+  abrirModalPersonalizacion();  // re-dibuja los swatches con el nuevo activo
+}
+
+function elegirFuente(key){
+  const f = PT_FUENTES[key];
+  if(!f) return;
+  document.documentElement.style.setProperty('--app-font', f.css);
+  localStorage.setItem('pt_font', key);
+  if(typeof Chart !== 'undefined'){
+    // Mismo truco que _actualizarTemaCharts() -- los ticks/leyenda de cada
+    // gráfica no fijan su propia font.family (solo size/weight), así que
+    // heredan de Chart.defaults.font.family: cambiarlo acá y repintar
+    // alcanza, sin tocar la config de cada una de las ~40 gráficas.
+    Chart.defaults.font.family = f.css;
+    document.querySelectorAll('canvas').forEach(cv=>{
+      const chart = Chart.getChart(cv);
+      if(chart) chart.update('none');
+    });
+  }
+  abrirModalPersonalizacion();
+}
+
+(function(){
+  const t=localStorage.getItem('pt_theme'); if(t) document.documentElement.setAttribute('data-theme',t);
+  const v=localStorage.getItem('pt_dark_variant'); if(v) document.documentElement.setAttribute('data-dark-variant',v);
+  const fKey=localStorage.getItem('pt_font');
+  if(fKey && PT_FUENTES[fKey]){
+    document.documentElement.style.setProperty('--app-font', PT_FUENTES[fKey].css);
+    // Chart.defaults.font.family ya se fijó arriba (estética general) con
+    // la fuente de por defecto -- si había una guardada distinta, se pisa
+    // acá para que las gráficas que se creen de ahora en más ya salgan
+    // con la fuente elegida (sin esto, solo el texto normal de la página
+    // la tomaba, los charts seguían en Segoe UI hasta tocar el selector).
+    if(typeof Chart !== 'undefined') Chart.defaults.font.family = PT_FUENTES[fKey].css;
+  }
+})();
 
 /* ==========================================================================
    EXPORTAR (Imagen / Excel) -- botón genérico inyectado automáticamente en
