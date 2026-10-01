@@ -6344,6 +6344,37 @@ const tmPluginFondoExcel = {
 };
 Chart.register(tmPluginFondoExcel);
 
+// Ticks/cuadrícula/leyenda contra el fondo REAL de cada gráfica (igual
+// que _actualizarTemaCharts(), pero aplicado automáticamente a CADA
+// gráfica en cuanto se crea o se actualiza, no solo a las que ya
+// existían cuando se tocó el selector). Sin esto, una gráfica recién
+// creada (ej. al navegar a un módulo que aún no se había visitado)
+// seguía naciendo con el color de texto del TEMA de la página nomás,
+// sin enterarse de un fondo de gráficas elegido aparte en
+// Personalización -- eso producía texto blanco sobre fondo blanco
+// (bug reportado: "no esta quedando un buen contraste").
+function _temaChartAplicar(chart){
+  const fondoKey = localStorage.getItem('pt_chart_bg') || 'auto';
+  const fondoElegido = (fondoKey!=='auto' && typeof PT_FONDOS_GRAFICO!=='undefined')
+    ? PT_FONDOS_GRAFICO.find(c=>c.key===fondoKey) : null;
+  const dark = fondoElegido ? !!fondoElegido.oscuro : document.documentElement.getAttribute('data-theme')==='dark';
+  const tickC = dark ? '#ffffff' : '#000000';
+  const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
+  Object.values(chart.options.scales || {}).forEach(escala => {
+    if(escala.grid) escala.grid.color = gridC;
+    if(escala.ticks) escala.ticks.color = tickC;
+    if(escala.title) escala.title.color = tickC;
+  });
+  const leyenda = chart.options.plugins && chart.options.plugins.legend;
+  if(leyenda && leyenda.labels) leyenda.labels.color = tickC;
+}
+const tmPluginTemaChartAuto = {
+  id: 'temaChartAuto',
+  afterInit(chart){ _temaChartAplicar(chart); },
+  beforeUpdate(chart){ _temaChartAplicar(chart); },
+};
+Chart.register(tmPluginTemaChartAuto);
+
 // Líneas guía verticales PERMANENTES desde cada punto hasta el eje X --
 // estilo Excel ("drop lines"), visibles siempre (no solo al pasar el
 // mouse) -- pedido explícito ("estilo excel con colores de excel", a
