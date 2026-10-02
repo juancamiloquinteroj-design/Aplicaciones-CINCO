@@ -284,14 +284,17 @@ body{font-family:var(--app-font);background:var(--bg);color:var(--text);min-heig
 @media (min-width:900px){
   body.sidebar-fija .app-shell{display:flex; align-items:flex-start}
   body.sidebar-fija #sidebar,
-  body.sidebar-fija #cp-sidebar{position:sticky; top:58px; height:calc(100vh - 58px); box-shadow:none; display:flex !important; flex-shrink:0}
+  body.sidebar-fija #cp-sidebar,
+  body.sidebar-fija #cgc-sidebar{position:sticky; top:58px; height:calc(100vh - 58px); box-shadow:none; display:flex !important; flex-shrink:0}
   /* Pedido explícito: poder ocultar la barra lateral también en
      escritorio -- sin esto, el "!important" de arriba ganaba siempre
      sobre .hidden (mayor especificidad) y no había forma de colapsarla. */
   body.sidebar-fija #sidebar.hidden,
-  body.sidebar-fija #cp-sidebar.hidden{display:none !important}
+  body.sidebar-fija #cp-sidebar.hidden,
+  body.sidebar-fija #cgc-sidebar.hidden{display:none !important}
   body.sidebar-fija #sidebar-overlay,
-  body.sidebar-fija #cp-sidebar-overlay{display:none !important}
+  body.sidebar-fija #cp-sidebar-overlay,
+  body.sidebar-fija #cgc-sidebar-overlay{display:none !important}
   /* El botón ☰ (antes solo para el cajón móvil) queda visible acá también
      -- es el mismo que ahora colapsa/expande la barra fija. */
   body.sidebar-fija .page{max-width:none; margin:0; flex:1; min-width:0}
@@ -1459,13 +1462,21 @@ html,body{overflow-x:hidden;margin:0}
     </div>
     <div class="mod-card active" data-modulo="visualizacion" onclick="entrarVisualizador()">
       <span class="mc-icon">📊</span>
-      <div class="mc-title">Visualización de Datos</div>
+      <div class="mc-title">Balances y Análisis Energéticos (BAE)</div>
       <div class="mc-desc">Indicadores, pérdidas técnicas y balances de tu operador.</div>
     </div>
     <div class="mod-card active" data-modulo="suplencias" onclick="entrarSuplencias()">
       <span class="mc-icon">🔁</span>
       <div class="mc-title">Suplencias</div>
       <div class="mc-desc">Planilla de ajustes, traslapes y estado de alimentadores.</div>
+    </div>
+    <!-- Nuevo módulo, pedido explícito -- por ahora solo el cascarón (misma
+         interfaz que los demás: app-shell + sidebar colapsable), contenido
+         real se construye más adelante. -->
+    <div class="mod-card active" data-modulo="clientes_grandes_consumos" onclick="entrarClientesGrandesConsumos()">
+      <span class="mc-icon">🏭</span>
+      <div class="mc-title">Clientes Grandes Consumos</div>
+      <div class="mc-desc">Seguimiento y análisis de clientes de grandes consumos.</div>
     </div>
   </div>
 </div>
@@ -1537,6 +1548,31 @@ html,body{overflow-x:hidden;margin:0}
 </div>
 </div>
 <!-- fin codigo-python-screen -->
+
+<!-- ==================== CLIENTES GRANDES CONSUMOS ====================
+     Módulo nuevo de la suite, pedido explícito del usuario -- por ahora
+     solo el cascarón (mismo patrón .app-shell + sidebar colapsable que
+     Código Python/Visualizador: "quiero que sea con la misma interfaz de
+     visualización de datos"), sin submenús todavía -- "después lo vamos
+     desarrollando". -->
+<div id="cgc-screen" class="hidden app-shell">
+<div id="cgc-sidebar-overlay" class="sidebar-overlay hidden" onclick="toggleSidebarCgc()"></div>
+<aside id="cgc-sidebar" class="sidebar hidden">
+  <div class="sidebar-title">Clientes Grandes Consumos</div>
+  <div class="sidebar-proximamente">Más módulos próximamente</div>
+</aside>
+
+<div class="page">
+  <div class="sec-hdr">
+    <div class="sec-title">🏭 Clientes Grandes Consumos</div>
+    <div class="sec-sub">Seguimiento y análisis de clientes de grandes consumos</div>
+  </div>
+  <div class="card">
+    <div style="font-size:12px;color:var(--text3);padding:10px 0">Módulo en construcción -- se irá desarrollando próximamente.</div>
+  </div>
+</div>
+</div>
+<!-- fin cgc-screen -->
 
 <!-- ==================== DASHBOARD ==================== -->
 <div class="app-shell">
@@ -8996,6 +9032,7 @@ function cerrarSesion(){
   document.getElementById('app-screen').classList.add('hidden');
   document.getElementById('suite-screen').classList.add('hidden');
   document.getElementById('codigo-python-screen').classList.add('hidden');
+  document.getElementById('cgc-screen').classList.add('hidden');
   document.getElementById('suplencias-screen').classList.add('hidden');
   document.getElementById('login-screen').classList.remove('hidden');
   document.getElementById('badge-op').classList.add('hidden');
@@ -9012,6 +9049,7 @@ function cerrarSesion(){
   document.body.classList.remove('sidebar-fija');
   document.getElementById('sidebar').classList.add('hidden');
   document.getElementById('cp-sidebar').classList.add('hidden');
+  document.getElementById('cgc-sidebar').classList.add('hidden');
 }
 
 function textoVigenciaAcceso(){
@@ -9073,6 +9111,7 @@ function entrarDashboard(){
 function volverASuite(){
   document.getElementById('app-screen').classList.add('hidden');
   document.getElementById('codigo-python-screen').classList.add('hidden');
+  document.getElementById('cgc-screen').classList.add('hidden');
   document.getElementById('suplencias-screen').classList.add('hidden');
   document.getElementById('suite-screen').classList.remove('hidden');
   document.getElementById('btn-menu').classList.add('hidden');
@@ -9080,6 +9119,7 @@ function volverASuite(){
   document.body.classList.remove('sidebar-fija');
   document.getElementById('sidebar').classList.add('hidden');
   document.getElementById('cp-sidebar').classList.add('hidden');
+  document.getElementById('cgc-sidebar').classList.add('hidden');
 }
 
 // El botón ☰ del header es compartido entre el Visualizador y Código
@@ -9088,6 +9128,8 @@ function volverASuite(){
 function toggleMenuActual(){
   if(!document.getElementById('codigo-python-screen').classList.contains('hidden')){
     toggleSidebarCp();
+  } else if(!document.getElementById('cgc-screen').classList.contains('hidden')){
+    toggleSidebarCgc();
   } else {
     toggleSidebar();
   }
@@ -9096,6 +9138,11 @@ function toggleMenuActual(){
 function toggleSidebarCp(){
   document.getElementById('cp-sidebar').classList.toggle('hidden');
   document.getElementById('cp-sidebar-overlay').classList.toggle('hidden');
+}
+
+function toggleSidebarCgc(){
+  document.getElementById('cgc-sidebar').classList.toggle('hidden');
+  document.getElementById('cgc-sidebar-overlay').classList.toggle('hidden');
 }
 
 // Acordeón del único submenú activo hoy en Código Python ("1. Índice de
@@ -9131,6 +9178,24 @@ async function entrarCodigoPython(){
   if(!_codigoPythonCargado){
     _codigoPythonCargado = true;
     await cargarIndicePerdidas();
+  }
+}
+
+// Cascarón del nuevo módulo -- mismo patrón que entrarCodigoPython(), sin
+// carga de datos propia todavía (no hay nada que cargar hasta que se
+// construya el contenido real).
+async function entrarClientesGrandesConsumos(){
+  document.getElementById('suite-screen').classList.add('hidden');
+  document.getElementById('cgc-screen').classList.remove('hidden');
+  document.getElementById('btn-menu').classList.remove('hidden');
+  document.getElementById('btn-suite').classList.remove('hidden');
+  document.getElementById('badge-op').textContent = OPERADOR.nombre;
+  document.getElementById('badge-op').classList.remove('hidden');
+  document.getElementById('badge-demo').classList.toggle('hidden', !DEMO);
+
+  if(window.innerWidth >= 900){
+    document.body.classList.add('sidebar-fija');
+    document.getElementById('cgc-sidebar').classList.remove('hidden');
   }
 }
 
