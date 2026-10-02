@@ -4933,31 +4933,27 @@ html,body{overflow-x:hidden;margin:0}
          comparable en el mismo eje). Los colores por estrategia son los
          mismos índice a índice en las 2 gráficas (y en la dona de abajo). -->
     <div data-minitab-grupo="ig" data-minitab="graficos" class="card" style="border-top-left-radius:0;border-top-right-radius:0">
-      <!-- Controles compartidos por las 2 gráficas combo -- pedido
-           explícito ("botón para ajustar el rango del eje X... la línea
-           debe aparecer con valores... botón que permita colocar la
-           variación"). El rango de meses acota BARRAS y LÍNEA a la vez
-           (mismo eje X en ambas); el acumulado de la línea se sigue
-           calculando sobre TODO el histórico y recién después se recorta
-           a lo visible, para que el valor en cada punto sea el acumulado
-           real (no uno que "reinicia" al acotar el rango). -->
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:16px">
-        <span style="font-size:11px;color:var(--text3);font-weight:800;text-transform:uppercase;letter-spacing:.3px">Rango eje X</span>
-        <input type="month" id="ig-graf-rango-desde" onchange="igAplicarRangoX()" style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;color:var(--text);background:var(--bg)">
-        <span style="color:var(--text3)">→</span>
-        <input type="month" id="ig-graf-rango-hasta" onchange="igAplicarRangoX()" style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;color:var(--text);background:var(--bg)">
-        <button type="button" class="be-modo-btn" onclick="igRestablecerRangoX()">Ver todo</button>
-        <div style="margin-left:auto;display:flex;gap:6px">
+      <!-- Controles de la gráfica combo -- pedido explícito, 2da ronda
+           ("quitar la variación, el botón... quitar el botón de ver
+           todo y las letras RANGO EJE X, dejar solo el filtro de fecha
+           pero más pequeño... botón para cambiar la gráfica de Reducción
+           a Recuperación"). Vuelve a ser UNA sola gráfica (ya no 2
+           siempre visibles) con un botón para elegir la métrica. -->
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:16px">
+        <div style="display:flex;gap:6px">
+          <button type="button" class="be-modo-btn activo" id="ig-graf-chip-metrica-reduccion" onclick="igCambiarMetricaGraficoPrincipal('reduccion_kwh_mes')">Reducción al indicador</button>
+          <button type="button" class="be-modo-btn" id="ig-graf-chip-metrica-recuperacion" onclick="igCambiarMetricaGraficoPrincipal('recuperacion_kwh')">Recuperación estimada</button>
+        </div>
+        <input type="month" id="ig-graf-rango-desde" onchange="igAplicarRangoX()" style="padding:3px 6px;border:1px solid var(--border);border-radius:6px;font-size:11px;color:var(--text);background:var(--bg)">
+        <span style="color:var(--text3);font-size:11px">→</span>
+        <input type="month" id="ig-graf-rango-hasta" onchange="igAplicarRangoX()" style="padding:3px 6px;border:1px solid var(--border);border-radius:6px;font-size:11px;color:var(--text);background:var(--bg)">
+        <div style="margin-left:auto">
           <button type="button" class="be-modo-btn activo" id="ig-graf-btn-valores" onclick="igToggleValoresLinea()">🏷 Valores</button>
-          <button type="button" class="be-modo-btn activo" id="ig-graf-btn-variacion" onclick="igToggleVariacionLinea()">Δ Variación</button>
         </div>
       </div>
 
-      <div id="ig-graf-titulo-reduccion" style="text-align:center;font-size:15px;font-weight:800;letter-spacing:.5px;color:var(--text);margin-bottom:10px"></div>
-      <div class="chart-wrap" style="height:360px;margin-bottom:30px"><canvas id="ig-ch-reduccion"></canvas></div>
-
-      <div id="ig-graf-titulo-recuperacion" style="text-align:center;font-size:15px;font-weight:800;letter-spacing:.5px;color:var(--text);margin-bottom:10px"></div>
-      <div class="chart-wrap" style="height:360px;margin-bottom:30px"><canvas id="ig-ch-recuperacion"></canvas></div>
+      <div id="ig-graf-titulo-principal" style="text-align:center;font-size:15px;font-weight:800;letter-spacing:.5px;color:var(--text);margin-bottom:10px"></div>
+      <div class="chart-wrap" style="height:380px;margin-bottom:30px"><canvas id="ig-ch-principal"></canvas></div>
 
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">
         <div style="font-weight:700;font-size:13px;color:var(--text)">Distribución por estrategia</div>
@@ -34173,20 +34169,22 @@ const IG_ESTRATEGIA_BRIGADAS = 'BRIGADAS DE INSPECCIÓN Y FACTURACIÓN';
 let IG_DATOS = null;       // {estrategias, zonasBrigadas, contrato, valores, brigadasZonas} -- respuesta cruda de /api/indicadores-gestion
 let IG_METRICA_TABLA = 'reduccion_kwh_mes';
 let IG_METRICA_DONUT = 'reduccion_kwh_mes';
-let igChReduccion = null, igChRecuperacion = null, igChDonut = null;
+// Una sola gráfica combo a la vez (ya no las 2 métricas siempre
+// visibles) -- pedido explícito, 2da ronda ("botón que me permita
+// cambiar la gráfica de Reducción... a Recuperación...").
+let IG_METRICA_GRAFICO_PRINCIPAL = 'reduccion_kwh_mes';
+let igChPrincipal = null, igChDonut = null;
 // Color de la línea "TOTAL ACUMULADO ANUALIZADO" -- el 7º tono de
 // PALETA_ZONAS (ya reservado para "más de 6 series", acá nunca choca
 // porque son exactamente 6 estrategias + esta línea).
 const IG_COLOR_LINEA_ACUMULADO = '#264478';
-// Rango de meses de las 2 gráficas combo (null = sin acotar, muestra
-// todo) -- pedido explícito ("botón para ajustar el rango del eje X").
+// Rango de meses de la gráfica combo (null = sin acotar, muestra todo)
+// -- pedido explícito ("botón para ajustar el rango del eje X").
 let IG_RANGO_X_DESDE = null, IG_RANGO_X_HASTA = null;
-// Valores/variación en la línea de acumulado -- pedido explícito ("la
-// línea debe aparecer con valores... botón que permita colocar la
-// variación"). Arrancan activos (eso es lo que se pidió por defecto),
-// con botón para apagarlos si estorban.
+// Valores en la línea de acumulado -- pedido explícito ("la línea debe
+// aparecer con valores"), arranca activo. La variación se pidió y
+// después se quitó en la 2da ronda de feedback.
 let IG_MOSTRAR_VALORES_LINEA = true;
-let IG_MOSTRAR_VARIACION_LINEA = true;
 
 function igFmt(v){ return v==null ? '--' : Math.round(v).toLocaleString('es-CO'); }
 
@@ -34254,7 +34252,7 @@ function igRenderTodo(){
   igPoblarSelectoresMes();
   igRenderTablaGrande();
   igRenderResumenMes();
-  igRedibujarGraficosCombo();
+  igRenderGraficoPrincipal();
   igRenderDonut();
   igPoblarFormularioMes();
 }
@@ -34324,16 +34322,16 @@ function igRenderResumenMes(){
      <tbody>${filas}<tr style="font-weight:800;background:var(--bg3)"><td style="text-align:left">TOTAL</td><td>${igFmt(totRed)}</td><td>${igFmt(totRec)}</td></tr></tbody>`;
 }
 
-// Calcado de los 2 gráficos nativos del Excel (hoja "Resultado por
+// Calcado de los gráficos nativos del Excel (hoja "Resultado por
 // Estrategias Dor", chart1.xml/chart2.xml): barras APILADAS por
 // estrategia (eje izquierdo, escala mensual) + línea de TOTAL ACUMULADO
 // ANUALIZADO (eje derecho, escala mucho mayor -- en el Excel compartía el
 // mismo eje que las barras y por eso quedaban aplastadas/ilegibles; acá
-// sí se separa en 2 ejes, pedido explícito ("doble eje")). Se llama 2
-// veces (una por métrica) con el mismo índice de color por estrategia en
-// ambas, para que el mismo color SIEMPRE sea la misma estrategia.
-function igRenderGraficoCombo(metrica, canvasId, tituloId){
-  document.getElementById(tituloId).textContent = `AVANCE DE RESULTADO -- ${IG_METRICAS_LABEL[metrica]}`;
+// sí se separa en 2 ejes, pedido explícito ("doble eje")). Una sola
+// métrica a la vez -- ver igCambiarMetricaGraficoPrincipal().
+function igRenderGraficoPrincipal(){
+  const metrica = IG_METRICA_GRAFICO_PRINCIPAL;
+  document.getElementById('ig-graf-titulo-principal').textContent = `AVANCE DE RESULTADO -- ${IG_METRICAS_LABEL[metrica]}`;
   const todosMeses = igMesesOrdenados();
   const meses = igMesesFiltrados();
   const estrategias = IG_DATOS.estrategias;
@@ -34358,8 +34356,6 @@ function igRenderGraficoCombo(metrica, canvasId, tituloId){
   todosMeses.forEach(m => { acumulado += igTotalMes(m, metrica); acumuladoPorMes[m] = acumulado; });
   const dataLinea = meses.map(m => acumuladoPorMes[m]);
 
-  const dark = document.documentElement.getAttribute('data-theme')==='dark';
-  const colorTextoVariacion = dark ? '#aab8d1' : '#6b7280';
   const datasetLinea = {
     type: 'line',
     label: 'TOTAL ACUMULADO ANUALIZADO',
@@ -34369,47 +34365,28 @@ function igRenderGraficoCombo(metrica, canvasId, tituloId){
     borderWidth: 2.5, pointRadius: 3, pointHoverRadius: 5, tension: .1,
     yAxisID: 'yAcumulado',
     order: 1,
-  };
-  // Valores/variación en la línea -- pedido explícito ("la línea debe
-  // aparecer con valores... botón que permita colocar la variación"),
-  // mismo patrón "tarjetita" (ipColorVariacion/ipEstiloTarjetaVariacion)
-  // que ya usa el gráfico de Pérdida Total/Técnica de Institucional.
-  // Cada toggle es independiente -- pueden estar los 2, uno solo, o
-  // ninguno.
-  if(IG_MOSTRAR_VALORES_LINEA || IG_MOSTRAR_VARIACION_LINEA){
-    datasetLinea.datalabels = {
+    datalabels: IG_MOSTRAR_VALORES_LINEA ? {
       display:true, anchor:'end', align:'top', offset:10,
-      font: (IG_MOSTRAR_VALORES_LINEA && IG_MOSTRAR_VARIACION_LINEA) ? [{size:11, weight:'700'},{size:9.5, weight:'700'}] : {size:11, weight:'700'},
-      textAlign:'center',
-      formatter:(v, ctx) => {
-        if(v==null) return '';
-        const partes = [];
-        if(IG_MOSTRAR_VALORES_LINEA) partes.push(igFmt(v));
-        if(IG_MOSTRAR_VARIACION_LINEA){
-          const anterior = ctx.dataIndex>0 ? dataLinea[ctx.dataIndex-1] : null;
-          if(anterior==null) partes.push(IG_MOSTRAR_VALORES_LINEA ? '' : '');
-          else{
-            const delta = v-anterior;
-            partes.push(`${delta>=0?'▲':'▼'} ${igFmt(Math.abs(delta))}`);
-          }
-        }
-        return partes.length>1 ? partes : partes[0];
-      },
-      color: ctx => {
-        if(!IG_MOSTRAR_VARIACION_LINEA) return IG_COLOR_LINEA_ACUMULADO;
-        const anterior = ctx.dataIndex>0 ? dataLinea[ctx.dataIndex-1] : null;
-        const colorDelta = ipColorVariacion(dataLinea[ctx.dataIndex], anterior, colorTextoVariacion);
-        return IG_MOSTRAR_VALORES_LINEA ? [IG_COLOR_LINEA_ACUMULADO, colorDelta] : colorDelta;
-      },
-    };
-  } else {
-    datasetLinea.datalabels = {display:false};
-  }
+      font:{size:11, weight:'700'},
+      formatter: v => v==null ? '' : igFmt(v),
+      color: IG_COLOR_LINEA_ACUMULADO,
+    } : {display:false},
+  };
 
-  const ctx = document.getElementById(canvasId);
-  const chartActual = canvasId==='ig-ch-reduccion' ? igChReduccion : igChRecuperacion;
-  if(chartActual) chartActual.destroy();
-  const chart = new Chart(ctx, {
+  // Headroom del eje izquierdo (barras) -- pedido explícito ("ajustar el
+  // eje Y... para que no alcance a tocar la línea de acumulado, que no
+  // quede implícito en las barras"). Los 2 ejes comparten el mismo alto
+  // de dibujo pero escalas MUY distintas (mensual vs. acumulado, que
+  // siempre es mucho más grande) -- sin este margen, una barra alta
+  // podía terminar a la misma altura visual que un punto de la línea,
+  // dando a entender (falso) que están en la misma escala. Se deja un
+  // techo bastante más alto que el dato real para que las barras ocupen
+  // solo la mitad inferior del gráfico.
+  const maxBarras = Math.max(1, ...meses.map(m => igTotalMes(m, metrica)));
+
+  const ctx = document.getElementById('ig-ch-principal');
+  if(igChPrincipal) igChPrincipal.destroy();
+  igChPrincipal = new Chart(ctx, {
     data: {labels, datasets:[...datasetsBarras, datasetLinea]},
     options: {
       responsive:true, maintainAspectRatio:false,
@@ -34421,42 +34398,30 @@ function igRenderGraficoCombo(metrica, canvasId, tituloId){
       },
       scales:{
         x:{stacked:true, ticks:{maxRotation:0, autoSkip:true}},
-        yMensual:{stacked:true, position:'left', title:{display:true, text:'kWh/mes'}},
+        yMensual:{stacked:true, position:'left', suggestedMax: maxBarras*2.3, title:{display:true, text:'kWh/mes'}},
         yAcumulado:{position:'right', grid:{drawOnChartArea:false}, title:{display:true, text:'Acumulado (kWh)'}},
       },
     },
   });
-  if(canvasId==='ig-ch-reduccion') igChReduccion = chart; else igChRecuperacion = chart;
 }
 
-function igRedibujarGraficosCombo(){
-  igRenderGraficoCombo('reduccion_kwh_mes', 'ig-ch-reduccion', 'ig-graf-titulo-reduccion');
-  igRenderGraficoCombo('recuperacion_kwh', 'ig-ch-recuperacion', 'ig-graf-titulo-recuperacion');
+function igCambiarMetricaGraficoPrincipal(metrica){
+  IG_METRICA_GRAFICO_PRINCIPAL = metrica;
+  document.getElementById('ig-graf-chip-metrica-reduccion').classList.toggle('activo', metrica==='reduccion_kwh_mes');
+  document.getElementById('ig-graf-chip-metrica-recuperacion').classList.toggle('activo', metrica==='recuperacion_kwh');
+  igRenderGraficoPrincipal();
 }
 
 function igAplicarRangoX(){
   IG_RANGO_X_DESDE = document.getElementById('ig-graf-rango-desde').value || null;
   IG_RANGO_X_HASTA = document.getElementById('ig-graf-rango-hasta').value || null;
-  igRedibujarGraficosCombo();
-}
-
-function igRestablecerRangoX(){
-  document.getElementById('ig-graf-rango-desde').value = '';
-  document.getElementById('ig-graf-rango-hasta').value = '';
-  IG_RANGO_X_DESDE = null; IG_RANGO_X_HASTA = null;
-  igRedibujarGraficosCombo();
+  igRenderGraficoPrincipal();
 }
 
 function igToggleValoresLinea(){
   IG_MOSTRAR_VALORES_LINEA = !IG_MOSTRAR_VALORES_LINEA;
   document.getElementById('ig-graf-btn-valores').classList.toggle('activo', IG_MOSTRAR_VALORES_LINEA);
-  igRedibujarGraficosCombo();
-}
-
-function igToggleVariacionLinea(){
-  IG_MOSTRAR_VARIACION_LINEA = !IG_MOSTRAR_VARIACION_LINEA;
-  document.getElementById('ig-graf-btn-variacion').classList.toggle('activo', IG_MOSTRAR_VARIACION_LINEA);
-  igRedibujarGraficosCombo();
+  igRenderGraficoPrincipal();
 }
 
 function igCambiarMetricaDonut(metrica){
