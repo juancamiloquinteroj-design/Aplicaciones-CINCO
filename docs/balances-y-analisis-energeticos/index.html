@@ -496,8 +496,13 @@ select{padding:6px 10px;border:1px solid var(--border);border-radius:7px;font-si
 }
 .chart-expand-btn:hover, .chart-expand-btn:focus{opacity:1;color:var(--accent)}
 .chart-wrap.chart-fullscreen{
+  /* width/height NO van acá -- ver _chartToggleFullscreen(): con
+     #escala-fija-wrap transformado, 100vw/100vh ya no sirven (son
+     siempre relativos a la ventana REAL, nunca al lienzo escalado), el
+     tamaño se calcula a mano en JS y se fija inline (sin !important para
+     que gane sobre este fallback). */
   position:fixed !important;top:14px !important;left:14px !important;
-  width:calc(100vw - 28px) !important;height:calc(100vh - 28px) !important;
+  width:calc(1920px - 28px);height:calc(100vh - 28px);
   z-index:5000;background:var(--card-bg);
   border-radius:14px;box-shadow:0 12px 40px rgba(0,0,0,.4);padding:16px;
   box-sizing:border-box;
@@ -1275,9 +1280,29 @@ tfoot td:first-child{text-align:left}
 .math-block .coef{font-weight:700}
 .math-block .greek{font-style:italic}
 .math-block sub,.math-block sup{font-size:.72em;font-family:inherit}
+
+/* ---- Escala fija de toda la app -- pedido explícito ("quiero que los
+   tamaños no se ajusten al cambio de pantalla... que se visualice todo
+   en las mismas posiciones cuando lo veo en pantalla grande o pantalla
+   chica"). En vez de dejar que el CSS responsivo reacomode tarjetas/
+   gráficos según el ancho real de la ventana, TODO el contenido (navbar,
+   sidebar, app-screen, modales) se dibuja siempre sobre un lienzo de
+   ancho fijo (ESCALA_FIJA_REF_WIDTH, ver el script al final) y ese lienzo
+   se encoge/agranda completo con transform:scale() para llenar la
+   ventana real -- como un zoom óptico, nunca un reacomodo de layout. Los
+   ~8 @media queries que ya traía la app (breakpoints de pantalla chica)
+   quedan intactos pero ya no importan: el ancho que "ven" es siempre el
+   del lienzo fijo, nunca el real, así que ninguno vuelve a activarse.
+   overflow:hidden en html/body evita que el navegador agregue scrollbars
+   por el tamaño SIN escalar del lienzo (transform no cambia el tamaño de
+   layout, solo el pintado -- el alto real que debe reservar el body se
+   fija por JS después de escalar, ver aplicarEscalaFija()). */
+html,body{overflow-x:hidden;margin:0}
+#escala-fija-wrap{width:var(--escala-fija-ancho,1920px);transform-origin:top left}
 </style>
 </head>
 <body>
+<div id="escala-fija-wrap">
 
 <nav class="navbar">
   <button class="btn-menu hidden" id="btn-menu" onclick="toggleMenuActual()" title="Ocultar/mostrar barra lateral">☰</button>
@@ -7759,6 +7784,19 @@ function _chartToggleFullscreen(wrapId, ev){
   const expandiendo = !wrap.classList.contains('chart-fullscreen');
   wrap.classList.toggle('chart-fullscreen', expandiendo);
   document.body.classList.toggle('hay-chart-fullscreen', expandiendo);
+  // .chart-fullscreen queda position:fixed DENTRO de #escala-fija-wrap
+  // (transform crea un containing block nuevo para fixed/absolute) --
+  // 100vh ya no sirve para el alto (es siempre relativo a la ventana
+  // REAL, nunca al lienzo escalado) -- se arma a mano en coordenadas SIN
+  // escalar para que, ya escalado por el wrap, termine llenando la
+  // ventana real de verdad. El ancho SÍ puede ser fijo (el lienzo
+  // siempre mide ESCALA_FIJA_REF_WIDTH), ver CSS .chart-fullscreen.
+  if(expandiendo && typeof ESCALA_FIJA_REF_WIDTH !== 'undefined'){
+    const escala = window.innerWidth / ESCALA_FIJA_REF_WIDTH;
+    wrap.style.height = (window.innerHeight / escala - 28) + 'px';
+  } else {
+    wrap.style.height = '';
+  }
   const btn = wrap.querySelector('.chart-expand-btn');
   if(btn){
     btn.innerHTML = expandiendo ? '✕' : '⤢';
@@ -34369,6 +34407,44 @@ async function igGuardarContrato(){
     msg.textContent = e.message || 'No se pudo guardar el contrato.';
   }
 }
+</script>
+</div><!-- fin #escala-fija-wrap -->
+<script>
+// ---- Escala fija de toda la app -- pedido explícito ("quiero que los
+// tamaños no se ajusten al cambio de pantalla... que se visualice todo
+// en las mismas posiciones"). #escala-fija-wrap (ver <style>, envuelve
+// TODO lo de <body>) se dibuja siempre con un ancho fijo de
+// ESCALA_FIJA_REF_WIDTH -- acá solo se calcula cuánto encogerla/agrandarla
+// (transform:scale) para que llene el ancho real de la ventana, como un
+// zoom óptico. Nunca cambia el layout interno (ningún @media vuelve a
+// activarse, porque el ancho que "ven" esos CSS es siempre el del lienzo
+// fijo, nunca el real).
+const ESCALA_FIJA_REF_WIDTH = 1920;
+let _escalaFijaWrap = null;
+
+function aplicarEscalaFija(){
+  if(!_escalaFijaWrap) _escalaFijaWrap = document.getElementById('escala-fija-wrap');
+  if(!_escalaFijaWrap) return;
+  const escala = window.innerWidth / ESCALA_FIJA_REF_WIDTH;
+  _escalaFijaWrap.style.transform = `scale(${escala})`;
+  // El alto real que debe reservar <body> para el scroll vertical -- sin
+  // esto, el navegador mide el alto SIN escalar (transform no afecta
+  // layout, solo pintado) y deja un espacio en blanco enorme debajo (si
+  // se encogió) o corta contenido (si se agrandó). getBoundingClientRect()
+  // acá SÍ da el alto YA escalado (es el tamaño pintado en pantalla).
+  document.body.style.height = _escalaFijaWrap.getBoundingClientRect().height + 'px';
+}
+
+window.addEventListener('resize', aplicarEscalaFija);
+// El alto natural del contenido cambia todo el tiempo sin que cambie la
+// ventana (cargar datos, cambiar de módulo, abrir un modal más alto,
+// etc.) -- ResizeObserver mide el tamaño de LAYOUT real (sin transform),
+// así que dispara cada vez que el contenido adentro crece/encoge de
+// verdad, no solo cuando la ventana cambia de tamaño.
+if(typeof ResizeObserver !== 'undefined'){
+  new ResizeObserver(() => aplicarEscalaFija()).observe(document.getElementById('escala-fija-wrap'));
+}
+aplicarEscalaFija();
 </script>
 </body>
 </html>
