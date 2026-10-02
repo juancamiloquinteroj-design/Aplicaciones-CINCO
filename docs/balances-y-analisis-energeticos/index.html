@@ -4918,12 +4918,28 @@ html,body{overflow-x:hidden;margin:0}
         <table id="ig-tbl-grande"></table>
       </div>
 
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
-        <div style="font-weight:700;font-size:13px;color:var(--text)">Resumen de un mes</div>
-        <input type="month" id="ig-tbl-resumen-mes" onchange="igRenderResumenMes()" style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;color:var(--text);background:var(--bg)">
-      </div>
-      <div class="tbl-wrap tbl-compacta" style="max-width:100%;width:fit-content">
-        <table id="ig-tbl-resumen"></table>
+      <div style="display:flex;gap:28px;flex-wrap:wrap;align-items:flex-start">
+        <div style="flex:0 0 auto">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+            <div style="font-weight:700;font-size:13px;color:var(--text)">Resumen de un mes</div>
+            <input type="month" id="ig-tbl-resumen-mes" onchange="igRenderResumenMes()" style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;color:var(--text);background:var(--bg)">
+          </div>
+          <div class="tbl-wrap tbl-compacta" style="width:fit-content">
+            <table id="ig-tbl-resumen"></table>
+          </div>
+        </div>
+
+        <!-- Histórico por estrategia -- pedido explícito ("vas a colocar
+             una gráfica que me permita ver el histórico... de cada
+             estrategia"). Usa la misma métrica (Reducción/Recuperación)
+             y el mismo rango Desde/Hasta que la tabla grande de arriba --
+             una línea por estrategia, mismos colores que el resto del
+             módulo. -->
+        <div style="flex:1 1 420px;min-width:380px">
+          <div id="ig-tbl-historico-titulo" style="font-weight:700;font-size:13px;margin-bottom:10px;color:var(--text)"></div>
+          <div class="chart-wrap" style="height:320px"><canvas id="ig-ch-tbl-historico"></canvas></div>
+          <div id="ig-tbl-historico-vacio" class="hidden" style="padding:40px;text-align:center;color:var(--text3);font-size:13px">Sin datos para graficar en este rango.</div>
+        </div>
       </div>
     </div>
 
@@ -4981,7 +4997,7 @@ html,body{overflow-x:hidden;margin:0}
           <div class="tbl-wrap tbl-compacta" style="width:fit-content">
             <table>
               <colgroup><col style="width:330px"><col style="width:130px"><col style="width:130px"></colgroup>
-              <thead><tr><th style="text-align:left">Estrategia</th><th>Reducción al<br>indicador (kWh/mes)</th><th>Recuperación<br>estimada (kWh)</th></tr></thead>
+              <thead><tr><th style="text-align:left">Estrategia</th><th style="text-align:center">Reducción al<br>indicador (kWh/mes)</th><th style="text-align:center">Recuperación<br>estimada (kWh)</th></tr></thead>
               <tbody id="ig-ins-tabla-body"></tbody>
             </table>
           </div>
@@ -4998,8 +5014,8 @@ html,body{overflow-x:hidden;margin:0}
           <div style="font-weight:700;font-size:13px;margin-bottom:10px;color:var(--text)">Brigadas -- desglose por zona</div>
           <div class="tbl-wrap tbl-compacta" style="width:fit-content">
             <table>
-              <colgroup><col style="width:185px"><col style="width:64px"><col style="width:64px"><col style="width:64px"><col style="width:64px"></colgroup>
-              <thead><tr><th style="text-align:left">Descripción resultado</th><th>Norte</th><th>Zonas</th><th>Neiva</th><th>Total</th></tr></thead>
+              <colgroup><col style="width:185px"><col style="width:66px"><col style="width:66px"><col style="width:66px"><col style="width:78px"></colgroup>
+              <thead><tr><th style="text-align:left">Descripción resultado</th><th style="text-align:center">Norte</th><th style="text-align:center">Zonas</th><th style="text-align:center">Neiva</th><th style="text-align:center">Total</th></tr></thead>
               <tbody id="ig-ins-brigadas-tabla-body"></tbody>
             </table>
           </div>
@@ -5012,10 +5028,10 @@ html,body{overflow-x:hidden;margin:0}
 
         <!-- Gráfica Norte/Zonas/Neiva del mes elegido -- pedido explícito
              ("una gráfica de barras al lado de brigadas desglose por
-             zona"). -->
-        <div style="flex:0 0 auto">
+             zona... quiero la gráfica que ocupe todo el espacio"). -->
+        <div style="flex:1 1 300px;min-width:280px">
           <div style="font-weight:700;font-size:13px;margin-bottom:10px;color:var(--text)">Brigadas por zona (mes elegido)</div>
-          <div class="chart-wrap" style="height:220px;width:320px"><canvas id="ig-ch-brigadas"></canvas></div>
+          <div class="chart-wrap" style="height:260px"><canvas id="ig-ch-brigadas"></canvas></div>
         </div>
       </div>
 
@@ -34227,6 +34243,7 @@ function igAplicarRangoTabla(){
   IG_TBL_RANGO_DESDE = document.getElementById('ig-tbl-rango-desde').value || null;
   IG_TBL_RANGO_HASTA = document.getElementById('ig-tbl-rango-hasta').value || null;
   igRenderTablaGrande();
+  igRenderGraficoHistoricoEstrategias();
 }
 
 function igValor(mes, estrategia, campo){
@@ -34237,6 +34254,19 @@ function igValor(mes, estrategia, campo){
 function igTotalMes(mes, campo){
   const estrategias = IG_DATOS?.estrategias || IG_ESTRATEGIAS_FALLBACK;
   return estrategias.reduce((acc, e) => acc + (igValor(mes, e, campo) || 0), 0);
+}
+
+// Último mes con datos REALES (no solo "el mes más reciente que exista
+// en la base", que puede estar guardado en cero -- ej. una prueba) --
+// pedido explícito ("por defecto debe mostrar el mes que tenga datos").
+// Si NINGÚN mes tiene datos reales, cae al último que exista igual.
+function igUltimoMesConDatos(){
+  const meses = igMesesOrdenados();
+  for(let i = meses.length - 1; i >= 0; i--){
+    const m = meses[i];
+    if(igTotalMes(m, 'reduccion_kwh_mes') || igTotalMes(m, 'recuperacion_kwh')) return m;
+  }
+  return meses.length ? meses[meses.length - 1] : null;
 }
 
 async function igCargar(){
@@ -34270,13 +34300,15 @@ function igRenderTodo(){
   igPoblarSelectoresMes();
   igRenderTablaGrande();
   igRenderResumenMes();
+  igRenderGraficoHistoricoEstrategias();
   igRenderGraficoPrincipal();
-  // Insertar Datos arranca en el último mes con datos -- pedido explícito
-  // ("por defecto que aparezca el último mes"), en vez de quedar vacío
-  // hasta que el usuario elija uno a mano.
-  const mesesDisp = igMesesOrdenados();
+  // Insertar Datos arranca en el último mes con datos reales -- pedido
+  // explícito ("por defecto debe mostrar el mes que tenga datos"), en
+  // vez de quedar vacío o caer en un mes guardado en cero (ej. una
+  // prueba).
+  const ultimoConDatos = igUltimoMesConDatos();
   const inMes = document.getElementById('ig-ins-mes');
-  if(mesesDisp.length && !inMes.value) inMes.value = mesesDisp[mesesDisp.length-1].slice(0,7);
+  if(ultimoConDatos && !inMes.value) inMes.value = ultimoConDatos.slice(0,7);
   igPoblarFormularioMes();
 }
 
@@ -34293,10 +34325,12 @@ function igPoblarSelectoresMes(){
   tblDesde.min = tblHasta.min = primero;
   tblDesde.max = tblHasta.max = ultimo;
   // "Resumen de un mes" -- input type=month (ya no <select>), arranca en
-  // el último mes con datos si todavía no se eligió uno.
+  // el último mes con datos REALES si todavía no se eligió uno -- pedido
+  // explícito ("por defecto debe mostrar el mes que tenga datos").
   const inResumen = document.getElementById('ig-tbl-resumen-mes');
   inResumen.min = primero; inResumen.max = ultimo;
-  if(!inResumen.value) inResumen.value = ultimo;
+  const ultimoConDatos = igUltimoMesConDatos();
+  if(!inResumen.value && ultimoConDatos) inResumen.value = ultimoConDatos.slice(0,7);
 }
 
 function igCambiarMetricaTabla(metrica){
@@ -34304,6 +34338,7 @@ function igCambiarMetricaTabla(metrica){
   document.getElementById('ig-tbl-chip-reduccion').classList.toggle('activo', metrica==='reduccion_kwh_mes');
   document.getElementById('ig-tbl-chip-recuperacion').classList.toggle('activo', metrica==='recuperacion_kwh');
   igRenderTablaGrande();
+  igRenderGraficoHistoricoEstrategias();
 }
 
 function igRenderTablaGrande(){
@@ -34312,7 +34347,7 @@ function igRenderTablaGrande(){
   const todosMeses = igMesesOrdenados();
   const meses = igTblMesesFiltrados();
   const estrategias = IG_DATOS.estrategias;
-  const thMeses = meses.map(m=>`<th>${igMesCorto(m)}</th>`).join('');
+  const thMeses = meses.map(m=>`<th style="text-align:center">${igMesCorto(m)}</th>`).join('');
   let filas = estrategias.map(e => {
     const celdas = meses.map(m => `<td>${igFmt(igValor(m, e, metrica))}</td>`).join('');
     return `<tr><td style="text-align:left;font-weight:600">${e}</td>${celdas}</tr>`;
@@ -34348,8 +34383,65 @@ function igRenderResumenMes(){
   const totRed = igTotalMes(mes, 'reduccion_kwh_mes');
   const totRec = igTotalMes(mes, 'recuperacion_kwh');
   document.getElementById('ig-tbl-resumen').innerHTML =
-    `<thead><tr><th style="text-align:left">Estrategia</th><th>Reducción al indicador (kWh/mes)</th><th>Recuperación estimada (kWh)</th></tr></thead>
+    `<thead><tr><th style="text-align:left">Estrategia</th><th style="text-align:center">Reducción al indicador (kWh/mes)</th><th style="text-align:center">Recuperación estimada (kWh)</th></tr></thead>
      <tbody>${filas}<tr style="font-weight:800;background:var(--bg3)"><td style="text-align:left">TOTAL</td><td>${igFmt(totRed)}</td><td>${igFmt(totRec)}</td></tr></tbody>`;
+}
+
+// Histórico por estrategia -- pedido explícito ("vas a colocar una
+// gráfica que me permita ver el histórico... de cada estrategia"). Una
+// línea por estrategia (mismo color índice a índice que el resto del
+// módulo), métrica y rango compartidos con la tabla grande de arriba.
+// Si todo está en cero no se grafica -- mismo criterio que las otras 2
+// gráficas del módulo.
+let igChTblHistorico = null;
+function igRenderGraficoHistoricoEstrategias(){
+  const metrica = IG_METRICA_TABLA;
+  document.getElementById('ig-tbl-historico-titulo').textContent = `HISTÓRICO POR ESTRATEGIA -- ${IG_METRICAS_LABEL[metrica]}`;
+  const meses = igTblMesesFiltrados();
+  const estrategias = IG_DATOS.estrategias;
+
+  const wrap = document.getElementById('ig-ch-tbl-historico').closest('.chart-wrap');
+  const vacio = document.getElementById('ig-tbl-historico-vacio');
+  const hayDatos = meses.some(m => igTotalMes(m, metrica) !== 0);
+  if(!hayDatos){
+    if(igChTblHistorico){ igChTblHistorico.destroy(); igChTblHistorico = null; }
+    wrap.classList.add('hidden'); vacio.classList.remove('hidden');
+    return;
+  }
+  wrap.classList.remove('hidden'); vacio.classList.add('hidden');
+
+  const labels = meses.map(igMesCorto);
+  const datasets = estrategias.map((e,i) => ({
+    label: e,
+    data: meses.map(m => igValor(m, e, metrica) || 0),
+    borderColor: PALETA_ZONAS[i % PALETA_ZONAS.length],
+    backgroundColor: 'transparent',
+    borderWidth: 2, pointRadius: 2, pointHoverRadius: 4, tension: .1, spanGaps: true,
+  }));
+
+  if(igChTblHistorico) igChTblHistorico.destroy();
+  igChTblHistorico = new Chart(document.getElementById('ig-ch-tbl-historico'), {
+    type: 'line',
+    data: {labels, datasets},
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      interaction:{mode:'index', intersect:false},
+      plugins:{
+        legend:{
+          position:'bottom', labels:{boxWidth:12, font:{size:11}},
+          generateLabels: chart => chart.data.datasets.map((ds, i) => ({
+            text: ds.label, fillStyle: ds.borderColor, strokeStyle: ds.borderColor,
+            lineWidth: 2, hidden: !chart.isDatasetVisible(i), datasetIndex: i,
+          })),
+        },
+        tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`}},
+      },
+      scales:{
+        x:{ticks:{maxRotation:0, autoSkip:true}},
+        y:{title:{display:true, text:'kWh'}},
+      },
+    },
+  });
 }
 
 // Calcado de los gráficos nativos del Excel (hoja "Resultado por
