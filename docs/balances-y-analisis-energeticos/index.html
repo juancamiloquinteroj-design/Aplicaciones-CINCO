@@ -4972,6 +4972,17 @@ html,body{overflow-x:hidden;margin:0}
       <div id="ig-graf-titulo-principal" style="text-align:center;font-size:15px;font-weight:800;letter-spacing:.5px;color:var(--text);margin-bottom:10px"></div>
       <div class="chart-wrap" style="height:380px"><canvas id="ig-ch-principal"></canvas></div>
       <div id="ig-graf-vacio" class="hidden" style="padding:40px;text-align:center;color:var(--text3);font-size:13px">Sin datos para graficar en este rango.</div>
+
+      <!-- Acumulado alterno -- pedido explícito, calcado de una celda sin
+           etiqueta de la hoja "Resultado Geometrico" del Excel (fórmula
+           =mes_anterior+mes_actual+acumulado_anterior, verificada contra
+           los números reales): equivale a ACUMULADO[mes] +
+           ACUMULADO[mes anterior] -- NO es "anualizado", es otro
+           acumulado distinto al de arriba. Comparte métrica/rango/
+           valores con la gráfica principal (misma fila de controles). -->
+      <div id="ig-graf-titulo-acumalt" style="text-align:center;font-size:15px;font-weight:800;letter-spacing:.5px;color:var(--text);margin:30px 0 10px"></div>
+      <div class="chart-wrap" style="height:320px"><canvas id="ig-ch-acumalt"></canvas></div>
+      <div id="ig-graf-acumalt-vacio" class="hidden" style="padding:40px;text-align:center;color:var(--text3);font-size:13px">Sin datos para graficar en este rango.</div>
     </div>
 
     <!-- ===== Insertar Datos ===== -->
@@ -34302,6 +34313,7 @@ function igRenderTodo(){
   igRenderResumenMes();
   igRenderGraficoHistoricoEstrategias();
   igRenderGraficoPrincipal();
+  igRenderGraficoAcumuladoAlterno();
   // Insertar Datos arranca en el último mes con datos reales -- pedido
   // explícito ("por defecto debe mostrar el mes que tenga datos"), en
   // vez de quedar vacío o caer en un mes guardado en cero (ej. una
@@ -34569,18 +34581,102 @@ function igCambiarMetricaGraficoPrincipal(metrica){
   document.getElementById('ig-graf-chip-metrica-reduccion').classList.toggle('activo', metrica==='reduccion_kwh_mes');
   document.getElementById('ig-graf-chip-metrica-recuperacion').classList.toggle('activo', metrica==='recuperacion_kwh');
   igRenderGraficoPrincipal();
+  igRenderGraficoAcumuladoAlterno();
 }
 
 function igAplicarRangoX(){
   IG_RANGO_X_DESDE = document.getElementById('ig-graf-rango-desde').value || null;
   IG_RANGO_X_HASTA = document.getElementById('ig-graf-rango-hasta').value || null;
   igRenderGraficoPrincipal();
+  igRenderGraficoAcumuladoAlterno();
 }
 
 function igToggleValoresLinea(){
   IG_MOSTRAR_VALORES_LINEA = !IG_MOSTRAR_VALORES_LINEA;
   document.getElementById('ig-graf-btn-valores').classList.toggle('activo', IG_MOSTRAR_VALORES_LINEA);
   igRenderGraficoPrincipal();
+  igRenderGraficoAcumuladoAlterno();
+}
+
+// "Acumulado (mes actual + mes anterior)" -- pedido explícito, calcado
+// de una celda SIN ETIQUETA de la hoja "Resultado Geometrico" del Excel
+// (fórmula real: =mensual[mes anterior]+mensual[mes actual]+
+// acumulado_alterno[mes anterior] -- verificada contra los números
+// reales del Excel). Se simplifica algebraicamente a ACUMULADO[mes] +
+// ACUMULADO[mes anterior] (ambos términos ya calculados arriba para la
+// gráfica principal) -- NO es "anualizado", es un acumulado DISTINTO
+// (pedido explícito: "no lo llames total acumulado anualizado... es
+// solo un acumulado"). Comparte métrica/rango/botón de valores con la
+// gráfica principal -- no tiene controles propios.
+let igChAcumAlt = null;
+function igRenderGraficoAcumuladoAlterno(){
+  const metrica = IG_METRICA_GRAFICO_PRINCIPAL;
+  document.getElementById('ig-graf-titulo-acumalt').textContent = `ACUMULADO (MES ACTUAL + MES ANTERIOR) -- ${IG_METRICAS_LABEL[metrica]}`;
+  const todosMeses = igMesesOrdenados();
+  const meses = igMesesFiltrados();
+
+  const wrap = document.getElementById('ig-ch-acumalt').closest('.chart-wrap');
+  const vacio = document.getElementById('ig-graf-acumalt-vacio');
+  const hayDatos = meses.some(m => igTotalMes(m, metrica) !== 0);
+  if(!hayDatos){
+    if(igChAcumAlt){ igChAcumAlt.destroy(); igChAcumAlt = null; }
+    wrap.classList.add('hidden'); vacio.classList.remove('hidden');
+    return;
+  }
+  wrap.classList.remove('hidden'); vacio.classList.add('hidden');
+
+  let cumsum = 0;
+  const cumsumPorMes = {};
+  todosMeses.forEach(m => { cumsum += igTotalMes(m, metrica); cumsumPorMes[m] = cumsum; });
+  const dataLinea = meses.map(m => {
+    const idx = todosMeses.indexOf(m);
+    const anterior = idx > 0 ? cumsumPorMes[todosMeses[idx-1]] : 0;
+    return cumsumPorMes[m] + anterior;
+  });
+
+  const COLOR_ACUM_ALT = '#9E480E';  // 8º tono de PALETA_ZONAS -- distinto del acumulado de la gráfica principal
+  const dataset = {
+    type: 'line',
+    label: 'Acumulado (actual + anterior)',
+    data: dataLinea,
+    borderColor: COLOR_ACUM_ALT,
+    backgroundColor: COLOR_ACUM_ALT+'22',
+    borderWidth: 2.5, pointRadius: 3, pointHoverRadius: 5, tension: .1,
+    datalabels: IG_MOSTRAR_VALORES_LINEA ? {
+      display:true, anchor:'end', align:'top', offset:10,
+      font:{size:14, weight:'700'},
+      formatter: v => v==null ? '' : igFmt(v),
+      color: COLOR_ACUM_ALT,
+    } : {display:false},
+  };
+
+  if(igChAcumAlt) igChAcumAlt.destroy();
+  igChAcumAlt = new Chart(document.getElementById('ig-ch-acumalt'), {
+    type: 'line',
+    data: {labels: meses.map(igMesCorto), datasets:[dataset]},
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      layout:{padding:{top:28}},
+      interaction:{mode:'index', intersect:false},
+      plugins:{
+        legend:{
+          position:'bottom',
+          labels:{
+            boxWidth:12, font:{size:11},
+            generateLabels: chart => chart.data.datasets.map((ds, i) => ({
+              text: ds.label, fillStyle: ds.borderColor, strokeStyle: ds.borderColor,
+              lineWidth: 2, hidden: !chart.isDatasetVisible(i), datasetIndex: i,
+            })),
+          },
+        },
+        tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`}},
+      },
+      scales:{
+        x:{ticks:{maxRotation:0, autoSkip:true}},
+        y:{title:{display:true, text:'kWh'}},
+      },
+    },
+  });
 }
 
 // Fila de inputs genérica (editable) para una estrategia del valor directo.
