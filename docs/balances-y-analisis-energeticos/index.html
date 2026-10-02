@@ -4892,13 +4892,13 @@ html,body{overflow-x:hidden;margin:0}
 
   <div id="ig-contenido" class="hidden">
     <div class="pt-tabs">
-      <button type="button" class="pt-tab-btn activo" data-minitab-btn-grupo="ig" data-minitab-btn="tablas" onclick="miniTabsIr('ig','tablas')">Tablas</button>
-      <button type="button" class="pt-tab-btn" data-minitab-btn-grupo="ig" data-minitab-btn="graficos" onclick="miniTabsIr('ig','graficos')">Gráficos</button>
+      <button type="button" class="pt-tab-btn" data-minitab-btn-grupo="ig" data-minitab-btn="tablas" onclick="miniTabsIr('ig','tablas')">Tablas</button>
+      <button type="button" class="pt-tab-btn activo" data-minitab-btn-grupo="ig" data-minitab-btn="graficos" onclick="miniTabsIr('ig','graficos')">Gráficos</button>
       <button type="button" class="pt-tab-btn" data-minitab-btn-grupo="ig" data-minitab-btn="insertar" onclick="miniTabsIr('ig','insertar')">Insertar Datos</button>
     </div>
 
     <!-- ===== Tablas ===== -->
-    <div data-minitab-grupo="ig" data-minitab="tablas" class="card" style="border-top-left-radius:0;border-top-right-radius:0">
+    <div data-minitab-grupo="ig" data-minitab="tablas" class="card hidden" style="border-top-left-radius:0;border-top-right-radius:0">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px">
         <div style="font-size:13px;color:var(--text2)">
           Contrato No: <strong id="ig-tbl-contrato">--</strong> &nbsp;·&nbsp; Valor asignado: <strong id="ig-tbl-valor">--</strong>
@@ -4932,7 +4932,27 @@ html,body{overflow-x:hidden;margin:0}
          eje derecho para la línea acumulada (escala mucho mayor, no
          comparable en el mismo eje). Los colores por estrategia son los
          mismos índice a índice en las 2 gráficas (y en la dona de abajo). -->
-    <div data-minitab-grupo="ig" data-minitab="graficos" class="card hidden" style="border-top-left-radius:0;border-top-right-radius:0">
+    <div data-minitab-grupo="ig" data-minitab="graficos" class="card" style="border-top-left-radius:0;border-top-right-radius:0">
+      <!-- Controles compartidos por las 2 gráficas combo -- pedido
+           explícito ("botón para ajustar el rango del eje X... la línea
+           debe aparecer con valores... botón que permita colocar la
+           variación"). El rango de meses acota BARRAS y LÍNEA a la vez
+           (mismo eje X en ambas); el acumulado de la línea se sigue
+           calculando sobre TODO el histórico y recién después se recorta
+           a lo visible, para que el valor en cada punto sea el acumulado
+           real (no uno que "reinicia" al acotar el rango). -->
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+        <span style="font-size:11px;color:var(--text3);font-weight:800;text-transform:uppercase;letter-spacing:.3px">Rango eje X</span>
+        <input type="month" id="ig-graf-rango-desde" onchange="igAplicarRangoX()" style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;color:var(--text);background:var(--bg)">
+        <span style="color:var(--text3)">→</span>
+        <input type="month" id="ig-graf-rango-hasta" onchange="igAplicarRangoX()" style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;color:var(--text);background:var(--bg)">
+        <button type="button" class="be-modo-btn" onclick="igRestablecerRangoX()">Ver todo</button>
+        <div style="margin-left:auto;display:flex;gap:6px">
+          <button type="button" class="be-modo-btn activo" id="ig-graf-btn-valores" onclick="igToggleValoresLinea()">🏷 Valores</button>
+          <button type="button" class="be-modo-btn activo" id="ig-graf-btn-variacion" onclick="igToggleVariacionLinea()">Δ Variación</button>
+        </div>
+      </div>
+
       <div id="ig-graf-titulo-reduccion" style="text-align:center;font-size:15px;font-weight:800;letter-spacing:.5px;color:var(--text);margin-bottom:10px"></div>
       <div class="chart-wrap" style="height:360px;margin-bottom:30px"><canvas id="ig-ch-reduccion"></canvas></div>
 
@@ -4952,28 +4972,50 @@ html,body{overflow-x:hidden;margin:0}
 
     <!-- ===== Insertar Datos ===== -->
     <div data-minitab-grupo="ig" data-minitab="insertar" class="card hidden" style="border-top-left-radius:0;border-top-right-radius:0">
-      <div style="font-weight:700;font-size:13px;margin-bottom:10px;color:var(--text)">Datos del contrato</div>
-      <div class="fbar" style="margin-bottom:8px">
-        <label>Contrato No</label>
-        <input type="text" id="ig-ins-contrato-no" placeholder="Ej. 181 del 2025" style="min-width:200px;padding:7px 10px;border:1px solid var(--border);border-radius:7px;font-size:13px;color:var(--text);background:var(--bg)">
-        <label>Valor asignado al contrato</label>
-        <input type="number" id="ig-ins-valor-asignado" placeholder="Ej. 319753000" style="min-width:180px;padding:7px 10px;border:1px solid var(--border);border-radius:7px;font-size:13px;color:var(--text);background:var(--bg)">
-        <button type="button" class="btn-theme" style="width:auto;padding:7px 16px" onclick="igGuardarContrato()">Guardar</button>
+      <div style="font-weight:700;font-size:13px;margin-bottom:12px;color:var(--text)">Datos del contrato</div>
+      <div class="fbar" style="margin-bottom:8px;gap:14px">
+        <div class="be-field" style="min-width:220px">
+          <label>Contrato No</label>
+          <input type="text" id="ig-ins-contrato-no" placeholder="Ej. 181 del 2025" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--border);border-radius:7px;font-size:13px;color:var(--text);background:var(--bg)">
+        </div>
+        <div class="be-field" style="min-width:220px">
+          <label>Valor asignado al contrato</label>
+          <input type="number" id="ig-ins-valor-asignado" placeholder="Ej. 319753000" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--border);border-radius:7px;font-size:13px;color:var(--text);background:var(--bg)">
+        </div>
+        <button type="button" class="btn-theme" style="width:auto;padding:8px 18px;align-self:flex-end" onclick="igGuardarContrato()">Guardar</button>
       </div>
       <div id="ig-ins-msg-contrato" class="tm-modal-msg"></div>
 
-      <div style="font-weight:700;font-size:13px;margin:22px 0 10px;color:var(--text)">Valores del mes</div>
-      <div class="fbar" style="margin-bottom:14px">
+      <div style="font-weight:700;font-size:13px;margin:26px 0 10px;color:var(--text)">Valores del mes</div>
+      <div class="fbar" style="margin-bottom:16px">
         <label>Mes</label>
         <input type="month" id="ig-ins-mes" onchange="igPoblarFormularioMes()">
       </div>
-      <div class="tbl-wrap tbl-compacta" style="max-width:640px">
-        <table>
-          <thead><tr><th>Estrategia</th><th>Reducción al indicador (kWh/mes)</th><th>Recuperación estimada (kWh)</th></tr></thead>
+      <div class="tbl-wrap tbl-compacta" style="max-width:760px">
+        <table style="width:100%">
+          <colgroup><col style="width:46%"><col style="width:27%"><col style="width:27%"></colgroup>
+          <thead><tr><th style="text-align:left">Estrategia</th><th>Reducción al indicador (kWh/mes)</th><th>Recuperación estimada (kWh)</th></tr></thead>
           <tbody id="ig-ins-tabla-body"></tbody>
         </table>
       </div>
-      <div style="margin-top:14px">
+
+      <!-- Desglose de Brigadas por zona -- pedido explícito ("la
+           estrategia de brigadas... depende de la suma de Zona Norte,
+           Zona Neiva y Zonas... ahí se suma y se llena la tabla otra",
+           calcado de la tablita "Brigadas" del Excel). La fila BRIGADAS
+           DE INSPECCIÓN Y FACTURACIÓN de la tabla de arriba queda de
+           solo lectura (fondo distinto) -- su valor es SIEMPRE la suma
+           de esta tabla, nunca se edita directo. -->
+      <div style="font-weight:700;font-size:13px;margin:22px 0 10px;color:var(--text)">Brigadas -- desglose por zona</div>
+      <div class="tbl-wrap tbl-compacta" style="max-width:680px">
+        <table style="width:100%">
+          <colgroup><col style="width:36%"><col style="width:16%"><col style="width:16%"><col style="width:16%"><col style="width:16%"></colgroup>
+          <thead><tr><th style="text-align:left">Descripción resultado</th><th>Norte</th><th>Zonas</th><th>Neiva</th><th>Total</th></tr></thead>
+          <tbody id="ig-ins-brigadas-tabla-body"></tbody>
+        </table>
+      </div>
+
+      <div style="margin-top:18px">
         <button type="button" class="btn-theme" style="width:auto;padding:8px 18px" onclick="igGuardarMes()">Guardar mes</button>
       </div>
       <div id="ig-ins-msg-mes" class="tm-modal-msg"></div>
@@ -34126,7 +34168,9 @@ const IG_METRICAS_LABEL = {
   reduccion_kwh_mes: 'Reducción al indicador (kWh/mes)',
   recuperacion_kwh: 'Recuperación estimada (kWh)',
 };
-let IG_DATOS = null;       // {estrategias, contrato, valores} -- respuesta cruda de /api/indicadores-gestion
+const IG_ZONAS_BRIGADAS_FALLBACK = ['Norte', 'Zonas', 'Neiva'];
+const IG_ESTRATEGIA_BRIGADAS = 'BRIGADAS DE INSPECCIÓN Y FACTURACIÓN';
+let IG_DATOS = null;       // {estrategias, zonasBrigadas, contrato, valores, brigadasZonas} -- respuesta cruda de /api/indicadores-gestion
 let IG_METRICA_TABLA = 'reduccion_kwh_mes';
 let IG_METRICA_DONUT = 'reduccion_kwh_mes';
 let igChReduccion = null, igChRecuperacion = null, igChDonut = null;
@@ -34134,6 +34178,15 @@ let igChReduccion = null, igChRecuperacion = null, igChDonut = null;
 // PALETA_ZONAS (ya reservado para "más de 6 series", acá nunca choca
 // porque son exactamente 6 estrategias + esta línea).
 const IG_COLOR_LINEA_ACUMULADO = '#264478';
+// Rango de meses de las 2 gráficas combo (null = sin acotar, muestra
+// todo) -- pedido explícito ("botón para ajustar el rango del eje X").
+let IG_RANGO_X_DESDE = null, IG_RANGO_X_HASTA = null;
+// Valores/variación en la línea de acumulado -- pedido explícito ("la
+// línea debe aparecer con valores... botón que permita colocar la
+// variación"). Arrancan activos (eso es lo que se pidió por defecto),
+// con botón para apagarlos si estorban.
+let IG_MOSTRAR_VALORES_LINEA = true;
+let IG_MOSTRAR_VARIACION_LINEA = true;
 
 function igFmt(v){ return v==null ? '--' : Math.round(v).toLocaleString('es-CO'); }
 
@@ -34143,6 +34196,16 @@ function igMesCorto(m){
 
 function igMesesOrdenados(){
   return [...new Set((IG_DATOS?.valores || []).map(f=>f.mes))].sort();
+}
+
+// Submuestra de igMesesOrdenados() acotada por el rango elegido en "Rango
+// eje X" -- solo afecta a las 2 gráficas combo (Tablas sigue mostrando
+// todo el histórico siempre).
+function igMesesFiltrados(){
+  let meses = igMesesOrdenados();
+  if(IG_RANGO_X_DESDE) meses = meses.filter(m => m.slice(0,7) >= IG_RANGO_X_DESDE);
+  if(IG_RANGO_X_HASTA) meses = meses.filter(m => m.slice(0,7) <= IG_RANGO_X_HASTA);
+  return meses;
 }
 
 function igValor(mes, estrategia, campo){
@@ -34168,8 +34231,10 @@ async function igCargar(){
   }
   IG_DATOS = {
     estrategias: (resp && resp.estrategias && resp.estrategias.length) ? resp.estrategias : IG_ESTRATEGIAS_FALLBACK,
+    zonasBrigadas: (resp && resp.zonas_brigadas && resp.zonas_brigadas.length) ? resp.zonas_brigadas : IG_ZONAS_BRIGADAS_FALLBACK,
     contrato: (resp && resp.contrato) || {contrato_no:null, valor_asignado:null},
     valores: (resp && resp.valores) || [],
+    brigadasZonas: (resp && resp.brigadas_zonas) || [],
   };
   vacio.classList.add('hidden'); contenido.classList.remove('hidden');
   if(!IG_DATOS.valores.length && DEMO){
@@ -34189,8 +34254,7 @@ function igRenderTodo(){
   igPoblarSelectoresMes();
   igRenderTablaGrande();
   igRenderResumenMes();
-  igRenderGraficoCombo('reduccion_kwh_mes', 'ig-ch-reduccion', 'ig-graf-titulo-reduccion');
-  igRenderGraficoCombo('recuperacion_kwh', 'ig-ch-recuperacion', 'ig-graf-titulo-recuperacion');
+  igRedibujarGraficosCombo();
   igRenderDonut();
   igPoblarFormularioMes();
 }
@@ -34200,6 +34264,12 @@ function igPoblarSelectoresMes(){
   const opciones = meses.map(m=>`<option value="${m}">${labelMesLargo(m.slice(0,7))}</option>`).join('');
   const selResumen = document.getElementById('ig-tbl-resumen-mes');
   const selDonut = document.getElementById('ig-graf-donut-mes');
+  if(meses.length){
+    const inDesde = document.getElementById('ig-graf-rango-desde');
+    const inHasta = document.getElementById('ig-graf-rango-hasta');
+    inDesde.min = inHasta.min = meses[0].slice(0,7);
+    inDesde.max = inHasta.max = meses[meses.length-1].slice(0,7);
+  }
   const previoResumen = selResumen.value, previoDonut = selDonut.value;
   selResumen.innerHTML = opciones;
   selDonut.innerHTML = opciones;
@@ -34264,7 +34334,8 @@ function igRenderResumenMes(){
 // ambas, para que el mismo color SIEMPRE sea la misma estrategia.
 function igRenderGraficoCombo(metrica, canvasId, tituloId){
   document.getElementById(tituloId).textContent = `AVANCE DE RESULTADO -- ${IG_METRICAS_LABEL[metrica]}`;
-  const meses = igMesesOrdenados();
+  const todosMeses = igMesesOrdenados();
+  const meses = igMesesFiltrados();
   const estrategias = IG_DATOS.estrategias;
   const labels = meses.map(igMesCorto);
   const datasetsBarras = estrategias.map((e,i) => ({
@@ -34277,18 +34348,63 @@ function igRenderGraficoCombo(metrica, canvasId, tituloId){
     order: 2,
     datalabels: {display:false},
   }));
+
+  // El acumulado SIEMPRE se calcula sobre TODO el histórico -- recién
+  // después se recorta a los meses visibles, para que el valor en cada
+  // punto sea el acumulado real (no uno que "reinicia" al acotar el
+  // rango del eje X).
   let acumulado = 0;
+  const acumuladoPorMes = {};
+  todosMeses.forEach(m => { acumulado += igTotalMes(m, metrica); acumuladoPorMes[m] = acumulado; });
+  const dataLinea = meses.map(m => acumuladoPorMes[m]);
+
+  const dark = document.documentElement.getAttribute('data-theme')==='dark';
+  const colorTextoVariacion = dark ? '#aab8d1' : '#6b7280';
   const datasetLinea = {
     type: 'line',
     label: 'TOTAL ACUMULADO ANUALIZADO',
-    data: meses.map(m => (acumulado += igTotalMes(m, metrica))),
+    data: dataLinea,
     borderColor: IG_COLOR_LINEA_ACUMULADO,
     backgroundColor: IG_COLOR_LINEA_ACUMULADO+'22',
     borderWidth: 2.5, pointRadius: 3, pointHoverRadius: 5, tension: .1,
     yAxisID: 'yAcumulado',
     order: 1,
-    datalabels: {display:false},
   };
+  // Valores/variación en la línea -- pedido explícito ("la línea debe
+  // aparecer con valores... botón que permita colocar la variación"),
+  // mismo patrón "tarjetita" (ipColorVariacion/ipEstiloTarjetaVariacion)
+  // que ya usa el gráfico de Pérdida Total/Técnica de Institucional.
+  // Cada toggle es independiente -- pueden estar los 2, uno solo, o
+  // ninguno.
+  if(IG_MOSTRAR_VALORES_LINEA || IG_MOSTRAR_VARIACION_LINEA){
+    datasetLinea.datalabels = {
+      display:true, anchor:'end', align:'top', offset:10,
+      font: (IG_MOSTRAR_VALORES_LINEA && IG_MOSTRAR_VARIACION_LINEA) ? [{size:11, weight:'700'},{size:9.5, weight:'700'}] : {size:11, weight:'700'},
+      textAlign:'center',
+      formatter:(v, ctx) => {
+        if(v==null) return '';
+        const partes = [];
+        if(IG_MOSTRAR_VALORES_LINEA) partes.push(igFmt(v));
+        if(IG_MOSTRAR_VARIACION_LINEA){
+          const anterior = ctx.dataIndex>0 ? dataLinea[ctx.dataIndex-1] : null;
+          if(anterior==null) partes.push(IG_MOSTRAR_VALORES_LINEA ? '' : '');
+          else{
+            const delta = v-anterior;
+            partes.push(`${delta>=0?'▲':'▼'} ${igFmt(Math.abs(delta))}`);
+          }
+        }
+        return partes.length>1 ? partes : partes[0];
+      },
+      color: ctx => {
+        if(!IG_MOSTRAR_VARIACION_LINEA) return IG_COLOR_LINEA_ACUMULADO;
+        const anterior = ctx.dataIndex>0 ? dataLinea[ctx.dataIndex-1] : null;
+        const colorDelta = ipColorVariacion(dataLinea[ctx.dataIndex], anterior, colorTextoVariacion);
+        return IG_MOSTRAR_VALORES_LINEA ? [IG_COLOR_LINEA_ACUMULADO, colorDelta] : colorDelta;
+      },
+    };
+  } else {
+    datasetLinea.datalabels = {display:false};
+  }
 
   const ctx = document.getElementById(canvasId);
   const chartActual = canvasId==='ig-ch-reduccion' ? igChReduccion : igChRecuperacion;
@@ -34297,6 +34413,7 @@ function igRenderGraficoCombo(metrica, canvasId, tituloId){
     data: {labels, datasets:[...datasetsBarras, datasetLinea]},
     options: {
       responsive:true, maintainAspectRatio:false,
+      layout:{padding:{top:28}},
       interaction:{mode:'index', intersect:false},
       plugins:{
         legend:{position:'bottom', labels:{boxWidth:12, font:{size:11}}},
@@ -34310,6 +34427,36 @@ function igRenderGraficoCombo(metrica, canvasId, tituloId){
     },
   });
   if(canvasId==='ig-ch-reduccion') igChReduccion = chart; else igChRecuperacion = chart;
+}
+
+function igRedibujarGraficosCombo(){
+  igRenderGraficoCombo('reduccion_kwh_mes', 'ig-ch-reduccion', 'ig-graf-titulo-reduccion');
+  igRenderGraficoCombo('recuperacion_kwh', 'ig-ch-recuperacion', 'ig-graf-titulo-recuperacion');
+}
+
+function igAplicarRangoX(){
+  IG_RANGO_X_DESDE = document.getElementById('ig-graf-rango-desde').value || null;
+  IG_RANGO_X_HASTA = document.getElementById('ig-graf-rango-hasta').value || null;
+  igRedibujarGraficosCombo();
+}
+
+function igRestablecerRangoX(){
+  document.getElementById('ig-graf-rango-desde').value = '';
+  document.getElementById('ig-graf-rango-hasta').value = '';
+  IG_RANGO_X_DESDE = null; IG_RANGO_X_HASTA = null;
+  igRedibujarGraficosCombo();
+}
+
+function igToggleValoresLinea(){
+  IG_MOSTRAR_VALORES_LINEA = !IG_MOSTRAR_VALORES_LINEA;
+  document.getElementById('ig-graf-btn-valores').classList.toggle('activo', IG_MOSTRAR_VALORES_LINEA);
+  igRedibujarGraficosCombo();
+}
+
+function igToggleVariacionLinea(){
+  IG_MOSTRAR_VARIACION_LINEA = !IG_MOSTRAR_VARIACION_LINEA;
+  document.getElementById('ig-graf-btn-variacion').classList.toggle('activo', IG_MOSTRAR_VARIACION_LINEA);
+  igRedibujarGraficosCombo();
 }
 
 function igCambiarMetricaDonut(metrica){
@@ -34345,21 +34492,71 @@ function igRenderDonut(){
   });
 }
 
+// Fila de inputs genérica (editable) para una estrategia del valor directo.
+function _igFilaInputValor(etiqueta, red, rec, extraAttrs){
+  return `<td style="text-align:left">${etiqueta}</td>
+    <td><input type="number" class="ig-ins-red" value="${red}" ${extraAttrs||''} style="width:100%;box-sizing:border-box;padding:6px 7px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text)"></td>
+    <td><input type="number" class="ig-ins-rec" value="${rec}" ${extraAttrs||''} style="width:100%;box-sizing:border-box;padding:6px 7px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text)"></td>`;
+}
+
 function igPoblarFormularioMes(){
   const mesInput = document.getElementById('ig-ins-mes').value;  // 'YYYY-MM'
   const tbody = document.getElementById('ig-ins-tabla-body');
   const estrategias = (IG_DATOS && IG_DATOS.estrategias) || IG_ESTRATEGIAS_FALLBACK;
-  if(!mesInput){ tbody.innerHTML = ''; return; }
+  if(!mesInput){ tbody.innerHTML = ''; document.getElementById('ig-ins-brigadas-tabla-body').innerHTML = ''; return; }
   const mesFecha = `${mesInput}-01`;
   tbody.innerHTML = estrategias.map(e => {
     const red = (IG_DATOS ? igValor(mesFecha, e, 'reduccion_kwh_mes') : null) ?? 0;
     const rec = (IG_DATOS ? igValor(mesFecha, e, 'recuperacion_kwh') : null) ?? 0;
-    return `<tr data-estrategia="${_mselEsc(e)}">
-      <td style="text-align:left">${e}</td>
-      <td><input type="number" class="ig-ins-red" value="${red}" style="width:130px;padding:5px 7px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text)"></td>
-      <td><input type="number" class="ig-ins-rec" value="${rec}" style="width:130px;padding:5px 7px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text)"></td>
+    // BRIGADAS queda de solo lectura -- su valor SIEMPRE es la suma de
+    // la tabla "Brigadas -- desglose por zona" de abajo, nunca se edita
+    // acá directo (pedido explícito, calcado de la tablita del Excel).
+    const esBrigadas = e === IG_ESTRATEGIA_BRIGADAS;
+    const attrs = esBrigadas ? 'disabled title="Se calcula solo -- editalo en \'Brigadas -- desglose por zona\', abajo"' : '';
+    return `<tr data-estrategia="${_mselEsc(e)}" style="${esBrigadas ? 'background:var(--bg3)' : ''}">
+      ${_igFilaInputValor(e + (esBrigadas ? ' <span style="font-weight:400;color:var(--text3)">(= suma por zona)</span>' : ''), red, rec, attrs)}
     </tr>`;
   }).join('');
+  igPoblarBrigadasTabla(mesFecha);
+  // Fuerza que la fila BRIGADAS de arriba arranque SIEMPRE igual a la
+  // suma por zona (self-heal si quedaron desincronizadas, ej. datos
+  // cargados antes de que existiera este desglose).
+  igRecalcularBrigadas();
+}
+
+function igPoblarBrigadasTabla(mesFecha){
+  const zonas = (IG_DATOS && IG_DATOS.zonasBrigadas) || IG_ZONAS_BRIGADAS_FALLBACK;
+  const porZona = zona => (IG_DATOS && IG_DATOS.brigadasZonas || []).find(b => b.mes===mesFecha && b.zona===zona);
+  const filaTxt = campo => `<tr data-campo="${campo}">
+    <td style="text-align:left">${campo==='reduccion_kwh_mes' ? '(Reducción al indicador) kWh/mes' : '(Recuperación estimada) kWh'}</td>
+    ${zonas.map(z => {
+      const v = porZona(z);
+      const val = v ? v[campo] : 0;
+      return `<td><input type="number" class="ig-ins-brig-zona" data-zona="${_mselEsc(z)}" data-campo="${campo}" value="${val}" oninput="igRecalcularBrigadas()" style="width:100%;box-sizing:border-box;padding:6px 7px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text)"></td>`;
+    }).join('')}
+    <td class="ig-ins-brig-total" style="font-weight:700">${igFmt(zonas.reduce((a,z)=>{const v=porZona(z); return a+(v?v[campo]:0);},0))}</td>
+  </tr>`;
+  document.getElementById('ig-ins-brigadas-tabla-body').innerHTML =
+    filaTxt('reduccion_kwh_mes') + filaTxt('recuperacion_kwh');
+}
+
+// Recalcula los Total de la tabla de Brigadas por zona y refleja la suma
+// en la fila (de solo lectura) de BRIGADAS DE INSPECCIÓN Y FACTURACIÓN
+// de la tabla de arriba -- pedido explícito ("ahí se suma y se llena la
+// tabla otra").
+function igRecalcularBrigadas(){
+  ['reduccion_kwh_mes', 'recuperacion_kwh'].forEach(campo => {
+    const fila = document.querySelector(`#ig-ins-brigadas-tabla-body tr[data-campo="${campo}"]`);
+    if(!fila) return;
+    let total = 0;
+    fila.querySelectorAll('.ig-ins-brig-zona').forEach(inp => { total += parseFloat(inp.value) || 0; });
+    fila.querySelector('.ig-ins-brig-total').textContent = igFmt(total);
+    const filaBrigadas = document.querySelector(`#ig-ins-tabla-body tr[data-estrategia="${_mselEsc(IG_ESTRATEGIA_BRIGADAS)}"]`);
+    if(filaBrigadas){
+      const campoClase = campo==='reduccion_kwh_mes' ? '.ig-ins-red' : '.ig-ins-rec';
+      filaBrigadas.querySelector(campoClase).value = total;
+    }
+  });
 }
 
 async function igGuardarMes(){
@@ -34375,8 +34572,14 @@ async function igGuardarMes(){
     const rec = parseFloat(tr.querySelector('.ig-ins-rec').value) || 0;
     valores[estrategia] = {reduccion_kwh_mes: red, recuperacion_kwh: rec};
   });
+  const brigadas_zonas = {};
+  document.querySelectorAll('#ig-ins-brigadas-tabla-body .ig-ins-brig-zona').forEach(inp => {
+    const zona = inp.dataset.zona;
+    brigadas_zonas[zona] = brigadas_zonas[zona] || {};
+    brigadas_zonas[zona][inp.dataset.campo] = parseFloat(inp.value) || 0;
+  });
   try{
-    await apiPut('/api/indicadores-gestion/mes', {mes: mesInput, valores});
+    await apiPut('/api/indicadores-gestion/mes', {mes: mesInput, valores, brigadas_zonas});
     msg.textContent = 'Mes guardado.';
     await igCargar();
     document.getElementById('ig-ins-mes').value = mesInput;
