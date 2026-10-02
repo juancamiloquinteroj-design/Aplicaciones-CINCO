@@ -4955,6 +4955,7 @@ html,body{overflow-x:hidden;margin:0}
 
       <div id="ig-graf-titulo-principal" style="text-align:center;font-size:15px;font-weight:800;letter-spacing:.5px;color:var(--text);margin-bottom:10px"></div>
       <div class="chart-wrap" style="height:380px"><canvas id="ig-ch-principal"></canvas></div>
+      <div id="ig-graf-vacio" class="hidden" style="padding:40px;text-align:center;color:var(--text3);font-size:13px">Sin datos para graficar en este rango.</div>
     </div>
 
     <!-- ===== Insertar Datos ===== -->
@@ -4999,6 +5000,19 @@ html,body{overflow-x:hidden;margin:0}
               <tbody id="ig-ins-brigadas-tabla-body"></tbody>
             </table>
           </div>
+          <!-- Explicación automática -- pedido explícito ("debajo de
+               desglose por zona una explicación breve sobre los
+               resultados"), se arma sola en base a los números (no se
+               edita a mano). -->
+          <div id="ig-ins-brigadas-explicacion" style="margin-top:10px;max-width:440px;font-size:11.5px;color:var(--text3);line-height:1.5"></div>
+        </div>
+
+        <!-- Gráfica Norte/Zonas/Neiva del mes elegido -- pedido explícito
+             ("una gráfica de barras al lado de brigadas desglose por
+             zona"). -->
+        <div style="flex:0 0 auto">
+          <div style="font-weight:700;font-size:13px;margin-bottom:10px;color:var(--text)">Brigadas por zona (mes elegido)</div>
+          <div class="chart-wrap" style="height:220px;width:320px"><canvas id="ig-ch-brigadas"></canvas></div>
         </div>
       </div>
 
@@ -34348,6 +34362,19 @@ function igRenderGraficoPrincipal(){
   const todosMeses = igMesesOrdenados();
   const meses = igMesesFiltrados();
   const estrategias = IG_DATOS.estrategias;
+
+  // Si todo está en cero no se grafica nada -- pedido explícito ("si todo
+  // está en cero no debe graficar"), en vez de una gráfica vacía/plana.
+  const wrap = document.getElementById('ig-ch-principal').closest('.chart-wrap');
+  const vacio = document.getElementById('ig-graf-vacio');
+  const hayDatos = meses.some(m => igTotalMes(m, metrica) !== 0);
+  if(!hayDatos){
+    if(igChPrincipal){ igChPrincipal.destroy(); igChPrincipal = null; }
+    wrap.classList.add('hidden'); vacio.classList.remove('hidden');
+    return;
+  }
+  wrap.classList.remove('hidden'); vacio.classList.add('hidden');
+
   const labels = meses.map(igMesCorto);
   const datasetsBarras = estrategias.map((e,i) => ({
     type: 'bar',
@@ -34526,6 +34553,74 @@ function igRecalcularBrigadas(){
       filaBrigadas.querySelector(campoClase).value = total;
     }
   });
+  igActualizarBrigadasExtra();
+}
+
+let igChBrigadas = null;
+// Lee los inputs EN VIVO de la tabla (no lo guardado) -- reacciona
+// mientras se edita, antes de "Guardar mes".
+function _igLeerBrigadasVivo(campo){
+  const zonas = (IG_DATOS && IG_DATOS.zonasBrigadas) || IG_ZONAS_BRIGADAS_FALLBACK;
+  const fila = document.querySelector(`#ig-ins-brigadas-tabla-body tr[data-campo="${campo}"]`);
+  const vals = {};
+  zonas.forEach(z => {
+    const inp = fila ? fila.querySelector(`.ig-ins-brig-zona[data-zona="${_mselEsc(z)}"]`) : null;
+    vals[z] = inp ? (parseFloat(inp.value) || 0) : 0;
+  });
+  return vals;
+}
+
+// Gráfica Norte/Zonas/Neiva del mes elegido + explicación automática --
+// pedido explícito ("una gráfica de barras al lado de brigadas desglose
+// por zona... debajo una explicación breve sobre los resultados"). Si
+// todo está en cero no se grafica nada -- pedido explícito ("si todo
+// está en cero no debe graficar").
+function igActualizarBrigadasExtra(){
+  const zonas = (IG_DATOS && IG_DATOS.zonasBrigadas) || IG_ZONAS_BRIGADAS_FALLBACK;
+  const red = _igLeerBrigadasVivo('reduccion_kwh_mes');
+  const rec = _igLeerBrigadasVivo('recuperacion_kwh');
+  const totalRed = zonas.reduce((a,z)=>a+red[z], 0);
+  const totalRec = zonas.reduce((a,z)=>a+rec[z], 0);
+
+  const ctx = document.getElementById('ig-ch-brigadas');
+  const explicacion = document.getElementById('ig-ins-brigadas-explicacion');
+  if(!ctx || !explicacion) return;
+
+  if(!totalRed && !totalRec){
+    if(igChBrigadas){ igChBrigadas.destroy(); igChBrigadas = null; }
+    explicacion.textContent = 'Sin datos de Brigadas cargados para este mes todavía.';
+    return;
+  }
+
+  if(igChBrigadas) igChBrigadas.destroy();
+  igChBrigadas = new Chart(ctx, {
+    type:'bar',
+    data:{
+      labels: zonas,
+      datasets:[
+        {label:'Reducción al indicador (kWh/mes)', data: zonas.map(z=>red[z]), backgroundColor: PALETA_ZONAS[0]},
+        {label:'Recuperación estimada (kWh)', data: zonas.map(z=>rec[z]), backgroundColor: PALETA_ZONAS[1]},
+      ],
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{position:'bottom', labels:{boxWidth:10, font:{size:10}}}},
+      scales:{y:{title:{display:true, text:'kWh'}}},
+    },
+  });
+
+  // Explicación automática -- identifica la zona con mayor aporte en
+  // cada métrica y su participación % sobre el total.
+  const topZona = (vals, total) => {
+    if(!total) return null;
+    const [zona, valor] = Object.entries(vals).reduce((a,b)=> b[1]>a[1] ? b : a);
+    return valor>0 ? {zona, valor, pct: (valor/total*100).toFixed(0)} : null;
+  };
+  const tRed = topZona(red, totalRed), tRec = topZona(rec, totalRec);
+  const partes = [];
+  if(tRed) partes.push(`En Reducción al indicador, <strong>${tRed.zona}</strong> fue la zona con mayor aporte (${igFmt(tRed.valor)} kWh/mes, ${tRed.pct}% del total).`);
+  if(tRec) partes.push(`En Recuperación estimada, <strong>${tRec.zona}</strong> fue la zona con mayor aporte (${igFmt(tRec.valor)} kWh, ${tRec.pct}% del total).`);
+  explicacion.innerHTML = partes.join(' ');
 }
 
 async function igGuardarMes(){
