@@ -4898,19 +4898,28 @@ tfoot td:first-child{text-align:left}
     </div>
 
     <!-- ===== Gráficos ===== -->
+    <!-- 2 gráficas combo (barras apiladas por estrategia + línea de TOTAL
+         ACUMULADO ANUALIZADO), una por métrica -- calcado de los 2
+         gráficos nativos que trae el Excel en la hoja "Resultado por
+         Estrategias Dor" (chart1.xml/chart2.xml). Doble eje -- pedido
+         explícito ("deben ser dos graficas... que son doble eje con los
+         mismos colores"): eje izquierdo para las barras (escala mensual),
+         eje derecho para la línea acumulada (escala mucho mayor, no
+         comparable en el mismo eje). Los colores por estrategia son los
+         mismos índice a índice en las 2 gráficas (y en la dona de abajo). -->
     <div data-minitab-grupo="ig" data-minitab="graficos" class="card hidden" style="border-top-left-radius:0;border-top-right-radius:0">
-      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">
-        <button type="button" class="be-modo-btn activo" id="ig-graf-chip-reduccion" onclick="igCambiarMetricaGrafico('reduccion_kwh_mes')">Reducción al indicador (kWh/mes)</button>
-        <button type="button" class="be-modo-btn" id="ig-graf-chip-recuperacion" onclick="igCambiarMetricaGrafico('recuperacion_kwh')">Recuperación estimada (kWh)</button>
-      </div>
-      <div id="ig-graf-titulo-barras" style="text-align:center;font-size:15px;font-weight:800;letter-spacing:.5px;color:var(--text);margin-bottom:10px"></div>
-      <div class="chart-wrap" style="height:360px;margin-bottom:30px"><canvas id="ig-ch-barras"></canvas></div>
+      <div id="ig-graf-titulo-reduccion" style="text-align:center;font-size:15px;font-weight:800;letter-spacing:.5px;color:var(--text);margin-bottom:10px"></div>
+      <div class="chart-wrap" style="height:360px;margin-bottom:30px"><canvas id="ig-ch-reduccion"></canvas></div>
 
-      <div style="text-align:center;font-size:15px;font-weight:800;letter-spacing:.5px;color:var(--text);margin-bottom:10px">Acumulado Anualizado</div>
-      <div class="chart-wrap" style="height:320px;margin-bottom:30px"><canvas id="ig-ch-acumulado"></canvas></div>
+      <div id="ig-graf-titulo-recuperacion" style="text-align:center;font-size:15px;font-weight:800;letter-spacing:.5px;color:var(--text);margin-bottom:10px"></div>
+      <div class="chart-wrap" style="height:360px;margin-bottom:30px"><canvas id="ig-ch-recuperacion"></canvas></div>
 
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">
         <div style="font-weight:700;font-size:13px;color:var(--text)">Distribución por estrategia</div>
+        <div style="display:flex;gap:6px">
+          <button type="button" class="be-modo-btn activo" id="ig-graf-chip-donut-reduccion" onclick="igCambiarMetricaDonut('reduccion_kwh_mes')">Reducción al indicador</button>
+          <button type="button" class="be-modo-btn" id="ig-graf-chip-donut-recuperacion" onclick="igCambiarMetricaDonut('recuperacion_kwh')">Recuperación estimada</button>
+        </div>
         <select id="ig-graf-donut-mes" onchange="igRenderDonut()" style="padding:6px 10px;border:1px solid var(--border);border-radius:7px;font-size:12.5px;color:var(--text);background:var(--bg)"></select>
       </div>
       <div class="chart-wrap" style="height:320px;max-width:420px;margin:0 auto"><canvas id="ig-ch-donut"></canvas></div>
@@ -34081,8 +34090,12 @@ const IG_METRICAS_LABEL = {
 };
 let IG_DATOS = null;       // {estrategias, contrato, valores} -- respuesta cruda de /api/indicadores-gestion
 let IG_METRICA_TABLA = 'reduccion_kwh_mes';
-let IG_METRICA_GRAFICO = 'reduccion_kwh_mes';
-let igChBarras = null, igChAcumulado = null, igChDonut = null;
+let IG_METRICA_DONUT = 'reduccion_kwh_mes';
+let igChReduccion = null, igChRecuperacion = null, igChDonut = null;
+// Color de la línea "TOTAL ACUMULADO ANUALIZADO" -- el 7º tono de
+// PALETA_ZONAS (ya reservado para "más de 6 series", acá nunca choca
+// porque son exactamente 6 estrategias + esta línea).
+const IG_COLOR_LINEA_ACUMULADO = '#264478';
 
 function igFmt(v){ return v==null ? '--' : Math.round(v).toLocaleString('es-CO'); }
 
@@ -34138,8 +34151,8 @@ function igRenderTodo(){
   igPoblarSelectoresMes();
   igRenderTablaGrande();
   igRenderResumenMes();
-  igRenderGraficoBarras();
-  igRenderGraficoAcumulado();
+  igRenderGraficoCombo('reduccion_kwh_mes', 'ig-ch-reduccion', 'ig-graf-titulo-reduccion');
+  igRenderGraficoCombo('recuperacion_kwh', 'ig-ch-recuperacion', 'ig-graf-titulo-recuperacion');
   igRenderDonut();
   igPoblarFormularioMes();
 }
@@ -34203,69 +34216,75 @@ function igRenderResumenMes(){
      <tbody>${filas}<tr style="font-weight:800;background:var(--bg3)"><td style="text-align:left">TOTAL</td><td>${igFmt(totRed)}</td><td>${igFmt(totRec)}</td></tr></tbody>`;
 }
 
-function igCambiarMetricaGrafico(metrica){
-  IG_METRICA_GRAFICO = metrica;
-  document.getElementById('ig-graf-chip-reduccion').classList.toggle('activo', metrica==='reduccion_kwh_mes');
-  document.getElementById('ig-graf-chip-recuperacion').classList.toggle('activo', metrica==='recuperacion_kwh');
-  igRenderGraficoBarras();
-  igRenderDonut();
-}
-
-function igRenderGraficoBarras(){
-  const metrica = IG_METRICA_GRAFICO;
-  document.getElementById('ig-graf-titulo-barras').textContent = `AVANCE MENSUAL POR ESTRATEGIA -- ${IG_METRICAS_LABEL[metrica]}`;
+// Calcado de los 2 gráficos nativos del Excel (hoja "Resultado por
+// Estrategias Dor", chart1.xml/chart2.xml): barras APILADAS por
+// estrategia (eje izquierdo, escala mensual) + línea de TOTAL ACUMULADO
+// ANUALIZADO (eje derecho, escala mucho mayor -- en el Excel compartía el
+// mismo eje que las barras y por eso quedaban aplastadas/ilegibles; acá
+// sí se separa en 2 ejes, pedido explícito ("doble eje")). Se llama 2
+// veces (una por métrica) con el mismo índice de color por estrategia en
+// ambas, para que el mismo color SIEMPRE sea la misma estrategia.
+function igRenderGraficoCombo(metrica, canvasId, tituloId){
+  document.getElementById(tituloId).textContent = `AVANCE DE RESULTADO -- ${IG_METRICAS_LABEL[metrica]}`;
   const meses = igMesesOrdenados();
   const estrategias = IG_DATOS.estrategias;
   const labels = meses.map(igMesCorto);
-  const datasets = estrategias.map((e,i) => ({
+  const datasetsBarras = estrategias.map((e,i) => ({
+    type: 'bar',
     label: e,
     data: meses.map(m => igValor(m, e, metrica) || 0),
     backgroundColor: PALETA_ZONAS[i % PALETA_ZONAS.length],
-    stack: 'total',
+    stack: 'estrategias',
+    yAxisID: 'yMensual',
+    order: 2,
     datalabels: {display:false},
   }));
-  if(igChBarras) igChBarras.destroy();
-  igChBarras = new Chart(document.getElementById('ig-ch-barras'), {
-    type: 'bar',
-    data: {labels, datasets},
+  let acumulado = 0;
+  const datasetLinea = {
+    type: 'line',
+    label: 'TOTAL ACUMULADO ANUALIZADO',
+    data: meses.map(m => (acumulado += igTotalMes(m, metrica))),
+    borderColor: IG_COLOR_LINEA_ACUMULADO,
+    backgroundColor: IG_COLOR_LINEA_ACUMULADO+'22',
+    borderWidth: 2.5, pointRadius: 3, pointHoverRadius: 5, tension: .1,
+    yAxisID: 'yAcumulado',
+    order: 1,
+    datalabels: {display:false},
+  };
+
+  const ctx = document.getElementById(canvasId);
+  const chartActual = canvasId==='ig-ch-reduccion' ? igChReduccion : igChRecuperacion;
+  if(chartActual) chartActual.destroy();
+  const chart = new Chart(ctx, {
+    data: {labels, datasets:[...datasetsBarras, datasetLinea]},
     options: {
       responsive:true, maintainAspectRatio:false,
       interaction:{mode:'index', intersect:false},
-      plugins:{legend:{position:'bottom', labels:{boxWidth:12, font:{size:11}}}},
+      plugins:{
+        legend:{position:'bottom', labels:{boxWidth:12, font:{size:11}}},
+        tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`}},
+      },
       scales:{
         x:{stacked:true, ticks:{maxRotation:0, autoSkip:true}},
-        y:{stacked:true, title:{display:true, text:'kWh'}},
+        yMensual:{stacked:true, position:'left', title:{display:true, text:'kWh/mes'}},
+        yAcumulado:{position:'right', grid:{drawOnChartArea:false}, title:{display:true, text:'Acumulado (kWh)'}},
       },
     },
   });
+  if(canvasId==='ig-ch-reduccion') igChReduccion = chart; else igChRecuperacion = chart;
 }
 
-function igRenderGraficoAcumulado(){
-  const meses = igMesesOrdenados();
-  const labels = meses.map(igMesCorto);
-  let accRed = 0, accRec = 0;
-  const dataRed = meses.map(m => (accRed += igTotalMes(m,'reduccion_kwh_mes')));
-  const dataRec = meses.map(m => (accRec += igTotalMes(m,'recuperacion_kwh')));
-  if(igChAcumulado) igChAcumulado.destroy();
-  igChAcumulado = new Chart(document.getElementById('ig-ch-acumulado'), {
-    type:'line',
-    data:{labels, datasets:[
-      {label:'Reducción al indicador (acum. kWh/mes)', data:dataRed, borderColor:'#4472C4', backgroundColor:'#4472C422', borderWidth:2.5, pointRadius:3, pointHoverRadius:5, tension:.1, datalabels:{display:false}},
-      {label:'Recuperación estimada (acum. kWh)', data:dataRec, borderColor:'#ED7D31', backgroundColor:'#ED7D3122', borderWidth:2.5, pointRadius:3, pointHoverRadius:5, tension:.1, datalabels:{display:false}},
-    ]},
-    options:{
-      responsive:true, maintainAspectRatio:false,
-      interaction:{mode:'index', intersect:false},
-      plugins:{legend:{position:'bottom', labels:{boxWidth:12, font:{size:11}}}},
-      scales:{x:{ticks:{maxRotation:0, autoSkip:true}}, y:{title:{display:true, text:'kWh'}}},
-    },
-  });
+function igCambiarMetricaDonut(metrica){
+  IG_METRICA_DONUT = metrica;
+  document.getElementById('ig-graf-chip-donut-reduccion').classList.toggle('activo', metrica==='reduccion_kwh_mes');
+  document.getElementById('ig-graf-chip-donut-recuperacion').classList.toggle('activo', metrica==='recuperacion_kwh');
+  igRenderDonut();
 }
 
 function igRenderDonut(){
   const mes = document.getElementById('ig-graf-donut-mes').value;
   if(!mes){ if(igChDonut){ igChDonut.destroy(); igChDonut=null; } return; }
-  const metrica = IG_METRICA_GRAFICO;
+  const metrica = IG_METRICA_DONUT;
   const estrategias = IG_DATOS.estrategias;
   const valores = estrategias.map(e => igValor(mes, e, metrica) || 0);
   if(igChDonut) igChDonut.destroy();
