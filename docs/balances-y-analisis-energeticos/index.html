@@ -1574,6 +1574,7 @@ tfoot td:first-child{text-align:left}
     <button class="sidebar-sublink" data-vista="telemedidos" data-modulo="telemedidos" onclick="mostrarVista('telemedidos')">Usuarios Telemedidos</button>
     <button class="sidebar-sublink" data-vista="aenc-cgm" data-modulo="aenc-cgm" onclick="mostrarVista('aenc-cgm')">AENC vs CGM</button>
     <button class="sidebar-sublink" data-vista="temp-entrada" data-modulo="temp-entrada" onclick="mostrarVista('temp-entrada')">Temperatura</button>
+    <button class="sidebar-sublink" data-vista="indicadores-gestion" data-modulo="indicadores-gestion" onclick="mostrarVista('indicadores-gestion')">Indicadores Gestión</button>
   </div>
   <button class="sidebar-link sidebar-link-padre" id="sidebar-config-padre" onclick="toggleSubmenuConfig()">
     <span>Configuración</span>
@@ -4855,6 +4856,98 @@ tfoot td:first-child{text-align:left}
 </div>
 <!-- fin vista-aenc-cgm -->
 
+<!-- ---------------- INDICADORES GESTIÓN ---------------- -->
+<div id="vista-indicadores-gestion" class="vista-modulo hidden">
+  <div class="sec-hdr">
+    <div class="sec-title">Indicadores Gestión</div>
+    <div class="sec-sub">Avance mensual por estrategia del contrato de reducción de pérdidas -- Reducción al indicador (kWh/mes) y Recuperación estimada (kWh).</div>
+  </div>
+
+  <div id="ig-vacio" class="card"><div style="color:var(--text3)">Cargando…</div></div>
+
+  <div id="ig-contenido" class="hidden">
+    <div class="pt-tabs">
+      <button type="button" class="pt-tab-btn activo" data-minitab-btn-grupo="ig" data-minitab-btn="tablas" onclick="miniTabsIr('ig','tablas')">Tablas</button>
+      <button type="button" class="pt-tab-btn" data-minitab-btn-grupo="ig" data-minitab-btn="graficos" onclick="miniTabsIr('ig','graficos')">Gráficos</button>
+      <button type="button" class="pt-tab-btn" data-minitab-btn-grupo="ig" data-minitab-btn="insertar" onclick="miniTabsIr('ig','insertar')">Insertar Datos</button>
+    </div>
+
+    <!-- ===== Tablas ===== -->
+    <div data-minitab-grupo="ig" data-minitab="tablas" class="card" style="border-top-left-radius:0;border-top-right-radius:0">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px">
+        <div style="font-size:13px;color:var(--text2)">
+          Contrato No: <strong id="ig-tbl-contrato">--</strong> &nbsp;·&nbsp; Valor asignado: <strong id="ig-tbl-valor">--</strong>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button type="button" class="be-modo-btn activo" id="ig-tbl-chip-reduccion" onclick="igCambiarMetricaTabla('reduccion_kwh_mes')">Reducción al indicador (kWh/mes)</button>
+          <button type="button" class="be-modo-btn" id="ig-tbl-chip-recuperacion" onclick="igCambiarMetricaTabla('recuperacion_kwh')">Recuperación estimada (kWh)</button>
+        </div>
+      </div>
+      <div id="ig-tbl-grande-titulo" style="font-weight:700;font-size:13px;margin-bottom:8px;color:var(--text)"></div>
+      <div class="tbl-wrap tbl-compacta" style="overflow-x:auto;margin-bottom:28px;max-width:100%">
+        <table id="ig-tbl-grande"></table>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+        <div style="font-weight:700;font-size:13px;color:var(--text)">Resumen de un mes</div>
+        <select id="ig-tbl-resumen-mes" onchange="igRenderResumenMes()" style="padding:6px 10px;border:1px solid var(--border);border-radius:7px;font-size:12.5px;color:var(--text);background:var(--bg)"></select>
+      </div>
+      <div class="tbl-wrap tbl-compacta" style="max-width:560px">
+        <table id="ig-tbl-resumen"></table>
+      </div>
+    </div>
+
+    <!-- ===== Gráficos ===== -->
+    <div data-minitab-grupo="ig" data-minitab="graficos" class="card hidden" style="border-top-left-radius:0;border-top-right-radius:0">
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">
+        <button type="button" class="be-modo-btn activo" id="ig-graf-chip-reduccion" onclick="igCambiarMetricaGrafico('reduccion_kwh_mes')">Reducción al indicador (kWh/mes)</button>
+        <button type="button" class="be-modo-btn" id="ig-graf-chip-recuperacion" onclick="igCambiarMetricaGrafico('recuperacion_kwh')">Recuperación estimada (kWh)</button>
+      </div>
+      <div id="ig-graf-titulo-barras" style="text-align:center;font-size:15px;font-weight:800;letter-spacing:.5px;color:var(--text);margin-bottom:10px"></div>
+      <div class="chart-wrap" style="height:360px;margin-bottom:30px"><canvas id="ig-ch-barras"></canvas></div>
+
+      <div style="text-align:center;font-size:15px;font-weight:800;letter-spacing:.5px;color:var(--text);margin-bottom:10px">Acumulado Anualizado</div>
+      <div class="chart-wrap" style="height:320px;margin-bottom:30px"><canvas id="ig-ch-acumulado"></canvas></div>
+
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+        <div style="font-weight:700;font-size:13px;color:var(--text)">Distribución por estrategia</div>
+        <select id="ig-graf-donut-mes" onchange="igRenderDonut()" style="padding:6px 10px;border:1px solid var(--border);border-radius:7px;font-size:12.5px;color:var(--text);background:var(--bg)"></select>
+      </div>
+      <div class="chart-wrap" style="height:320px;max-width:420px;margin:0 auto"><canvas id="ig-ch-donut"></canvas></div>
+    </div>
+
+    <!-- ===== Insertar Datos ===== -->
+    <div data-minitab-grupo="ig" data-minitab="insertar" class="card hidden" style="border-top-left-radius:0;border-top-right-radius:0">
+      <div style="font-weight:700;font-size:13px;margin-bottom:10px;color:var(--text)">Datos del contrato</div>
+      <div class="fbar" style="margin-bottom:8px">
+        <label>Contrato No</label>
+        <input type="text" id="ig-ins-contrato-no" placeholder="Ej. 181 del 2025" style="min-width:200px;padding:7px 10px;border:1px solid var(--border);border-radius:7px;font-size:13px;color:var(--text);background:var(--bg)">
+        <label>Valor asignado al contrato</label>
+        <input type="number" id="ig-ins-valor-asignado" placeholder="Ej. 319753000" style="min-width:180px;padding:7px 10px;border:1px solid var(--border);border-radius:7px;font-size:13px;color:var(--text);background:var(--bg)">
+        <button type="button" class="btn-theme" style="width:auto;padding:7px 16px" onclick="igGuardarContrato()">Guardar</button>
+      </div>
+      <div id="ig-ins-msg-contrato" class="tm-modal-msg"></div>
+
+      <div style="font-weight:700;font-size:13px;margin:22px 0 10px;color:var(--text)">Valores del mes</div>
+      <div class="fbar" style="margin-bottom:14px">
+        <label>Mes</label>
+        <input type="month" id="ig-ins-mes" onchange="igPoblarFormularioMes()">
+      </div>
+      <div class="tbl-wrap tbl-compacta" style="max-width:640px">
+        <table>
+          <thead><tr><th>Estrategia</th><th>Reducción al indicador (kWh/mes)</th><th>Recuperación estimada (kWh)</th></tr></thead>
+          <tbody id="ig-ins-tabla-body"></tbody>
+        </table>
+      </div>
+      <div style="margin-top:14px">
+        <button type="button" class="btn-theme" style="width:auto;padding:8px 18px" onclick="igGuardarMes()">Guardar mes</button>
+      </div>
+      <div id="ig-ins-msg-mes" class="tm-modal-msg"></div>
+    </div>
+  </div>
+</div>
+<!-- fin vista-indicadores-gestion -->
+
 <!-- ---------------- INFORMES (.docx descargable) ---------------- -->
 <div id="vista-informes" class="vista-modulo hidden">
   <div class="sec-hdr">
@@ -7917,7 +8010,7 @@ function toggleSubmenuConfig(){
   }
 }
 
-let vistaCargada = {perdidas:false, parametrizacion:false, telemedidos:false, balancesEstructura:false, ipReg:false, ipComercial:false, ipInstitucional:false, reportesSspd:false, tridevanados:false, alimResumen:false, alimNivel4:false, alimNivel3:false, alimN21:false, alimSubestaciones:false, alimAlimentadores:false, alimAnalisisCiclo:false, tempEntrada:false, informes:false, programaFacturacion:false, aencCgm:false};
+let vistaCargada = {perdidas:false, parametrizacion:false, telemedidos:false, balancesEstructura:false, ipReg:false, ipComercial:false, ipInstitucional:false, reportesSspd:false, tridevanados:false, alimResumen:false, alimNivel4:false, alimNivel3:false, alimN21:false, alimSubestaciones:false, alimAlimentadores:false, alimAnalisisCiclo:false, tempEntrada:false, informes:false, programaFacturacion:false, aencCgm:false, indicadoresGestion:false};
 
 async function mostrarVista(nombre){
   document.querySelectorAll('.vista-modulo').forEach(v=>v.classList.add('hidden'));
@@ -7944,7 +8037,7 @@ async function mostrarVista(nombre){
   document.getElementById('sidebar-alim-padre').classList.toggle('activa', esAlimentadores);
   if(esAlimentadores) abrirSubmenuAlim();
 
-  const esOtrosAnalisis = nombre==='telemedidos' || nombre==='aenc-cgm' || nombre==='temp-entrada';
+  const esOtrosAnalisis = nombre==='telemedidos' || nombre==='aenc-cgm' || nombre==='temp-entrada' || nombre==='indicadores-gestion';
   document.getElementById('sidebar-otros-padre').classList.toggle('activa', esOtrosAnalisis);
   if(esOtrosAnalisis) abrirSubmenuOtros();
 
@@ -8057,6 +8150,10 @@ async function mostrarVista(nombre){
   if(nombre==='programa-facturacion' && !vistaCargada.programaFacturacion){
     vistaCargada.programaFacturacion = true;
     await cargarProgramaFacturacion();
+  }
+  if(nombre==='indicadores-gestion' && !vistaCargada.indicadoresGestion){
+    vistaCargada.indicadoresGestion = true;
+    await igCargar();
   }
   // Pedido explícito -- las alertas ya NO se cargan solas al entrar a esta
   // vista (quedaban como listas largas siempre abiertas); solo se pobla el
@@ -33960,6 +34057,298 @@ function pfDescargarCsv(){
   a.href = url; a.download = `programa_facturacion_zona${PF_ZONA_SEL}_${(OPERADOR&&OPERADOR.slug)||'operador'}.csv`;
   document.body.appendChild(a); a.click(); a.remove();
   URL.revokeObjectURL(url);
+}
+
+/* ---- Indicadores Gestión -- submódulo de "Otros Análisis", calcado del
+   Excel "202609 Indicadores de Gestión_Dorian.xlsx" (hoja "Resultado por
+   Estrategias Dor"): 6 estrategias fijas, cada una con 2 métricas por mes
+   (Reducción al indicador kWh/mes y Recuperación estimada kWh). El
+   backend (/api/indicadores-gestion) expone las filas tal cual se cargan
+   desde "Insertar Datos" -- el TOTAL mensual y el acumulado anualizado
+   (mismas fórmulas =SUM(...) del Excel) se calculan acá, no se guardan
+   aparte. No se replicó la hoja "Resultado Geometrico" del Excel (casi
+   idéntica a "Resultado por Estrategias Dor", salvo una fila sin etiqueta
+   con una fórmula de arrastre que no parece un dato real) ni el
+   desglose Norte/Zonas/Neiva de Brigadas (tabla suelta, sin vínculo claro
+   a un mes puntual) -- si hacen falta, pedirlos aparte. ---- */
+const IG_ESTRATEGIAS_FALLBACK = [
+  'CLIENTES GRANDES CONSUMOS', 'BRIGADAS DE INSPECCIÓN Y FACTURACIÓN', 'MACROMEDIDA',
+  'ADECUACIÓN DE REDES', 'CUENTAS NUEVAS Y SIN LEGALIZAR', 'ALUMBRADO PÚBLICO Y CARGAS DIRECTAS',
+];
+const IG_METRICAS_LABEL = {
+  reduccion_kwh_mes: 'Reducción al indicador (kWh/mes)',
+  recuperacion_kwh: 'Recuperación estimada (kWh)',
+};
+let IG_DATOS = null;       // {estrategias, contrato, valores} -- respuesta cruda de /api/indicadores-gestion
+let IG_METRICA_TABLA = 'reduccion_kwh_mes';
+let IG_METRICA_GRAFICO = 'reduccion_kwh_mes';
+let igChBarras = null, igChAcumulado = null, igChDonut = null;
+
+function igFmt(v){ return v==null ? '--' : Math.round(v).toLocaleString('es-CO'); }
+
+function igMesCorto(m){
+  return new Date(m+'T00:00:00').toLocaleDateString('es-CO', {month:'short', year:'2-digit'}).replace('.', '');
+}
+
+function igMesesOrdenados(){
+  return [...new Set((IG_DATOS?.valores || []).map(f=>f.mes))].sort();
+}
+
+function igValor(mes, estrategia, campo){
+  const f = (IG_DATOS?.valores || []).find(x=>x.mes===mes && x.estrategia===estrategia);
+  return f ? f[campo] : null;
+}
+
+function igTotalMes(mes, campo){
+  const estrategias = IG_DATOS?.estrategias || IG_ESTRATEGIAS_FALLBACK;
+  return estrategias.reduce((acc, e) => acc + (igValor(mes, e, campo) || 0), 0);
+}
+
+async function igCargar(){
+  const vacio = document.getElementById('ig-vacio');
+  const contenido = document.getElementById('ig-contenido');
+  let resp;
+  try{
+    resp = DEMO ? {} : await apiGet('/api/indicadores-gestion', AUTH_TIMEOUT_MS);
+  }catch(e){
+    vacio.classList.remove('hidden'); contenido.classList.add('hidden');
+    vacio.querySelector('div').textContent = e.message || 'No se pudo cargar Indicadores Gestión.';
+    return;
+  }
+  IG_DATOS = {
+    estrategias: (resp && resp.estrategias && resp.estrategias.length) ? resp.estrategias : IG_ESTRATEGIAS_FALLBACK,
+    contrato: (resp && resp.contrato) || {contrato_no:null, valor_asignado:null},
+    valores: (resp && resp.valores) || [],
+  };
+  vacio.classList.add('hidden'); contenido.classList.remove('hidden');
+  if(!IG_DATOS.valores.length && DEMO){
+    vacio.classList.remove('hidden'); contenido.classList.add('hidden');
+    vacio.querySelector('div').textContent = 'No disponible en modo demo (sin conexión al servidor).';
+    return;
+  }
+  igRenderTodo();
+}
+
+function igRenderTodo(){
+  document.getElementById('ig-tbl-contrato').textContent = IG_DATOS.contrato.contrato_no || '--';
+  document.getElementById('ig-tbl-valor').textContent = IG_DATOS.contrato.valor_asignado!=null ? `$${igFmt(IG_DATOS.contrato.valor_asignado)}` : '--';
+  document.getElementById('ig-ins-contrato-no').value = IG_DATOS.contrato.contrato_no || '';
+  document.getElementById('ig-ins-valor-asignado').value = IG_DATOS.contrato.valor_asignado ?? '';
+
+  igPoblarSelectoresMes();
+  igRenderTablaGrande();
+  igRenderResumenMes();
+  igRenderGraficoBarras();
+  igRenderGraficoAcumulado();
+  igRenderDonut();
+  igPoblarFormularioMes();
+}
+
+function igPoblarSelectoresMes(){
+  const meses = igMesesOrdenados();
+  const opciones = meses.map(m=>`<option value="${m}">${labelMesLargo(m.slice(0,7))}</option>`).join('');
+  const selResumen = document.getElementById('ig-tbl-resumen-mes');
+  const selDonut = document.getElementById('ig-graf-donut-mes');
+  const previoResumen = selResumen.value, previoDonut = selDonut.value;
+  selResumen.innerHTML = opciones;
+  selDonut.innerHTML = opciones;
+  if(meses.length){
+    selResumen.value = meses.includes(previoResumen) ? previoResumen : meses[meses.length-1];
+    selDonut.value = meses.includes(previoDonut) ? previoDonut : meses[meses.length-1];
+  }
+}
+
+function igCambiarMetricaTabla(metrica){
+  IG_METRICA_TABLA = metrica;
+  document.getElementById('ig-tbl-chip-reduccion').classList.toggle('activo', metrica==='reduccion_kwh_mes');
+  document.getElementById('ig-tbl-chip-recuperacion').classList.toggle('activo', metrica==='recuperacion_kwh');
+  igRenderTablaGrande();
+}
+
+function igRenderTablaGrande(){
+  const metrica = IG_METRICA_TABLA;
+  document.getElementById('ig-tbl-grande-titulo').textContent = `AVANCE DE RESULTADO -- ${IG_METRICAS_LABEL[metrica]}`;
+  const meses = igMesesOrdenados();
+  const estrategias = IG_DATOS.estrategias;
+  const thMeses = meses.map(m=>`<th>${igMesCorto(m)}</th>`).join('');
+  let filas = estrategias.map(e => {
+    const celdas = meses.map(m => `<td>${igFmt(igValor(m, e, metrica))}</td>`).join('');
+    return `<tr><td style="text-align:left;font-weight:600">${e}</td>${celdas}</tr>`;
+  }).join('');
+
+  const totalesMensuales = meses.map(m => igTotalMes(m, metrica));
+  let acumulado = 0;
+  const totalesAnualizados = totalesMensuales.map(v => (acumulado += v));
+
+  filas += `<tr style="font-weight:800;background:var(--bg3)"><td style="text-align:left">TOTAL ACUMULADO MENSUAL</td>${totalesMensuales.map(v=>`<td>${igFmt(v)}</td>`).join('')}</tr>`;
+  filas += `<tr style="font-weight:800;background:var(--bg3)"><td style="text-align:left">TOTAL ACUMULADO ANUALIZADO</td>${totalesAnualizados.map(v=>`<td>${igFmt(v)}</td>`).join('')}</tr>`;
+
+  document.getElementById('ig-tbl-grande').innerHTML =
+    `<thead><tr><th style="text-align:left">Estrategia</th>${thMeses}</tr></thead><tbody>${filas}</tbody>`;
+}
+
+function igRenderResumenMes(){
+  const mes = document.getElementById('ig-tbl-resumen-mes').value;
+  if(!mes){ document.getElementById('ig-tbl-resumen').innerHTML = ''; return; }
+  const estrategias = IG_DATOS.estrategias;
+  const filas = estrategias.map((e,i) => {
+    const red = igValor(mes, e, 'reduccion_kwh_mes');
+    const rec = igValor(mes, e, 'recuperacion_kwh');
+    return `<tr><td style="text-align:left">${i+1}. ${e}</td><td>${igFmt(red)}</td><td>${igFmt(rec)}</td></tr>`;
+  }).join('');
+  const totRed = igTotalMes(mes, 'reduccion_kwh_mes');
+  const totRec = igTotalMes(mes, 'recuperacion_kwh');
+  document.getElementById('ig-tbl-resumen').innerHTML =
+    `<thead><tr><th style="text-align:left">Estrategia</th><th>Reducción al indicador (kWh/mes)</th><th>Recuperación estimada (kWh)</th></tr></thead>
+     <tbody>${filas}<tr style="font-weight:800;background:var(--bg3)"><td style="text-align:left">TOTAL</td><td>${igFmt(totRed)}</td><td>${igFmt(totRec)}</td></tr></tbody>`;
+}
+
+function igCambiarMetricaGrafico(metrica){
+  IG_METRICA_GRAFICO = metrica;
+  document.getElementById('ig-graf-chip-reduccion').classList.toggle('activo', metrica==='reduccion_kwh_mes');
+  document.getElementById('ig-graf-chip-recuperacion').classList.toggle('activo', metrica==='recuperacion_kwh');
+  igRenderGraficoBarras();
+  igRenderDonut();
+}
+
+function igRenderGraficoBarras(){
+  const metrica = IG_METRICA_GRAFICO;
+  document.getElementById('ig-graf-titulo-barras').textContent = `AVANCE MENSUAL POR ESTRATEGIA -- ${IG_METRICAS_LABEL[metrica]}`;
+  const meses = igMesesOrdenados();
+  const estrategias = IG_DATOS.estrategias;
+  const labels = meses.map(igMesCorto);
+  const datasets = estrategias.map((e,i) => ({
+    label: e,
+    data: meses.map(m => igValor(m, e, metrica) || 0),
+    backgroundColor: PALETA_ZONAS[i % PALETA_ZONAS.length],
+    stack: 'total',
+    datalabels: {display:false},
+  }));
+  if(igChBarras) igChBarras.destroy();
+  igChBarras = new Chart(document.getElementById('ig-ch-barras'), {
+    type: 'bar',
+    data: {labels, datasets},
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      interaction:{mode:'index', intersect:false},
+      plugins:{legend:{position:'bottom', labels:{boxWidth:12, font:{size:11}}}},
+      scales:{
+        x:{stacked:true, ticks:{maxRotation:0, autoSkip:true}},
+        y:{stacked:true, title:{display:true, text:'kWh'}},
+      },
+    },
+  });
+}
+
+function igRenderGraficoAcumulado(){
+  const meses = igMesesOrdenados();
+  const labels = meses.map(igMesCorto);
+  let accRed = 0, accRec = 0;
+  const dataRed = meses.map(m => (accRed += igTotalMes(m,'reduccion_kwh_mes')));
+  const dataRec = meses.map(m => (accRec += igTotalMes(m,'recuperacion_kwh')));
+  if(igChAcumulado) igChAcumulado.destroy();
+  igChAcumulado = new Chart(document.getElementById('ig-ch-acumulado'), {
+    type:'line',
+    data:{labels, datasets:[
+      {label:'Reducción al indicador (acum. kWh/mes)', data:dataRed, borderColor:'#4472C4', backgroundColor:'#4472C422', borderWidth:2.5, pointRadius:3, pointHoverRadius:5, tension:.1, datalabels:{display:false}},
+      {label:'Recuperación estimada (acum. kWh)', data:dataRec, borderColor:'#ED7D31', backgroundColor:'#ED7D3122', borderWidth:2.5, pointRadius:3, pointHoverRadius:5, tension:.1, datalabels:{display:false}},
+    ]},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      interaction:{mode:'index', intersect:false},
+      plugins:{legend:{position:'bottom', labels:{boxWidth:12, font:{size:11}}}},
+      scales:{x:{ticks:{maxRotation:0, autoSkip:true}}, y:{title:{display:true, text:'kWh'}}},
+    },
+  });
+}
+
+function igRenderDonut(){
+  const mes = document.getElementById('ig-graf-donut-mes').value;
+  if(!mes){ if(igChDonut){ igChDonut.destroy(); igChDonut=null; } return; }
+  const metrica = IG_METRICA_GRAFICO;
+  const estrategias = IG_DATOS.estrategias;
+  const valores = estrategias.map(e => igValor(mes, e, metrica) || 0);
+  if(igChDonut) igChDonut.destroy();
+  igChDonut = new Chart(document.getElementById('ig-ch-donut'), {
+    type:'doughnut',
+    data:{
+      labels: estrategias,
+      datasets:[{data:valores, backgroundColor: estrategias.map((_,i)=>PALETA_ZONAS[i % PALETA_ZONAS.length])}],
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{
+        legend:{position:'bottom', labels:{boxWidth:11, font:{size:10.5}}},
+        datalabels:{color:'#fff', font:{size:11, weight:'bold'}, formatter:(v,ctx)=>{
+          const total = ctx.dataset.data.reduce((a,b)=>a+b,0);
+          return total ? (v/total*100).toFixed(1)+'%' : '';
+        }},
+      },
+    },
+  });
+}
+
+function igPoblarFormularioMes(){
+  const mesInput = document.getElementById('ig-ins-mes').value;  // 'YYYY-MM'
+  const tbody = document.getElementById('ig-ins-tabla-body');
+  const estrategias = (IG_DATOS && IG_DATOS.estrategias) || IG_ESTRATEGIAS_FALLBACK;
+  if(!mesInput){ tbody.innerHTML = ''; return; }
+  const mesFecha = `${mesInput}-01`;
+  tbody.innerHTML = estrategias.map(e => {
+    const red = (IG_DATOS ? igValor(mesFecha, e, 'reduccion_kwh_mes') : null) ?? 0;
+    const rec = (IG_DATOS ? igValor(mesFecha, e, 'recuperacion_kwh') : null) ?? 0;
+    return `<tr data-estrategia="${_mselEsc(e)}">
+      <td style="text-align:left">${e}</td>
+      <td><input type="number" class="ig-ins-red" value="${red}" style="width:130px;padding:5px 7px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text)"></td>
+      <td><input type="number" class="ig-ins-rec" value="${rec}" style="width:130px;padding:5px 7px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text)"></td>
+    </tr>`;
+  }).join('');
+}
+
+async function igGuardarMes(){
+  if(!requiereEditor()) return;
+  const msg = document.getElementById('ig-ins-msg-mes');
+  msg.className = 'tm-modal-msg'; msg.textContent = '';
+  const mesInput = document.getElementById('ig-ins-mes').value;
+  if(!mesInput){ msg.className='tm-modal-msg err'; msg.textContent='Elegí un mes.'; return; }
+  const valores = {};
+  document.querySelectorAll('#ig-ins-tabla-body tr').forEach(tr => {
+    const estrategia = tr.dataset.estrategia;
+    const red = parseFloat(tr.querySelector('.ig-ins-red').value) || 0;
+    const rec = parseFloat(tr.querySelector('.ig-ins-rec').value) || 0;
+    valores[estrategia] = {reduccion_kwh_mes: red, recuperacion_kwh: rec};
+  });
+  try{
+    await apiPut('/api/indicadores-gestion/mes', {mes: mesInput, valores});
+    msg.textContent = 'Mes guardado.';
+    await igCargar();
+    document.getElementById('ig-ins-mes').value = mesInput;
+    igPoblarFormularioMes();
+  }catch(e){
+    msg.className = 'tm-modal-msg err';
+    msg.textContent = e.message || 'No se pudo guardar el mes.';
+  }
+}
+
+async function igGuardarContrato(){
+  if(!requiereEditor()) return;
+  const msg = document.getElementById('ig-ins-msg-contrato');
+  msg.className = 'tm-modal-msg'; msg.textContent = '';
+  const contrato_no = document.getElementById('ig-ins-contrato-no').value.trim() || null;
+  const valorTexto = document.getElementById('ig-ins-valor-asignado').value;
+  const valor_asignado = valorTexto ? parseFloat(valorTexto) : null;
+  try{
+    await apiPut('/api/indicadores-gestion/contrato', {contrato_no, valor_asignado});
+    msg.textContent = 'Contrato guardado.';
+    if(IG_DATOS){
+      IG_DATOS.contrato = {contrato_no, valor_asignado};
+      document.getElementById('ig-tbl-contrato').textContent = contrato_no || '--';
+      document.getElementById('ig-tbl-valor').textContent = valor_asignado!=null ? `$${igFmt(valor_asignado)}` : '--';
+    }
+  }catch(e){
+    msg.className = 'tm-modal-msg err';
+    msg.textContent = e.message || 'No se pudo guardar el contrato.';
+  }
 }
 </script>
 </body>
