@@ -4958,21 +4958,28 @@ html,body{overflow-x:hidden;margin:0}
          chart1.xml/chart2.xml). Doble eje: izquierdo para las barras
          (escala mensual), derecho para la línea acumulada (escala mucho
          mayor, no comparable en el mismo eje). Botón para elegir qué
-         métrica se grafica -- ver igCambiarMetricaGraficoPrincipal(). -->
+         métrica se grafica -- ver igCambiarVistaGraficoPrincipal(). -->
     <div data-minitab-grupo="ig" data-minitab="graficos" class="card" style="border-top-left-radius:0;border-top-right-radius:0">
-      <!-- Controles de la gráfica combo -- pedido explícito, 2da ronda
-           ("quitar la variación, el botón... quitar el botón de ver
-           todo y las letras RANGO EJE X, dejar solo el filtro de fecha
-           pero más pequeño... botón para cambiar la gráfica de Reducción
-           a Recuperación"). Vuelve a ser UNA sola gráfica (ya no 2
-           siempre visibles) con un botón para elegir la métrica. -->
+      <!-- Controles de la gráfica combo -- pedido explícito, 3ra ronda
+           ("que solo siempre se muestre un solo gráfico y pueda navegar
+           en los diferentes botones"). UNA sola gráfica, con 3 vistas
+           que se turnan el mismo canvas -- ver igCambiarVistaGraficoPrincipal(). -->
       <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:16px">
         <input type="month" id="ig-graf-rango-desde" onchange="igAplicarRangoX()" style="padding:3px 6px;border:1px solid var(--border);border-radius:6px;font-size:11px;color:var(--text);background:var(--bg)">
         <span style="color:var(--text3);font-size:11px">→</span>
         <input type="month" id="ig-graf-rango-hasta" onchange="igAplicarRangoX()" style="padding:3px 6px;border:1px solid var(--border);border-radius:6px;font-size:11px;color:var(--text);background:var(--bg)">
         <div style="margin-left:auto;display:flex;gap:6px;align-items:center">
-          <button type="button" class="be-modo-btn activo" id="ig-graf-chip-metrica-reduccion" onclick="igCambiarMetricaGraficoPrincipal('reduccion_kwh_mes')">Reducción al indicador</button>
-          <button type="button" class="be-modo-btn" id="ig-graf-chip-metrica-recuperacion" onclick="igCambiarMetricaGraficoPrincipal('recuperacion_kwh')">Recuperación estimada</button>
+          <button type="button" class="be-modo-btn activo" id="ig-graf-chip-metrica-reduccion" onclick="igCambiarVistaGraficoPrincipal('reduccion_kwh_mes')">Reducción al indicador</button>
+          <button type="button" class="be-modo-btn" id="ig-graf-chip-metrica-recuperacion" onclick="igCambiarVistaGraficoPrincipal('recuperacion_kwh')">Recuperación estimada</button>
+          <!-- "Acumulado Compuesto" -- pedido explícito ("no me gusta
+               suma móvil acumulada, coloca otro nombre mejor"): calcado
+               de una celda sin etiqueta de "Resultado Geometrico" del
+               Excel (ACUMULADO[mes] + ACUMULADO[mes anterior]) -- solo
+               existe para Reducción al indicador en el Excel de origen,
+               por eso esta vista SIEMPRE usa esa métrica para las
+               barras, sin importar qué tenían elegido los otros 2
+               botones. -->
+          <button type="button" class="be-modo-btn" id="ig-graf-chip-acumcompuesto" onclick="igCambiarVistaGraficoPrincipal('acum_compuesto')" title="Barras de Reducción al indicador + línea de Acumulado Compuesto (ACUMULADO[mes] + ACUMULADO[mes anterior])">Acumulado Compuesto</button>
           <button type="button" class="be-modo-btn activo" id="ig-graf-btn-valores" onclick="igToggleValoresLinea()" title="Mostrar/ocultar valores en la línea">🏷</button>
         </div>
       </div>
@@ -4980,28 +4987,6 @@ html,body{overflow-x:hidden;margin:0}
       <div id="ig-graf-titulo-principal" style="text-align:center;font-size:15px;font-weight:800;letter-spacing:.5px;color:var(--text);margin-bottom:10px"></div>
       <div class="chart-wrap" style="height:380px"><canvas id="ig-ch-principal"></canvas></div>
       <div id="ig-graf-vacio" class="hidden" style="padding:40px;text-align:center;color:var(--text3);font-size:13px">Sin datos para graficar en este rango.</div>
-
-      <!-- Suma Móvil Acumulada -- pedido explícito, calcado de una celda
-           sin etiqueta de la hoja "Resultado Geometrico" del Excel
-           (fórmula =mes_anterior+mes_actual+acumulado_anterior,
-           verificada contra los números reales): equivale a
-           ACUMULADO[mes] + ACUMULADO[mes anterior], un "moving sum"
-           (suma móvil, ventana de 2 meses) aplicado a la serie YA
-           acumulada -- NO es "anualizado", es otro acumulado distinto
-           al de arriba. Esta fórmula SOLO existe en el Excel para
-           Reducción al indicador (el bloque de Recuperación estimada no
-           tiene esta fila extra) -- pedido explícito ("esa gráfica solo
-           se hace con reducción al indicador"), por eso NO comparte el
-           selector de métrica de la gráfica principal: siempre es
-           Reducción al indicador, con barras propias (mismo estilo
-           "doble eje" que la gráfica principal, pedido explícito: "que
-           se pueda cambiar... como las demás... con las barras"). -->
-      <div style="display:flex;gap:6px;margin-bottom:10px">
-        <button type="button" class="be-modo-btn activo" disabled title="Esta fórmula (ver el Excel de origen) solo existe para Reducción al indicador">Reducción al indicador (kWh/mes)</button>
-      </div>
-      <div id="ig-graf-titulo-acumalt" style="text-align:center;font-size:15px;font-weight:800;letter-spacing:.5px;color:var(--text);margin-bottom:10px"></div>
-      <div class="chart-wrap" style="height:380px"><canvas id="ig-ch-acumalt"></canvas></div>
-      <div id="ig-graf-acumalt-vacio" class="hidden" style="padding:40px;text-align:center;color:var(--text3);font-size:13px">Sin datos para graficar en este rango.</div>
     </div>
 
     <!-- ===== Insertar Datos ===== -->
@@ -5044,7 +5029,7 @@ html,body{overflow-x:hidden;margin:0}
           <div style="font-weight:700;font-size:13px;margin-bottom:10px;color:var(--text)">Brigadas -- desglose por zona</div>
           <div class="tbl-wrap tbl-compacta" style="width:fit-content">
             <table>
-              <colgroup><col style="width:185px"><col style="width:66px"><col style="width:66px"><col style="width:66px"><col style="width:78px"></colgroup>
+              <colgroup><col style="width:185px"><col style="width:82px"><col style="width:82px"><col style="width:82px"><col style="width:96px"></colgroup>
               <thead><tr><th style="text-align:left">Descripción resultado</th><th style="text-align:center">Norte</th><th style="text-align:center">Zonas</th><th style="text-align:center">Neiva</th><th style="text-align:center">Total</th></tr></thead>
               <tbody id="ig-ins-brigadas-tabla-body"></tbody>
             </table>
@@ -34237,9 +34222,13 @@ const IG_ESTRATEGIA_BRIGADAS = 'BRIGADAS DE INSPECCIÓN Y FACTURACIÓN';
 let IG_DATOS = null;       // {estrategias, zonasBrigadas, contrato, valores, brigadasZonas} -- respuesta cruda de /api/indicadores-gestion
 let IG_METRICA_TABLA = 'reduccion_kwh_mes';
 // Una sola gráfica combo a la vez (ya no las 2 métricas siempre
-// visibles) -- pedido explícito, 2da ronda ("botón que me permita
-// cambiar la gráfica de Reducción... a Recuperación...").
-let IG_METRICA_GRAFICO_PRINCIPAL = 'reduccion_kwh_mes';
+// visibles, ni 2 gráficas separadas) -- pedido explícito, 3ra ronda
+// ("que solo siempre se muestre un solo gráfico y pueda navegar en los
+// diferentes botones"). 'reduccion_kwh_mes' | 'recuperacion_kwh' |
+// 'acum_compuesto' -- esta última siempre usa Reducción al indicador
+// para las barras (ver igRenderGraficoPrincipal), calcado de una
+// fórmula del Excel que solo existe para esa métrica.
+let IG_VISTA_GRAFICO_PRINCIPAL = 'reduccion_kwh_mes';
 let igChPrincipal = null;
 // Color de la línea "TOTAL ACUMULADO ANUALIZADO" -- el 7º tono de
 // PALETA_ZONAS (ya reservado para "más de 6 series", acá nunca choca
@@ -34260,7 +34249,14 @@ function igMesCorto(m){
 }
 
 function igMesesOrdenados(){
-  return [...new Set((IG_DATOS?.valores || []).map(f=>f.mes))].sort();
+  const todos = [...new Set((IG_DATOS?.valores || []).map(f=>f.mes))].sort();
+  // Un mes "guardado" con TODO en cero (ej. una prueba de "Guardar mes"
+  // sin cargar nada real) no cuenta como mes con datos -- pedido
+  // explícito ("si en octubre no hay datos no debería colocarse en los
+  // gráficos"). Se excluye acá, en la raíz de donde salen TODOS los
+  // meses de tablas/gráficos -- pero sigue totalmente editable desde
+  // Insertar Datos (ese campo de mes no depende de esta lista).
+  return todos.filter(m => igTotalMes(m,'reduccion_kwh_mes') || igTotalMes(m,'recuperacion_kwh'));
 }
 
 // Submuestra de igMesesOrdenados() acotada por el rango del gráfico
@@ -34300,16 +34296,11 @@ function igTotalMes(mes, campo){
   return estrategias.reduce((acc, e) => acc + (igValor(mes, e, campo) || 0), 0);
 }
 
-// Último mes con datos REALES (no solo "el mes más reciente que exista
-// en la base", que puede estar guardado en cero -- ej. una prueba) --
-// pedido explícito ("por defecto debe mostrar el mes que tenga datos").
-// Si NINGÚN mes tiene datos reales, cae al último que exista igual.
+// Último mes con datos reales -- pedido explícito ("por defecto debe
+// mostrar el mes que tenga datos"). igMesesOrdenados() ya excluye los
+// meses en cero, así que acá solo hace falta tomar el último.
 function igUltimoMesConDatos(){
   const meses = igMesesOrdenados();
-  for(let i = meses.length - 1; i >= 0; i--){
-    const m = meses[i];
-    if(igTotalMes(m, 'reduccion_kwh_mes') || igTotalMes(m, 'recuperacion_kwh')) return m;
-  }
   return meses.length ? meses[meses.length - 1] : null;
 }
 
@@ -34346,7 +34337,6 @@ function igRenderTodo(){
   igRenderResumenMes();
   igRenderGraficoHistoricoEstrategias();
   igRenderGraficoPrincipal();
-  igRenderGraficoAcumuladoAlterno();
   // Insertar Datos arranca en el último mes con datos reales -- pedido
   // explícito ("por defecto debe mostrar el mes que tenga datos"), en
   // vez de quedar vacío o caer en un mes guardado en cero (ej. una
@@ -34491,14 +34481,29 @@ function igRenderGraficoHistoricoEstrategias(){
 
 // Calcado de los gráficos nativos del Excel (hoja "Resultado por
 // Estrategias Dor", chart1.xml/chart2.xml): barras APILADAS por
-// estrategia (eje izquierdo, escala mensual) + línea de TOTAL ACUMULADO
-// ANUALIZADO (eje derecho, escala mucho mayor -- en el Excel compartía el
-// mismo eje que las barras y por eso quedaban aplastadas/ilegibles; acá
-// sí se separa en 2 ejes, pedido explícito ("doble eje")). Una sola
-// métrica a la vez -- ver igCambiarMetricaGraficoPrincipal().
+// estrategia (eje izquierdo, escala mensual) + línea de acumulado (eje
+// derecho, escala mucho mayor -- en el Excel compartía el mismo eje que
+// las barras y por eso quedaban aplastadas/ilegibles; acá sí se separa
+// en 2 ejes, pedido explícito ("doble eje")). Un solo gráfico a la vez,
+// navegable por 3 botones -- pedido explícito ("que solo siempre se
+// muestre un solo gráfico y pueda navegar en los diferentes botones") --
+// ver igCambiarVistaGraficoPrincipal(). Las 2 primeras vistas son
+// Reducción al indicador / Recuperación estimada (barras + línea de
+// acumulado normal); la 3ª ("Acumulado Compuesto") usa SIEMPRE barras de
+// Reducción al indicador -- esa fórmula solo existe para esa métrica en
+// el Excel -- con una línea distinta: ACUMULADO[mes] + ACUMULADO[mes
+// anterior] (fórmula real de una celda SIN ETIQUETA de la hoja
+// "Resultado Geometrico", verificada contra los números reales del
+// Excel; algebraicamente es un "moving sum" de ventana 2 aplicado a la
+// serie ya acumulada -- NO es "anualizado", es un acumulado distinto,
+// pedido explícito: "no es anualizado, es solo un acumulado").
 function igRenderGraficoPrincipal(){
-  const metrica = IG_METRICA_GRAFICO_PRINCIPAL;
-  document.getElementById('ig-graf-titulo-principal').textContent = `AVANCE DE RESULTADO -- ${IG_METRICAS_LABEL[metrica]}`;
+  const vista = IG_VISTA_GRAFICO_PRINCIPAL;
+  const esAcumCompuesto = vista === 'acum_compuesto';
+  const metrica = esAcumCompuesto ? 'reduccion_kwh_mes' : vista;
+  document.getElementById('ig-graf-titulo-principal').textContent = esAcumCompuesto
+    ? `ACUMULADO COMPUESTO -- ${IG_METRICAS_LABEL[metrica]}`
+    : `AVANCE DE RESULTADO -- ${IG_METRICAS_LABEL[metrica]}`;
   const todosMeses = igMesesOrdenados();
   const meses = igMesesFiltrados();
   const estrategias = IG_DATOS.estrategias;
@@ -34534,14 +34539,21 @@ function igRenderGraficoPrincipal(){
   let acumulado = 0;
   const acumuladoPorMes = {};
   todosMeses.forEach(m => { acumulado += igTotalMes(m, metrica); acumuladoPorMes[m] = acumulado; });
-  const dataLinea = meses.map(m => acumuladoPorMes[m]);
+  const dataLinea = esAcumCompuesto
+    ? meses.map(m => {
+        const idx = todosMeses.indexOf(m);
+        const anterior = idx > 0 ? acumuladoPorMes[todosMeses[idx-1]] : 0;
+        return acumuladoPorMes[m] + anterior;
+      })
+    : meses.map(m => acumuladoPorMes[m]);
 
+  const colorLinea = esAcumCompuesto ? '#9E480E' : IG_COLOR_LINEA_ACUMULADO;
   const datasetLinea = {
     type: 'line',
-    label: 'TOTAL ACUMULADO ANUALIZADO',
+    label: esAcumCompuesto ? 'Acumulado Compuesto' : 'TOTAL ACUMULADO ANUALIZADO',
     data: dataLinea,
-    borderColor: IG_COLOR_LINEA_ACUMULADO,
-    backgroundColor: IG_COLOR_LINEA_ACUMULADO+'22',
+    borderColor: colorLinea,
+    backgroundColor: colorLinea+'22',
     borderWidth: 2.5, pointRadius: 3, pointHoverRadius: 5, tension: .1,
     yAxisID: 'yAcumulado',
     order: 1,
@@ -34553,7 +34565,7 @@ function igRenderGraficoPrincipal(){
       // más importante de la gráfica.
       font:{size:14, weight:'700'},
       formatter: v => v==null ? '' : igFmt(v),
-      color: IG_COLOR_LINEA_ACUMULADO,
+      color: colorLinea,
     } : {display:false},
   };
 
@@ -34603,140 +34615,30 @@ function igRenderGraficoPrincipal(){
       scales:{
         x:{stacked:true, ticks:{maxRotation:0, autoSkip:true}},
         yMensual:{stacked:true, position:'left', suggestedMax: maxBarras*2.3, title:{display:true, text:'kWh/mes'}},
-        yAcumulado:{position:'right', grid:{drawOnChartArea:false}, title:{display:true, text:'Acumulado (kWh)'}},
+        yAcumulado:{position:'right', grid:{drawOnChartArea:false}, title:{display:true, text: esAcumCompuesto ? 'Acumulado compuesto (kWh)' : 'Acumulado (kWh)'}},
       },
     },
   });
 }
 
-function igCambiarMetricaGraficoPrincipal(metrica){
-  IG_METRICA_GRAFICO_PRINCIPAL = metrica;
-  document.getElementById('ig-graf-chip-metrica-reduccion').classList.toggle('activo', metrica==='reduccion_kwh_mes');
-  document.getElementById('ig-graf-chip-metrica-recuperacion').classList.toggle('activo', metrica==='recuperacion_kwh');
+function igCambiarVistaGraficoPrincipal(vista){
+  IG_VISTA_GRAFICO_PRINCIPAL = vista;
+  document.getElementById('ig-graf-chip-metrica-reduccion').classList.toggle('activo', vista==='reduccion_kwh_mes');
+  document.getElementById('ig-graf-chip-metrica-recuperacion').classList.toggle('activo', vista==='recuperacion_kwh');
+  document.getElementById('ig-graf-chip-acumcompuesto').classList.toggle('activo', vista==='acum_compuesto');
   igRenderGraficoPrincipal();
-  // La Suma Móvil Acumulada NO sigue este selector -- siempre es
-  // Reducción al indicador (ver igRenderGraficoAcumuladoAlterno), no
-  // hace falta redibujarla acá.
 }
 
 function igAplicarRangoX(){
   IG_RANGO_X_DESDE = document.getElementById('ig-graf-rango-desde').value || null;
   IG_RANGO_X_HASTA = document.getElementById('ig-graf-rango-hasta').value || null;
   igRenderGraficoPrincipal();
-  igRenderGraficoAcumuladoAlterno();
 }
 
 function igToggleValoresLinea(){
   IG_MOSTRAR_VALORES_LINEA = !IG_MOSTRAR_VALORES_LINEA;
   document.getElementById('ig-graf-btn-valores').classList.toggle('activo', IG_MOSTRAR_VALORES_LINEA);
   igRenderGraficoPrincipal();
-  igRenderGraficoAcumuladoAlterno();
-}
-
-// Suma Móvil Acumulada -- pedido explícito, calcado de una celda SIN
-// ETIQUETA de la hoja "Resultado Geometrico" del Excel (fórmula real:
-// =mensual[mes anterior]+mensual[mes actual]+suma_movil[mes anterior] --
-// verificada contra los números reales del Excel). Se simplifica
-// algebraicamente a ACUMULADO[mes] + ACUMULADO[mes anterior] -- en
-// términos matemáticos, un "moving sum" (suma móvil, ventana de 2
-// términos) aplicado a la serie YA acumulada. NO es "anualizado", es un
-// acumulado DISTINTO (pedido explícito: "no es anualizado, es solo un
-// acumulado"). Esta fórmula SOLO existe en el Excel para Reducción al
-// indicador -- el bloque de Recuperación estimada no tiene esta fila
-// extra -- por eso NO sigue el selector de métrica de la gráfica
-// principal (pedido explícito: "esa gráfica solo se hace con reducción
-// al indicador"). Con barras propias, mismo estilo "doble eje" que la
-// gráfica principal (pedido explícito: "que se pueda cambiar... como
-// las demás... con las barras").
-let igChAcumAlt = null;
-function igRenderGraficoAcumuladoAlterno(){
-  const metrica = 'reduccion_kwh_mes';
-  document.getElementById('ig-graf-titulo-acumalt').textContent = `SUMA MÓVIL ACUMULADA (2 MESES) -- ${IG_METRICAS_LABEL[metrica]}`;
-  const todosMeses = igMesesOrdenados();
-  const meses = igMesesFiltrados();
-  const estrategias = IG_DATOS.estrategias;
-
-  const wrap = document.getElementById('ig-ch-acumalt').closest('.chart-wrap');
-  const vacio = document.getElementById('ig-graf-acumalt-vacio');
-  const hayDatos = meses.some(m => igTotalMes(m, metrica) !== 0);
-  if(!hayDatos){
-    if(igChAcumAlt){ igChAcumAlt.destroy(); igChAcumAlt = null; }
-    wrap.classList.add('hidden'); vacio.classList.remove('hidden');
-    return;
-  }
-  wrap.classList.remove('hidden'); vacio.classList.add('hidden');
-
-  const datasetsBarras = estrategias.map((e,i) => ({
-    type: 'bar',
-    label: e,
-    data: meses.map(m => igValor(m, e, metrica) || 0),
-    backgroundColor: PALETA_ZONAS[i % PALETA_ZONAS.length],
-    stack: 'estrategias',
-    yAxisID: 'yMensual',
-    order: 2,
-    datalabels: {display:false},
-  }));
-
-  let cumsum = 0;
-  const cumsumPorMes = {};
-  todosMeses.forEach(m => { cumsum += igTotalMes(m, metrica); cumsumPorMes[m] = cumsum; });
-  const dataLinea = meses.map(m => {
-    const idx = todosMeses.indexOf(m);
-    const anterior = idx > 0 ? cumsumPorMes[todosMeses[idx-1]] : 0;
-    return cumsumPorMes[m] + anterior;
-  });
-
-  const COLOR_ACUM_ALT = '#9E480E';  // 8º tono de PALETA_ZONAS -- distinto del acumulado de la gráfica principal
-  const datasetLinea = {
-    type: 'line',
-    label: 'Suma móvil acumulada (2 meses)',
-    data: dataLinea,
-    borderColor: COLOR_ACUM_ALT,
-    backgroundColor: COLOR_ACUM_ALT+'22',
-    borderWidth: 2.5, pointRadius: 3, pointHoverRadius: 5, tension: .1,
-    yAxisID: 'yAcumulado',
-    order: 1,
-    datalabels: IG_MOSTRAR_VALORES_LINEA ? {
-      display:true, anchor:'end', align:'top', offset:10,
-      font:{size:14, weight:'700'},
-      formatter: v => v==null ? '' : igFmt(v),
-      color: COLOR_ACUM_ALT,
-    } : {display:false},
-  };
-
-  const maxBarras = Math.max(1, ...meses.map(m => igTotalMes(m, metrica)));
-
-  if(igChAcumAlt) igChAcumAlt.destroy();
-  igChAcumAlt = new Chart(document.getElementById('ig-ch-acumalt'), {
-    data: {labels: meses.map(igMesCorto), datasets:[...datasetsBarras, datasetLinea]},
-    options: {
-      responsive:true, maintainAspectRatio:false,
-      layout:{padding:{top:28}},
-      interaction:{mode:'index', intersect:false},
-      plugins:{
-        legend:{
-          position:'bottom',
-          labels:{
-            boxWidth:12, font:{size:11},
-            generateLabels: chart => chart.data.datasets.map((ds, i) => ({
-              text: ds.label,
-              fillStyle: ds.backgroundColor,
-              strokeStyle: ds.borderColor || ds.backgroundColor,
-              lineWidth: ds.type === 'line' ? 2 : 0,
-              hidden: !chart.isDatasetVisible(i),
-              datasetIndex: i,
-            })),
-          },
-        },
-        tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`}},
-      },
-      scales:{
-        x:{stacked:true, ticks:{maxRotation:0, autoSkip:true}},
-        yMensual:{stacked:true, position:'left', suggestedMax: maxBarras*2.3, title:{display:true, text:'kWh/mes'}},
-        yAcumulado:{position:'right', grid:{drawOnChartArea:false}, title:{display:true, text:'Suma móvil acumulada (kWh)'}},
-      },
-    },
-  });
 }
 
 // Fila de inputs genérica (editable) para una estrategia del valor directo.
