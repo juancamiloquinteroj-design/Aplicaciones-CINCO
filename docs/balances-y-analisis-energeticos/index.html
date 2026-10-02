@@ -4900,8 +4900,13 @@ html,body{overflow-x:hidden;margin:0}
     <!-- ===== Tablas ===== -->
     <div data-minitab-grupo="ig" data-minitab="tablas" class="card hidden" style="border-top-left-radius:0;border-top-right-radius:0">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px">
-        <div style="font-size:13px;color:var(--text2)">
-          Contrato No: <strong id="ig-tbl-contrato">--</strong> &nbsp;·&nbsp; Valor asignado: <strong id="ig-tbl-valor">--</strong>
+        <!-- Filtro de mes/año -- pedido explícito ("la tabla va creciendo
+             hacia la derecha y llega un momento que no se puede ver
+             todo"), mismo patrón que el rango de Gráficos. -->
+        <div style="display:flex;align-items:center;gap:6px">
+          <input type="month" id="ig-tbl-rango-desde" onchange="igAplicarRangoTabla()" style="padding:5px 7px;border:1px solid var(--border);border-radius:6px;font-size:11.5px;color:var(--text);background:var(--bg)">
+          <span style="color:var(--text3);font-size:11px">→</span>
+          <input type="month" id="ig-tbl-rango-hasta" onchange="igAplicarRangoTabla()" style="padding:5px 7px;border:1px solid var(--border);border-radius:6px;font-size:11.5px;color:var(--text);background:var(--bg)">
         </div>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
           <button type="button" class="be-modo-btn activo" id="ig-tbl-chip-reduccion" onclick="igCambiarMetricaTabla('reduccion_kwh_mes')">Reducción al indicador (kWh/mes)</button>
@@ -4915,7 +4920,7 @@ html,body{overflow-x:hidden;margin:0}
 
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
         <div style="font-weight:700;font-size:13px;color:var(--text)">Resumen de un mes</div>
-        <select id="ig-tbl-resumen-mes" onchange="igRenderResumenMes()" style="padding:6px 10px;border:1px solid var(--border);border-radius:7px;font-size:12.5px;color:var(--text);background:var(--bg)"></select>
+        <input type="month" id="ig-tbl-resumen-mes" onchange="igRenderResumenMes()" style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;color:var(--text);background:var(--bg)">
       </div>
       <div class="tbl-wrap tbl-compacta" style="max-width:100%;width:fit-content">
         <table id="ig-tbl-resumen"></table>
@@ -4954,20 +4959,6 @@ html,body{overflow-x:hidden;margin:0}
 
     <!-- ===== Insertar Datos ===== -->
     <div data-minitab-grupo="ig" data-minitab="insertar" class="card hidden" style="border-top-left-radius:0;border-top-right-radius:0">
-      <div style="font-weight:700;font-size:13px;margin-bottom:12px;color:var(--text)">Datos del contrato</div>
-      <div class="fbar" style="margin-bottom:8px;gap:14px">
-        <div class="be-field" style="min-width:220px">
-          <label>Contrato No</label>
-          <input type="text" id="ig-ins-contrato-no" placeholder="Ej. 181 del 2025" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--border);border-radius:7px;font-size:13px;color:var(--text);background:var(--bg)">
-        </div>
-        <div class="be-field" style="min-width:220px">
-          <label>Valor asignado al contrato</label>
-          <input type="number" id="ig-ins-valor-asignado" placeholder="Ej. 319753000" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--border);border-radius:7px;font-size:13px;color:var(--text);background:var(--bg)">
-        </div>
-        <button type="button" class="btn-theme" style="width:auto;padding:8px 18px;align-self:flex-end" onclick="igGuardarContrato()">Guardar</button>
-      </div>
-      <div id="ig-ins-msg-contrato" class="tm-modal-msg"></div>
-
       <div class="fbar" style="margin-bottom:16px">
         <label>Mes</label>
         <input type="month" id="ig-ins-mes" onchange="igPoblarFormularioMes()">
@@ -4994,11 +4985,11 @@ html,body{overflow-x:hidden;margin:0}
              DE INSPECCIÓN Y FACTURACIÓN de la tabla de la izquierda queda
              de solo lectura (fondo distinto) -- su valor es SIEMPRE la
              suma de esta tabla, nunca se edita directo. -->
-        <div style="flex:1 1 420px;min-width:360px">
+        <div style="flex:0 0 auto">
           <div style="font-weight:700;font-size:13px;margin-bottom:10px;color:var(--text)">Brigadas -- desglose por zona</div>
-          <div class="tbl-wrap tbl-compacta" style="max-width:100%">
-            <table style="width:100%">
-              <colgroup><col style="width:36%"><col style="width:16%"><col style="width:16%"><col style="width:16%"><col style="width:16%"></colgroup>
+          <div class="tbl-wrap tbl-compacta" style="width:fit-content">
+            <table>
+              <colgroup><col style="width:185px"><col style="width:64px"><col style="width:64px"><col style="width:64px"><col style="width:64px"></colgroup>
               <thead><tr><th style="text-align:left">Descripción resultado</th><th>Norte</th><th>Zonas</th><th>Neiva</th><th>Total</th></tr></thead>
               <tbody id="ig-ins-brigadas-tabla-body"></tbody>
             </table>
@@ -34190,14 +34181,30 @@ function igMesesOrdenados(){
   return [...new Set((IG_DATOS?.valores || []).map(f=>f.mes))].sort();
 }
 
-// Submuestra de igMesesOrdenados() acotada por el rango elegido en "Rango
-// eje X" -- solo afecta a las 2 gráficas combo (Tablas sigue mostrando
-// todo el histórico siempre).
+// Submuestra de igMesesOrdenados() acotada por el rango del gráfico
+// (pestaña Gráficos).
 function igMesesFiltrados(){
   let meses = igMesesOrdenados();
   if(IG_RANGO_X_DESDE) meses = meses.filter(m => m.slice(0,7) >= IG_RANGO_X_DESDE);
   if(IG_RANGO_X_HASTA) meses = meses.filter(m => m.slice(0,7) <= IG_RANGO_X_HASTA);
   return meses;
+}
+
+// Lo mismo pero para la tabla grande de la pestaña Tablas -- pedido
+// explícito ("la tabla va creciendo hacia la derecha y llega un momento
+// que no se puede ver todo"). Rango independiente del de Gráficos.
+let IG_TBL_RANGO_DESDE = null, IG_TBL_RANGO_HASTA = null;
+function igTblMesesFiltrados(){
+  let meses = igMesesOrdenados();
+  if(IG_TBL_RANGO_DESDE) meses = meses.filter(m => m.slice(0,7) >= IG_TBL_RANGO_DESDE);
+  if(IG_TBL_RANGO_HASTA) meses = meses.filter(m => m.slice(0,7) <= IG_TBL_RANGO_HASTA);
+  return meses;
+}
+
+function igAplicarRangoTabla(){
+  IG_TBL_RANGO_DESDE = document.getElementById('ig-tbl-rango-desde').value || null;
+  IG_TBL_RANGO_HASTA = document.getElementById('ig-tbl-rango-hasta').value || null;
+  igRenderTablaGrande();
 }
 
 function igValor(mes, estrategia, campo){
@@ -34238,11 +34245,6 @@ async function igCargar(){
 }
 
 function igRenderTodo(){
-  document.getElementById('ig-tbl-contrato').textContent = IG_DATOS.contrato.contrato_no || '--';
-  document.getElementById('ig-tbl-valor').textContent = IG_DATOS.contrato.valor_asignado!=null ? `$${igFmt(IG_DATOS.contrato.valor_asignado)}` : '--';
-  document.getElementById('ig-ins-contrato-no').value = IG_DATOS.contrato.contrato_no || '';
-  document.getElementById('ig-ins-valor-asignado').value = IG_DATOS.contrato.valor_asignado ?? '';
-
   igPoblarSelectoresMes();
   igRenderTablaGrande();
   igRenderResumenMes();
@@ -34258,19 +34260,21 @@ function igRenderTodo(){
 
 function igPoblarSelectoresMes(){
   const meses = igMesesOrdenados();
-  const opciones = meses.map(m=>`<option value="${m}">${labelMesLargo(m.slice(0,7))}</option>`).join('');
-  const selResumen = document.getElementById('ig-tbl-resumen-mes');
-  if(meses.length){
-    const inDesde = document.getElementById('ig-graf-rango-desde');
-    const inHasta = document.getElementById('ig-graf-rango-hasta');
-    inDesde.min = inHasta.min = meses[0].slice(0,7);
-    inDesde.max = inHasta.max = meses[meses.length-1].slice(0,7);
-  }
-  const previoResumen = selResumen.value;
-  selResumen.innerHTML = opciones;
-  if(meses.length){
-    selResumen.value = meses.includes(previoResumen) ? previoResumen : meses[meses.length-1];
-  }
+  if(!meses.length) return;
+  const primero = meses[0].slice(0,7), ultimo = meses[meses.length-1].slice(0,7);
+  const inDesde = document.getElementById('ig-graf-rango-desde');
+  const inHasta = document.getElementById('ig-graf-rango-hasta');
+  inDesde.min = inHasta.min = primero;
+  inDesde.max = inHasta.max = ultimo;
+  const tblDesde = document.getElementById('ig-tbl-rango-desde');
+  const tblHasta = document.getElementById('ig-tbl-rango-hasta');
+  tblDesde.min = tblHasta.min = primero;
+  tblDesde.max = tblHasta.max = ultimo;
+  // "Resumen de un mes" -- input type=month (ya no <select>), arranca en
+  // el último mes con datos si todavía no se eligió uno.
+  const inResumen = document.getElementById('ig-tbl-resumen-mes');
+  inResumen.min = primero; inResumen.max = ultimo;
+  if(!inResumen.value) inResumen.value = ultimo;
 }
 
 function igCambiarMetricaTabla(metrica){
@@ -34283,7 +34287,8 @@ function igCambiarMetricaTabla(metrica){
 function igRenderTablaGrande(){
   const metrica = IG_METRICA_TABLA;
   document.getElementById('ig-tbl-grande-titulo').textContent = `AVANCE DE RESULTADO -- ${IG_METRICAS_LABEL[metrica]}`;
-  const meses = igMesesOrdenados();
+  const todosMeses = igMesesOrdenados();
+  const meses = igTblMesesFiltrados();
   const estrategias = IG_DATOS.estrategias;
   const thMeses = meses.map(m=>`<th>${igMesCorto(m)}</th>`).join('');
   let filas = estrategias.map(e => {
@@ -34291,9 +34296,15 @@ function igRenderTablaGrande(){
     return `<tr><td style="text-align:left;font-weight:600">${e}</td>${celdas}</tr>`;
   }).join('');
 
-  const totalesMensuales = meses.map(m => igTotalMes(m, metrica));
+  // El acumulado SIEMPRE se calcula sobre TODO el histórico -- recién
+  // después se recorta a los meses visibles (mismo criterio que la
+  // gráfica combo), para que el valor en cada punto sea el acumulado
+  // real, no uno que "reinicia" al acotar el rango.
   let acumulado = 0;
-  const totalesAnualizados = totalesMensuales.map(v => (acumulado += v));
+  const acumuladoPorMes = {};
+  todosMeses.forEach(m => { acumulado += igTotalMes(m, metrica); acumuladoPorMes[m] = acumulado; });
+  const totalesMensuales = meses.map(m => igTotalMes(m, metrica));
+  const totalesAnualizados = meses.map(m => acumuladoPorMes[m]);
 
   filas += `<tr style="font-weight:800;background:var(--bg3)"><td style="text-align:left">TOTAL ACUMULADO MENSUAL</td>${totalesMensuales.map(v=>`<td>${igFmt(v)}</td>`).join('')}</tr>`;
   filas += `<tr style="font-weight:800;background:var(--bg3)"><td style="text-align:left">TOTAL ACUMULADO ANUALIZADO</td>${totalesAnualizados.map(v=>`<td>${igFmt(v)}</td>`).join('')}</tr>`;
@@ -34303,7 +34314,8 @@ function igRenderTablaGrande(){
 }
 
 function igRenderResumenMes(){
-  const mes = document.getElementById('ig-tbl-resumen-mes').value;
+  const mesInput = document.getElementById('ig-tbl-resumen-mes').value;  // 'YYYY-MM'
+  const mes = mesInput ? `${mesInput}-01` : null;
   if(!mes){ document.getElementById('ig-tbl-resumen').innerHTML = ''; return; }
   const estrategias = IG_DATOS.estrategias;
   const filas = estrategias.map((e,i) => {
@@ -34389,7 +34401,27 @@ function igRenderGraficoPrincipal(){
       layout:{padding:{top:28}},
       interaction:{mode:'index', intersect:false},
       plugins:{
-        legend:{position:'bottom', labels:{boxWidth:12, font:{size:11}}},
+        legend:{
+          position:'bottom',
+          labels:{
+            boxWidth:12, font:{size:11},
+            // Chart.js NO resuelve bien el color de swatch de la leyenda
+            // en gráficas MIXTAS (barra+línea) con Chart.register(...) de
+            // plugins globales de por medio -- pedido explícito ("no se
+            // ve el color que corresponde a cada uno"). Se arma la lista
+            // a mano, leyendo directo el backgroundColor/borderColor de
+            // CADA dataset (los que ya definimos arriba, sabemos que son
+            // correctos), en vez de confiar en el generador por defecto.
+            generateLabels: chart => chart.data.datasets.map((ds, i) => ({
+              text: ds.label,
+              fillStyle: ds.backgroundColor,
+              strokeStyle: ds.borderColor || ds.backgroundColor,
+              lineWidth: ds.type === 'line' ? 2 : 0,
+              hidden: !chart.isDatasetVisible(i),
+              datasetIndex: i,
+            })),
+          },
+        },
         tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`}},
       },
       scales:{
@@ -34515,27 +34547,6 @@ async function igGuardarMes(){
   }catch(e){
     msg.className = 'tm-modal-msg err';
     msg.textContent = e.message || 'No se pudo guardar el mes.';
-  }
-}
-
-async function igGuardarContrato(){
-  if(!requiereEditor()) return;
-  const msg = document.getElementById('ig-ins-msg-contrato');
-  msg.className = 'tm-modal-msg'; msg.textContent = '';
-  const contrato_no = document.getElementById('ig-ins-contrato-no').value.trim() || null;
-  const valorTexto = document.getElementById('ig-ins-valor-asignado').value;
-  const valor_asignado = valorTexto ? parseFloat(valorTexto) : null;
-  try{
-    await apiPut('/api/indicadores-gestion/contrato', {contrato_no, valor_asignado});
-    msg.textContent = 'Contrato guardado.';
-    if(IG_DATOS){
-      IG_DATOS.contrato = {contrato_no, valor_asignado};
-      document.getElementById('ig-tbl-contrato').textContent = contrato_no || '--';
-      document.getElementById('ig-tbl-valor').textContent = valor_asignado!=null ? `$${igFmt(valor_asignado)}` : '--';
-    }
-  }catch(e){
-    msg.className = 'tm-modal-msg err';
-    msg.textContent = e.message || 'No se pudo guardar el contrato.';
   }
 }
 </script>
