@@ -1627,7 +1627,6 @@ html,body{overflow-x:hidden;margin:0}
     <button class="sidebar-sublink sidebar-sublink-nieto" data-vista="alim-analisis-ciclo" data-modulo="alim-analisis-ciclo" onclick="mostrarVista('alim-analisis-ciclo')">Ciclos</button>
   </div>
   <button class="sidebar-link" data-vista="perdidas" data-modulo="perdidas" onclick="mostrarVista('perdidas')">Pérdidas Técnicas</button>
-  <button class="sidebar-link" data-vista="tramos" data-modulo="tramos" onclick="mostrarVista('tramos')">Tramos y Alertas</button>
   <button class="sidebar-link sidebar-link-padre" id="sidebar-otros-padre" onclick="toggleSubmenuOtros()">
     <span>Otros Análisis</span>
     <span class="sidebar-caret" id="sidebar-otros-caret">▾</span>
@@ -1754,7 +1753,62 @@ html,body{overflow-x:hidden;margin:0}
     <button type="button" class="pt-tab-btn" id="perdidas-tab-btn-detalle" onclick="perdidasIrATab('detalle')">Detalle por Circuito</button>
     <button type="button" class="pt-tab-btn" id="perdidas-tab-btn-evaluacion" onclick="perdidasIrATab('evaluacion')">Evaluación Económica</button>
     <button type="button" class="pt-tab-btn" id="perdidas-tab-btn-mapa" onclick="perdidasIrATab('mapa')">Mapa</button>
+    <button type="button" class="pt-tab-btn" id="perdidas-tab-btn-tramos" onclick="perdidasIrATab('tramos')">Tramos y Alertas</button>
   </div>
+
+  <!-- ---------------- PESTAÑA TRAMOS Y ALERTAS (dentro de Pérdidas Técnicas) ----------------
+       Análisis por tramo de la simulación de Nivel 2 (Escalamiento de
+       Alimentadores). Parquet mensual con todas las horas de Dmax/Dmin/DSab/Ddom. -->
+  <div id="perdidas-tab-tramos" class="hidden">
+    <div class="card">
+      <div class="card-title">Subir archivo del mes</div>
+      <div class="card-sub">Sube el Parquet que genera "Escalamiento de Alimentadores" (Perdidas_Tecnicas_Nivel2_Tramos.parquet). Si ya existe ese mes, lo reemplaza.</div>
+      <div class="param-confianza-row" style="flex-wrap:wrap">
+        <input type="month" id="tr-subir-mes">
+        <input type="file" id="tr-subir-archivo" accept=".parquet" style="font-size:12px">
+        <button class="btn-theme" style="width:auto;padding:7px 16px" onclick="tramosSubir()">Subir</button>
+        <span id="tr-subir-msg" style="font-size:12px;color:var(--text2)"></span>
+      </div>
+    </div>
+  
+    <div class="card">
+      <div class="card-title">Alertas del mes</div>
+      <div class="fbar" style="flex-wrap:wrap;gap:10px;margin-bottom:10px">
+        <label>Mes</label>
+        <select id="tr-mes" onchange="tramosBuscarAlertas()"></select>
+        <label>Pérdida día ≥ (kWh)</label>
+        <input type="number" id="tr-u-perdida" value="100" min="0" style="max-width:90px">
+        <label>Cargabilidad ≥ (%)</label>
+        <input type="number" id="tr-u-carga" value="80" min="0" style="max-width:80px">
+        <label>Crítica ≥ (%)</label>
+        <input type="number" id="tr-u-critica" value="100" min="0" style="max-width:80px">
+        <label>Caída ≥ (%)</label>
+        <input type="number" id="tr-u-caida" value="3" min="0" step="0.1" style="max-width:80px">
+        <label>Tensión &lt; (pu)</label>
+        <input type="number" id="tr-u-tension" value="0.95" min="0" step="0.01" style="max-width:80px">
+        <button class="btn-theme" style="width:auto;padding:7px 16px" onclick="tramosBuscarAlertas()">Buscar alertas</button>
+      </div>
+      <div id="tr-resumen" style="font-size:12px;color:var(--text2);margin-bottom:10px"></div>
+      <div class="be-tabla-scroll">
+        <table class="be-tabla-creadas" id="tr-tabla" style="display:none">
+          <thead><tr><th>Estructura</th><th>CGM</th><th>Zona</th><th>Circuito</th><th>Tramo</th><th>Tipo</th><th>Pérdida día (kWh)</th><th>Cargab. máx (%)</th><th>Caída máx (%)</th><th>Tensión mín (pu)</th><th>Alertas</th></tr></thead>
+          <tbody id="tr-tabla-body"></tbody>
+        </table>
+      </div>
+    </div>
+  
+    <div class="card" id="tr-detalle-card" style="display:none">
+      <div class="card-title" id="tr-detalle-titulo"></div>
+      <div class="card-sub">Hora por hora del tramo para cada tipo de día.</div>
+      <div class="be-tabla-scroll">
+        <table class="be-tabla-creadas">
+          <thead><tr><th>Tipo</th><th>Hora</th><th>Pérdida (kW)</th><th>Cargab. (%)</th><th>Tensión inicial (pu)</th><th>Tensión final (pu)</th><th>Caída (%)</th></tr></thead>
+          <tbody id="tr-detalle-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <!-- fin perdidas-tab-tramos -->
 
   <div id="perdidas-tab-totales">
     <div class="card">
@@ -2081,64 +2135,6 @@ html,body{overflow-x:hidden;margin:0}
 <!-- fin vista-perdidas -->
 
 <!-- ---------------- PARAMETRIZACIÓN ---------------- -->
-<!-- ---------------- TRAMOS Y ALERTAS ----------------
-     Análisis por tramo de la simulación de Nivel 2 (Escalamiento de
-     Alimentadores). Parquet mensual con todas las horas de Dmax/Dmin/DSab/Ddom. -->
-<div id="vista-tramos" class="vista-modulo hidden">
-  <div class="sec-hdr">
-    <div class="sec-title">Tramos y Alertas</div>
-    <div class="sec-sub">Pérdida, cargabilidad y caída de tensión por tramo de la simulación de Nivel 2 (días representativos Dmax, Dmin, DSab y Ddom)</div>
-  </div>
-
-  <div class="card">
-    <div class="card-title">Subir archivo del mes</div>
-    <div class="card-sub">Sube el Parquet que genera "Escalamiento de Alimentadores" (Perdidas_Tecnicas_Nivel2_Tramos.parquet). Si ya existe ese mes, lo reemplaza.</div>
-    <div class="param-confianza-row" style="flex-wrap:wrap">
-      <input type="month" id="tr-subir-mes">
-      <input type="file" id="tr-subir-archivo" accept=".parquet" style="font-size:12px">
-      <button class="btn-theme" style="width:auto;padding:7px 16px" onclick="tramosSubir()">Subir</button>
-      <span id="tr-subir-msg" style="font-size:12px;color:var(--text2)"></span>
-    </div>
-  </div>
-
-  <div class="card">
-    <div class="card-title">Alertas del mes</div>
-    <div class="fbar" style="flex-wrap:wrap;gap:10px;margin-bottom:10px">
-      <label>Mes</label>
-      <select id="tr-mes" onchange="tramosBuscarAlertas()"></select>
-      <label>Pérdida día ≥ (kWh)</label>
-      <input type="number" id="tr-u-perdida" value="100" min="0" style="max-width:90px">
-      <label>Cargabilidad ≥ (%)</label>
-      <input type="number" id="tr-u-carga" value="80" min="0" style="max-width:80px">
-      <label>Crítica ≥ (%)</label>
-      <input type="number" id="tr-u-critica" value="100" min="0" style="max-width:80px">
-      <label>Caída ≥ (%)</label>
-      <input type="number" id="tr-u-caida" value="3" min="0" step="0.1" style="max-width:80px">
-      <label>Tensión &lt; (pu)</label>
-      <input type="number" id="tr-u-tension" value="0.95" min="0" step="0.01" style="max-width:80px">
-      <button class="btn-theme" style="width:auto;padding:7px 16px" onclick="tramosBuscarAlertas()">Buscar alertas</button>
-    </div>
-    <div id="tr-resumen" style="font-size:12px;color:var(--text2);margin-bottom:10px"></div>
-    <div class="be-tabla-scroll">
-      <table class="be-tabla-creadas" id="tr-tabla" style="display:none">
-        <thead><tr><th>Estructura</th><th>CGM</th><th>Zona</th><th>Circuito</th><th>Tramo</th><th>Tipo</th><th>Pérdida día (kWh)</th><th>Cargab. máx (%)</th><th>Caída máx (%)</th><th>Tensión mín (pu)</th><th>Alertas</th></tr></thead>
-        <tbody id="tr-tabla-body"></tbody>
-      </table>
-    </div>
-  </div>
-
-  <div class="card" id="tr-detalle-card" style="display:none">
-    <div class="card-title" id="tr-detalle-titulo"></div>
-    <div class="card-sub">Hora por hora del tramo para cada tipo de día.</div>
-    <div class="be-tabla-scroll">
-      <table class="be-tabla-creadas">
-        <thead><tr><th>Tipo</th><th>Hora</th><th>Pérdida (kW)</th><th>Cargab. (%)</th><th>Tensión inicial (pu)</th><th>Tensión final (pu)</th><th>Caída (%)</th></tr></thead>
-        <tbody id="tr-detalle-body"></tbody>
-      </table>
-    </div>
-  </div>
-</div>
-<!-- fin vista-tramos -->
 
 <div id="vista-parametrizacion" class="vista-modulo hidden">
 
@@ -8385,10 +8381,6 @@ async function mostrarVista(nombre){
   if(nombre==='indicadores-gestion' && !vistaCargada.indicadoresGestion){
     vistaCargada.indicadoresGestion = true;
     await igCargar();
-  }
-  if(nombre==='tramos' && !vistaCargada.tramos){
-    vistaCargada.tramos = true;
-    await tramosCargar();
   }
   // Pedido explícito -- las alertas ya NO se cargan solas al entrar a esta
   // vista (quedaban como listas largas siempre abiertas); solo se pobla el
@@ -29490,10 +29482,12 @@ function perdidasIrATab(nombre){
   document.getElementById('perdidas-tab-detalle').classList.toggle('hidden', nombre!=='detalle');
   document.getElementById('perdidas-tab-evaluacion').classList.toggle('hidden', nombre!=='evaluacion');
   document.getElementById('perdidas-tab-mapa').classList.toggle('hidden', nombre!=='mapa');
+  document.getElementById('perdidas-tab-tramos').classList.toggle('hidden', nombre!=='tramos');
   document.getElementById('perdidas-tab-btn-totales').classList.toggle('activo', nombre==='totales');
   document.getElementById('perdidas-tab-btn-detalle').classList.toggle('activo', nombre==='detalle');
   document.getElementById('perdidas-tab-btn-evaluacion').classList.toggle('activo', nombre==='evaluacion');
   document.getElementById('perdidas-tab-btn-mapa').classList.toggle('activo', nombre==='mapa');
+  document.getElementById('perdidas-tab-btn-tramos').classList.toggle('activo', nombre==='tramos');
   // Los gráficos de Chart.js de la pestaña que estaba oculta (display:none)
   // se dibujaron con tamaño 0 -- sin esto quedan rotos hasta que la
   // ventana cambie de tamaño a mano. Un resize sintético, ya con el DOM
@@ -29502,6 +29496,10 @@ function perdidasIrATab(nombre){
   // La pestaña Mapa se (re)dibuja al entrar -- el contenedor recién ahora
   // tiene tamaño real, así que mapaRender() encuadra bien.
   if(nombre==='mapa') setTimeout(mapaRender, 30);
+  if(nombre==='tramos' && !vistaCargada.tramos){
+    vistaCargada.tramos = true;
+    tramosCargar();
+  }
 }
 
 /* ---- "Pérdidas Técnicas Totales" -- SOLO 2 gráficas: "Pérdida por
