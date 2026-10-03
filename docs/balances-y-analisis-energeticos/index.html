@@ -1757,58 +1757,92 @@ html,body{overflow-x:hidden;margin:0}
   </div>
 
   <!-- ---------------- PESTAÑA TRAMOS Y ALERTAS (dentro de Pérdidas Técnicas) ----------------
-       Análisis por tramo de la simulación de Nivel 2 (Escalamiento de
-       Alimentadores). Parquet mensual con todas las horas de Dmax/Dmin/DSab/Ddom. -->
-  <div id="perdidas-tab-tramos" class="hidden">
-    <div class="card">
-      <div class="card-title">Subir archivo del mes</div>
-      <div class="card-sub">Sube el Parquet que genera "Escalamiento de Alimentadores" (Perdidas_Tecnicas_Nivel2_Tramos.parquet). Si ya existe ese mes, lo reemplaza.</div>
-      <div class="param-confianza-row" style="flex-wrap:wrap">
-        <input type="month" id="tr-subir-mes">
-        <input type="file" id="tr-subir-archivo" accept=".parquet" style="font-size:12px">
-        <button class="btn-theme" style="width:auto;padding:7px 16px" onclick="tramosSubir()">Subir</button>
-        <span id="tr-subir-msg" style="font-size:12px;color:var(--text2)"></span>
-      </div>
+     Pérdida mensual por tramo de la simulación de Nivel 2: gráficas de los tramos
+     con mayor pérdida y por circuito, y alertas. Filtros por mes, zona y circuito. -->
+<div id="perdidas-tab-tramos" class="hidden">
+  <div class="card">
+    <div class="fbar" style="flex-wrap:wrap;gap:10px">
+      <label>Mes</label>
+      <select id="tr-mes" onchange="tramosCargarResumen(true)"></select>
+      <label>Zona</label>
+      <select id="tr-zona" onchange="tramosZonaCambio()"><option value="">Todas</option></select>
+      <label>Circuito</label>
+      <select id="tr-circuito" onchange="tramosCargarResumen()" style="max-width:300px"><option value="">Todos</option></select>
+      <label>Top</label>
+      <select id="tr-top" onchange="tramosCargarResumen()">
+        <option value="10">10</option><option value="15" selected>15</option><option value="25">25</option><option value="50">50</option>
+      </select>
     </div>
-  
-    <div class="card">
-      <div class="card-title">Alertas del mes</div>
-      <div class="fbar" style="flex-wrap:wrap;gap:10px;margin-bottom:10px">
-        <label>Mes</label>
-        <select id="tr-mes" onchange="tramosBuscarAlertas()"></select>
-        <label>Pérdida día ≥ (kWh)</label>
-        <input type="number" id="tr-u-perdida" value="100" min="0" style="max-width:90px">
+    <details style="margin-top:12px">
+      <summary style="cursor:pointer;font-size:12px;color:var(--text2)">Umbrales de alerta</summary>
+      <div class="fbar" style="flex-wrap:wrap;gap:10px;margin-top:10px">
+        <label>Pérdida mes ≥ (kWh)</label>
+        <input type="number" id="tr-u-perdida" value="1000" min="0" style="max-width:100px" onchange="tramosCargarResumen()">
         <label>Cargabilidad ≥ (%)</label>
-        <input type="number" id="tr-u-carga" value="80" min="0" style="max-width:80px">
+        <input type="number" id="tr-u-carga" value="80" min="0" style="max-width:80px" onchange="tramosCargarResumen()">
         <label>Crítica ≥ (%)</label>
-        <input type="number" id="tr-u-critica" value="100" min="0" style="max-width:80px">
+        <input type="number" id="tr-u-critica" value="100" min="0" style="max-width:80px" onchange="tramosCargarResumen()">
         <label>Caída ≥ (%)</label>
-        <input type="number" id="tr-u-caida" value="3" min="0" step="0.1" style="max-width:80px">
+        <input type="number" id="tr-u-caida" value="3" min="0" step="0.1" style="max-width:80px" onchange="tramosCargarResumen()">
         <label>Tensión &lt; (pu)</label>
-        <input type="number" id="tr-u-tension" value="0.95" min="0" step="0.01" style="max-width:80px">
-        <button class="btn-theme" style="width:auto;padding:7px 16px" onclick="tramosBuscarAlertas()">Buscar alertas</button>
+        <input type="number" id="tr-u-tension" value="0.95" min="0" step="0.01" style="max-width:80px" onchange="tramosCargarResumen()">
       </div>
-      <div id="tr-resumen" style="font-size:12px;color:var(--text2);margin-bottom:10px"></div>
-      <div class="be-tabla-scroll">
-        <table class="be-tabla-creadas" id="tr-tabla" style="display:none">
-          <thead><tr><th>Estructura</th><th>CGM</th><th>Zona</th><th>Circuito</th><th>Tramo</th><th>Tipo</th><th>Pérdida día (kWh)</th><th>Cargab. máx (%)</th><th>Caída máx (%)</th><th>Tensión mín (pu)</th><th>Alertas</th></tr></thead>
-          <tbody id="tr-tabla-body"></tbody>
-        </table>
-      </div>
-    </div>
-  
-    <div class="card" id="tr-detalle-card" style="display:none">
-      <div class="card-title" id="tr-detalle-titulo"></div>
-      <div class="card-sub">Hora por hora del tramo para cada tipo de día.</div>
-      <div class="be-tabla-scroll">
-        <table class="be-tabla-creadas">
-          <thead><tr><th>Tipo</th><th>Hora</th><th>Pérdida (kW)</th><th>Cargab. (%)</th><th>Tensión inicial (pu)</th><th>Tensión final (pu)</th><th>Caída (%)</th></tr></thead>
-          <tbody id="tr-detalle-body"></tbody>
-        </table>
-      </div>
+    </details>
+    <div id="tr-resumen" style="font-size:12px;color:var(--text2);margin-top:10px"></div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:14px">
+    <div class="card"><div style="font-size:11px;color:var(--text3)">Pérdida del mes</div><div id="tr-kpi-perdida" style="font-size:20px;font-weight:800">—</div></div>
+    <div class="card"><div style="font-size:11px;color:var(--text3)">Tramos analizados</div><div id="tr-kpi-tramos" style="font-size:20px;font-weight:800">—</div></div>
+    <div class="card"><div style="font-size:11px;color:var(--text3)">Tramos con alerta</div><div id="tr-kpi-alertas" style="font-size:20px;font-weight:800">—</div></div>
+    <div class="card"><div style="font-size:11px;color:var(--text3)">Circuitos</div><div id="tr-kpi-circuitos" style="font-size:20px;font-weight:800">—</div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title" id="tr-titulo-top">Tramos con mayor pérdida del mes</div>
+    <div class="chart-wrap" style="height:460px"><canvas id="tr-ch-top"></canvas></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Pérdida mensual por circuito</div>
+    <div class="card-sub">Suma de la pérdida de todos sus tramos. Las barras que van de rojo indican circuitos con tramos en alerta.</div>
+    <div class="chart-wrap" style="height:420px"><canvas id="tr-ch-circ"></canvas></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Alertas de tramos</div>
+    <div class="card-sub">Haz clic en un tramo para ver su detalle hora por hora.</div>
+    <div class="be-tabla-scroll">
+      <table class="be-tabla-creadas" id="tr-tabla" style="display:none">
+        <thead><tr><th>Estructura</th><th>CGM</th><th>Zona</th><th>Circuito</th><th>Tramo</th><th>kWh/mes</th><th>Cargab. máx (%)</th><th>Caída máx (%)</th><th>Tensión mín (pu)</th><th>Alertas</th></tr></thead>
+        <tbody id="tr-tabla-body"></tbody>
+      </table>
     </div>
   </div>
-  <!-- fin perdidas-tab-tramos -->
+
+  <div class="card" id="tr-detalle-card" style="display:none">
+    <div class="card-title" id="tr-detalle-titulo"></div>
+    <div class="card-sub">Hora por hora del tramo para cada tipo de día.</div>
+    <div class="be-tabla-scroll">
+      <table class="be-tabla-creadas">
+        <thead><tr><th>Tipo</th><th>Hora</th><th>Pérdida (kW)</th><th>Cargab. (%)</th><th>Tensión inicial (pu)</th><th>Tensión final (pu)</th><th>Caída (%)</th></tr></thead>
+        <tbody id="tr-detalle-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Subir archivo del mes</div>
+    <div class="card-sub">Sube el Parquet que genera "Escalamiento de Alimentadores" (Perdidas_Tecnicas_Nivel2_Tramos.parquet). Si ya existe ese mes, lo reemplaza.</div>
+    <div class="param-confianza-row" style="flex-wrap:wrap">
+      <input type="month" id="tr-subir-mes">
+      <input type="file" id="tr-subir-archivo" accept=".parquet" style="font-size:12px">
+      <button class="btn-theme" style="width:auto;padding:7px 16px" onclick="tramosSubir()">Subir</button>
+      <span id="tr-subir-msg" style="font-size:12px;color:var(--text2)"></span>
+    </div>
+  </div>
+</div>
+<!-- fin perdidas-tab-tramos -->
 
   <div id="perdidas-tab-totales">
     <div class="card">
@@ -10850,6 +10884,28 @@ async function ipPollCarga(jobId, btn, textoOriginal){
 /* ---- Parametrización: color por zona ---- */
 let TR_ALERTAS = [];
 let TR_MES_ACTUAL = null;
+let TR_CIRCUITOS = [];
+let TR_CH_TOP = null;
+let TR_CH_CIRC = null;
+
+function _trNum(v, dec){ return (v === null || v === undefined) ? '—' : Number(v).toLocaleString('es-CO', {maximumFractionDigits: dec ?? 0}); }
+
+function _trParams(){
+  const p = new URLSearchParams({
+    mes: TR_MES_ACTUAL,
+    top: document.getElementById('tr-top').value,
+    umbral_perdida_kwh: document.getElementById('tr-u-perdida').value,
+    umbral_carga_pct: document.getElementById('tr-u-carga').value,
+    umbral_carga_critica_pct: document.getElementById('tr-u-critica').value,
+    umbral_caida_pct: document.getElementById('tr-u-caida').value,
+    umbral_tension_pu: document.getElementById('tr-u-tension').value,
+  });
+  const zona = document.getElementById('tr-zona').value;
+  const circ = document.getElementById('tr-circuito').value;
+  if(zona) p.set('zona', zona);
+  if(circ) p.set('circuito', circ);
+  return p;
+}
 
 async function tramosCargar(){
   const resumen = document.getElementById('tr-resumen');
@@ -10860,14 +10916,170 @@ async function tramosCargar(){
     const sel = document.getElementById('tr-mes');
     sel.innerHTML = meses.map(m => `<option value="${m}">${m}</option>`).join('');
     if(!meses.length){
-      resumen.textContent = 'Todavía no hay ningún mes cargado. Sube el Parquet de arriba.';
-      document.getElementById('tr-tabla').style.display = 'none';
+      resumen.textContent = 'Todavía no hay ningún mes cargado. Sube el Parquet abajo.';
       return;
     }
-    sel.value = meses[meses.length - 1];
-    await tramosBuscarAlertas();
+    if(!TR_MES_ACTUAL || !meses.includes(TR_MES_ACTUAL)) TR_MES_ACTUAL = meses[meses.length - 1];
+    sel.value = TR_MES_ACTUAL;
+    await tramosCargarResumen(true);
   }catch(e){
     resumen.textContent = 'No se pudo consultar los meses cargados.';
+  }
+}
+
+function _trLlenarCircuitos(){
+  const zona = document.getElementById('tr-zona').value;
+  const sel = document.getElementById('tr-circuito');
+  const actual = sel.value;
+  const lista = TR_CIRCUITOS.filter(c => !zona || c.zona === zona);
+  sel.innerHTML = '<option value="">Todos</option>' +
+    lista.map(c => `<option value="${_mselEsc(c.circuito)}">${_mselEsc(c.estructura || c.circuito)}</option>`).join('');
+  sel.value = lista.some(c => c.circuito === actual) ? actual : '';
+}
+
+function tramosZonaCambio(){
+  _trLlenarCircuitos();
+  tramosCargarResumen();
+}
+
+async function tramosCargarResumen(recargarFiltros){
+  TR_MES_ACTUAL = document.getElementById('tr-mes').value || TR_MES_ACTUAL;
+  if(!TR_MES_ACTUAL) return;
+  const resumen = document.getElementById('tr-resumen');
+  resumen.textContent = 'Calculando…';
+  document.getElementById('tr-detalle-card').style.display = 'none';
+  try{
+    const p = _trParams();
+    const [r, a] = await Promise.all([
+      apiGet(`/api/tramos/resumen?${p}`, 180000),
+      apiGet(`/api/tramos/alertas?${p}`, 180000),
+    ]);
+
+    if(recargarFiltros || !TR_CIRCUITOS.length){
+      const zonaSel = document.getElementById('tr-zona');
+      const zonaActual = zonaSel.value;
+      zonaSel.innerHTML = '<option value="">Todas</option>' +
+        r.zonas.map(z => `<option value="${_mselEsc(z)}">${_mselEsc(z)}</option>`).join('');
+      zonaSel.value = zonaActual;
+      TR_CIRCUITOS = r.circuitos;
+      _trLlenarCircuitos();
+    }
+
+    document.getElementById('tr-kpi-perdida').textContent = `${_trNum(r.kpi.perdida_mes_kwh / 1000, 1)} MWh`;
+    document.getElementById('tr-kpi-tramos').textContent = _trNum(r.kpi.tramos);
+    document.getElementById('tr-kpi-alertas').textContent = _trNum(r.kpi.tramos_alerta);
+    document.getElementById('tr-kpi-circuitos').textContent = _trNum(r.kpi.circuitos);
+    resumen.textContent =
+      `Pérdida mensual proyectada con la misma lógica de la consolidación (sábados, domingos y festivos, hábiles). ` +
+      `Alertas: pérdida alta ${_trNum(r.conteo.perdida_alta)} · cargabilidad ${_trNum(r.conteo.carga_alta)} (crítica ${_trNum(r.conteo.carga_critica)}) · ` +
+      `caída ${_trNum(r.conteo.caida_tension)} · tensión baja ${_trNum(r.conteo.tension_baja)}. ` +
+      `Cargabilidad y caída se comparan con el MÁXIMO del mes, no con el promedio.`;
+
+    tramosRenderTop(r.top_tramos);
+    tramosRenderCircuitos(r.por_circuito);
+    TR_ALERTAS = a.alertas;
+    tramosRenderAlertas(a.alertas);
+  }catch(e){
+    resumen.textContent = 'No se pudieron calcular los datos de ese mes.';
+  }
+}
+
+function tramosRenderTop(filas){
+  const ctx = document.getElementById('tr-ch-top');
+  if(TR_CH_TOP) TR_CH_TOP.destroy();
+  TR_CH_TOP = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: filas.map(f => `${f.estructura || f.circuito} · ${f.tramo}`),
+      datasets: [{
+        label: 'Pérdida del mes (kWh)',
+        data: filas.map(f => f.perdida_mes_kwh),
+        backgroundColor: filas.map(f => f.alertas.includes('perdida_alta') ? '#dc2626' : '#2563eb'),
+      }],
+    },
+    options: {
+      indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: {display: false},
+        tooltip: {callbacks: {label: c => {
+          const f = filas[c.dataIndex];
+          return [`${_trNum(c.raw)} kWh/mes`,
+                  `Dmax ${_trNum(f.perdida_dmax_kwh, 1)} · Dmin ${_trNum(f.perdida_dmin_kwh, 1)} · DSab ${_trNum(f.perdida_dsab_kwh, 1)} · Ddom ${_trNum(f.perdida_ddom_kwh, 1)} kWh/día`,
+                  `Cargabilidad máx ${_trNum(f.cargabilidad_max_pct, 2)}% · caída máx ${_trNum(f.caida_max_pct, 2)}%`];
+        }}},
+      },
+      scales: {x: {title: {display: true, text: 'kWh/mes'}}},
+    },
+  });
+}
+
+function tramosRenderCircuitos(filas){
+  const top = filas.slice(0, 25);
+  const ctx = document.getElementById('tr-ch-circ');
+  if(TR_CH_CIRC) TR_CH_CIRC.destroy();
+  TR_CH_CIRC = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: top.map(f => f.estructura || f.circuito),
+      datasets: [{
+        label: 'Pérdida del mes (kWh)',
+        data: top.map(f => f.perdida_mes_kwh),
+        backgroundColor: top.map(f => f.tramos_alerta > 0 ? '#dc2626' : '#2563eb'),
+      }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: {display: false},
+        tooltip: {callbacks: {label: c => {
+          const f = top[c.dataIndex];
+          return [`${_trNum(c.raw)} kWh/mes`, `${f.tramos} tramos · ${f.tramos_alerta} con alerta`];
+        }}},
+      },
+      scales: {y: {title: {display: true, text: 'kWh/mes'}}, x: {ticks: {maxRotation: 70, minRotation: 45, autoSkip: false}}},
+    },
+  });
+}
+
+function tramosRenderAlertas(alertas){
+  const tabla = document.getElementById('tr-tabla');
+  document.getElementById('tr-tabla-body').innerHTML = alertas.map((a, i) => `
+    <tr onclick="tramosVerDetalle(${i})" style="cursor:pointer">
+      <td>${_mselEsc(a.estructura || '—')}</td>
+      <td>${_mselEsc(a.nemonico_cgm || '—')}</td>
+      <td>${_mselEsc(a.zona || '—')}</td>
+      <td>${_mselEsc(a.circuito)}</td>
+      <td>${_mselEsc(a.tramo)}</td>
+      <td>${_trNum(a.perdida_mes_kwh)}</td>
+      <td>${_trNum(a.cargabilidad_max_pct, 2)}</td>
+      <td>${_trNum(a.caida_max_pct, 2)}</td>
+      <td>${_trNum(a.tension_min_pu, 3)}</td>
+      <td>${_mselEsc(a.alertas)}</td>
+    </tr>`).join('');
+  tabla.style.display = alertas.length ? '' : 'none';
+}
+
+async function tramosVerDetalle(indice){
+  const a = TR_ALERTAS[indice];
+  if(!a || !TR_MES_ACTUAL) return;
+  const p = new URLSearchParams({mes: TR_MES_ACTUAL, circuito: a.circuito, tramo: a.tramo});
+  try{
+    const r = await apiGet(`/api/tramos/detalle?${p}`);
+    document.getElementById('tr-detalle-titulo').textContent = `${a.tramo} · ${a.estructura || a.circuito} · ${TR_MES_ACTUAL}`;
+    document.getElementById('tr-detalle-body').innerHTML = r.horas.map(h => `
+      <tr>
+        <td>${_mselEsc(h.tipo_perfil)}</td>
+        <td>${_mselEsc(h.hora)}</td>
+        <td>${_trNum(h.perdida_kw, 2)}</td>
+        <td>${_trNum(h.cargabilidad_pct, 2)}</td>
+        <td>${_trNum(h.tension_inicial_pu, 4)}</td>
+        <td>${_trNum(h.tension_final_pu, 4)}</td>
+        <td>${_trNum(h.caida_pct, 3)}</td>
+      </tr>`).join('');
+    document.getElementById('tr-detalle-card').style.display = '';
+  }catch(e){
+    document.getElementById('tr-detalle-titulo').textContent = 'No se pudo cargar el detalle del tramo.';
+    document.getElementById('tr-detalle-card').style.display = '';
   }
 }
 
@@ -10882,81 +11094,11 @@ async function tramosSubir(){
     const r = await _informesSubirArchivoCaracterizacion(`/api/tramos/subir?mes=${encodeURIComponent(mes)}`, input.files[0]);
     msg.textContent = `Listo: ${r.mes} (${r.mb} MB).`;
     input.value = '';
+    TR_MES_ACTUAL = r.mes;
+    TR_CIRCUITOS = [];
     await tramosCargar();
   }catch(e){
     msg.textContent = e.message || 'No se pudo subir el archivo.';
-  }
-}
-
-async function tramosBuscarAlertas(){
-  const mes = document.getElementById('tr-mes').value;
-  const resumen = document.getElementById('tr-resumen');
-  const tabla = document.getElementById('tr-tabla');
-  if(!mes) return;
-  TR_MES_ACTUAL = mes;
-  const p = new URLSearchParams({
-    mes,
-    umbral_perdida_kwh: document.getElementById('tr-u-perdida').value,
-    umbral_carga_pct: document.getElementById('tr-u-carga').value,
-    umbral_carga_critica_pct: document.getElementById('tr-u-critica').value,
-    umbral_caida_pct: document.getElementById('tr-u-caida').value,
-    umbral_tension_pu: document.getElementById('tr-u-tension').value,
-  });
-  resumen.textContent = 'Calculando…';
-  document.getElementById('tr-detalle-card').style.display = 'none';
-  try{
-    const r = await apiGet(`/api/tramos/alertas?${p}`, 180000);
-    const c = r.conteo;
-    resumen.textContent =
-      `${r.tramos_analizados.toLocaleString('es-CO')} tramos analizados · ${r.filas_con_alerta.toLocaleString('es-CO')} filas con alguna alerta · ` +
-      `pérdida alta ${c.perdida_alta.toLocaleString('es-CO')} · cargabilidad ${c.carga_alta.toLocaleString('es-CO')} (crítica ${c.carga_critica.toLocaleString('es-CO')}) · ` +
-      `caída de tensión ${c.caida_tension.toLocaleString('es-CO')} · tensión baja ${c.tension_baja.toLocaleString('es-CO')}` +
-      (r.truncado ? ' · se muestran las primeras 5.000' : '');
-    TR_ALERTAS = r.alertas;
-    const cuerpo = document.getElementById('tr-tabla-body');
-    cuerpo.innerHTML = r.alertas.map((a, i) => `
-      <tr onclick="tramosVerDetalle(${i})" style="cursor:pointer">
-        <td>${_mselEsc(a.estructura || '—')}</td>
-        <td>${_mselEsc(a.nemonico_cgm || '—')}</td>
-        <td>${_mselEsc(a.zona || '—')}</td>
-        <td>${_mselEsc(a.circuito)}</td>
-        <td>${_mselEsc(a.tramo)}</td>
-        <td>${_mselEsc(a.tipo_perfil)}</td>
-        <td>${a.perdida_dia_kwh.toLocaleString('es-CO')}</td>
-        <td>${a.cargabilidad_max_pct.toLocaleString('es-CO')}</td>
-        <td>${a.caida_max_pct.toLocaleString('es-CO')}</td>
-        <td>${a.tension_min_pu.toLocaleString('es-CO')}</td>
-        <td>${_mselEsc(a.alertas)}</td>
-      </tr>`).join('');
-    tabla.style.display = r.alertas.length ? '' : 'none';
-  }catch(e){
-    resumen.textContent = 'No se pudieron calcular las alertas de ese mes.';
-    tabla.style.display = 'none';
-  }
-}
-
-async function tramosVerDetalle(indice){
-  const a = TR_ALERTAS[indice];
-  if(!a || !TR_MES_ACTUAL) return;
-  const p = new URLSearchParams({mes: TR_MES_ACTUAL, circuito: a.circuito, tramo: a.tramo});
-  try{
-    const r = await apiGet(`/api/tramos/detalle?${p}`);
-    const f = v => (v === null || v === undefined) ? '—' : v.toLocaleString('es-CO');
-    document.getElementById('tr-detalle-titulo').textContent = `${a.tramo} · ${a.estructura || a.circuito} · ${TR_MES_ACTUAL}`;
-    document.getElementById('tr-detalle-body').innerHTML = r.horas.map(h => `
-      <tr>
-        <td>${_mselEsc(h.tipo_perfil)}</td>
-        <td>${_mselEsc(h.hora)}</td>
-        <td>${f(h.perdida_kw)}</td>
-        <td>${f(h.cargabilidad_pct)}</td>
-        <td>${f(h.tension_inicial_pu)}</td>
-        <td>${f(h.tension_final_pu)}</td>
-        <td>${f(h.caida_pct)}</td>
-      </tr>`).join('');
-    document.getElementById('tr-detalle-card').style.display = '';
-  }catch(e){
-    document.getElementById('tr-detalle-titulo').textContent = 'No se pudo cargar el detalle del tramo.';
-    document.getElementById('tr-detalle-card').style.display = '';
   }
 }
 
