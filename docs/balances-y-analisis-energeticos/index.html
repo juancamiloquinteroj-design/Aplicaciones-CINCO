@@ -1814,7 +1814,7 @@ html,body{overflow-x:hidden;margin:0}
     <div class="card-sub">Haz clic en un tramo para ver su detalle hora por hora.</div>
     <div class="be-tabla-scroll">
       <table class="be-tabla-creadas" id="tr-tabla" style="display:none">
-        <thead><tr><th>Estructura</th><th>CGM</th><th>Zona</th><th>Circuito</th><th>Tramo</th><th>kWh/mes</th><th>Cargab. máx (%)</th><th>Caída máx (%)</th><th>Tensión mín (pu)</th><th>Alertas</th></tr></thead>
+        <thead><tr><th>Estructura</th><th>CGM</th><th>Zona</th><th>Circuito</th><th>Nodo 1 → Nodo 2</th><th>kWh/mes</th><th>Cargab. máx (%)</th><th>Caída máx (%)</th><th>Tensión mín (pu)</th><th>Alertas</th></tr></thead>
         <tbody id="tr-tabla-body"></tbody>
       </table>
     </div>
@@ -10888,6 +10888,12 @@ let TR_CIRCUITOS = [];
 let TR_CH_TOP = null;
 let TR_CH_CIRC = null;
 
+function _trNodos(f){
+  if(f.nodo_1 && f.nodo_2) return `${f.nodo_1} → ${f.nodo_2}`;
+  if(f.nodo_1) return `${f.nodo_1} → (extremo abierto)`;
+  return `${f.tramo} (nodos no definidos)`;
+}
+
 function _trNum(v, dec){ return (v === null || v === undefined) ? '—' : Number(v).toLocaleString('es-CO', {maximumFractionDigits: dec ?? 0}); }
 
 function _trParams(){
@@ -10990,7 +10996,7 @@ function tramosRenderTop(filas){
   TR_CH_TOP = new Chart(ctx, {
     type: 'bar',
     data: {
-      labels: filas.map(f => `${f.estructura || f.circuito} · ${f.tramo}`),
+      labels: filas.map(f => `${f.estructura || f.circuito} · ${_trNodos(f)}`),
       datasets: [{
         label: 'Pérdida del mes (kWh)',
         data: filas.map(f => f.perdida_mes_kwh),
@@ -11049,7 +11055,7 @@ function tramosRenderAlertas(alertas){
       <td>${_mselEsc(a.nemonico_cgm || '—')}</td>
       <td>${_mselEsc(a.zona || '—')}</td>
       <td>${_mselEsc(a.circuito)}</td>
-      <td>${_mselEsc(a.tramo)}</td>
+      <td>${_mselEsc(_trNodos(a))}</td>
       <td>${_trNum(a.perdida_mes_kwh)}</td>
       <td>${_trNum(a.cargabilidad_max_pct, 2)}</td>
       <td>${_trNum(a.caida_max_pct, 2)}</td>
@@ -11065,7 +11071,7 @@ async function tramosVerDetalle(indice){
   const p = new URLSearchParams({mes: TR_MES_ACTUAL, circuito: a.circuito, tramo: a.tramo});
   try{
     const r = await apiGet(`/api/tramos/detalle?${p}`);
-    document.getElementById('tr-detalle-titulo').textContent = `${a.tramo} · ${a.estructura || a.circuito} · ${TR_MES_ACTUAL}`;
+    document.getElementById('tr-detalle-titulo').textContent = `${_trNodos(a)} · ${a.estructura || a.circuito} · ${TR_MES_ACTUAL}`;
     document.getElementById('tr-detalle-body').innerHTML = r.horas.map(h => `
       <tr>
         <td>${_mselEsc(h.tipo_perfil)}</td>
