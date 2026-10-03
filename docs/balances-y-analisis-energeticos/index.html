@@ -1627,6 +1627,7 @@ html,body{overflow-x:hidden;margin:0}
     <button class="sidebar-sublink sidebar-sublink-nieto" data-vista="alim-analisis-ciclo" data-modulo="alim-analisis-ciclo" onclick="mostrarVista('alim-analisis-ciclo')">Ciclos</button>
   </div>
   <button class="sidebar-link" data-vista="perdidas" data-modulo="perdidas" onclick="mostrarVista('perdidas')">Pérdidas Técnicas</button>
+  <button class="sidebar-link" data-vista="tramos" data-modulo="tramos" onclick="mostrarVista('tramos')">Tramos y Alertas</button>
   <button class="sidebar-link sidebar-link-padre" id="sidebar-otros-padre" onclick="toggleSubmenuOtros()">
     <span>Otros Análisis</span>
     <span class="sidebar-caret" id="sidebar-otros-caret">▾</span>
@@ -2080,6 +2081,65 @@ html,body{overflow-x:hidden;margin:0}
 <!-- fin vista-perdidas -->
 
 <!-- ---------------- PARAMETRIZACIÓN ---------------- -->
+<!-- ---------------- TRAMOS Y ALERTAS ----------------
+     Análisis por tramo de la simulación de Nivel 2 (Escalamiento de
+     Alimentadores). Parquet mensual con todas las horas de Dmax/Dmin/DSab/Ddom. -->
+<div id="vista-tramos" class="vista-modulo hidden">
+  <div class="sec-hdr">
+    <div class="sec-title">Tramos y Alertas</div>
+    <div class="sec-sub">Pérdida, cargabilidad y caída de tensión por tramo de la simulación de Nivel 2 (días representativos Dmax, Dmin, DSab y Ddom)</div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Subir archivo del mes</div>
+    <div class="card-sub">Sube el Parquet que genera "Escalamiento de Alimentadores" (Perdidas_Tecnicas_Nivel2_Tramos.parquet). Si ya existe ese mes, lo reemplaza.</div>
+    <div class="param-confianza-row" style="flex-wrap:wrap">
+      <input type="month" id="tr-subir-mes">
+      <input type="file" id="tr-subir-archivo" accept=".parquet" style="font-size:12px">
+      <button class="btn-theme" style="width:auto;padding:7px 16px" onclick="tramosSubir()">Subir</button>
+      <span id="tr-subir-msg" style="font-size:12px;color:var(--text2)"></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Alertas del mes</div>
+    <div class="fbar" style="flex-wrap:wrap;gap:10px;margin-bottom:10px">
+      <label>Mes</label>
+      <select id="tr-mes" onchange="tramosBuscarAlertas()"></select>
+      <label>Pérdida día ≥ (kWh)</label>
+      <input type="number" id="tr-u-perdida" value="100" min="0" style="max-width:90px">
+      <label>Cargabilidad ≥ (%)</label>
+      <input type="number" id="tr-u-carga" value="80" min="0" style="max-width:80px">
+      <label>Crítica ≥ (%)</label>
+      <input type="number" id="tr-u-critica" value="100" min="0" style="max-width:80px">
+      <label>Caída ≥ (%)</label>
+      <input type="number" id="tr-u-caida" value="3" min="0" step="0.1" style="max-width:80px">
+      <label>Tensión &lt; (pu)</label>
+      <input type="number" id="tr-u-tension" value="0.95" min="0" step="0.01" style="max-width:80px">
+      <button class="btn-theme" style="width:auto;padding:7px 16px" onclick="tramosBuscarAlertas()">Buscar alertas</button>
+    </div>
+    <div id="tr-resumen" style="font-size:12px;color:var(--text2);margin-bottom:10px"></div>
+    <div class="be-tabla-scroll">
+      <table class="be-tabla-creadas" id="tr-tabla" style="display:none">
+        <thead><tr><th>Estructura</th><th>CGM</th><th>Zona</th><th>Circuito</th><th>Tramo</th><th>Tipo</th><th>Pérdida día (kWh)</th><th>Cargab. máx (%)</th><th>Caída máx (%)</th><th>Tensión mín (pu)</th><th>Alertas</th></tr></thead>
+        <tbody id="tr-tabla-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card" id="tr-detalle-card" style="display:none">
+    <div class="card-title" id="tr-detalle-titulo"></div>
+    <div class="card-sub">Hora por hora del tramo para cada tipo de día.</div>
+    <div class="be-tabla-scroll">
+      <table class="be-tabla-creadas">
+        <thead><tr><th>Tipo</th><th>Hora</th><th>Pérdida (kW)</th><th>Cargab. (%)</th><th>Tensión inicial (pu)</th><th>Tensión final (pu)</th><th>Caída (%)</th></tr></thead>
+        <tbody id="tr-detalle-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+<!-- fin vista-tramos -->
+
 <div id="vista-parametrizacion" class="vista-modulo hidden">
 
   <div class="sec-hdr">
@@ -8326,6 +8386,10 @@ async function mostrarVista(nombre){
     vistaCargada.indicadoresGestion = true;
     await igCargar();
   }
+  if(nombre==='tramos' && !vistaCargada.tramos){
+    vistaCargada.tramos = true;
+    await tramosCargar();
+  }
   // Pedido explícito -- las alertas ya NO se cargan solas al entrar a esta
   // vista (quedaban como listas largas siempre abiertas); solo se pobla el
   // filtro Mes/Año para que esté listo si el usuario abre la pestaña
@@ -10792,6 +10856,118 @@ async function ipPollCarga(jobId, btn, textoOriginal){
 }
 
 /* ---- Parametrización: color por zona ---- */
+let TR_ALERTAS = [];
+let TR_MES_ACTUAL = null;
+
+async function tramosCargar(){
+  const resumen = document.getElementById('tr-resumen');
+  if(DEMO){ resumen.textContent = 'Modo demo: sin datos de tramos.'; return; }
+  try{
+    const r = await apiGet('/api/tramos/meses');
+    const meses = r.meses || [];
+    const sel = document.getElementById('tr-mes');
+    sel.innerHTML = meses.map(m => `<option value="${m}">${m}</option>`).join('');
+    if(!meses.length){
+      resumen.textContent = 'Todavía no hay ningún mes cargado. Sube el Parquet de arriba.';
+      document.getElementById('tr-tabla').style.display = 'none';
+      return;
+    }
+    sel.value = meses[meses.length - 1];
+    await tramosBuscarAlertas();
+  }catch(e){
+    resumen.textContent = 'No se pudo consultar los meses cargados.';
+  }
+}
+
+async function tramosSubir(){
+  const mes = document.getElementById('tr-subir-mes').value;
+  const input = document.getElementById('tr-subir-archivo');
+  const msg = document.getElementById('tr-subir-msg');
+  if(!mes){ msg.textContent = 'Elige el mes.'; return; }
+  if(!input.files || !input.files[0]){ msg.textContent = 'Elige el archivo .parquet.'; return; }
+  msg.textContent = 'Subiendo…';
+  try{
+    const r = await _informesSubirArchivoCaracterizacion(`/api/tramos/subir?mes=${encodeURIComponent(mes)}`, input.files[0]);
+    msg.textContent = `Listo: ${r.mes} (${r.mb} MB).`;
+    input.value = '';
+    await tramosCargar();
+  }catch(e){
+    msg.textContent = e.message || 'No se pudo subir el archivo.';
+  }
+}
+
+async function tramosBuscarAlertas(){
+  const mes = document.getElementById('tr-mes').value;
+  const resumen = document.getElementById('tr-resumen');
+  const tabla = document.getElementById('tr-tabla');
+  if(!mes) return;
+  TR_MES_ACTUAL = mes;
+  const p = new URLSearchParams({
+    mes,
+    umbral_perdida_kwh: document.getElementById('tr-u-perdida').value,
+    umbral_carga_pct: document.getElementById('tr-u-carga').value,
+    umbral_carga_critica_pct: document.getElementById('tr-u-critica').value,
+    umbral_caida_pct: document.getElementById('tr-u-caida').value,
+    umbral_tension_pu: document.getElementById('tr-u-tension').value,
+  });
+  resumen.textContent = 'Calculando…';
+  document.getElementById('tr-detalle-card').style.display = 'none';
+  try{
+    const r = await apiGet(`/api/tramos/alertas?${p}`, 180000);
+    const c = r.conteo;
+    resumen.textContent =
+      `${r.tramos_analizados.toLocaleString('es-CO')} tramos analizados · ${r.filas_con_alerta.toLocaleString('es-CO')} filas con alguna alerta · ` +
+      `pérdida alta ${c.perdida_alta.toLocaleString('es-CO')} · cargabilidad ${c.carga_alta.toLocaleString('es-CO')} (crítica ${c.carga_critica.toLocaleString('es-CO')}) · ` +
+      `caída de tensión ${c.caida_tension.toLocaleString('es-CO')} · tensión baja ${c.tension_baja.toLocaleString('es-CO')}` +
+      (r.truncado ? ' · se muestran las primeras 5.000' : '');
+    TR_ALERTAS = r.alertas;
+    const cuerpo = document.getElementById('tr-tabla-body');
+    cuerpo.innerHTML = r.alertas.map((a, i) => `
+      <tr onclick="tramosVerDetalle(${i})" style="cursor:pointer">
+        <td>${_mselEsc(a.estructura || '—')}</td>
+        <td>${_mselEsc(a.nemonico_cgm || '—')}</td>
+        <td>${_mselEsc(a.zona || '—')}</td>
+        <td>${_mselEsc(a.circuito)}</td>
+        <td>${_mselEsc(a.tramo)}</td>
+        <td>${_mselEsc(a.tipo_perfil)}</td>
+        <td>${a.perdida_dia_kwh.toLocaleString('es-CO')}</td>
+        <td>${a.cargabilidad_max_pct.toLocaleString('es-CO')}</td>
+        <td>${a.caida_max_pct.toLocaleString('es-CO')}</td>
+        <td>${a.tension_min_pu.toLocaleString('es-CO')}</td>
+        <td>${_mselEsc(a.alertas)}</td>
+      </tr>`).join('');
+    tabla.style.display = r.alertas.length ? '' : 'none';
+  }catch(e){
+    resumen.textContent = 'No se pudieron calcular las alertas de ese mes.';
+    tabla.style.display = 'none';
+  }
+}
+
+async function tramosVerDetalle(indice){
+  const a = TR_ALERTAS[indice];
+  if(!a || !TR_MES_ACTUAL) return;
+  const p = new URLSearchParams({mes: TR_MES_ACTUAL, circuito: a.circuito, tramo: a.tramo});
+  try{
+    const r = await apiGet(`/api/tramos/detalle?${p}`);
+    const f = v => (v === null || v === undefined) ? '—' : v.toLocaleString('es-CO');
+    document.getElementById('tr-detalle-titulo').textContent = `${a.tramo} · ${a.estructura || a.circuito} · ${TR_MES_ACTUAL}`;
+    document.getElementById('tr-detalle-body').innerHTML = r.horas.map(h => `
+      <tr>
+        <td>${_mselEsc(h.tipo_perfil)}</td>
+        <td>${_mselEsc(h.hora)}</td>
+        <td>${f(h.perdida_kw)}</td>
+        <td>${f(h.cargabilidad_pct)}</td>
+        <td>${f(h.tension_inicial_pu)}</td>
+        <td>${f(h.tension_final_pu)}</td>
+        <td>${f(h.caida_pct)}</td>
+      </tr>`).join('');
+    document.getElementById('tr-detalle-card').style.display = '';
+  }catch(e){
+    document.getElementById('tr-detalle-titulo').textContent = 'No se pudo cargar el detalle del tramo.';
+    document.getElementById('tr-detalle-card').style.display = '';
+  }
+}
+
 async function paramDiccCargarEstado(){
   const el = document.getElementById('param-dicc-estado');
   if(!el) return;
