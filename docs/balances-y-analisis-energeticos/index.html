@@ -2126,6 +2126,17 @@ html,body{overflow-x:hidden;margin:0}
   </div>
 
   <div class="card">
+    <div class="card-title">Diccionario de estructuras (SPARD / CGM)</div>
+    <div class="card-sub">Sube "Nemonicos SPARD CGM TODOS.xlsx" -- traduce cada circuito de la simulación (SS_&lt;SPARD&gt;) a su nombre de estructura y código CGM. Reemplaza el diccionario anterior del operador.</div>
+    <div class="param-confianza-row" style="flex-wrap:wrap">
+      <span id="param-dicc-estado" style="font-size:12px;color:var(--text2)"></span>
+      <input type="file" id="param-dicc-archivo" accept=".xlsx" style="font-size:12px">
+      <button class="btn-theme" style="width:auto;padding:7px 16px" onclick="paramDiccSubir()">Subir diccionario</button>
+    </div>
+    <div id="param-dicc-msg" class="tm-modal-msg"></div>
+  </div>
+
+  <div class="card">
     <div class="card-title">Estación de Temperatura (IDEAM)</div>
     <div class="card-sub">Busca y elige la estación meteorológica de referencia para el módulo "Temperatura vs Entrada" -- datos abiertos oficiales de <a href="https://www.datos.gov.co" target="_blank" rel="noopener">datos.gov.co</a>.</div>
     <div id="param-ideam-actual" style="font-size:12px;margin:12px 0"></div>
@@ -10781,6 +10792,34 @@ async function ipPollCarga(jobId, btn, textoOriginal){
 }
 
 /* ---- Parametrización: color por zona ---- */
+async function paramDiccCargarEstado(){
+  const el = document.getElementById('param-dicc-estado');
+  if(!el) return;
+  if(DEMO){ el.textContent = ''; return; }
+  try{
+    const datos = await apiGet('/api/alimentadores/diccionario-estructuras');
+    const n = (datos.estructuras || []).length;
+    el.textContent = n ? `${n} estructuras cargadas` : 'Sin diccionario cargado';
+  }catch(e){
+    el.textContent = 'No se pudo consultar el diccionario.';
+  }
+}
+
+async function paramDiccSubir(){
+  const input = document.getElementById('param-dicc-archivo');
+  const msg = document.getElementById('param-dicc-msg');
+  if(!input.files || !input.files[0]){ msg.textContent = 'Elige un archivo .xlsx primero.'; return; }
+  msg.textContent = 'Subiendo…';
+  try{
+    const r = await _informesSubirArchivoCaracterizacion('/api/alimentadores/diccionario-estructuras', input.files[0]);
+    msg.textContent = `Listo: ${r.estructuras} estructuras cargadas.`;
+    input.value = '';
+    await paramDiccCargarEstado();
+  }catch(e){
+    msg.textContent = e.message || 'No se pudo subir el archivo.';
+  }
+}
+
 async function cargarParametrizacion(){
   const cont = document.getElementById('parametrizacion-zonas');
   let datos = [];
@@ -10795,6 +10834,7 @@ async function cargarParametrizacion(){
   await paramIdeamCargarActual();
   await cargarConfianzaEstadistica();
   await cargarDiasAtrasoBalance();
+  await paramDiccCargarEstado();
 
   // Datos típicos -- arranca con el último mes cerrado, el rango más común
   // para "cómo se comportó normalmente esta estructura" (no se recalcula
