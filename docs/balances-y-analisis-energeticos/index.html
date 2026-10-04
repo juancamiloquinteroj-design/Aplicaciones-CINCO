@@ -1768,16 +1768,6 @@ html,body{overflow-x:hidden;margin:0}
   <button type="button" class="pt-tab-btn" id="tr-tab-btn-topologia" onclick="tramosIrSub('topologia')">Topología</button>
 </div>
 
-  <div class="card">
-    <div class="card-title">Subir archivo del mes</div>
-    <div class="card-sub">Sube el Parquet del mes (o copialo a "data/electrohuila/Perdidas Tecnicas Tramos" con el mes en el nombre). Si ya existe ese mes, lo reemplaza.</div>
-    <div class="param-confianza-row" style="flex-wrap:wrap">
-      <input type="month" id="tr-subir-mes">
-      <input type="file" id="tr-subir-archivo" accept=".parquet" style="font-size:12px">
-      <button class="btn-theme" style="width:auto;padding:7px 16px" onclick="tramosSubir()">Subir</button>
-      <span id="tr-subir-msg" style="font-size:12px;color:var(--text2)"></span>
-    </div>
-  </div>
 
 <div id="tr-sub-heatmap">
   <div class="fbar" style="margin-bottom:12px;flex-wrap:wrap;gap:10px">
@@ -10887,7 +10877,12 @@ let TR_OPC_CIRC = [];
 let TR_CH = {};
 let TR_MESES = [];
 
-function _trNum(v, dec){ return (v === null || v === undefined) ? '—' : Number(v).toLocaleString('es-CO', {maximumFractionDigits: dec ?? 0}); }
+function _trNum(v, dec){
+  if(v === null || v === undefined) return '—';
+  const n = Number(v);
+  if(dec === undefined && n !== 0 && Math.abs(n) < 1) return n.toLocaleString('es-CO', {maximumFractionDigits: 4});
+  return n.toLocaleString('es-CO', {maximumFractionDigits: dec ?? 0});
+}
 
 function _trNodos(f){
   if(f.nodo_1 && f.nodo_2) return `${f.nodo_1} → ${f.nodo_2}`;
@@ -11197,7 +11192,8 @@ function heatmapMetrica(m){
 
 function _hmColor(valor, p99){
   if(valor === null || valor === undefined) return '#cbd5e1';
-  const r = Math.max(0, Math.min(1, valor / (p99 || 1)));
+  if(valor === 0) return '#e2e8f0';
+  const r = Math.max(0, Math.min(1, Math.log1p(valor) / Math.log1p(p99 || 1)));
   const g = [22, 163, 74], y = [234, 179, 8], rojo = [220, 38, 38];
   let a, b, t;
   if(r < 0.5){ a = g; b = y; t = r / 0.5; } else { a = y; b = rojo; t = (r - 0.5) / 0.5; }
@@ -11239,7 +11235,9 @@ function heatmapRender(d){
     `${d.circuitos.length} circuitos · ${valores.length.toLocaleString('es-CO')} tramos con dato. ` +
     `Escala de color hasta el percentil 99 (${_trNum(p99, esMetrica ? 0 : 2)} ${esMetrica ? 'kWh' : '%'}). Haz clic en un cuadro para ver su historia.`;
   document.getElementById('hm-leyenda').innerHTML =
-    `<span>Bajo</span>` + [0, 0.25, 0.5, 0.75, 1].map(r => `<span style="display:inline-block;width:22px;height:12px;background:${_hmColor(r * p99, p99)}"></span>`).join('') + `<span>Alto</span>`;
+    `<span style="display:inline-block;width:22px;height:12px;background:#e2e8f0"></span><span>0</span>` +
+    [0.001, 0.01, 0.1, 1, 10, 100].filter(x => x < p99 * 1.5).map(x => `<span style="display:inline-block;width:22px;height:12px;background:${_hmColor(x, p99)}"></span>`).join('') +
+    `<span>hasta ${_trNum(p99, esMetrica ? 0 : 2)} ${esMetrica ? 'kWh' : '%'} (escala logarítmica)</span>`;
 
   HM_CELDAS = [];
   let html = '<div style="display:flex;flex-wrap:wrap;gap:1px;align-items:flex-start">';
