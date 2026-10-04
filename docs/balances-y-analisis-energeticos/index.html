@@ -11275,6 +11275,21 @@ function _rangoDefecto(desdeId, hastaId){
   }
 }
 
+let OPC_FILTROS = null;
+
+async function _cargarOpcionesFiltros(){
+  if(OPC_FILTROS) return;
+  try{
+    const o = await apiGet('/api/tramos/opciones');
+    OPC_FILTROS = o;
+    for(const p of ['hm', 'cg']){
+      mselSetOpciones(`msel-${p}-zona`, o.zonas.map(z => ({value: z, label: z})));
+      mselSetOpciones(`msel-${p}-sub`, o.subestaciones.map(x => ({value: x, label: x})));
+      mselSetOpciones(`msel-${p}-circ`, o.circuitos.map(c => ({value: c.circuito, label: c.estructura || c.circuito})));
+    }
+  }catch(e){ /* se reintenta en la proxima apertura */ }
+}
+
 function heatmapMetrica(m){
   HM_METRICA = m;
   document.getElementById('hm-btn-perdida').classList.toggle('activo', m === 'perdida');
@@ -11297,6 +11312,7 @@ async function heatmapCargar(){
   _initMsel('msel-hm-sub', 'Subestación', 'Todas', 'Buscar subestación...', () => heatmapCargar());
   _initMsel('msel-hm-zona', 'Zona', 'Todas', '', () => heatmapCargar());
   _initMsel('msel-hm-circ', 'Circuito', 'Todos', 'Buscar circuito...', () => heatmapCargar());
+  await _cargarOpcionesFiltros();
   const p = new URLSearchParams({metrica: HM_METRICA});
   const zonas = mselValores('msel-hm-zona').join('|');
   const subs = mselValores('msel-hm-sub').join('|');
@@ -11307,16 +11323,6 @@ async function heatmapCargar(){
   document.getElementById('hm-sub').textContent = 'Cargando…';
   try{
     const d = await apiGet(`/api/tramos/heatmap?${p}`, 240000);
-    if(!HM_LISTAS && !zonas && !subs && !circs){
-      HM_LISTAS = {
-        zonas: [...new Set(d.circuitos.map(c => c.zona).filter(Boolean))].sort(),
-        subs: [...new Set(d.circuitos.map(c => c.subestacion).filter(Boolean))].sort(),
-        circuitos: d.circuitos.map(c => ({value: c.circuito, label: c.estructura || c.circuito, zona: c.zona, sub: c.subestacion})),
-      };
-      mselSetOpciones('msel-hm-zona', HM_LISTAS.zonas.map(z => ({value: z, label: z})));
-      mselSetOpciones('msel-hm-sub', HM_LISTAS.subs.map(s => ({value: s, label: s})));
-      mselSetOpciones('msel-hm-circ', HM_LISTAS.circuitos);
-    }
     heatmapRender(d);
   }catch(e){
     document.getElementById('hm-sub').textContent = 'No se pudo cargar el mapa de calor.';
@@ -11393,6 +11399,7 @@ async function cargabilidadCargar(){
   _initMsel('msel-cg-sub', 'Subestación', 'Todas', 'Buscar subestación...', () => cargabilidadCargar());
   _initMsel('msel-cg-zona', 'Zona', 'Todas', '', () => cargabilidadCargar());
   _initMsel('msel-cg-circ', 'Circuito', 'Todos', 'Buscar circuito...', () => cargabilidadCargar());
+  await _cargarOpcionesFiltros();
   const p = new URLSearchParams({desde: document.getElementById('cg-desde').value, hasta: document.getElementById('cg-hasta').value});
   const subs = mselValores('msel-cg-sub').join('|');
   const zonas = mselValores('msel-cg-zona').join('|');
