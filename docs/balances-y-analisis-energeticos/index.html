@@ -11201,58 +11201,101 @@ function _hmColor(valor, p99){
   return `rgb(${c[0]},${c[1]},${c[2]})`;
 }
 
+let HM_OPC = null;
+
+function _hmCumple(c, excluir){
+  const zs = mselValores('msel-hm-zona'), ss = mselValores('msel-hm-sub'), cs = mselValores('msel-hm-circ');
+  if(excluir !== 'zona' && zs.length && !zs.includes(c.zona)) return false;
+  if(excluir !== 'sub' && ss.length && !ss.includes(c.subestacion)) return false;
+  if(excluir !== 'circ' && cs.length && !cs.includes(c.circuito)) return false;
+  return true;
+}
+
+let HM_ACTUALIZANDO = false;
+
+function _hmActualizarOpciones(){
+  if(!HM_OPC) return;
+  HM_ACTUALIZANDO = true;
+  try{
+    const zonas = [...new Set(HM_OPC.circuitos.filter(c => _hmCumple(c, 'zona')).map(c => c.zona).filter(Boolean))].sort();
+    const subs = [...new Set(HM_OPC.circuitos.filter(c => _hmCumple(c, 'sub')).map(c => c.subestacion).filter(Boolean))].sort();
+    const circs = HM_OPC.circuitos.filter(c => _hmCumple(c, 'circ')).map(c => ({value: c.circuito, label: c.estructura || c.circuito}));
+    mselSetOpciones('msel-hm-zona', zonas.map(v => ({value: v, label: v})));
+    mselSetOpciones('msel-hm-sub', subs.map(v => ({value: v, label: v})));
+    mselSetOpciones('msel-hm-circ', circs);
+  } finally {
+    HM_ACTUALIZANDO = false;
+  }
+}
+
+function _hmAlCambiar(){
+  if(!HM_ACTUALIZANDO) heatmapCargar();
+}
+
+function _hmRatio(valor, max){
+  if(valor === null || valor === undefined || valor === 0) return 0;
+  return Math.max(0, Math.min(1, Math.log1p(valor) / Math.log1p(max || 1)));
+}
+
 async function heatmapCargar(){
   if(DEMO) return;
-  _initMsel('msel-hm-sub', 'Subestación', 'Todas', 'Buscar subestación...', () => heatmapCargar());
-  _initMsel('msel-hm-zona', 'Zona', 'Todas', '', () => heatmapCargar());
-  _initMsel('msel-hm-circ', 'Circuito', 'Todos', 'Buscar circuito...', () => heatmapCargar());
-  await _cargarOpcionesFiltros();
-  const p = new URLSearchParams({metrica: HM_METRICA});
-  const zonas = mselValores('msel-hm-zona').join('|');
-  const subs = mselValores('msel-hm-sub').join('|');
-  const circs = mselValores('msel-hm-circ').join('|');
-  if(zonas) p.set('zonas', zonas);
-  if(subs) p.set('subestaciones', subs);
-  if(circs) p.set('circuitos', circs);
+  _initMsel('msel-hm-sub', 'Subestación', 'Todas', 'Buscar subestación...', _hmAlCambiar);
+  _initMsel('msel-hm-zona', 'Zona', 'Todas', '', _hmAlCambiar);
+  _initMsel('msel-hm-circ', 'Circuito', 'Todos', 'Buscar circuito...', _hmAlCambiar);
+  if(!HM_OPC){
+    try{ HM_OPC = await apiGet('/api/tramos/opciones'); }
+    catch(e){ document.getElementById('hm-sub').textContent = 'No se pudieron cargar los filtros.'; return; }
+  }
+  _hmActualizarOpciones();
+  const zs = mselValores('msel-hm-zona'), ss = mselValores('msel-hm-sub'), cs = mselValores('msel-hm-circ');
+  const p = new URLSearchParams({metrica: HM_METRICA, nivel: 'tramo'});
+  if(zs.length) p.set('zonas', zs.join('|'));
+  if(ss.length) p.set('subestaciones', ss.join('|'));
+  if(cs.length) p.set('circuitos', cs.join('|'));
   document.getElementById('hm-sub').textContent = 'Cargando…';
   try{
     const d = await apiGet(`/api/tramos/heatmap?${p}`, 240000);
-    heatmapRender(d);
+    heatmapRender(d, zs, ss, cs);
   }catch(e){
     document.getElementById('hm-sub').textContent = 'No se pudo cargar el mapa de calor.';
   }
 }
 
-function heatmapRender(d){
+function heatmapRender(d, zs, ss, cs){
   const esMetrica = HM_METRICA === 'perdida';
+  const unidad = esMetrica ? 'kWh/mes' : '%';
+  const max = d.maximo || 1;
+  const alcance = cs.length ? `${cs.length} circuito${cs.length === 1 ? '' : 's'}` :
+                  (zs.length || ss.length) ? 'filtro aplicado' : 'todo el sistema';
   document.getElementById('hm-titulo').textContent =
-    `${esMetrica ? 'Pérdida' : 'Cargabilidad'} por tramo -- último mes cargado (${d.mes})`;
-  const valores = [];
-  d.circuitos.forEach(c => c.tramos.forEach(t => { if(t.valor !== null) valores.push(t.valor); }));
-  valores.sort((a, b) => a - b);
-  const p99 = valores.length ? valores[Math.min(valores.length - 1, Math.floor(valores.length * 0.99))] : 1;
+    `${esMetrica ? 'Pérdida' : 'Cargabilidad'} por tramo -- ${alcance} (${d.mes})`;
   document.getElementById('hm-sub').textContent =
-    `${d.circuitos.length} circuitos · ${valores.length.toLocaleString('es-CO')} tramos con dato. ` +
-    `Escala de color hasta el percentil 99 (${_trNum(p99, esMetrica ? 0 : 2)} ${esMetrica ? 'kWh' : '%'}). Haz clic en un cuadro para ver su historia.`;
-  document.getElementById('hm-leyenda').innerHTML =
-    `<span style="display:inline-block;width:22px;height:12px;background:#e2e8f0"></span><span>0</span>` +
-    [0.001, 0.01, 0.1, 1, 10, 100].filter(x => x < p99 * 1.5).map(x => `<span style="display:inline-block;width:22px;height:12px;background:${_hmColor(x, p99)}"></span>`).join('') +
-    `<span>hasta ${_trNum(p99, esMetrica ? 0 : 2)} ${esMetrica ? 'kWh' : '%'} (escala logarítmica)</span>`;
+    `${d.items.length.toLocaleString('es-CO')} tramos. Haz clic en un cuadro para ver su historia.`;
 
-  HM_CELDAS = [];
-  let html = '<div style="display:flex;flex-wrap:wrap;gap:1px;align-items:flex-start">';
-  d.circuitos.forEach((c, ci) => {
-    c.tramos.forEach((t, k) => {
-      const i = HM_CELDAS.length;
-      HM_CELDAS.push({circuito: c.circuito, estructura: c.estructura, ...t});
-      const txt = `${c.estructura || c.circuito} · ${t.tramo} · ${_trNodos(t)} · ${esMetrica ? _trNum(t.valor) + ' kWh/mes' : _trNum(t.valor, 2) + '%'}`;
-      const sep = (k === 0 && ci > 0) ? 'margin-left:10px;' : '';
-      html += `<div class="hm-celda" data-i="${i}" title="${_mselEsc(txt)}" style="${sep}width:10px;height:14px;cursor:pointer;background:${_hmColor(t.valor, p99)}"></div>`;
-    });
+  HM_CELDAS = d.items;
+  const COLS = 48;
+  let celdas = `<div style="display:grid;grid-template-columns:repeat(${COLS},12px);gap:1px;align-content:start">`;
+  d.items.forEach((t, i) => {
+    const txt = `${t.estructura || t.circuito} · ${t.tramo} · ${_trNodos(t)} · ${esMetrica ? _trNum(t.valor) + ' kWh/mes' : _trNum(t.valor, 2) + '%'}`;
+    celdas += `<div class="hm-celda" data-i="${i}" title="${_mselEsc(txt)}" style="width:12px;height:12px;cursor:pointer;background:${_hmColor(t.valor, max)}"></div>`;
   });
-  html += '</div>';
+  celdas += '</div>';
+
+  let barra = '<div style="display:flex;flex-direction:column;align-items:flex-start;gap:4px;margin-left:14px">';
+  barra += `<div style="font-size:11px;color:var(--text2)">${_trNum(max, esMetrica ? 0 : 2)} ${unidad}</div>`;
+  const pasos = [];
+  for(let k = 0; k <= 10; k++){
+    const r = k / 10;
+    const valor = Math.expm1(r * Math.log1p(max));
+    pasos.push(_hmColor(valor, max));
+  }
+  barra += `<div style="width:16px;height:260px;border-radius:4px;background:linear-gradient(to top, ${pasos.join(',')})"></div>`;
+  barra += `<div style="font-size:11px;color:var(--text2)">0 ${unidad}</div>`;
+  barra += '</div>';
+
+  document.getElementById('hm-leyenda').innerHTML = '';
   const grid = document.getElementById('hm-grid');
-  grid.innerHTML = html;
+  grid.innerHTML = `<div style="display:flex;align-items:flex-start;overflow:auto">${celdas}${barra}</div>`;
   grid.onclick = e => {
     const el = e.target.closest('.hm-celda');
     if(el) heatmapHistoria(HM_CELDAS[Number(el.dataset.i)]);
