@@ -1769,16 +1769,21 @@ html,body{overflow-x:hidden;margin:0}
 </div>
 
 <div id="tr-sub-heatmap">
-  <div class="fbar" style="margin-bottom:12px;flex-wrap:wrap;gap:10px">
-    <label>Métrica</label>
-    <button type="button" class="be-modo-btn activo" id="hm-btn-perdida" onclick="heatmapMetrica('perdida')">Pérdida</button>
-    <button type="button" class="be-modo-btn" id="hm-btn-carga" onclick="heatmapMetrica('cargabilidad')">Cargabilidad</button>
-    <label>Subestación</label>
-    <div class="msel" id="msel-hm-sub"></div>
+  <div class="fbar" style="margin-bottom:12px;flex-wrap:wrap;gap:10px;align-items:center">
     <label>Zona</label>
     <div class="msel" id="msel-hm-zona"></div>
+    <label>Subestación</label>
+    <div class="msel" id="msel-hm-sub"></div>
     <label>Circuito</label>
     <div class="msel" id="msel-hm-circ"></div>
+    <div style="margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <label>Pérdida ≥</label>
+      <input type="number" id="hm-min-perdida" min="0" step="any" placeholder="kWh/mes" style="width:110px" oninput="heatmapFiltrarUmbral()">
+      <label>Cargabilidad ≥</label>
+      <input type="number" id="hm-min-carga" min="0" step="any" placeholder="%" style="width:90px" oninput="heatmapFiltrarUmbral()">
+      <button type="button" class="be-modo-btn activo" id="hm-btn-perdida" onclick="heatmapMetrica('perdida')">Pérdida</button>
+      <button type="button" class="be-modo-btn" id="hm-btn-carga" onclick="heatmapMetrica('cargabilidad')">Cargabilidad</button>
+    </div>
   </div>
   <div class="card">
     <div class="card-title" id="hm-titulo">Mapa de calor</div>
@@ -11263,23 +11268,38 @@ async function heatmapCargar(){
   }
 }
 
+let HM_DATA = null;
+let HM_ALCANCE = {zs: [], ss: [], cs: []};
+
+function heatmapFiltrarUmbral(){
+  if(HM_DATA) heatmapRender(HM_DATA, HM_ALCANCE.zs, HM_ALCANCE.ss, HM_ALCANCE.cs);
+}
+
 function heatmapRender(d, zs, ss, cs){
+  HM_DATA = d;
+  HM_ALCANCE = {zs, ss, cs};
   const esMetrica = HM_METRICA === 'perdida';
   const unidad = esMetrica ? 'kWh/mes' : '%';
-  const max = d.maximo || 1;
+  const minP = parseFloat(document.getElementById('hm-min-perdida').value);
+  const minC = parseFloat(document.getElementById('hm-min-carga').value);
+  const items = d.items.filter(t =>
+    (isNaN(minP) || (t.perdida_mes_kwh ?? 0) >= minP) &&
+    (isNaN(minC) || (t.cargabilidad_max_pct ?? 0) >= minC));
+  const max = items.reduce((m, t) => Math.max(m, t.valor || 0), 0) || 1;
   const alcance = cs.length ? `${cs.length} circuito${cs.length === 1 ? '' : 's'}` :
                   (zs.length || ss.length) ? 'filtro aplicado' : 'todo el sistema';
   document.getElementById('hm-titulo').textContent =
     `${esMetrica ? 'Pérdida' : 'Cargabilidad'} por tramo -- ${alcance} (${d.mes})`;
+  const umbrales = (isNaN(minP) && isNaN(minC)) ? '' : ` · ${items.length.toLocaleString('es-CO')} de ${d.items.length.toLocaleString('es-CO')} cumplen el umbral`;
   document.getElementById('hm-sub').textContent =
-    `${d.items.length.toLocaleString('es-CO')} tramos. Haz clic en un cuadro para ver su historia.`;
+    `${d.items.length.toLocaleString('es-CO')} tramos${umbrales}. Haz clic en un cuadro para ver su historia.`;
 
-  HM_CELDAS = d.items;
-  const COLS = 48;
-  let celdas = `<div style="display:grid;grid-template-columns:repeat(${COLS},12px);gap:1px;align-content:start">`;
-  d.items.forEach((t, i) => {
+  HM_CELDAS = items;
+  const COLS = 40;
+  let celdas = `<div style="display:grid;grid-template-columns:repeat(${COLS},10px);gap:2px;align-content:start">`;
+  items.forEach((t, i) => {
     const txt = `${t.estructura || t.circuito} · ${t.tramo} · ${_trNodos(t)} · ${esMetrica ? _trNum(t.valor) + ' kWh/mes' : _trNum(t.valor, 2) + '%'}`;
-    celdas += `<div class="hm-celda" data-i="${i}" title="${_mselEsc(txt)}" style="width:12px;height:12px;cursor:pointer;background:${_hmColor(t.valor, max)}"></div>`;
+    celdas += `<div class="hm-celda" data-i="${i}" title="${_mselEsc(txt)}" style="display:block;width:10px;height:10px;cursor:pointer;background:${_hmColor(t.valor, max)}"></div>`;
   });
   celdas += '</div>';
 
@@ -11287,13 +11307,10 @@ function heatmapRender(d, zs, ss, cs){
   barra += `<div style="font-size:11px;color:var(--text2)">${_trNum(max, esMetrica ? 0 : 2)} ${unidad}</div>`;
   const pasos = [];
   for(let k = 0; k <= 10; k++){
-    const r = k / 10;
-    const valor = Math.expm1(r * Math.log1p(max));
-    pasos.push(_hmColor(valor, max));
+    pasos.push(_hmColor(Math.expm1((k / 10) * Math.log1p(max)), max));
   }
   barra += `<div style="width:16px;height:260px;border-radius:4px;background:linear-gradient(to top, ${pasos.join(',')})"></div>`;
-  barra += `<div style="font-size:11px;color:var(--text2)">0 ${unidad}</div>`;
-  barra += '</div>';
+  barra += `<div style="font-size:11px;color:var(--text2)">0 ${unidad}</div></div>`;
 
   document.getElementById('hm-leyenda').innerHTML = '';
   const grid = document.getElementById('hm-grid');
