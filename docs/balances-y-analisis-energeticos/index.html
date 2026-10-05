@@ -432,6 +432,17 @@ body{font-family:var(--app-font);background:var(--bg);color:var(--text);min-heig
 .fbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:18px}
 .fbar label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text3)}
 select{padding:6px 10px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg);cursor:pointer;outline:none}
+/* Tablitas compactas del borrador de correo de alerta -- pedido explícito
+   ("todos los datos en una tablita bonita", "se desperdicia mucho
+   espacio"): fila baja, sin el padding generoso de .be-tabla-creadas. */
+.correo-tabla{width:100%;border-collapse:collapse;font-size:11.5px;margin:4px 0 12px;border:1px solid var(--border);border-radius:8px;overflow:hidden}
+.correo-tabla th{background:var(--bg3);color:var(--text3);font-weight:700;text-transform:uppercase;font-size:9.5px;letter-spacing:.3px;text-align:left;padding:5px 10px}
+.correo-tabla td{padding:5px 10px;border-top:1px solid var(--border);color:var(--text)}
+.correo-tabla tr:first-child td{border-top:none}
+.correo-tabla td:first-child{color:var(--text2);font-weight:600}
+.correo-tabla td.num,.correo-tabla th.num{text-align:right}
+.correo-tabla tr:nth-child(even) td{background:var(--bg)}
+.correo-tabla select{padding:3px 7px;font-size:11px;border-radius:6px}
 /* Barra "Configurar mes" -- ocupaba tanto como cualquier otra card pese a
    ser una sola fila de config poco usada; se achica padding/tipografía sin
    tocar el estilo ".card" genérico (usado en todos los demás módulos). */
@@ -11294,24 +11305,33 @@ function _hmSubestacionDe(circuito){
 
 // Tabla de calibres típicos de distribución (código, área en kcmil) en
 // orden creciente -- misma nomenclatura AWG/kcmil que trae "Calibre" del
-// Parquet (ej. "2 ACSR", "4/0 ACSR"). Sirve solo para la ESTIMACIÓN de
-// cuánto bajaría la pérdida I²R al subir de calibre (ver _hmProponerCalibre).
+// Parquet (ej. "2 ACSR", "4/0 ACSR"). Sin "1" -- no es un calibre ACSR que
+// se use acá (pedido explícito: "el calibre 1 ACSR no existe"); de 2 se
+// pasa directo a 1/0. Sirve solo para la ESTIMACIÓN de cuánto bajaría la
+// pérdida I²R al subir de calibre (ver _hmOpcionesCalibreMayor).
 const HM_CALIBRES_KCMIL = [
-  ['6', 26.2], ['4', 41.7], ['2', 66.4], ['1', 83.7], ['1/0', 105.6], ['2/0', 133.1],
+  ['6', 26.2], ['4', 41.7], ['2', 66.4], ['1/0', 105.6], ['2/0', 133.1],
   ['3/0', 167.8], ['4/0', 211.6], ['266.8', 266.8], ['336.4', 336.4], ['397.5', 397.5],
   ['477', 477], ['556.5', 556.5], ['636', 636], ['795', 795],
 ];
-function _hmProponerCalibre(calibreTxt){
+// Calibres disponibles para proponer (todos los MAYORES al actual) -- el
+// usuario elige cuál en un <select> dentro de la tabla, ya no se fuerza
+// siempre "el siguiente" (pedido explícito: "debe permitirme cambiar ese
+// calibre y hacer el cálculo con el que yo seleccione").
+function _hmOpcionesCalibreMayor(calibreTxt){
   if(!calibreTxt) return null;
   const token = String(calibreTxt).trim().split(/\s+/)[0].toUpperCase();
   const i = HM_CALIBRES_KCMIL.findIndex(c => c[0].toUpperCase() === token);
   if(i === -1 || i >= HM_CALIBRES_KCMIL.length - 1) return null;
-  const [codActual, areaActual] = HM_CALIBRES_KCMIL[i];
-  const [codNuevo, areaNueva] = HM_CALIBRES_KCMIL[i + 1];
-  return {codActual, areaActual, codNuevo, areaNueva, ratio: areaActual / areaNueva};
+  return {areaActual: HM_CALIBRES_KCMIL[i][1], mayores: HM_CALIBRES_KCMIL.slice(i + 1)};
 }
 
 let HM_CORREO_TRAMOS = [];  // [{t,d,serie,ultimo}, ...] -- tramos agregados al borrador actual, todos del mismo circuito
+let HM_CORREO_CALIBRE_SEL = {};  // {tramo: codigoCalibreElegido} -- elección manual por tramo en el <select> de la propuesta
+function heatmapCambiarCalibreCorreo(tramo, calibre){
+  HM_CORREO_CALIBRE_SEL[tramo] = calibre;
+  heatmapRenderCorreo();
+}
 
 async function heatmapRedactarCorreo(){
   if(!HM_SEL) return;
@@ -11340,7 +11360,11 @@ function heatmapQuitarTramoCorreo(tramo){
   heatmapRenderCorreo();
 }
 
-const _hmColorTramo = i => ['#2563eb', '#dc2626', '#16a34a', '#d97706', '#7c3aed', '#0891b2'][i % 6];
+// Paleta por LÍNEA, no por tramo -- pedido explícito ("la gráfica muestre
+// los datos con diferente color"): antes pérdida y cargabilidad del mismo
+// tramo compartían color (solo se distinguían por el trazo punteado), acá
+// cada línea de la gráfica saca el siguiente color de la lista.
+const HM_PALETA_CORREO = ['#2563eb', '#dc2626', '#16a34a', '#d97706', '#7c3aed', '#0891b2', '#db2777', '#65a30d'];
 
 function heatmapRenderCorreo(){
   if(!HM_CORREO_TRAMOS.length) return;
@@ -11365,16 +11389,17 @@ function heatmapRenderCorreo(){
   HM_CORREO_TRAMOS.forEach(x => x.serie.forEach(s => mesesSet.add(s.mes)));
   const meses = [...mesesSet].sort();
   const datasets = [];
-  HM_CORREO_TRAMOS.forEach((x, i) => {
+  HM_CORREO_TRAMOS.forEach(x => {
     const porMes = new Map(x.serie.map(s => [s.mes, s]));
-    const color = _hmColorTramo(i);
     const etiqueta = _trNodos(x.d);
+    const colorPerdida = HM_PALETA_CORREO[datasets.length % HM_PALETA_CORREO.length];
     datasets.push({type: 'line', label: `Pérdida ${etiqueta} (kWh)`, yAxisID: 'y',
       data: meses.map(m => porMes.has(m) ? porMes.get(m).perdida_mes_kwh : null),
-      borderColor: color, backgroundColor: color + '22', borderWidth: 2, pointRadius: 3, tension: 0, spanGaps: true});
+      borderColor: colorPerdida, backgroundColor: colorPerdida + '22', borderWidth: 2, pointRadius: 3, tension: 0, spanGaps: true});
+    const colorCarga = HM_PALETA_CORREO[datasets.length % HM_PALETA_CORREO.length];
     datasets.push({type: 'line', label: `Cargabilidad ${etiqueta} (%)`, yAxisID: 'y1',
       data: meses.map(m => porMes.has(m) ? porMes.get(m).cargabilidad_max_pct : null),
-      borderColor: color, backgroundColor: color + '22', borderWidth: 2, borderDash: [5, 3], pointRadius: 2, tension: 0, spanGaps: true});
+      borderColor: colorCarga, backgroundColor: colorCarga + '22', borderWidth: 2, pointRadius: 3, tension: 0, spanGaps: true});
   });
   if(HM_CORREO_CH) HM_CORREO_CH.destroy();
   HM_CORREO_CH = new Chart(document.getElementById('correo-ch-historia'), {
@@ -11400,16 +11425,23 @@ function heatmapRenderCorreo(){
     const costoAnual = costoActual * 12;
     const nodo1 = d.nodo_1 || '—', nodo2 = d.nodo_2 || d.nodo_1 || '—';
 
-    const prop = _hmProponerCalibre(d.calibre);
+    const opciones = _hmOpcionesCalibreMayor(d.calibre);
     let tablaCalibre, notaCalibre = '';
-    if(prop){
-      const perdidaNueva = perdidaActual * prop.ratio;
+    if(opciones && opciones.mayores.length){
+      const elegido = HM_CORREO_CALIBRE_SEL[d.tramo] &&
+        opciones.mayores.find(c => c[0] === HM_CORREO_CALIBRE_SEL[d.tramo])
+        ? HM_CORREO_CALIBRE_SEL[d.tramo] : opciones.mayores[0][0];
+      const [codNuevo, areaNueva] = opciones.mayores.find(c => c[0] === elegido);
+      const perdidaNueva = perdidaActual * (opciones.areaActual / areaNueva);
       const costoNuevo = perdidaNueva * factorStn * precio;
+      const selectHtml = `<select onchange="heatmapCambiarCalibreCorreo('${_mselEsc(d.tramo)}', this.value)">` +
+        opciones.mayores.map(c => `<option value="${c[0]}"${c[0] === elegido ? ' selected' : ''}>${c[0]} ACSR</option>`).join('') +
+        `</select>`;
       tablaCalibre = `
-      <table class="be-tabla-creadas" style="margin:8px 0 4px">
-        <thead><tr><th>Variable</th><th>Actual</th><th>Propuesto</th></tr></thead>
+      <table class="correo-tabla">
+        <thead><tr><th>Variable</th><th class="num">Actual</th><th class="num">Propuesto</th></tr></thead>
         <tbody>
-          <tr><td>Calibre</td><td class="num">${_mselEsc(d.calibre || 'Sin dato')}</td><td class="num">${prop.codNuevo} ACSR</td></tr>
+          <tr><td>Calibre</td><td class="num">${_mselEsc(d.calibre || 'Sin dato')}</td><td class="num">${selectHtml}</td></tr>
           <tr><td>Pérdida técnica</td><td class="num">${_trNum(perdidaActual)} kWh/mes</td><td class="num">${_trNum(perdidaNueva)} kWh/mes</td></tr>
           <tr><td>Disminución de pérdida</td><td class="num">--</td><td class="num">${_trNum(perdidaActual - perdidaNueva)} kWh/mes</td></tr>
           <tr><td>Costo de pérdida</td><td class="num">${f$(costoActual)}/mes</td><td class="num">${f$(costoNuevo)}/mes</td></tr>
@@ -11421,18 +11453,28 @@ function heatmapRenderCorreo(){
     }
 
     return `
-      <p>Tramo identificado: comprendido entre Nodo ${_mselEsc(nodo1)} hasta Nodo ${_mselEsc(nodo2)}<br>
-      Pérdida técnica: ${_trNum(perdidaActual)} kWh/mes<br>
-      Nivel de tensión: Nivel 2<br>
-      Cargabilidad tramo (máx.): ${_trNum(ultimo.cargabilidad_max_pct, 2)} %<br>
-      Longitud tramo: ${d.longitud_km != null ? _trNum(d.longitud_km, 3) + ' km' : 'Sin dato'}<br>
-      Calibre actual: ${_mselEsc(d.calibre || 'Sin dato')}</p>
+      <p style="margin:14px 0 2px"><b>Tramo: Nodo ${_mselEsc(nodo1)} → Nodo ${_mselEsc(nodo2)}</b></p>
+      <table class="correo-tabla">
+        <tbody>
+          <tr><td>Pérdida técnica</td><td class="num">${_trNum(perdidaActual)} kWh/mes</td></tr>
+          <tr><td>Nivel de tensión</td><td class="num">Nivel 2</td></tr>
+          <tr><td>Cargabilidad tramo (máx.)</td><td class="num">${_trNum(ultimo.cargabilidad_max_pct, 2)} %</td></tr>
+          <tr><td>Longitud tramo</td><td class="num">${d.longitud_km != null ? _trNum(d.longitud_km, 3) + ' km' : 'Sin dato'}</td></tr>
+          <tr><td>Calibre actual</td><td class="num">${_mselEsc(d.calibre || 'Sin dato')}</td></tr>
+        </tbody>
+      </table>
 
-      <p>A continuación se realiza análisis económico de pérdida técnica del tramo Nodo ${_mselEsc(nodo1)} hasta Nodo ${_mselEsc(nodo2)}.<br>
-      Total pérdida referida al STN: ${_trNum(perdidaReferida)} kWh/mes (Factor STN Nivel 2 = ${factorStn.toFixed(6)})<br>
-      Costo de pérdida del tramo: ${f$(costoActual)}/mes -- ${f$(costoAnual)}/año (Aproximado)</p>
+      <p style="margin:10px 0 2px">Análisis económico de la pérdida técnica del tramo:</p>
+      <table class="correo-tabla">
+        <tbody>
+          <tr><td>Total pérdida referida al STN</td><td class="num">${_trNum(perdidaReferida)} kWh/mes</td></tr>
+          <tr><td>Factor STN (Nivel 2)</td><td class="num">${factorStn.toFixed(6)}</td></tr>
+          <tr><td>Costo de pérdida del tramo</td><td class="num">${f$(costoActual)}/mes</td></tr>
+          <tr><td>Costo de pérdida del tramo (anual, aprox.)</td><td class="num">${f$(costoAnual)}/año</td></tr>
+        </tbody>
+      </table>
 
-      <p>Ahora bien, se realiza propuesta aproximada de cambio de calibre:</p>
+      <p style="margin:10px 0 2px">Propuesta aproximada de cambio de calibre (elegí el calibre propuesto abajo si querés comparar otro):</p>
       ${tablaCalibre}
       ${notaCalibre}`;
   }).join('<hr style="border:none;border-top:1px solid var(--border);margin:18px 0">');
