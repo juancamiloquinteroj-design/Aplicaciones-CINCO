@@ -918,6 +918,13 @@ tfoot td:first-child{text-align:left}
 .be-tabla-scroll{overflow-x:auto}
 .be-tabla-scroll-acotada{max-height:1120px;overflow-y:auto}
 .be-tabla-scroll-acotada thead th{position:sticky;top:0;background:var(--bg2);z-index:5;contain:paint}
+/* Alternativa SIN tope de alto propio -- pedido explícito ("se generan 3
+   scroll... pierdo de vista la fila 1"): con el scroll interno acotado de
+   arriba Y el scroll de la página compitiendo, al saltar de uno a otro se
+   perdía el encabezado (era sticky solo DENTRO del scroll interno). Acá la
+   tabla crece con la página (un solo scroll vertical) y el thead queda
+   sticky contra ESE scroll en cambio. */
+.be-tabla-scroll-pagina thead th{position:sticky;top:0;background:var(--bg2);z-index:5;contain:paint}
 /* Fila 1 del thead = la fila chica de Entrada/Salida -- no es sticky (usa
    td, no th), se va con el scroll; la fila 2 (títulos, th) queda sticky
    arriba de todo. Fila 3 = el viejo pie ("Total del rango") reubicado justo
@@ -5745,12 +5752,20 @@ html,body{overflow-x:hidden;margin:0}
     <div id="be-ver-rango-grupo" class="be-ver-filtro-grupo hidden">
       <div class="be-ver-filtro-grupo-titulo">Rango</div>
       <div class="be-ver-filtro-grupo-fila">
+        <!-- Botones de rango rápido en vez de tener los campos de fecha
+             siempre a la vista -- pedido explícito ("botones que sea 2, 3,
+             6, 9 meses o 1 año, o dato digitado por el usuario"). Las
+             fechas puntuales (be-desde/be-hasta, mismos IDs de siempre)
+             viven adentro del modal "Personalizado", que muestra ese
+             control EXACTAMENTE como está hoy (desde/hasta + mes
+             anterior/siguiente + Graficar). -->
         <div id="be-filtro-diario" class="fbar" style="margin:0">
-          <button type="button" class="be-editar-btn" onclick="beMoverMes(-1)" title="Mes anterior">◄</button>
-          <input type="date" id="be-desde">
-          <input type="date" id="be-hasta">
-          <button type="button" class="be-editar-btn" onclick="beMoverMes(1)" title="Mes siguiente">►</button>
-          <button type="button" class="btn-theme" style="width:auto;padding:5px 10px" onclick="verBalanceEstructura(BE_ACTIVA_ID)" title="Aplicar el rango de fechas elegido">▶ Graficar</button>
+          <button type="button" class="be-modo-btn" onclick="beAplicarRangoPreset(2)">2 meses</button>
+          <button type="button" class="be-modo-btn" onclick="beAplicarRangoPreset(3)">3 meses</button>
+          <button type="button" class="be-modo-btn" onclick="beAplicarRangoPreset(6)">6 meses</button>
+          <button type="button" class="be-modo-btn" onclick="beAplicarRangoPreset(9)">9 meses</button>
+          <button type="button" class="be-modo-btn" onclick="beAplicarRangoPreset(12)">1 año</button>
+          <button type="button" class="be-modo-btn" onclick="abrirModalRangoPersonalizado()">Personalizado</button>
         </div>
         <div id="be-filtro-mensual" class="fbar hidden" style="margin:0">
           <input type="month" id="be-comp-desde" onchange="this.dataset.manual='1'">
@@ -5906,7 +5921,7 @@ html,body{overflow-x:hidden;margin:0}
           </div>
         </div>
       </div>
-      <div class="be-tabla-scroll be-tabla-scroll-acotada">
+      <div class="be-tabla-scroll be-tabla-scroll-pagina">
         <table class="be-tabla-creadas" id="be-tabla-detalle">
           <thead id="be-tabla-detalle-head"></thead>
           <tbody id="be-tabla-detalle-body"></tbody>
@@ -6320,6 +6335,39 @@ html,body{overflow-x:hidden;margin:0}
     <div class="tm-modal-botones">
       <button class="btn-theme" style="width:auto;padding:8px 16px;background:transparent;color:var(--text2);border:1px solid var(--border)" onclick="cerrarModalTipicos()">Cerrar</button>
       <button class="btn-theme" style="width:auto;padding:8px 16px" onclick="calcularTipicosEstructuraActiva()">Calcular</button>
+    </div>
+  </div>
+</div>
+
+<!-- ---------------- BALANCE DIARIO · RANGO PERSONALIZADO (ventana emergente) ----------------
+     Mismos campos/IDs de siempre (be-desde/be-hasta, Mes anterior/
+     siguiente, Graficar) -- antes vivían siempre a la vista en la tarjeta
+     de filtros; ahora el filtro diario por defecto son los botones de
+     rango rápido (2/3/6/9 meses, 1 año) y este modal es solo para cuando
+     se quiere un rango puntual -- pedido explícito ("dato digitado por el
+     usuario, en este dato se debe desplegar una ventana y mostrar así como
+     está actualmente"). -->
+<div id="modal-be-rango-personalizado" class="tm-modal-overlay hidden" onclick="if(event.target===this) cerrarModalRangoPersonalizado()">
+  <div class="tm-modal">
+    <div class="tm-modal-title">Rango personalizado</div>
+    <div class="tm-modal-sub">Elegí el rango de fechas del balance diario.</div>
+    <div class="be-field" style="margin-top:12px">
+      <label>Desde</label>
+      <div style="display:flex;align-items:center;gap:8px">
+        <button type="button" class="be-editar-btn" onclick="beMoverMes(-1)" title="Mes anterior">◄</button>
+        <input type="date" id="be-desde" style="flex:1">
+      </div>
+    </div>
+    <div class="be-field" style="margin-top:8px">
+      <label>Hasta</label>
+      <div style="display:flex;align-items:center;gap:8px">
+        <input type="date" id="be-hasta" style="flex:1">
+        <button type="button" class="be-editar-btn" onclick="beMoverMes(1)" title="Mes siguiente">►</button>
+      </div>
+    </div>
+    <div class="tm-modal-botones">
+      <button class="btn-theme" style="width:auto;padding:8px 16px;background:transparent;color:var(--text2);border:1px solid var(--border)" onclick="cerrarModalRangoPersonalizado()">Cerrar</button>
+      <button class="btn-theme" style="width:auto;padding:8px 16px" onclick="beGraficarPersonalizado()">▶ Graficar</button>
     </div>
   </div>
 </div>
@@ -16168,6 +16216,29 @@ function beMoverMes(delta){
   desdeInput.value = fmt(primerDia);
   document.getElementById('be-hasta').value = fmt(ultimoDia);
   verBalanceEstructura(BE_ACTIVA_ID);
+}
+
+// Botones de rango rápido del filtro Diario -- "hasta" es hoy, "desde" son
+// N meses atrás (mismo día) -- pedido explícito ("botones que sea 2, 3, 6,
+// 9 meses o 1 año").
+function beAplicarRangoPreset(meses){
+  const hoy = new Date();
+  const desde = new Date(hoy.getFullYear(), hoy.getMonth() - meses, hoy.getDate());
+  const fmt = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  document.getElementById('be-desde').value = fmt(desde);
+  document.getElementById('be-hasta').value = fmt(hoy);
+  verBalanceEstructura(BE_ACTIVA_ID);
+}
+
+function abrirModalRangoPersonalizado(){
+  document.getElementById('modal-be-rango-personalizado').classList.remove('hidden');
+}
+function cerrarModalRangoPersonalizado(){
+  document.getElementById('modal-be-rango-personalizado').classList.add('hidden');
+}
+function beGraficarPersonalizado(){
+  verBalanceEstructura(BE_ACTIVA_ID);
+  cerrarModalRangoPersonalizado();
 }
 
 /* ---- Balances por Estructura -- Editar (metadatos + vigencias por punto) ---- */
