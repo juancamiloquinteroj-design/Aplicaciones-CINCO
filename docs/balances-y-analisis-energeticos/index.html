@@ -11406,17 +11406,22 @@ function heatmapRenderCorreo(){
     const colorPerdida = HM_PALETA_CORREO[datasets.length % HM_PALETA_CORREO.length];
     datasets.push({type: 'line', label: `Pérdida ${etiqueta} (kWh)`, yAxisID: 'y',
       data: meses.map(m => porMes.has(m) ? porMes.get(m).perdida_mes_kwh : null),
-      borderColor: colorPerdida, backgroundColor: colorPerdida + '22', borderWidth: 2, pointRadius: 3, tension: 0, spanGaps: true});
+      borderColor: colorPerdida, backgroundColor: colorPerdida + '22', borderWidth: 2, pointRadius: 3, tension: 0, spanGaps: true,
+      datalabels: {display: true, anchor: 'end', align: 'top', offset: 6,
+        formatter: v => v == null ? '' : _trNum(v), font: {size: 9, weight: '700'}, color: colorPerdida}});
     const colorCarga = HM_PALETA_CORREO[datasets.length % HM_PALETA_CORREO.length];
     datasets.push({type: 'line', label: `Cargabilidad ${etiqueta} (%)`, yAxisID: 'y1',
       data: meses.map(m => porMes.has(m) ? porMes.get(m).cargabilidad_max_pct : null),
-      borderColor: colorCarga, backgroundColor: colorCarga + '22', borderWidth: 2, pointRadius: 3, tension: 0, spanGaps: true});
+      borderColor: colorCarga, backgroundColor: colorCarga + '22', borderWidth: 2, pointRadius: 3, tension: 0, spanGaps: true,
+      datalabels: {display: true, anchor: 'end', align: 'bottom', offset: 6,
+        formatter: v => v == null ? '' : _trNum(v, 1) + '%', font: {size: 9, weight: '700'}, color: colorCarga}});
   });
   if(HM_CORREO_CH) HM_CORREO_CH.destroy();
   HM_CORREO_CH = new Chart(document.getElementById('correo-ch-historia'), {
     data: {labels: meses, datasets},
     options: {
       responsive: true, maintainAspectRatio: false,
+      layout: {padding: {top: 18, right: 14}},
       plugins: {legend: {display: true, position: 'bottom', labels: {boxWidth: 12, font: {size: 10}}}},
       scales: {
         x: {offset: true},
@@ -11538,11 +11543,17 @@ function _hmPrepararHtmlExport(){
     sel.replaceWith(document.createTextNode(texto));
   });
 
-  const thS = 'background:#eef2f7;color:#64748b;text-align:left;padding:6px 10px;font-size:10.5px;' +
-    'text-transform:uppercase;letter-spacing:.3px;border-bottom:1px solid #cbd5e1;font-family:Arial,Helvetica,sans-serif';
-  const tdS = 'padding:6px 10px;border-bottom:1px solid #e2e8f0;color:#1f2937;font-family:Arial,Helvetica,sans-serif;font-size:12.5px';
+  // Sin width:100% -- en un correo, "100%" es el ancho del panel de
+  // lectura entero (puede ser enorme), y eso dejaba un hueco gigante entre
+  // la columna de etiquetas y la de valores. Pedido explícito: "quiero las
+  // columnas juntas, justo del tamaño de lo que esté en cada celda" -- con
+  // table-layout:auto (el default) y white-space:nowrap cada columna se
+  // ajusta sola al contenido.
+  const thS = 'background:#eef2f7;color:#64748b;text-align:left;padding:6px 16px 6px 10px;font-size:10.5px;' +
+    'text-transform:uppercase;letter-spacing:.3px;border-bottom:1px solid #cbd5e1;font-family:Arial,Helvetica,sans-serif;white-space:nowrap';
+  const tdS = 'padding:6px 16px 6px 10px;border-bottom:1px solid #e2e8f0;color:#1f2937;font-family:Arial,Helvetica,sans-serif;font-size:12.5px;white-space:nowrap';
   clone.querySelectorAll('table').forEach(t => {
-    t.setAttribute('style', 'width:100%;border-collapse:collapse;border:1px solid #cbd5e1;margin:4px 0 12px');
+    t.setAttribute('style', 'border-collapse:collapse;border:1px solid #cbd5e1;margin:4px 0 12px');
     t.querySelectorAll('th').forEach((th, i) => th.setAttribute('style', thS + (i > 0 ? ';text-align:right' : '')));
     t.querySelectorAll('td').forEach(td => {
       const esPrimera = td.cellIndex === 0;
@@ -11557,7 +11568,10 @@ function _hmPrepararHtmlExport(){
   if(HM_CORREO_CH){
     try{
       const dataUrl = HM_CORREO_CH.toBase64Image('image/png', 1);
-      imgHtml = `<img src="${dataUrl}" alt="Histórico de pérdida y cargabilidad" style="max-width:600px;width:100%;display:block;margin:0 0 16px">`;
+      // Ancho FIJO, no width:100% -- en un correo "100%" es el ancho del
+      // panel de lectura completo y la imagen salía gigante (pedido
+      // explícito: "la gráfica sale muy grande cuando la pego").
+      imgHtml = `<img src="${dataUrl}" alt="Histórico de pérdida y cargabilidad" width="480" style="width:480px;max-width:100%;height:auto;display:block;margin:0 0 16px">`;
     }catch(e){ /* si falla la exportación de la gráfica, se sigue sin imagen */ }
   }
   return imgHtml + clone.innerHTML;
