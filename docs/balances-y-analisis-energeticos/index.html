@@ -435,12 +435,17 @@ select{padding:6px 10px;border:1px solid var(--border);border-radius:7px;font-si
 /* Tablitas compactas del borrador de correo de alerta -- pedido explícito
    ("todos los datos en una tablita bonita", "se desperdicia mucho
    espacio"): fila baja, sin el padding generoso de .be-tabla-creadas. */
-.correo-tabla{width:100%;border-collapse:collapse;font-size:11.5px;margin:4px 0 12px;border:1px solid var(--border);border-radius:8px;overflow:hidden}
-.correo-tabla th{background:var(--bg3);color:var(--text3);font-weight:700;text-transform:uppercase;font-size:9.5px;letter-spacing:.3px;text-align:left;padding:5px 10px}
-.correo-tabla td{padding:5px 10px;border-top:1px solid var(--border);color:var(--text)}
+.correo-tabla{border-collapse:collapse;font-size:11.5px;margin:4px auto 12px;border:1px solid var(--border);border-radius:8px;overflow:hidden}
+.correo-tabla th{background:var(--bg3);color:var(--text3);font-weight:700;text-transform:uppercase;font-size:9.5px;letter-spacing:.3px;text-align:left;padding:5px 10px;white-space:nowrap}
+.correo-tabla td{padding:5px 10px;border-top:1px solid var(--border);color:var(--text);white-space:nowrap}
 .correo-tabla tr:first-child td{border-top:none}
-.correo-tabla td:first-child{color:var(--text2);font-weight:600}
+/* .etq (etiqueta) en vez de td:first-child -- con la tabla de propuesta
+   de calibre (varios tramos, encabezado con colspan) la posición de la
+   celda ya no identifica de forma confiable cuál es la columna de
+   "Variable". */
+.correo-tabla td.etq{color:var(--text2);font-weight:600}
 .correo-tabla td.num,.correo-tabla th.num{text-align:right}
+.correo-tabla th.centro{text-align:center}
 .correo-tabla tr:nth-child(even) td{background:var(--bg)}
 .correo-tabla select{padding:3px 7px;font-size:11px;border-radius:6px}
 /* Barra "Configurar mes" -- ocupaba tanto como cualquier otra card pese a
@@ -1872,7 +1877,7 @@ html,body{overflow-x:hidden;margin:0}
         <!-- Pérdida y cargabilidad históricas del tramo, en la MISMA gráfica
              (doble eje) -- pedido explícito. Con varios tramos, un par de
              líneas (pérdida + cargabilidad) por cada uno. -->
-        <div class="chart-wrap" style="height:240px"><canvas id="correo-ch-historia"></canvas></div>
+        <div class="chart-wrap" style="height:300px"><canvas id="correo-ch-historia"></canvas></div>
       </div>
     </div>
   </div>
@@ -11432,7 +11437,14 @@ function heatmapRenderCorreo(){
   });
 
   const f$ = n => '$ ' + Math.round(n || 0).toLocaleString('es-CO');
-  const bloques = HM_CORREO_TRAMOS.map(x => {
+  const plural = HM_CORREO_TRAMOS.length > 1;
+
+  // Con varios tramos, la tabla crece en COLUMNAS (una por tramo) en vez de
+  // repetir el bloque completo apilado hacia abajo -- pedido explícito
+  // ("no quiero que se haga largo hacia abajo... que las tablas crezcan
+  // aumenten columnas"). Se calcula todo UNA vez por tramo y se reusa en
+  // las dos tablas compartidas.
+  const datosTramos = HM_CORREO_TRAMOS.map(x => {
     const {d, ultimo} = x;
     const factorStn = _hmFactorStn(ultimo.mes);
     const perdidaActual = ultimo.perdida_mes_kwh || 0;
@@ -11440,64 +11452,88 @@ function heatmapRenderCorreo(){
     const costoActual = perdidaReferida * precio;
     const costoAnual = costoActual * 12;
     const nodo1 = d.nodo_1 || '—', nodo2 = d.nodo_2 || d.nodo_1 || '—';
-
     const opciones = _hmOpcionesCalibreMayor(d.calibre);
-    let tablaCalibre, notaCalibre = '';
+    let prop = null;
     if(opciones && opciones.mayores.length){
       const elegido = HM_CORREO_CALIBRE_SEL[d.tramo] &&
         opciones.mayores.find(c => c[0] === HM_CORREO_CALIBRE_SEL[d.tramo])
         ? HM_CORREO_CALIBRE_SEL[d.tramo] : opciones.mayores[0][0];
-      const [codNuevo, areaNueva] = opciones.mayores.find(c => c[0] === elegido);
+      const [, areaNueva] = opciones.mayores.find(c => c[0] === elegido);
       const perdidaNueva = perdidaActual * (opciones.areaActual / areaNueva);
-      const costoNuevo = perdidaNueva * factorStn * precio;
-      const selectHtml = `<select onchange="heatmapCambiarCalibreCorreo('${_mselEsc(d.tramo)}', this.value)">` +
-        opciones.mayores.map(c => `<option value="${c[0]}"${c[0] === elegido ? ' selected' : ''}>${c[0]} ACSR</option>`).join('') +
-        `</select>`;
-      tablaCalibre = `
-      <table class="correo-tabla">
-        <thead><tr><th>Variable</th><th class="num">Actual</th><th class="num">Propuesto</th></tr></thead>
-        <tbody>
-          <tr><td>Calibre</td><td class="num">${_mselEsc(d.calibre || 'Sin dato')}</td><td class="num">${selectHtml}</td></tr>
-          <tr><td>Pérdida técnica</td><td class="num">${_trNum(perdidaActual)} kWh/mes</td><td class="num">${_trNum(perdidaNueva)} kWh/mes</td></tr>
-          <tr><td>Disminución de pérdida</td><td class="num">--</td><td class="num">${_trNum(perdidaActual - perdidaNueva)} kWh/mes</td></tr>
-          <tr><td>Costo de pérdida</td><td class="num">${f$(costoActual)}/mes</td><td class="num">${f$(costoNuevo)}/mes</td></tr>
-        </tbody>
-      </table>`;
-      notaCalibre = `<p style="font-size:11px;color:var(--text3);margin:4px 0 0">Estimación de orden de magnitud sobre la pérdida del conductor (I²R), asumiendo la misma corriente de carga y que la pérdida escala de forma inversa al área del conductor, se reporta lo anterior para que se evalúe de acuerdo a su criterio.</p>`;
-    } else {
-      tablaCalibre = `<p>No se pudo identificar automáticamente un calibre mayor a partir de "${_mselEsc(d.calibre || 'sin dato')}". Revisar manualmente si existe un calibre superior disponible para este tramo.</p>`;
+      prop = {opciones, elegido, perdidaNueva, costoNuevo: perdidaNueva * factorStn * precio};
     }
+    return {d, ultimo, factorStn, perdidaActual, perdidaReferida, costoActual, costoAnual, nodo1, nodo2, prop};
+  });
+  const etiquetaTramo = dt => `Nodo ${_mselEsc(dt.nodo1)} → Nodo ${_mselEsc(dt.nodo2)}`;
 
-    return `
-      <p style="margin:14px 0 2px"><b>Tramo: Nodo ${_mselEsc(nodo1)} → Nodo ${_mselEsc(nodo2)}</b></p>
-      <table class="correo-tabla">
-        <tbody>
-          <tr><td>Pérdida técnica</td><td class="num">${_trNum(perdidaActual)} kWh/mes</td></tr>
-          <tr><td>Nivel de tensión</td><td class="num">Nivel 2</td></tr>
-          <tr><td>Cargabilidad tramo (máx.)</td><td class="num">${_trNum(ultimo.cargabilidad_max_pct, 2)} %</td></tr>
-          <tr><td>Longitud tramo</td><td class="num">${d.longitud_km != null ? _trNum(d.longitud_km, 3) + ' km' : 'Sin dato'}</td></tr>
-          <tr><td>Calibre actual</td><td class="num">${_mselEsc(d.calibre || 'Sin dato')}</td></tr>
-        </tbody>
-      </table>
+  // Tabla 1: datos técnicos + análisis económico -- una columna de valor
+  // por tramo, "Variable" como única columna de etiquetas compartida.
+  const filasDatos = [
+    ['Pérdida técnica', dt => `${_trNum(dt.perdidaActual)} kWh/mes`],
+    ['Nivel de tensión', () => 'Nivel 2'],
+    ['Cargabilidad tramo (máx.)', dt => `${_trNum(dt.ultimo.cargabilidad_max_pct, 2)} %`],
+    ['Longitud tramo', dt => dt.d.longitud_km != null ? `${_trNum(dt.d.longitud_km, 3)} km` : 'Sin dato'],
+    ['Calibre actual', dt => _mselEsc(dt.d.calibre || 'Sin dato')],
+    ['Total pérdida referida al STN', dt => `${_trNum(dt.perdidaReferida)} kWh/mes`],
+    ['Factor STN (Nivel 2)', dt => dt.factorStn.toFixed(6)],
+    ['Costo de pérdida del tramo', dt => `${f$(dt.costoActual)}/mes`],
+    ['Costo de pérdida del tramo (anual, aprox.)', dt => `${f$(dt.costoAnual)}/año`],
+  ];
+  const tablaDatos = `
+    <table class="correo-tabla">
+      <thead><tr><th>Variable</th>${datosTramos.map(dt => `<th class="centro">${etiquetaTramo(dt)}</th>`).join('')}</tr></thead>
+      <tbody>${filasDatos.map(([etq, fn]) => `<tr><td class="etq">${etq}</td>${datosTramos.map(dt => `<td class="num">${fn(dt)}</td>`).join('')}</tr>`).join('')}</tbody>
+    </table>`;
 
-      <p style="margin:10px 0 2px">Con base en la energía estimada como pérdida técnica en el tramo analizado, se realiza una aproximación del impacto económico asociado, considerando el costo de la energía correspondiente.</p>
-      <table class="correo-tabla">
-        <tbody>
-          <tr><td>Total pérdida referida al STN</td><td class="num">${_trNum(perdidaReferida)} kWh/mes</td></tr>
-          <tr><td>Factor STN (Nivel 2)</td><td class="num">${factorStn.toFixed(6)}</td></tr>
-          <tr><td>Costo de pérdida del tramo</td><td class="num">${f$(costoActual)}/mes</td></tr>
-          <tr><td>Costo de pérdida del tramo (anual, aprox.)</td><td class="num">${f$(costoAnual)}/año</td></tr>
-        </tbody>
-      </table>
+  // Tabla 2: propuesta de calibre -- Actual+Propuesto por tramo (2
+  // columnas), con una fila de encabezado combinada (colspan) arriba para
+  // identificar a cuál tramo corresponde cada par -- pedido explícito.
+  const hayPropuesta = datosTramos.some(dt => dt.prop);
+  let tablaCalibre = '';
+  if(hayPropuesta){
+    const filaCalibre = dt => dt.prop
+      ? `<td class="num">${_mselEsc(dt.d.calibre || 'Sin dato')}</td><td class="num">` +
+        `<select onchange="heatmapCambiarCalibreCorreo('${_mselEsc(dt.d.tramo)}', this.value)">` +
+        dt.prop.opciones.mayores.map(c => `<option value="${c[0]}"${c[0] === dt.prop.elegido ? ' selected' : ''}>${c[0]} ACSR</option>`).join('') +
+        `</select></td>`
+      : `<td class="num">${_mselEsc(dt.d.calibre || 'Sin dato')}</td><td class="num">N/D</td>`;
+    const filaPerdida = dt => dt.prop
+      ? `<td class="num">${_trNum(dt.perdidaActual)} kWh/mes</td><td class="num">${_trNum(dt.prop.perdidaNueva)} kWh/mes</td>`
+      : `<td class="num">${_trNum(dt.perdidaActual)} kWh/mes</td><td class="num">--</td>`;
+    const filaDisminucion = dt => dt.prop
+      ? `<td class="num">--</td><td class="num">${_trNum(dt.perdidaActual - dt.prop.perdidaNueva)} kWh/mes</td>`
+      : `<td class="num">--</td><td class="num">--</td>`;
+    const filaCosto = dt => dt.prop
+      ? `<td class="num">${f$(dt.costoActual)}/mes</td><td class="num">${f$(dt.prop.costoNuevo)}/mes</td>`
+      : `<td class="num">${f$(dt.costoActual)}/mes</td><td class="num">--</td>`;
+    tablaCalibre = `
+    <table class="correo-tabla">
+      <thead>
+        <tr><th></th>${datosTramos.map(dt => `<th class="centro" colspan="2">${etiquetaTramo(dt)}</th>`).join('')}</tr>
+        <tr><th>Variable</th>${datosTramos.map(() => `<th class="num">Actual</th><th class="num">Propuesto</th>`).join('')}</tr>
+      </thead>
+      <tbody>
+        <tr><td class="etq">Calibre</td>${datosTramos.map(filaCalibre).join('')}</tr>
+        <tr><td class="etq">Pérdida técnica</td>${datosTramos.map(filaPerdida).join('')}</tr>
+        <tr><td class="etq">Disminución de pérdida</td>${datosTramos.map(filaDisminucion).join('')}</tr>
+        <tr><td class="etq">Costo de pérdida</td>${datosTramos.map(filaCosto).join('')}</tr>
+      </tbody>
+    </table>`;
+  }
+  const notaCalibre = hayPropuesta
+    ? `<p style="font-size:11px;color:var(--text3);margin:4px 0 0">Como referencia para la evaluación de alternativas, se realizó una estimación preliminar del orden de magnitud de las pérdidas del conductor (I²R), manteniendo constante la corriente de carga y considerando que la pérdida varía de forma inversamente proporcional al área de la sección transversal. Esta estimación se presenta únicamente como un valor de referencia y queda sujeta su validación y criterios del Operador de Red.</p>`
+    : '';
 
-      <p style="margin:10px 0 2px">Como alternativa de mejora para el tramo identificado, se presenta una propuesta preliminar de cambio de calibre del conductor, estimada a partir de las condiciones actuales de operación y del comportamiento de las pérdidas técnicas. El calibre propuesto deberá ser validado posteriormente mediante los cálculos y criterios técnicos aplicables antes de definir la intervención definitiva.</p>
-      ${tablaCalibre}
-      ${notaCalibre}`;
-  }).join('<hr style="border:none;border-top:1px solid var(--border);margin:18px 0">');
-
+  const bloques = `
+    <p style="margin:0 0 2px">Con base en la energía estimada como pérdida técnica en ${plural ? 'los tramos analizados' : 'el tramo analizado'}, se realiza una aproximación del impacto económico asociado, considerando el costo de la energía correspondiente.</p>
+    ${tablaDatos}
+    <p style="margin:10px 0 2px">Como alternativa de mejora para ${plural ? 'los tramos identificados' : 'el tramo identificado'}, se presenta una propuesta preliminar de cambio de calibre del conductor, estimada a partir de las condiciones actuales de operación y del comportamiento de las pérdidas técnicas. El calibre propuesto deberá ser validado posteriormente mediante los cálculos y criterios técnicos aplicables antes de definir la intervención definitiva.</p>
+    ${tablaCalibre}
+    ${notaCalibre}`;
+  const sufijoTramos = plural ? `${HM_CORREO_TRAMOS.length} tramos que presentan` : 'un tramo que presenta';
   document.getElementById('correo-cuerpo').innerHTML = `
     <p>Buen día,</p>
-    <p>Se identificó${HM_CORREO_TRAMOS.length > 1 ? 'n ' + HM_CORREO_TRAMOS.length + ' tramos' : ' un tramo'} con pérdida técnica relevante en el circuito ${_mselEsc(circuitoNombre)}, ubicado en la zona ${_mselEsc(primero.d.zona || 'sin dato')}.</p>
+    <p>Dando cumplimiento a las funciones establecidas en la <b>CSS 040/2026</b>, se realizó la revisión y análisis de las pérdidas técnicas en los circuitos de la <b>${_mselEsc(primero.d.zona || 'zona correspondiente')}</b>, identificando en el circuito <b>${_mselEsc(circuitoNombre)}</b> ${sufijoTramos} pérdidas técnicas significativas. Esta condición representa una oportunidad de mejora en la eficiencia de la red, por lo que se propone evaluar las alternativas técnicas de adecuación ${plural ? 'de los tramos' : 'del tramo'}, así como su respectiva viabilidad económica.</p>
     ${bloques}
     <p>Quedamos atentos a sus comentarios.</p>`;
 }
@@ -11552,12 +11588,19 @@ function _hmPrepararHtmlExport(){
   const thS = 'background:#eef2f7;color:#64748b;text-align:left;padding:6px 16px 6px 10px;font-size:10.5px;' +
     'text-transform:uppercase;letter-spacing:.3px;border-bottom:1px solid #cbd5e1;font-family:Arial,Helvetica,sans-serif;white-space:nowrap';
   const tdS = 'padding:6px 16px 6px 10px;border-bottom:1px solid #e2e8f0;color:#1f2937;font-family:Arial,Helvetica,sans-serif;font-size:12.5px;white-space:nowrap';
+  // Por CLASE (.etq/.centro/.num), no por posición de celda -- con la
+  // tabla de propuesta de calibre (encabezado con colspan para agrupar las
+  // columnas de cada tramo) el índice de celda ya no es un indicador
+  // confiable de qué representa cada columna.
   clone.querySelectorAll('table').forEach(t => {
-    t.setAttribute('style', 'border-collapse:collapse;border:1px solid #cbd5e1;margin:4px 0 12px');
-    t.querySelectorAll('th').forEach((th, i) => th.setAttribute('style', thS + (i > 0 ? ';text-align:right' : '')));
+    t.setAttribute('style', 'border-collapse:collapse;border:1px solid #cbd5e1;margin:8px auto 14px');
+    t.querySelectorAll('th').forEach(th => {
+      const align = th.classList.contains('centro') ? 'center' : (th.classList.contains('num') ? 'right' : 'left');
+      th.setAttribute('style', thS + ';text-align:' + align);
+    });
     t.querySelectorAll('td').forEach(td => {
-      const esPrimera = td.cellIndex === 0;
-      td.setAttribute('style', tdS + (esPrimera ? ';font-weight:600;color:#475569' : ';text-align:right'));
+      const esEtq = td.classList.contains('etq');
+      td.setAttribute('style', tdS + (esEtq ? ';font-weight:600;color:#475569' : ';text-align:right'));
     });
   });
   clone.querySelectorAll('p').forEach(p => p.setAttribute('style',
@@ -11572,11 +11615,12 @@ function _hmPrepararHtmlExport(){
       const img = document.createElement('img');
       img.src = dataUrl;
       img.alt = 'Histórico de pérdida y cargabilidad';
-      img.width = 480;
+      img.width = 580;
       // Ancho FIJO, no width:100% -- en un correo "100%" es el ancho del
       // panel de lectura completo y la imagen salía gigante (pedido
-      // explícito: "la gráfica sale muy grande cuando la pego").
-      img.setAttribute('style', 'width:480px;max-width:100%;height:auto;display:block;margin:12px 0 16px');
+      // explícito: "la gráfica sale muy grande cuando la pego"). Un poco
+      // más grande que antes (480 -> 580), pedido explícito.
+      img.setAttribute('style', 'width:580px;max-width:100%;height:auto;display:block;margin:12px auto 16px');
       const primeraTabla = clone.querySelector('table');
       if(primeraTabla) primeraTabla.insertAdjacentElement('afterend', img);
       else clone.insertBefore(img, clone.firstChild);
