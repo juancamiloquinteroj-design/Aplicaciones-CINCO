@@ -11463,7 +11463,7 @@ function heatmapRenderCorreo(){
           <tr><td>Costo de pérdida</td><td class="num">${f$(costoActual)}/mes</td><td class="num">${f$(costoNuevo)}/mes</td></tr>
         </tbody>
       </table>`;
-      notaCalibre = `<p style="font-size:11px;color:var(--text3);margin:4px 0 0">Estimación de orden de magnitud sobre la pérdida del conductor (I²R), asumiendo la misma corriente de carga y que la pérdida escala de forma inversa al área del conductor. No incluye el costo de la obra (cambio de conductor, soportes, tensionado) ni verifica la capacidad mecánica del calibre propuesto -- revisar en campo antes de ejecutar.</p>`;
+      notaCalibre = `<p style="font-size:11px;color:var(--text3);margin:4px 0 0">Estimación de orden de magnitud sobre la pérdida del conductor (I²R), asumiendo la misma corriente de carga y que la pérdida escala de forma inversa al área del conductor, se reporta lo anterior para que se evalúe de acuerdo a su criterio.</p>`;
     } else {
       tablaCalibre = `<p>No se pudo identificar automáticamente un calibre mayor a partir de "${_mselEsc(d.calibre || 'sin dato')}". Revisar manualmente si existe un calibre superior disponible para este tramo.</p>`;
     }
@@ -11480,7 +11480,7 @@ function heatmapRenderCorreo(){
         </tbody>
       </table>
 
-      <p style="margin:10px 0 2px">Análisis económico de la pérdida técnica del tramo:</p>
+      <p style="margin:10px 0 2px">Con base en la energía estimada como pérdida técnica en el tramo analizado, se realiza una aproximación del impacto económico asociado, considerando el costo de la energía correspondiente.</p>
       <table class="correo-tabla">
         <tbody>
           <tr><td>Total pérdida referida al STN</td><td class="num">${_trNum(perdidaReferida)} kWh/mes</td></tr>
@@ -11490,7 +11490,7 @@ function heatmapRenderCorreo(){
         </tbody>
       </table>
 
-      <p style="margin:10px 0 2px">Propuesta aproximada de cambio de calibre (elegí el calibre propuesto abajo si querés comparar otro):</p>
+      <p style="margin:10px 0 2px">Como alternativa de mejora para el tramo identificado, se presenta una propuesta preliminar de cambio de calibre del conductor, estimada a partir de las condiciones actuales de operación y del comportamiento de las pérdidas técnicas. El calibre propuesto deberá ser validado posteriormente mediante los cálculos y criterios técnicos aplicables antes de definir la intervención definitiva.</p>
       ${tablaCalibre}
       ${notaCalibre}`;
   }).join('<hr style="border:none;border-top:1px solid var(--border);margin:18px 0">');
@@ -11564,17 +11564,25 @@ function _hmPrepararHtmlExport(){
     (p.getAttribute('style') || '') + ';font-family:Arial,Helvetica,sans-serif;font-size:12.5px;color:#1f2937;margin:8px 0'));
   clone.querySelectorAll('hr').forEach(hr => hr.setAttribute('style', 'border:none;border-top:1px solid #cbd5e1;margin:18px 0'));
 
-  let imgHtml = '';
+  // La gráfica va DEBAJO de la primera tabla (datos del tramo), no antes de
+  // todo el cuerpo -- pedido explícito.
   if(HM_CORREO_CH){
     try{
       const dataUrl = HM_CORREO_CH.toBase64Image('image/png', 1);
+      const img = document.createElement('img');
+      img.src = dataUrl;
+      img.alt = 'Histórico de pérdida y cargabilidad';
+      img.width = 480;
       // Ancho FIJO, no width:100% -- en un correo "100%" es el ancho del
       // panel de lectura completo y la imagen salía gigante (pedido
       // explícito: "la gráfica sale muy grande cuando la pego").
-      imgHtml = `<img src="${dataUrl}" alt="Histórico de pérdida y cargabilidad" width="480" style="width:480px;max-width:100%;height:auto;display:block;margin:0 0 16px">`;
+      img.setAttribute('style', 'width:480px;max-width:100%;height:auto;display:block;margin:12px 0 16px');
+      const primeraTabla = clone.querySelector('table');
+      if(primeraTabla) primeraTabla.insertAdjacentElement('afterend', img);
+      else clone.insertBefore(img, clone.firstChild);
     }catch(e){ /* si falla la exportación de la gráfica, se sigue sin imagen */ }
   }
-  return imgHtml + clone.innerHTML;
+  return clone.innerHTML;
 }
 
 function _hmCopiarCorreoAlPortapapeles(){
