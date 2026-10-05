@@ -1769,24 +1769,28 @@ html,body{overflow-x:hidden;margin:0}
 </div>
 
 <div id="tr-sub-heatmap">
-  <div class="fbar" style="margin-bottom:12px;flex-wrap:wrap;gap:10px;align-items:center">
-    <label>Zona</label>
-    <div class="msel" id="msel-hm-zona"></div>
-    <label>Subestación</label>
-    <div class="msel" id="msel-hm-sub"></div>
-    <label>Circuito</label>
-    <div class="msel" id="msel-hm-circ"></div>
+  <div class="fbar" style="margin-bottom:10px;flex-wrap:wrap;gap:10px;align-items:center">
+    <button type="button" class="btn-theme" style="width:auto;padding:7px 14px" onclick="heatmapToggleFiltros()">🔽 Filtros</button>
     <div style="margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
       <button type="button" class="be-modo-btn activo" id="hm-btn-perdida" onclick="heatmapMetrica('perdida')">Pérdida</button>
       <button type="button" class="be-modo-btn" id="hm-btn-carga" onclick="heatmapMetrica('cargabilidad')">Cargabilidad</button>
       <button type="button" class="btn-theme" style="width:auto;padding:7px 14px" onclick="heatmapAbrirUmbrales()">⚙ Umbrales</button>
     </div>
   </div>
+  <div id="hm-filtros" class="hidden fbar" style="margin-bottom:12px;flex-wrap:wrap;gap:10px;align-items:center;padding:12px;border:1px solid var(--border);border-radius:10px;background:var(--card-bg)">
+    <label>Zona</label>
+    <div class="msel" id="msel-hm-zona"></div>
+    <label>Subestación</label>
+    <div class="msel" id="msel-hm-sub"></div>
+    <label>Circuito</label>
+    <div class="msel" id="msel-hm-circ"></div>
+    <button type="button" class="btn-theme" style="width:auto;padding:7px 16px;margin-left:auto" onclick="heatmapAplicarFiltros()">Aplicar filtros</button>
+  </div>
   <div class="card">
     <div class="card-title" id="hm-titulo">Mapa de calor</div>
     <div class="card-sub" id="hm-sub"></div>
     <div id="hm-leyenda" style="display:flex;align-items:center;gap:8px;font-size:11px;color:var(--text2);margin:6px 0 10px"></div>
-    <div id="hm-grid" style="overflow:auto"></div>
+    <div id="hm-grid" style="overflow:auto;max-height:420px"></div>
   </div>
 
   <div id="hm-modal-umbrales" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;display:flex;align-items:center;justify-content:center" onclick="if(event.target===this) heatmapCerrarUmbrales()">
@@ -10968,7 +10972,11 @@ function heatmapMetrica(m){
   HM_METRICA = m;
   document.getElementById('hm-btn-perdida').classList.toggle('activo', m === 'perdida');
   document.getElementById('hm-btn-carga').classList.toggle('activo', m === 'cargabilidad');
-  heatmapCargar();
+  heatmapAplicarFiltros();
+}
+
+function heatmapToggleFiltros(){
+  document.getElementById('hm-filtros').classList.toggle('hidden');
 }
 
 function _hmColor(valor, p99){
@@ -11010,7 +11018,7 @@ function _hmActualizarOpciones(){
 }
 
 function _hmAlCambiar(){
-  if(!HM_ACTUALIZANDO) heatmapCargar();
+  if(!HM_ACTUALIZANDO) _hmActualizarOpciones();
 }
 
 function _hmRatio(valor, max){
@@ -11028,6 +11036,19 @@ async function heatmapCargar(){
     catch(e){ document.getElementById('hm-sub').textContent = 'No se pudieron cargar los filtros.'; return; }
   }
   _hmActualizarOpciones();
+  // Por defecto se filtra a UNA sola zona (la primera) para que el mapa no
+  // salga gigante al abrir la pestaña -- pedido explícito ("por defecto
+  // aparezca un filtro, y una zona en específico"). El usuario puede abrir
+  // "Filtros" y cambiarla o quitarla con el botón "Aplicar filtros".
+  if(HM_OPC.zonas && HM_OPC.zonas.length && mselValores('msel-hm-zona').length === 0){
+    mselSetSeleccionSilent('msel-hm-zona', [HM_OPC.zonas[0]]);
+    _hmActualizarOpciones();
+  }
+  await heatmapAplicarFiltros();
+}
+
+async function heatmapAplicarFiltros(){
+  if(DEMO || !HM_OPC) return;
   const zs = mselValores('msel-hm-zona'), ss = mselValores('msel-hm-sub'), cs = mselValores('msel-hm-circ');
   const p = new URLSearchParams({metrica: HM_METRICA, nivel: 'tramo'});
   if(zs.length) p.set('zonas', zs.join('|'));
@@ -11060,13 +11081,20 @@ function heatmapRender(d, zs, ss, cs){
     (isNaN(minP) || (t.perdida_mes_kwh ?? 0) >= minP) &&
     (isNaN(minC) || (t.cargabilidad_max_pct ?? 0) >= minC));
   const max = items.reduce((m, t) => Math.max(m, t.valor || 0), 0) || 1;
-  const alcance = cs.length ? `${cs.length} circuito${cs.length === 1 ? '' : 's'}` :
-                  (zs.length || ss.length) ? 'filtro aplicado' : 'todo el sistema';
+  // Si queda un solo circuito filtrado, se muestra su nombre completo
+  // (estructura) en vez de un genérico "1 circuito" -- pedido explícito.
+  let alcance;
+  if(cs.length === 1){
+    const circ = HM_OPC.circuitos.find(c => c.circuito === cs[0]);
+    alcance = circ ? (circ.estructura || circ.circuito) : cs[0];
+  } else if(cs.length){
+    alcance = `${cs.length} circuitos`;
+  } else {
+    alcance = (zs.length || ss.length) ? 'filtro aplicado' : 'todo el sistema';
+  }
   document.getElementById('hm-titulo').textContent =
     `${esMetrica ? 'Pérdida' : 'Cargabilidad'} por tramo -- ${alcance} (${d.mes})`;
-  const umbrales = (isNaN(minP) && isNaN(minC)) ? '' : ` · ${items.length.toLocaleString('es-CO')} de ${d.items.length.toLocaleString('es-CO')} cumplen el umbral`;
-  document.getElementById('hm-sub').textContent =
-    `${d.items.length.toLocaleString('es-CO')} tramos${umbrales}. Haz clic en un cuadro para ver su historia.`;
+  document.getElementById('hm-sub').textContent = '';
 
   HM_CELDAS = items;
 
@@ -11102,8 +11130,13 @@ function heatmapRender(d, zs, ss, cs){
     `<div id="hm-panel-vacio" style="font-size:12px;color:var(--text3);padding:26px 16px;text-align:center;border:1px dashed var(--border);border-radius:10px">Hacé clic en un tramo del mapa para ver su detalle.</div>` +
     `<div id="hm-panel-datos" style="display:none">` +
     `<div id="hm-panel-titulo" style="font-weight:700;font-size:13px;margin-bottom:10px"></div>` +
-    `<div id="hm-panel-campos" style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:16px"></div>` +
-    `<div class="chart-wrap" style="height:240px"><canvas id="hm-ch-historia"></canvas></div>` +
+    `<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">` +
+    `<span style="font-size:11px;color:var(--text3);flex:1">Histórico</span>` +
+    `<button type="button" class="be-modo-btn be-icon-btn" style="width:22px;height:22px;font-size:11px;opacity:.6" onclick="heatmapToggleDatos()" title="Ver datos">▤</button>` +
+    `</div>` +
+    `<div class="chart-wrap" style="height:220px;margin-bottom:12px"><canvas id="hm-ch-historia"></canvas></div>` +
+    `<div id="hm-panel-tabla" class="hidden" style="overflow:auto;max-height:180px;margin-bottom:12px"></div>` +
+    `<div id="hm-panel-campos"></div>` +
     `</div></div></div>`;
 
   const canvas = document.getElementById('hm-canvas');
@@ -11137,50 +11170,70 @@ function heatmapRender(d, zs, ss, cs){
 }
 
 function _hmCampo(etiqueta, valor){
-  return `<div><div style="font-size:11px;color:var(--text3)">${_mselEsc(etiqueta)}</div><div style="font-size:13px;font-weight:700">${_mselEsc(String(valor))}</div></div>`;
+  return `<div><span class="etiqueta">${_mselEsc(etiqueta)}:</span> <span class="valor">${_mselEsc(String(valor))}</span></div>`;
 }
 
 function heatmapAbrirUmbrales(){ document.getElementById('hm-modal-umbrales').classList.remove('hidden'); }
 function heatmapCerrarUmbrales(){ document.getElementById('hm-modal-umbrales').classList.add('hidden'); }
 function heatmapAplicarUmbrales(){ heatmapCerrarUmbrales(); heatmapFiltrarUmbral(); }
 
+function heatmapToggleDatos(){
+  document.getElementById('hm-panel-tabla').classList.toggle('hidden');
+}
+
 async function heatmapHistoria(t){
   const vacio = document.getElementById('hm-panel-vacio');
   const datos = document.getElementById('hm-panel-datos');
   vacio.style.display = 'none';
   datos.style.display = '';
+  document.getElementById('hm-panel-tabla').classList.add('hidden');
+  document.getElementById('hm-panel-tabla').innerHTML = '';
   document.getElementById('hm-panel-titulo').textContent = `${t.estructura || t.circuito} · ${_trNodos(t)}`;
-  document.getElementById('hm-panel-campos').innerHTML = '<div style="grid-column:1/-1;font-size:12px;color:var(--text3)">Cargando…</div>';
+  document.getElementById('hm-panel-campos').innerHTML = '<div style="font-size:12px;color:var(--text3)">Cargando…</div>';
   try{
     const p = new URLSearchParams({circuito: t.circuito, tramo: t.tramo});
     const d = await apiGet(`/api/tramos/detalle?${p}`, 60000);
     const serie = d.serie_mensual || [];
     const ultimo = serie[serie.length - 1] || {};
     document.getElementById('hm-panel-titulo').textContent = `${d.estructura || d.circuito} · ${_trNodos(d)}`;
-    document.getElementById('hm-panel-campos').innerHTML = [
-      _hmCampo('Circuito', d.circuito),
-      _hmCampo('Código CGM', d.nemonico_cgm || '—'),
-      _hmCampo('Zona', d.zona || '—'),
-      _hmCampo('Calibre', d.calibre || 'Sin dato'),
-      _hmCampo('Distancia', d.longitud_km != null ? `${_trNum(d.longitud_km, 3)} km` : 'Sin dato'),
-      _hmCampo('Pérdida del mes', `${_trNum(ultimo.perdida_mes_kwh)} kWh/mes`),
-      _hmCampo('Cargabilidad máx.', `${_trNum(ultimo.cargabilidad_max_pct, 2)} %`),
-      _hmCampo('Caída de tensión', `${_trNum(ultimo.caida_max_pct, 2)} %`),
-      _hmCampo('Tensión mínima', `${_trNum(ultimo.tension_min_pu, 4)} pu`),
-    ].join('');
+    // Tarjeta compacta -- mismo estilo que Nivel de Tensión/Nivel 3/Nivel 4
+    // (.alim-resumen-mini > .alim-resumen-compacta), sin el bloque de % grande
+    // (acá no hay un único indicador central como el Índice de Pérdida).
+    document.getElementById('hm-panel-campos').innerHTML = `<div class="alim-resumen-mini"><div class="alim-resumen-compacta" style="margin:0">
+      <div class="alim-resumen-compacta-titulo">Datos del tramo (${d.mes || ''})</div>
+      <div class="alim-resumen-compacta-grid">
+        ${_hmCampo('Circuito', d.circuito)}
+        ${_hmCampo('Código CGM', d.nemonico_cgm || '—')}
+        ${_hmCampo('Zona', d.zona || '—')}
+        ${_hmCampo('Calibre', d.calibre || 'Sin dato')}
+        ${_hmCampo('Distancia', d.longitud_km != null ? `${_trNum(d.longitud_km, 3)} km` : 'Sin dato')}
+        ${_hmCampo('Pérdida del mes', `${_trNum(ultimo.perdida_mes_kwh)} kWh/mes`)}
+        ${_hmCampo('Cargabilidad máx.', `${_trNum(ultimo.cargabilidad_max_pct, 2)} %`)}
+        ${_hmCampo('Caída de tensión', `${_trNum(ultimo.caida_max_pct, 2)} %`)}
+        ${_hmCampo('Tensión mínima', `${_trNum(ultimo.tension_min_pu, 4)} pu`)}
+      </div>
+    </div></div>`;
     const esMetrica = HM_METRICA === 'perdida';
+    document.getElementById('hm-panel-tabla').innerHTML = esMetrica
+      ? `<table class="be-tabla-creadas"><thead><tr><th>Mes</th><th>Pérdida tramo (kWh)</th><th>Pérdida total circuito (kWh)</th></tr></thead><tbody>${
+          serie.map(s => `<tr><td>${s.mes}</td><td class="num">${_trNum(s.perdida_mes_kwh)}</td><td class="num">${s.circuito_perdida_total_kwh != null ? _trNum(s.circuito_perdida_total_kwh) : '—'}</td></tr>`).join('')
+        }</tbody></table>`
+      : `<table class="be-tabla-creadas"><thead><tr><th>Mes</th><th>Cargabilidad máx. (%)</th><th>Cargabilidad prom. (%)</th></tr></thead><tbody>${
+          serie.map(s => `<tr><td>${s.mes}</td><td class="num">${_trNum(s.cargabilidad_max_pct, 2)}</td><td class="num">${_trNum(s.cargabilidad_prom_pct, 2)}</td></tr>`).join('')
+        }</tbody></table>`;
     if(HM_CH) HM_CH.destroy();
     // En la vista de pérdida, se agrega -- en eje aparte, porque es un orden de
     // magnitud mayor -- la pérdida técnica TOTAL del circuito (todos los
     // niveles), sacada de "Resumen Perdida Tecnica.csv", para comparar cuánto
-    // pesa este tramo dentro del circuito completo.
+    // pesa este tramo dentro del circuito completo. Ambas series en líneas
+    // (pedido explícito).
     HM_CH = new Chart(document.getElementById('hm-ch-historia'), {
       data: {
         labels: serie.map(s => s.mes),
         datasets: esMetrica
           ? [
-              {type: 'bar', label: 'Pérdida del tramo (kWh)', data: serie.map(s => s.perdida_mes_kwh),
-                backgroundColor: '#2563eb', yAxisID: 'y'},
+              {type: 'line', label: 'Pérdida del tramo (kWh)', data: serie.map(s => s.perdida_mes_kwh),
+                borderColor: '#2563eb', backgroundColor: '#2563eb22', borderWidth: 2, pointRadius: 3, tension: 0, yAxisID: 'y'},
               {type: 'line', label: 'Pérdida técnica total del circuito (kWh)', data: serie.map(s => s.circuito_perdida_total_kwh),
                 borderColor: '#16a34a', backgroundColor: '#16a34a22', borderWidth: 2, pointRadius: 3, tension: 0,
                 spanGaps: true, yAxisID: 'y1'},
@@ -11199,7 +11252,7 @@ async function heatmapHistoria(t){
       },
     });
   }catch(e){
-    document.getElementById('hm-panel-campos').innerHTML = '<div style="grid-column:1/-1;font-size:12px;color:var(--text3)">No se pudo cargar el detalle del tramo.</div>';
+    document.getElementById('hm-panel-campos').innerHTML = '<div style="font-size:12px;color:var(--text3)">No se pudo cargar el detalle del tramo.</div>';
   }
 }
 
@@ -28654,6 +28707,12 @@ function mselClear(id){
 function mselClearSilent(id){
   const st = MSEL[id]; if(!st) return;
   st.seleccion = new Set();
+  mselRender(id);
+}
+
+function mselSetSeleccionSilent(id, valores){
+  const st = MSEL[id]; if(!st) return;
+  st.seleccion = new Set(valores);
   mselRender(id);
 }
 
