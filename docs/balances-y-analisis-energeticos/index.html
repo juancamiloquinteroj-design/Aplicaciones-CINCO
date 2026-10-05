@@ -10878,10 +10878,6 @@ async function ipPollCarga(jobId, btn, textoOriginal){
   }
 }
 
-/* ---- Parametrización: color por zona ---- */
-let TR_ALERTAS = [];
-let TR_OPC_CIRC = [];
-let TR_CH = {};
 let TR_MESES = [];
 
 function _trNum(v, dec){
@@ -10897,253 +10893,21 @@ function _trNodos(f){
   return `${f.tramo} (nodos no definidos)`;
 }
 
-function _trUmbrales(){
-  return {
-    umbral_perdida_kwh: document.getElementById('tr-u-perdida').value,
-    umbral_carga_pct: document.getElementById('tr-u-carga').value,
-    umbral_carga_critica_pct: document.getElementById('tr-u-critica').value,
-    umbral_caida_pct: document.getElementById('tr-u-caida').value,
-    umbral_tension_pu: document.getElementById('tr-u-tension').value,
-  };
-}
-
-function _trParams(){
-  const p = new URLSearchParams(_trUmbrales());
-  const desde = document.getElementById('tr-desde').value;
-  const hasta = document.getElementById('tr-hasta').value;
-  if(desde) p.set('desde', desde);
-  if(hasta) p.set('hasta', hasta);
-  const zonas = mselValores('msel-tr-zona').join('|');
-  const circs = mselValores('msel-tr-circuito').join('|');
-  if(zonas) p.set('zonas', zonas);
-  if(circs) p.set('circuitos', circs);
-  p.set('top', document.getElementById('tr-top').value);
-  return p;
-}
-
-function _trInitFiltros(){
-  if(MSEL['msel-tr-zona']) return;
-  mselInit('msel-tr-zona', 'Zona', 'Todas', [], () => { _trCircuitosSegunZona(); tramosCargarResumen(); });
-  mselInit('msel-tr-circuito', 'Circuito', 'Todos', [], () => tramosCargarResumen(), [], 'Buscar circuito...');
-}
-
-function _trCircuitosSegunZona(){
-  const zonas = mselValores('msel-tr-zona');
-  const lista = TR_OPC_CIRC.filter(c => !zonas.length || zonas.includes(c.zona));
-  mselSetOpciones('msel-tr-circuito', lista.map(c => ({value: c.circuito, label: c.estructura || c.circuito})));
-}
-
-function _trFijarMeses(meses){
-  TR_MESES = meses;
-  const d = document.getElementById('tr-desde'), h = document.getElementById('tr-hasta');
-  if(!d.value || !meses.includes(d.value)) d.value = meses[0];
-  if(!h.value || !meses.includes(h.value)) h.value = meses[meses.length - 1];
-  document.getElementById('tr-subir-mes').value = document.getElementById('tr-subir-mes').value || meses[meses.length - 1];
-}
-
+// Punto de entrada al abrir "Tramos y Alertas" -- arranca directo en el
+// Heatmap (la pestaña Alertas con su propio filtro Desde/Hasta ya no existe).
 async function tramosCargar(){
-  const resumen = document.getElementById('tr-resumen');
-  if(DEMO){ resumen.textContent = 'Modo demo: sin datos de tramos.'; return; }
-  _trInitFiltros();
+  if(DEMO){ document.getElementById('hm-sub').textContent = 'Modo demo: sin datos de tramos.'; return; }
   try{
     const r = await apiGet('/api/tramos/meses');
     const meses = r.meses || [];
     if(!meses.length){
-      resumen.textContent = 'Todavía no hay ningún mes cargado. Copiá los Parquet a la carpeta de tramos o subilos abajo.';
+      document.getElementById('hm-sub').textContent = 'Todavía no hay ningún mes cargado. Copiá los Parquet a la carpeta de tramos.';
       return;
     }
-    _trFijarMeses(meses);
+    TR_MESES = meses;
     tramosIrSub('heatmap');
   }catch(e){
-    resumen.textContent = 'No se pudo consultar los meses cargados.';
-  }
-}
-
-async function tramosCargarResumen(){
-  const resumen = document.getElementById('tr-resumen');
-  if(!document.getElementById('tr-desde').value) return;
-  resumen.textContent = 'Calculando…';
-  document.getElementById('tr-detalle-card').style.display = 'none';
-  try{
-    const p = _trParams();
-    const [r, a] = await Promise.all([
-      apiGet(`/api/tramos/resumen?${p}`, 240000),
-      apiGet(`/api/tramos/alertas?${p}`, 240000),
-    ]);
-    TR_OPC_CIRC = r.circuitos_opciones;
-    mselSetOpciones('msel-tr-zona', r.opciones_zona.map(z => ({value: z, label: z})));
-    _trCircuitosSegunZona();
-
-    document.getElementById('tr-kpi-perdida').textContent = `${_trNum(r.kpi.perdida_kwh / 1000, 1)} MWh`;
-    document.getElementById('tr-kpi-tramos').textContent = _trNum(r.kpi.tramos);
-    document.getElementById('tr-kpi-alertas').textContent = _trNum(r.kpi.tramos_alerta);
-    document.getElementById('tr-kpi-circuitos').textContent = _trNum(r.kpi.circuitos);
-    resumen.textContent =
-      `Periodo ${r.desde} a ${r.hasta} (${r.meses.length} mes${r.meses.length === 1 ? '' : 'es'}). ` +
-      `Alertas: pérdida alta ${_trNum(r.conteo.perdida_alta)} · cargabilidad ${_trNum(r.conteo.carga_alta)} (crítica ${_trNum(r.conteo.carga_critica)}) · ` +
-      `caída ${_trNum(r.conteo.caida_tension)} · tensión baja ${_trNum(r.conteo.tension_baja)}.`;
-
-    tramosRenderMes(r.por_mes);
-    tramosRenderTop(r.top_tramos);
-    tramosRenderCircuitos(r.por_circuito);
-    tramosRenderMaximos(r.maximo_por_mes);
-    TR_ALERTAS = a.alertas;
-    tramosRenderAlertas(a.alertas);
-  }catch(e){
-    resumen.textContent = 'No se pudieron calcular los datos del periodo.';
-  }
-}
-
-function _trGrafico(clave, id, cfg){
-  if(TR_CH[clave]) TR_CH[clave].destroy();
-  TR_CH[clave] = new Chart(document.getElementById(id), cfg);
-}
-
-function tramosRenderMes(filas){
-  _trGrafico('mes', 'tr-ch-mes', {
-    type: 'bar',
-    data: {labels: filas.map(f => f.mes), datasets: [{label: 'Pérdida total (kWh)', data: filas.map(f => f.perdida_kwh), backgroundColor: '#2563eb'}]},
-    options: {responsive: true, maintainAspectRatio: false, plugins: {legend: {display: false}},
-      scales: {y: {title: {display: true, text: 'kWh/mes'}}}},
-  });
-}
-
-function tramosRenderTop(filas){
-  _trGrafico('top', 'tr-ch-top', {
-    type: 'bar',
-    data: {
-      labels: filas.map(f => `${f.estructura || f.circuito} · ${_trNodos(f)}`),
-      datasets: [{label: 'Pérdida del periodo (kWh)', data: filas.map(f => f.perdida_total_kwh),
-        backgroundColor: filas.map(f => f.alertas.includes('perdida_alta') ? '#dc2626' : '#2563eb')}],
-    },
-    options: {
-      indexAxis: 'y', responsive: true, maintainAspectRatio: false,
-      plugins: {legend: {display: false}, tooltip: {callbacks: {label: c => {
-        const f = filas[c.dataIndex];
-        return [`${_trNum(c.raw)} kWh`, `Máximo mensual ${_trNum(f.perdida_max_mes_kwh)} kWh · Cargab. máx ${_trNum(f.cargabilidad_max_pct, 2)}%`];
-      }}}},
-      scales: {x: {title: {display: true, text: 'kWh'}}},
-    },
-  });
-}
-
-function tramosRenderCircuitos(filas){
-  const top = filas.slice(0, 25);
-  _trGrafico('circ', 'tr-ch-circ', {
-    type: 'bar',
-    data: {labels: top.map(f => f.estructura || f.circuito),
-      datasets: [{label: 'Pérdida (kWh)', data: top.map(f => f.perdida_kwh),
-        backgroundColor: top.map(f => f.tramos_alerta > 0 ? '#dc2626' : '#2563eb')}]},
-    options: {responsive: true, maintainAspectRatio: false,
-      plugins: {legend: {display: false}, tooltip: {callbacks: {label: c => {
-        const f = top[c.dataIndex];
-        return [`${_trNum(c.raw)} kWh`, `${f.tramos} tramos · ${f.tramos_alerta} con alerta`];
-      }}}},
-      scales: {y: {title: {display: true, text: 'kWh'}}, x: {ticks: {maxRotation: 70, minRotation: 45, autoSkip: false}}}},
-  });
-}
-
-function tramosRenderMaximos(filas){
-  document.getElementById('tr-max-body').innerHTML = filas.map(f => `
-    <tr>
-      <td>${_mselEsc(f.mes)}</td>
-      <td>${_mselEsc(f.estructura || '—')}</td>
-      <td>${_mselEsc(f.zona || '—')}</td>
-      <td>${_mselEsc(f.circuito)}</td>
-      <td>${_mselEsc(_trNodos(f))}</td>
-      <td>${_trNum(f.perdida_kwh)}</td>
-      <td>${_trNum(f.cargabilidad_max_pct, 2)}</td>
-    </tr>`).join('');
-}
-
-function tramosRenderAlertas(alertas){
-  document.getElementById('tr-tabla-body').innerHTML = alertas.map((a, i) => `
-    <tr onclick="tramosVerDetalle(${i})" style="cursor:pointer">
-      <td>${_mselEsc(a.estructura || '—')}</td>
-      <td>${_mselEsc(a.nemonico_cgm || '—')}</td>
-      <td>${_mselEsc(a.zona || '—')}</td>
-      <td>${_mselEsc(a.circuito)}</td>
-      <td>${_mselEsc(_trNodos(a))}</td>
-      <td>${_trNum(a.perdida_total_kwh)}</td>
-      <td>${_trNum(a.perdida_max_mes_kwh)}</td>
-      <td>${_trNum(a.cargabilidad_max_pct, 2)}</td>
-      <td>${_trNum(a.caida_max_pct, 2)}</td>
-      <td>${_trNum(a.tension_min_pu, 3)}</td>
-      <td>${_mselEsc(a.alertas)}</td>
-    </tr>`).join('');
-  document.getElementById('tr-tabla').style.display = alertas.length ? '' : 'none';
-}
-
-function tramosAbrirUmbrales(){ document.getElementById('tr-modal-umbrales').classList.remove('hidden'); }
-function tramosCerrarUmbrales(){ document.getElementById('tr-modal-umbrales').classList.add('hidden'); }
-function tramosAplicarUmbrales(){ tramosCerrarUmbrales(); tramosCargarResumen(); }
-
-function _trCampo(etiqueta, valor){
-  return `<div><div style="font-size:11px;color:var(--text3)">${etiqueta}</div><div style="font-size:14px;font-weight:700">${valor ?? '—'}</div></div>`;
-}
-
-async function tramosVerDetalle(indice){
-  const a = TR_ALERTAS[indice];
-  if(!a) return;
-  const p = new URLSearchParams({circuito: a.circuito, tramo: a.tramo});
-  const desde = document.getElementById('tr-desde').value;
-  const hasta = document.getElementById('tr-hasta').value;
-  if(desde) p.set('desde', desde);
-  if(hasta) p.set('hasta', hasta);
-  try{
-    const d = await apiGet(`/api/tramos/detalle?${p}`);
-    document.getElementById('tr-detalle-titulo').textContent = `${_trNodos(d)} · ${d.estructura || d.circuito}`;
-    document.getElementById('tr-detalle-datos').innerHTML = [
-      _trCampo('Estructura', _mselEsc(d.estructura || '—')),
-      _trCampo('Código CGM', _mselEsc(d.nemonico_cgm || '—')),
-      _trCampo('Zona', _mselEsc(d.zona || '—')),
-      _trCampo('Circuito', _mselEsc(d.circuito)),
-      _trCampo('Nodo 1', _mselEsc(d.nodo_1 || '—')),
-      _trCampo('Nodo 2', _mselEsc(d.nodo_2 || '—')),
-      _trCampo('Calibre', d.calibre ? _mselEsc(d.calibre) : 'Sin dato (corrida anterior)'),
-      _trCampo('Distancia (km)', d.longitud_km !== null && d.longitud_km !== undefined ? _trNum(d.longitud_km, 3) : 'Sin dato (corrida anterior)'),
-    ].join('');
-    document.getElementById('tr-serie-body').innerHTML = d.serie_mensual.map(s => `
-      <tr>
-        <td>${_mselEsc(s.mes)}</td>
-        <td>${_trNum(s.perdida_mes_kwh)}</td>
-        <td>${_trNum(s.cargabilidad_max_pct, 2)}</td>
-        <td>${_trNum(s.cargabilidad_prom_pct, 2)}</td>
-        <td>${_trNum(s.caida_max_pct, 3)}</td>
-        <td>${_trNum(s.tension_min_pu, 4)}</td>
-      </tr>`).join('');
-    document.getElementById('tr-horas-titulo').textContent = `Hora por hora (mes ${d.mes_horas})`;
-    document.getElementById('tr-detalle-body').innerHTML = d.horas.map(h => `
-      <tr>
-        <td>${_mselEsc(h.tipo_perfil)}</td>
-        <td>${_mselEsc(h.hora)}</td>
-        <td>${_trNum(h.perdida_kw, 2)}</td>
-        <td>${_trNum(h.cargabilidad_pct, 2)}</td>
-        <td>${_trNum(h.tension_inicial_pu, 4)}</td>
-        <td>${_trNum(h.tension_final_pu, 4)}</td>
-        <td>${_trNum(h.caida_pct, 3)}</td>
-      </tr>`).join('');
-    document.getElementById('tr-detalle-card').style.display = '';
-  }catch(e){
-    document.getElementById('tr-detalle-titulo').textContent = 'No se pudo cargar el detalle del tramo.';
-    document.getElementById('tr-detalle-card').style.display = '';
-  }
-}
-
-async function tramosSubir(){
-  const mes = document.getElementById('tr-subir-mes').value;
-  const input = document.getElementById('tr-subir-archivo');
-  const msg = document.getElementById('tr-subir-msg');
-  if(!mes){ msg.textContent = 'Elige el mes.'; return; }
-  if(!input.files || !input.files[0]){ msg.textContent = 'Elige el archivo .parquet.'; return; }
-  msg.textContent = 'Subiendo…';
-  try{
-    const r = await _informesSubirArchivoCaracterizacion(`/api/tramos/subir?mes=${encodeURIComponent(mes)}`, input.files[0]);
-    msg.textContent = `Listo: ${r.mes} (${r.mb} MB).`;
-    input.value = '';
-    await tramosCargar();
-  }catch(e){
-    msg.textContent = e.message || 'No se pudo subir el archivo.';
+    document.getElementById('hm-sub').textContent = 'No se pudo consultar los meses cargados.';
   }
 }
 
