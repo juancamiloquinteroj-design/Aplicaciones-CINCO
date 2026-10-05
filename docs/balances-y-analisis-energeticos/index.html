@@ -435,8 +435,8 @@ select{padding:6px 10px;border:1px solid var(--border);border-radius:7px;font-si
 /* Tablitas compactas del borrador de correo de alerta -- pedido explícito
    ("todos los datos en una tablita bonita", "se desperdicia mucho
    espacio"): fila baja, sin el padding generoso de .be-tabla-creadas. */
-.correo-tabla{border-collapse:collapse;font-size:11.5px;margin:4px auto 12px;border:1px solid var(--border);border-radius:8px;overflow:hidden}
-.correo-tabla th{background:var(--bg3);color:var(--text3);font-weight:700;text-transform:uppercase;font-size:9.5px;letter-spacing:.3px;text-align:left;padding:5px 10px;white-space:nowrap}
+.correo-tabla{border-collapse:collapse;font-size:11px;margin:4px auto 12px;border:1px solid var(--border);border-radius:8px;overflow:hidden}
+.correo-tabla th{background:var(--bg3);color:var(--text3);font-weight:700;text-transform:uppercase;font-size:11px;letter-spacing:.3px;text-align:left;padding:5px 10px;white-space:nowrap}
 .correo-tabla td{padding:5px 10px;border-top:1px solid var(--border);color:var(--text);white-space:nowrap}
 .correo-tabla tr:first-child td{border-top:none}
 /* .etq (etiqueta) en vez de td:first-child -- con la tabla de propuesta
@@ -444,8 +444,11 @@ select{padding:6px 10px;border:1px solid var(--border);border-radius:7px;font-si
    celda ya no identifica de forma confiable cuál es la columna de
    "Variable". */
 .correo-tabla td.etq{color:var(--text2);font-weight:600}
-.correo-tabla td.num,.correo-tabla th.num{text-align:right}
+.correo-tabla td.num,.correo-tabla th.num{text-align:center}
 .correo-tabla th.centro{text-align:center}
+/* Separa visualmente las columnas de cada tramo -- pedido explícito, con
+   varios tramos en la misma tabla. */
+.correo-tabla td.sep,.correo-tabla th.sep{border-left:2px solid var(--text3)}
 .correo-tabla tr:nth-child(even) td{background:var(--bg)}
 .correo-tabla select{padding:3px 7px;font-size:11px;border-radius:6px}
 /* Barra "Configurar mes" -- ocupaba tanto como cualquier otra card pese a
@@ -11397,7 +11400,7 @@ function heatmapRenderCorreo(){
     </span>`).join('');
 
   document.getElementById('correo-asunto').value =
-    `ALERTA PERDIDAS TECNICAS - ${(subestacion || '').toUpperCase()} ${circuitoNombre.toUpperCase()}`.trim();
+    `REPORTE PERDIDAS TECNICAS - S/E ${(subestacion || 'SIN DATO').toUpperCase()}, CTO ${circuitoNombre.toUpperCase()}`;
 
   // Pérdida (kWh, eje izq.) y cargabilidad (%, eje der.) de cada tramo
   // incluido, en la MISMA gráfica -- pedido explícito.
@@ -11464,7 +11467,12 @@ function heatmapRenderCorreo(){
     }
     return {d, ultimo, factorStn, perdidaActual, perdidaReferida, costoActual, costoAnual, nodo1, nodo2, prop};
   });
-  const etiquetaTramo = dt => `Nodo ${_mselEsc(dt.nodo1)} → Nodo ${_mselEsc(dt.nodo2)}`;
+  // Encabezado corto de columna -- pedido explícito ("no colocarlo así
+  // 'Nodo ALSP_M031496 → Nodo ALSP_M031412' mejor solo así
+  // 'M031496→M031412'"): sin "Nodo", sin el prefijo del circuito antes del
+  // "_" en cada nodo, y sin espacios alrededor de la flecha.
+  const _hmNodoCorto = n => String(n || '').replace(/^.*?_/, '');
+  const etiquetaTramo = dt => `${_mselEsc(_hmNodoCorto(dt.nodo1))}→${_mselEsc(_hmNodoCorto(dt.nodo2))}`;
 
   // Tabla 1: datos técnicos + análisis económico -- una columna de valor
   // por tramo, "Variable" como única columna de etiquetas compartida.
@@ -11481,8 +11489,8 @@ function heatmapRenderCorreo(){
   ];
   const tablaDatos = `
     <table class="correo-tabla">
-      <thead><tr><th>Variable</th>${datosTramos.map(dt => `<th class="centro">${etiquetaTramo(dt)}</th>`).join('')}</tr></thead>
-      <tbody>${filasDatos.map(([etq, fn]) => `<tr><td class="etq">${etq}</td>${datosTramos.map(dt => `<td class="num">${fn(dt)}</td>`).join('')}</tr>`).join('')}</tbody>
+      <thead><tr><th>Variable</th>${datosTramos.map(dt => `<th class="centro sep">${etiquetaTramo(dt)}</th>`).join('')}</tr></thead>
+      <tbody>${filasDatos.map(([etq, fn]) => `<tr><td class="etq">${etq}</td>${datosTramos.map(dt => `<td class="num sep">${fn(dt)}</td>`).join('')}</tr>`).join('')}</tbody>
     </table>`;
 
   // Tabla 2: propuesta de calibre -- Actual+Propuesto por tramo (2
@@ -11492,25 +11500,25 @@ function heatmapRenderCorreo(){
   let tablaCalibre = '';
   if(hayPropuesta){
     const filaCalibre = dt => dt.prop
-      ? `<td class="num">${_mselEsc(dt.d.calibre || 'Sin dato')}</td><td class="num">` +
+      ? `<td class="num sep">${_mselEsc(dt.d.calibre || 'Sin dato')}</td><td class="num">` +
         `<select onchange="heatmapCambiarCalibreCorreo('${_mselEsc(dt.d.tramo)}', this.value)">` +
         dt.prop.opciones.mayores.map(c => `<option value="${c[0]}"${c[0] === dt.prop.elegido ? ' selected' : ''}>${c[0]} ACSR</option>`).join('') +
         `</select></td>`
-      : `<td class="num">${_mselEsc(dt.d.calibre || 'Sin dato')}</td><td class="num">N/D</td>`;
+      : `<td class="num sep">${_mselEsc(dt.d.calibre || 'Sin dato')}</td><td class="num">N/D</td>`;
     const filaPerdida = dt => dt.prop
-      ? `<td class="num">${_trNum(dt.perdidaActual)} kWh/mes</td><td class="num">${_trNum(dt.prop.perdidaNueva)} kWh/mes</td>`
-      : `<td class="num">${_trNum(dt.perdidaActual)} kWh/mes</td><td class="num">--</td>`;
+      ? `<td class="num sep">${_trNum(dt.perdidaActual)} kWh/mes</td><td class="num">${_trNum(dt.prop.perdidaNueva)} kWh/mes</td>`
+      : `<td class="num sep">${_trNum(dt.perdidaActual)} kWh/mes</td><td class="num">--</td>`;
     const filaDisminucion = dt => dt.prop
-      ? `<td class="num">--</td><td class="num">${_trNum(dt.perdidaActual - dt.prop.perdidaNueva)} kWh/mes</td>`
-      : `<td class="num">--</td><td class="num">--</td>`;
+      ? `<td class="num sep">--</td><td class="num">${_trNum(dt.perdidaActual - dt.prop.perdidaNueva)} kWh/mes</td>`
+      : `<td class="num sep">--</td><td class="num">--</td>`;
     const filaCosto = dt => dt.prop
-      ? `<td class="num">${f$(dt.costoActual)}/mes</td><td class="num">${f$(dt.prop.costoNuevo)}/mes</td>`
-      : `<td class="num">${f$(dt.costoActual)}/mes</td><td class="num">--</td>`;
+      ? `<td class="num sep">${f$(dt.costoActual)}/mes</td><td class="num">${f$(dt.prop.costoNuevo)}/mes</td>`
+      : `<td class="num sep">${f$(dt.costoActual)}/mes</td><td class="num">--</td>`;
     tablaCalibre = `
     <table class="correo-tabla">
       <thead>
-        <tr><th></th>${datosTramos.map(dt => `<th class="centro" colspan="2">${etiquetaTramo(dt)}</th>`).join('')}</tr>
-        <tr><th>Variable</th>${datosTramos.map(() => `<th class="num">Actual</th><th class="num">Propuesto</th>`).join('')}</tr>
+        <tr><th></th>${datosTramos.map(dt => `<th class="centro sep" colspan="2">${etiquetaTramo(dt)}</th>`).join('')}</tr>
+        <tr><th>Variable</th>${datosTramos.map(() => `<th class="num sep">Actual</th><th class="num">Propuesto</th>`).join('')}</tr>
       </thead>
       <tbody>
         <tr><td class="etq">Calibre</td>${datosTramos.map(filaCalibre).join('')}</tr>
@@ -11533,7 +11541,7 @@ function heatmapRenderCorreo(){
   const sufijoTramos = plural ? `${HM_CORREO_TRAMOS.length} tramos que presentan` : 'un tramo que presenta';
   document.getElementById('correo-cuerpo').innerHTML = `
     <p>Buen día,</p>
-    <p>Dando cumplimiento a las funciones establecidas en la <b>CSS 040/2026</b>, se realizó la revisión y análisis de las pérdidas técnicas en los circuitos de la <b>${_mselEsc(primero.d.zona || 'zona correspondiente')}</b>, identificando en el circuito <b>${_mselEsc(circuitoNombre)}</b> ${sufijoTramos} pérdidas técnicas significativas. Esta condición representa una oportunidad de mejora en la eficiencia de la red, por lo que se propone evaluar las alternativas técnicas de adecuación ${plural ? 'de los tramos' : 'del tramo'}, así como su respectiva viabilidad económica.</p>
+    <p>Dando cumplimiento a las funciones establecidas en el <b>CSS 040/2026</b>, se realizó la revisión y análisis de las pérdidas técnicas en los circuitos de la <b>${_mselEsc(primero.d.zona || 'zona correspondiente')}</b>, identificando en el circuito <b>${_mselEsc(circuitoNombre)}</b> ${sufijoTramos} pérdidas técnicas significativas. Esta condición representa una oportunidad de mejora en la eficiencia de la red, por lo que se propone evaluar las alternativas técnicas de adecuación ${plural ? 'de los tramos' : 'del tramo'}, así como su respectiva viabilidad económica.</p>
     ${bloques}
     <p>Quedamos atentos a sus comentarios.</p>`;
 }
@@ -11585,22 +11593,24 @@ function _hmPrepararHtmlExport(){
   // columnas juntas, justo del tamaño de lo que esté en cada celda" -- con
   // table-layout:auto (el default) y white-space:nowrap cada columna se
   // ajusta sola al contenido.
-  const thS = 'background:#eef2f7;color:#64748b;text-align:left;padding:6px 16px 6px 10px;font-size:10.5px;' +
+  const thS = 'background:#eef2f7;color:#64748b;text-align:left;padding:6px 16px 6px 10px;font-size:11px;' +
     'text-transform:uppercase;letter-spacing:.3px;border-bottom:1px solid #cbd5e1;font-family:Arial,Helvetica,sans-serif;white-space:nowrap';
-  const tdS = 'padding:6px 16px 6px 10px;border-bottom:1px solid #e2e8f0;color:#1f2937;font-family:Arial,Helvetica,sans-serif;font-size:12.5px;white-space:nowrap';
-  // Por CLASE (.etq/.centro/.num), no por posición de celda -- con la
+  const tdS = 'padding:6px 16px 6px 10px;border-bottom:1px solid #e2e8f0;color:#1f2937;font-family:Arial,Helvetica,sans-serif;font-size:11px;white-space:nowrap';
+  // Por CLASE (.etq/.centro/.num/.sep), no por posición de celda -- con la
   // tabla de propuesta de calibre (encabezado con colspan para agrupar las
   // columnas de cada tramo) el índice de celda ya no es un indicador
   // confiable de qué representa cada columna.
   clone.querySelectorAll('table').forEach(t => {
     t.setAttribute('style', 'border-collapse:collapse;border:1px solid #cbd5e1;margin:8px auto 14px');
     t.querySelectorAll('th').forEach(th => {
-      const align = th.classList.contains('centro') ? 'center' : (th.classList.contains('num') ? 'right' : 'left');
-      th.setAttribute('style', thS + ';text-align:' + align);
+      const align = th.classList.contains('centro') ? 'center' : (th.classList.contains('num') ? 'center' : 'left');
+      const sep = th.classList.contains('sep') ? ';border-left:2px solid #94a3b8' : '';
+      th.setAttribute('style', thS + ';text-align:' + align + sep);
     });
     t.querySelectorAll('td').forEach(td => {
       const esEtq = td.classList.contains('etq');
-      td.setAttribute('style', tdS + (esEtq ? ';font-weight:600;color:#475569' : ';text-align:right'));
+      const sep = td.classList.contains('sep') ? ';border-left:2px solid #94a3b8' : '';
+      td.setAttribute('style', tdS + (esEtq ? ';font-weight:600;color:#475569' : ';text-align:center') + sep);
     });
   });
   clone.querySelectorAll('p').forEach(p => p.setAttribute('style',
