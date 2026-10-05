@@ -1872,23 +1872,21 @@ html,body{overflow-x:hidden;margin:0}
       <label style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text3)">Asunto</label>
       <input type="text" id="correo-asunto" style="padding:6px 10px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg)">
     </div>
-    <!-- Correo a la izquierda, gráfica a la derecha (pedido explícito: "se
-         desperdicia mucho espacio" cuando iban apiladas) -- esto es solo el
-         acomodo EN LA APP; lo que se copia/abre en el correo real sigue
-         siendo el texto de #correo-cuerpo tal cual, la gráfica no viaja
-         (un mailto:/portapapeles de texto no puede llevar un canvas). La
-         gráfica queda "sticky" para seguir visible mientras se hace scroll
-         por un cuerpo largo (varios tramos). -->
-    <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
-      <div id="correo-cuerpo" contenteditable="true" spellcheck="false"
-        style="flex:1 1 360px;min-width:300px;min-height:300px;font-size:12.5px;line-height:1.6;padding:14px 16px;border:1px solid var(--border);border-radius:10px;background:var(--bg);color:var(--text);box-sizing:border-box"></div>
-      <div style="flex:1 1 300px;min-width:260px;position:sticky;top:12px">
-        <!-- Pérdida y cargabilidad históricas del tramo, en la MISMA gráfica
-             (doble eje) -- pedido explícito. Con varios tramos, un par de
-             líneas (pérdida + cargabilidad) por cada uno. -->
-        <div class="chart-wrap" style="height:300px"><canvas id="correo-ch-historia"></canvas></div>
+    <!-- La gráfica va arriba, a todo el ancho -- antes iba en una columna
+         lateral angosta y con varios tramos (muchas líneas de leyenda) el
+         recuadro se quedaba chico y la leyenda tapaba la gráfica -- pedido
+         explícito, "se ven encima de las cosas". El alto se ajusta solo
+         según cuántos tramos hay (más leyenda, más alto). -->
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+      <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text3)">Gráfica del correo</span>
+      <div style="margin-left:auto;display:flex;gap:6px">
+        <button type="button" class="be-modo-btn activo" id="correo-btn-serie-perdida" onclick="heatmapToggleCorreoMetrica('perdida')" title="Mostrar/ocultar la pérdida en la gráfica">⚡ Pérdida</button>
+        <button type="button" class="be-modo-btn activo" id="correo-btn-serie-cargabilidad" onclick="heatmapToggleCorreoMetrica('cargabilidad')" title="Mostrar/ocultar la cargabilidad en la gráfica">% Cargabilidad</button>
       </div>
     </div>
+    <div class="chart-wrap" id="correo-chart-wrap" style="height:320px;margin-bottom:16px"><canvas id="correo-ch-historia"></canvas></div>
+    <div id="correo-cuerpo" contenteditable="true" spellcheck="false"
+      style="width:100%;min-height:300px;font-size:12.5px;line-height:1.6;padding:14px 16px;border:1px solid var(--border);border-radius:10px;background:var(--bg);color:var(--text);box-sizing:border-box"></div>
   </div>
 
   <div id="hm-modal-selector-tramos" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;display:flex;align-items:center;justify-content:center" onclick="if(event.target===this) heatmapCerrarSelectorTramos()">
@@ -11485,6 +11483,20 @@ async function heatmapAgregarSeleccionados(){
 // cada línea de la gráfica saca el siguiente color de la lista.
 const HM_PALETA_CORREO = ['#2563eb', '#dc2626', '#16a34a', '#d97706', '#7c3aed', '#0891b2', '#db2777', '#65a30d'];
 
+// Permite sacar la pérdida o la cargabilidad de la gráfica (y de su
+// leyenda) -- pedido explícito: "una opción para quitar del gráfico los
+// datos de cargabilidad... o viceversa, y así debe salir el correo sin la
+// leyenda de lo que quité" (el PNG exportado sale del mismo canvas, así
+// que ya refleja lo que esté tildado acá).
+let HM_CORREO_MOSTRAR = {perdida: true, cargabilidad: true};
+function heatmapToggleCorreoMetrica(metrica){
+  const otra = metrica === 'perdida' ? 'cargabilidad' : 'perdida';
+  if(HM_CORREO_MOSTRAR[metrica] && !HM_CORREO_MOSTRAR[otra]) return; // no deja apagar la última que queda prendida
+  HM_CORREO_MOSTRAR[metrica] = !HM_CORREO_MOSTRAR[metrica];
+  document.getElementById(`correo-btn-serie-${metrica}`).classList.toggle('activo', HM_CORREO_MOSTRAR[metrica]);
+  heatmapRenderCorreo();
+}
+
 function heatmapRenderCorreo(){
   if(!HM_CORREO_TRAMOS.length) return;
   const precio = parseFloat(document.getElementById('correo-precio').value) || 0;
@@ -11508,22 +11520,35 @@ function heatmapRenderCorreo(){
   HM_CORREO_TRAMOS.forEach(x => x.serie.forEach(s => mesesSet.add(s.mes)));
   const meses = [...mesesSet].sort();
   const datasets = [];
-  HM_CORREO_TRAMOS.forEach(x => {
+  HM_CORREO_TRAMOS.forEach((x, i) => {
     const porMes = new Map(x.serie.map(s => [s.mes, s]));
     const etiqueta = _trNodos(x.d);
-    const colorPerdida = HM_PALETA_CORREO[datasets.length % HM_PALETA_CORREO.length];
-    datasets.push({type: 'line', label: `Pérdida ${etiqueta} (kWh)`, yAxisID: 'y',
-      data: meses.map(m => porMes.has(m) ? porMes.get(m).perdida_mes_kwh : null),
-      borderColor: colorPerdida, backgroundColor: colorPerdida + '22', borderWidth: 2, pointRadius: 3, tension: 0, spanGaps: true,
-      datalabels: {display: true, anchor: 'end', align: 'top', offset: 6,
-        formatter: v => v == null ? '' : _trNum(v), font: {size: 9, weight: '700'}, color: colorPerdida}});
-    const colorCarga = HM_PALETA_CORREO[datasets.length % HM_PALETA_CORREO.length];
-    datasets.push({type: 'line', label: `Cargabilidad ${etiqueta} (%)`, yAxisID: 'y1',
-      data: meses.map(m => porMes.has(m) ? porMes.get(m).cargabilidad_max_pct : null),
-      borderColor: colorCarga, backgroundColor: colorCarga + '22', borderWidth: 2, pointRadius: 3, tension: 0, spanGaps: true,
-      datalabels: {display: true, anchor: 'end', align: 'bottom', offset: 6,
-        formatter: v => v == null ? '' : _trNum(v, 1) + '%', font: {size: 9, weight: '700'}, color: colorCarga}});
+    // Colores fijos por tramo (índice i), no por cuántas series terminan
+    // mostrándose -- así no cambian cuando se prende/apaga pérdida o
+    // cargabilidad. Un desfase de la mitad de la paleta mantiene las dos
+    // series de un mismo tramo en colores distintos entre sí.
+    const colorPerdida = HM_PALETA_CORREO[i % HM_PALETA_CORREO.length];
+    const colorCarga = HM_PALETA_CORREO[(i + 4) % HM_PALETA_CORREO.length];
+    if(HM_CORREO_MOSTRAR.perdida){
+      datasets.push({type: 'line', label: `Pérdida ${etiqueta} (kWh)`, yAxisID: 'y',
+        data: meses.map(m => porMes.has(m) ? porMes.get(m).perdida_mes_kwh : null),
+        borderColor: colorPerdida, backgroundColor: colorPerdida + '22', borderWidth: 2, pointRadius: 3, tension: 0, spanGaps: true,
+        datalabels: {display: true, anchor: 'end', align: 'top', offset: 6,
+          formatter: v => v == null ? '' : _trNum(v), font: {size: 9, weight: '700'}, color: colorPerdida}});
+    }
+    if(HM_CORREO_MOSTRAR.cargabilidad){
+      datasets.push({type: 'line', label: `Cargabilidad ${etiqueta} (%)`, yAxisID: 'y1',
+        data: meses.map(m => porMes.has(m) ? porMes.get(m).cargabilidad_max_pct : null),
+        borderColor: colorCarga, backgroundColor: colorCarga + '22', borderWidth: 2, pointRadius: 3, tension: 0, spanGaps: true,
+        datalabels: {display: true, anchor: 'end', align: 'bottom', offset: 6,
+          formatter: v => v == null ? '' : _trNum(v, 1) + '%', font: {size: 9, weight: '700'}, color: colorCarga}});
+    }
   });
+  // Alto del recuadro según cuántas líneas de leyenda va a necesitar --
+  // antes quedaba fijo y con varios tramos la leyenda se montaba encima de
+  // la gráfica (pedido explícito, "se ven encima de las cosas").
+  const filasLeyenda = Math.ceil(datasets.length / 4);
+  document.getElementById('correo-chart-wrap').style.height = `${260 + filasLeyenda * 22}px`;
   if(HM_CORREO_CH) HM_CORREO_CH.destroy();
   HM_CORREO_CH = new Chart(document.getElementById('correo-ch-historia'), {
     data: {labels: meses, datasets},
@@ -11533,8 +11558,8 @@ function heatmapRenderCorreo(){
       plugins: {legend: {display: true, position: 'bottom', labels: {boxWidth: 12, font: {size: 10}}}},
       scales: {
         x: {offset: true},
-        y: {position: 'left', title: {display: true, text: 'Pérdida (kWh)'}},
-        y1: {position: 'right', grid: {drawOnChartArea: false}, title: {display: true, text: 'Cargabilidad (%)'}},
+        ...(HM_CORREO_MOSTRAR.perdida ? {y: {position: 'left', title: {display: true, text: 'Pérdida (kWh)'}}} : {}),
+        ...(HM_CORREO_MOSTRAR.cargabilidad ? {y1: {position: 'right', grid: {drawOnChartArea: false}, title: {display: true, text: 'Cargabilidad (%)'}}} : {}),
       },
     },
   });
