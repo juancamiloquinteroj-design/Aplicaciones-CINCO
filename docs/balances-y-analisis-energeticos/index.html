@@ -1856,13 +1856,17 @@ html,body{overflow-x:hidden;margin:0}
       </div>
     </div>
     <!-- Tramos incluidos: un mismo correo puede juntar varios tramos del
-         MISMO circuito -- pedido explícito. Se agregan volviendo al Heatmap,
-         abriendo otro tramo del mismo circuito y tocando de nuevo "Enviar
-         correo de alerta"; cada chip se puede quitar sin perder los demás. -->
+         MISMO circuito -- pedido explícito. Se agregan desde el Heatmap
+         (un tramo a la vez) o acá con "+ Agregar tramos" (varios a la vez,
+         con filtro de pérdida/cargabilidad) -- pedido explícito, "un
+         filtro ahí... para poder seleccionar varios a la vez". Cada chip
+         se puede quitar sin perder los demás. -->
     <div style="margin-bottom:10px">
-      <label style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text3)">Tramos incluidos</label>
+      <div style="display:flex;align-items:center;gap:8px">
+        <label style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text3)">Tramos incluidos</label>
+        <button type="button" class="btn-theme" style="width:auto;padding:3px 10px;font-size:11px" onclick="heatmapAbrirSelectorTramos()">+ Agregar tramos</button>
+      </div>
       <div id="correo-chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px"></div>
-      <div style="font-size:11px;color:var(--text3);margin-top:4px">Para sumar otro tramo del mismo circuito: abrilo en el Heatmap y tocá "✉ Enviar correo de alerta" de nuevo.</div>
     </div>
     <div style="display:grid;grid-template-columns:70px 1fr;gap:8px 10px;align-items:center;margin-bottom:14px">
       <label style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text3)">Asunto</label>
@@ -1877,12 +1881,29 @@ html,body{overflow-x:hidden;margin:0}
          por un cuerpo largo (varios tramos). -->
     <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
       <div id="correo-cuerpo" contenteditable="true" spellcheck="false"
-        style="flex:1 1 360px;min-width:300px;min-height:300px;font-size:12.5px;line-height:1.6;padding:14px 16px;border:1px solid var(--border);border-radius:10px;background:var(--bg);color:var(--text);box-sizing:border-box;white-space:pre-wrap"></div>
+        style="flex:1 1 360px;min-width:300px;min-height:300px;font-size:12.5px;line-height:1.6;padding:14px 16px;border:1px solid var(--border);border-radius:10px;background:var(--bg);color:var(--text);box-sizing:border-box"></div>
       <div style="flex:1 1 300px;min-width:260px;position:sticky;top:12px">
         <!-- Pérdida y cargabilidad históricas del tramo, en la MISMA gráfica
              (doble eje) -- pedido explícito. Con varios tramos, un par de
              líneas (pérdida + cargabilidad) por cada uno. -->
         <div class="chart-wrap" style="height:300px"><canvas id="correo-ch-historia"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="hm-modal-selector-tramos" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;display:flex;align-items:center;justify-content:center" onclick="if(event.target===this) heatmapCerrarSelectorTramos()">
+    <div class="card" style="width:min(520px,92vw);max-height:80vh;display:flex;flex-direction:column">
+      <div class="card-title">Agregar tramos al correo</div>
+      <div class="card-sub">Mismo circuito de los tramos ya incluidos, ordenados de mayor a menor pérdida.</div>
+      <input type="text" id="hm-selector-buscar" placeholder="Buscar por nodo..." oninput="_hmRenderSelectorTramos()"
+        style="width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg);margin-bottom:10px">
+      <div id="hm-selector-lista" style="flex:1;overflow-y:auto;border:1px solid var(--border);border-radius:8px"></div>
+      <div style="display:flex;align-items:center;gap:10px;margin-top:14px">
+        <span id="hm-selector-contador" style="font-size:11px;color:var(--text3)">0 seleccionados</span>
+        <div style="margin-left:auto;display:flex;gap:8px">
+          <button type="button" class="btn-theme" style="width:auto;padding:7px 14px" onclick="heatmapCerrarSelectorTramos()">Cancelar</button>
+          <button type="button" class="btn-theme" id="hm-selector-btn-agregar" style="width:auto;padding:7px 14px" onclick="heatmapAgregarSeleccionados()">Agregar seleccionados</button>
+        </div>
       </div>
     </div>
   </div>
@@ -11381,6 +11402,83 @@ function heatmapQuitarTramoCorreo(tramo){
   heatmapRenderCorreo();
 }
 
+// Trae el detalle completo de un tramo (serie mensual incluida) en el
+// mismo formato que usa HM_SEL -- reusado por heatmapHistoria() (un tramo
+// a la vez, desde el Heatmap) y por el selector múltiple de abajo.
+async function _hmCargarDetalleTramo(t){
+  const p = new URLSearchParams({circuito: t.circuito, tramo: t.tramo});
+  const d = await apiGet(`/api/tramos/detalle?${p}`, 60000);
+  const serie = d.serie_mensual || [];
+  const ultimo = serie[serie.length - 1] || {};
+  return {t, d, serie, ultimo};
+}
+
+// Selector múltiple de tramos para el correo -- pedido explícito ("un
+// filtro ahí... para poder seleccionar varios a la vez"): lista los
+// tramos del MISMO circuito que ya está en el borrador (sacados de
+// HM_DATA, el último heatmap cargado), con su pérdida y cargabilidad,
+// para tildar varios de una y agregarlos juntos en vez de uno a uno desde
+// el Heatmap.
+let HM_SELECTOR_ITEMS = [];
+let HM_SELECTOR_MARCADOS = new Set();
+
+function heatmapAbrirSelectorTramos(){
+  if(!HM_CORREO_TRAMOS.length) return;
+  const circuito = HM_CORREO_TRAMOS[0].d.circuito;
+  const yaIncluidos = new Set(HM_CORREO_TRAMOS.map(x => x.d.tramo));
+  HM_SELECTOR_ITEMS = ((HM_DATA && HM_DATA.items) || [])
+    .filter(it => it.circuito === circuito && !yaIncluidos.has(it.tramo))
+    .sort((a, b) => (b.perdida_mes_kwh ?? 0) - (a.perdida_mes_kwh ?? 0));
+  HM_SELECTOR_MARCADOS = new Set();
+  document.getElementById('hm-selector-buscar').value = '';
+  _hmRenderSelectorTramos();
+  document.getElementById('hm-modal-selector-tramos').classList.remove('hidden');
+}
+
+function heatmapCerrarSelectorTramos(){
+  document.getElementById('hm-modal-selector-tramos').classList.add('hidden');
+}
+
+function _hmRenderSelectorTramos(){
+  const filtro = (document.getElementById('hm-selector-buscar').value || '').trim().toLowerCase();
+  const filtrados = !filtro ? HM_SELECTOR_ITEMS : HM_SELECTOR_ITEMS.filter(it =>
+    _trNodos(it).toLowerCase().includes(filtro) || (it.tramo || '').toLowerCase().includes(filtro));
+  const cont = document.getElementById('hm-selector-lista');
+  cont.innerHTML = filtrados.length ? filtrados.map(it => `
+    <label style="display:flex;align-items:center;gap:10px;padding:7px 10px;border-bottom:1px solid var(--border);font-size:12px;cursor:pointer">
+      <input type="checkbox" ${HM_SELECTOR_MARCADOS.has(it.tramo) ? 'checked' : ''} onchange="heatmapToggleSelectorTramo('${_mselEsc(it.tramo)}', this.checked)">
+      <span style="flex:1">${_mselEsc(_trNodos(it))}</span>
+      <span style="color:var(--text3);white-space:nowrap">${_trNum(it.perdida_mes_kwh)} kWh/mes</span>
+      <span style="color:var(--text3);white-space:nowrap;min-width:52px;text-align:right">${_trNum(it.cargabilidad_max_pct, 2)} %</span>
+    </label>`).join('') :
+    `<div style="padding:16px;text-align:center;color:var(--text3);font-size:12px">${HM_SELECTOR_ITEMS.length ? 'Sin resultados para esa búsqueda.' : 'No hay más tramos de este circuito en el mapa de calor cargado.'}</div>`;
+}
+
+function heatmapToggleSelectorTramo(tramo, marcado){
+  if(marcado) HM_SELECTOR_MARCADOS.add(tramo); else HM_SELECTOR_MARCADOS.delete(tramo);
+  document.getElementById('hm-selector-contador').textContent = `${HM_SELECTOR_MARCADOS.size} seleccionados`;
+}
+
+async function heatmapAgregarSeleccionados(){
+  const tramos = [...HM_SELECTOR_MARCADOS];
+  if(!tramos.length) return;
+  const btn = document.getElementById('hm-selector-btn-agregar');
+  btn.disabled = true;
+  btn.textContent = 'Agregando…';
+  for(const tramo of tramos){
+    const item = HM_SELECTOR_ITEMS.find(it => it.tramo === tramo);
+    if(!item) continue;
+    try{
+      const sel = await _hmCargarDetalleTramo(item);
+      if(!HM_CORREO_TRAMOS.some(x => x.d.tramo === sel.d.tramo)) HM_CORREO_TRAMOS.push(sel);
+    }catch(e){ /* sigue con los demás aunque uno falle */ }
+  }
+  btn.disabled = false;
+  btn.textContent = 'Agregar seleccionados';
+  heatmapCerrarSelectorTramos();
+  heatmapRenderCorreo();
+}
+
 // Paleta por LÍNEA, no por tramo -- pedido explícito ("la gráfica muestre
 // los datos con diferente color"): antes pérdida y cargabilidad del mismo
 // tramo compartían color (solo se distinguían por el trazo punteado), acá
@@ -11649,6 +11747,12 @@ function _hmPrepararHtmlExport(){
       _hmEnvolver(td, `font-weight:${esEtq ? 'bold' : 'normal'};font-size:10px;color:${esEtq ? '#475569' : '#1f2937'};${FF}`);
     });
   });
+  // Word (el motor de Outlook de escritorio/algunas vistas de Outlook Web)
+  // puede reconocer un <thead>/<tbody> como "tabla con fila de
+  // encabezado" y aplicarle SU propio autoformato (negrilla de más, por
+  // ejemplo) por encima del estilo en línea -- se aplanan a <tr> sueltos
+  // bajo <table> para no darle esa pista.
+  clone.querySelectorAll('thead, tbody').forEach(sec => sec.replaceWith(...sec.childNodes));
   clone.querySelectorAll('p').forEach(p => {
     p.setAttribute('style', (p.getAttribute('style') || '') + `;${FF};font-size:12.5px;font-weight:normal;color:#1f2937;margin:8px 0`);
     _hmEnvolver(p, `font-weight:normal;font-size:12.5px;color:#1f2937;${FF}`);
