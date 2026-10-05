@@ -435,9 +435,16 @@ select{padding:6px 10px;border:1px solid var(--border);border-radius:7px;font-si
 /* Tablitas compactas del borrador de correo de alerta -- pedido explícito
    ("todos los datos en una tablita bonita", "se desperdicia mucho
    espacio"): fila baja, sin el padding generoso de .be-tabla-creadas. */
-.correo-tabla{border-collapse:collapse;font-size:11px;margin:4px auto 12px;border:1px solid var(--border);border-radius:8px;overflow:hidden}
-.correo-tabla th{background:var(--bg3);color:var(--text3);font-weight:700;text-transform:uppercase;font-size:11px;letter-spacing:.3px;text-align:left;padding:5px 10px;white-space:nowrap}
-.correo-tabla td{padding:5px 10px;border-top:1px solid var(--border);color:var(--text);white-space:nowrap}
+.correo-tabla{border-collapse:collapse;font-size:10.5px;margin:4px auto 12px;border:1px solid var(--border);border-radius:8px;overflow:hidden}
+.correo-tabla th{background:var(--bg3);color:var(--text3);font-weight:700;text-transform:uppercase;font-size:10.5px;letter-spacing:.3px;text-align:left;padding:4px 10px;white-space:nowrap}
+.correo-tabla td{padding:4px 10px;border-top:1px solid var(--border);color:var(--text);white-space:nowrap}
+/* Separación pareja entre párrafos del cuerpo del correo en pantalla --
+   pedido explícito ("solo deja 1 espacio de separación entre párrafos"),
+   en vez del margen por defecto del navegador para <p> (dejaba huecos
+   grandes entre algunos párrafos y otros, según si traían o no su propio
+   margin inline). */
+#correo-cuerpo p{margin:0 0 10px}
+#correo-cuerpo p:last-child{margin-bottom:0}
 .correo-tabla tr:first-child td{border-top:none}
 /* .etq (etiqueta) en vez de td:first-child -- con la tabla de propuesta
    de calibre (varios tramos, encabezado con colspan) la posición de la
@@ -1839,8 +1846,6 @@ html,body{overflow-x:hidden;margin:0}
     <div class="card-sub">Elegí un tramo en el Heatmap y tocá "✉ Enviar correo de alerta" para redactar un borrador acá.</div>
   </div>
   <div class="card hidden" id="correo-lleno">
-    <div class="card-title">Borrador de correo de alerta</div>
-    <div class="card-sub">Texto editable (podés escribir directo abajo) -- revisalo antes de enviarlo. Esto no envía el correo solo: copialo o abrilo en tu cliente de correo.</div>
     <div class="fbar" style="margin-bottom:10px;padding-bottom:12px;border-bottom:1px solid var(--border)">
       <label>Precio de energía</label>
       <input type="number" id="correo-precio" min="0" step="any" oninput="heatmapRenderCorreo()"
@@ -1848,7 +1853,6 @@ html,body{overflow-x:hidden;margin:0}
       <span style="font-size:11px;color:var(--text3)">$/kWh (Tarifa G+T+R del mes, de Evaluación Económica) -- ajustalo si hace falta</span>
       <div style="margin-left:auto;display:flex;gap:8px">
         <button type="button" class="btn-theme" id="correo-btn-copiar" style="width:auto;padding:7px 14px" onclick="heatmapCopiarCorreo()">📋 Copiar</button>
-        <button type="button" class="btn-theme" id="correo-btn-mailto" style="width:auto;padding:7px 14px" onclick="heatmapAbrirCorreoMailto()">✉ Abrir en correo</button>
       </div>
     </div>
     <!-- Tramos incluidos: un mismo correo puede juntar varios tramos del
@@ -1860,9 +1864,7 @@ html,body{overflow-x:hidden;margin:0}
       <div id="correo-chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px"></div>
       <div style="font-size:11px;color:var(--text3);margin-top:4px">Para sumar otro tramo del mismo circuito: abrilo en el Heatmap y tocá "✉ Enviar correo de alerta" de nuevo.</div>
     </div>
-    <div style="display:grid;grid-template-columns:120px 1fr;gap:8px 10px;align-items:center;margin-bottom:14px">
-      <label style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text3)">Para</label>
-      <input type="text" id="correo-para" placeholder="destinatario@empresa.com" style="padding:6px 10px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg)">
+    <div style="display:grid;grid-template-columns:70px 1fr;gap:8px 10px;align-items:center;margin-bottom:14px">
       <label style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text3)">Asunto</label>
       <input type="text" id="correo-asunto" style="padding:6px 10px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg)">
     </div>
@@ -11462,8 +11464,15 @@ function heatmapRenderCorreo(){
         opciones.mayores.find(c => c[0] === HM_CORREO_CALIBRE_SEL[d.tramo])
         ? HM_CORREO_CALIBRE_SEL[d.tramo] : opciones.mayores[0][0];
       const [, areaNueva] = opciones.mayores.find(c => c[0] === elegido);
-      const perdidaNueva = perdidaActual * (opciones.areaActual / areaNueva);
-      prop = {opciones, elegido, perdidaNueva, costoNuevo: perdidaNueva * factorStn * precio};
+      const ratio = opciones.areaActual / areaNueva;
+      const perdidaNueva = perdidaActual * ratio;
+      // Cargabilidad propuesta: misma corriente de carga (no cambia al
+      // cambiar el conductor) sobre una ampacidad mayor -- se usa la misma
+      // simplificación de arriba (ampacidad ≈ proporcional al área) para
+      // quedar consistente con la estimación de pérdida ya aclarada en la
+      // nota -- pedido explícito ("cómo quedaría la cargabilidad propuesta").
+      const cargabilidadNueva = (ultimo.cargabilidad_max_pct || 0) * ratio;
+      prop = {opciones, elegido, perdidaNueva, cargabilidadNueva, costoNuevo: perdidaNueva * factorStn * precio};
     }
     return {d, ultimo, factorStn, perdidaActual, perdidaReferida, costoActual, costoAnual, nodo1, nodo2, prop};
   });
@@ -11510,6 +11519,9 @@ function heatmapRenderCorreo(){
     const filaPerdida = dt => dt.prop
       ? `<td class="num sep">${_trNum(dt.perdidaActual)} kWh/mes</td><td class="num">${_trNum(dt.prop.perdidaNueva)} kWh/mes</td>`
       : `<td class="num sep">${_trNum(dt.perdidaActual)} kWh/mes</td><td class="num">--</td>`;
+    const filaCargabilidad = dt => dt.prop
+      ? `<td class="num sep">${_trNum(dt.ultimo.cargabilidad_max_pct, 2)} %</td><td class="num">${_trNum(dt.prop.cargabilidadNueva, 2)} %</td>`
+      : `<td class="num sep">${_trNum(dt.ultimo.cargabilidad_max_pct, 2)} %</td><td class="num">--</td>`;
     const filaDisminucion = dt => dt.prop
       ? `<td class="num sep">--</td><td class="num">${_trNum(dt.perdidaActual - dt.prop.perdidaNueva)} kWh/mes</td>`
       : `<td class="num sep">--</td><td class="num">--</td>`;
@@ -11525,6 +11537,7 @@ function heatmapRenderCorreo(){
       <tbody>
         <tr><td class="etq">Calibre</td>${datosTramos.map(filaCalibre).join('')}</tr>
         <tr><td class="etq">Pérdida técnica</td>${datosTramos.map(filaPerdida).join('')}</tr>
+        <tr><td class="etq">Cargabilidad (máx.)</td>${datosTramos.map(filaCargabilidad).join('')}</tr>
         <tr><td class="etq">Disminución de pérdida</td>${datosTramos.map(filaDisminucion).join('')}</tr>
         <tr><td class="etq">Costo de pérdida</td>${datosTramos.map(filaCosto).join('')}</tr>
       </tbody>
@@ -11589,15 +11602,30 @@ function _hmPrepararHtmlExport(){
     sel.replaceWith(document.createTextNode(texto));
   });
 
+  // Ningún <b> sobrevive a la exportación -- pedido explícito ("el texto
+  // no debe ser negrilla, ningún texto"): solo fila 1 y columna 1 de las
+  // tablas quedan en negrilla, el resto del texto no.
+  clone.querySelectorAll('b, strong').forEach(b => b.replaceWith(...b.childNodes));
+
+  // Envuelve el contenido de un elemento en un <span> con las mismas
+  // propiedades de texto -- Word/Outlook a veces ignora el estilo puesto
+  // directo en <p>/<td> (seguía saliendo en negrilla y con la letra grande
+  // pese a declararlo ahí), pero respeta mejor un <span> interno. "normal"
+  // en vez de "400" -- el renderizador de Word entiende peor los valores
+  // numéricos de font-weight que las palabras clave.
+  const _hmEnvolver = (el, estilo) => { el.innerHTML = `<span style="${estilo}">${el.innerHTML}</span>`; };
+  const FF = 'font-family:Arial,Helvetica,sans-serif';
+
   // Sin width:100% -- en un correo, "100%" es el ancho del panel de
   // lectura entero (puede ser enorme), y eso dejaba un hueco gigante entre
   // la columna de etiquetas y la de valores. Pedido explícito: "quiero las
   // columnas juntas, justo del tamaño de lo que esté en cada celda" -- con
   // table-layout:auto (el default) y white-space:nowrap cada columna se
-  // ajusta sola al contenido.
-  const thS = 'background:#eef2f7;color:#64748b;text-align:left;padding:6px 16px 6px 10px;font-size:11px;font-weight:700;' +
-    'text-transform:uppercase;letter-spacing:.3px;border-bottom:1px solid #cbd5e1;font-family:Arial,Helvetica,sans-serif;white-space:nowrap';
-  const tdS = 'padding:6px 16px 6px 10px;border-bottom:1px solid #e2e8f0;color:#1f2937;font-family:Arial,Helvetica,sans-serif;font-size:11px;white-space:nowrap';
+  // ajusta sola al contenido. Padding más angosto y letra más chica que
+  // antes -- pedido explícito, seguía viéndose grande.
+  const thS = `background:#eef2f7;color:#64748b;text-align:left;padding:4px 10px;font-size:10px;font-weight:bold;` +
+    `text-transform:uppercase;letter-spacing:.3px;border-bottom:1px solid #cbd5e1;${FF};white-space:nowrap`;
+  const tdS = `padding:4px 10px;border-bottom:1px solid #e2e8f0;color:#1f2937;${FF};font-size:10px;white-space:nowrap`;
   // Por CLASE (.etq/.centro/.num/.sep), no por posición de celda -- con la
   // tabla de propuesta de calibre (encabezado con colspan para agrupar las
   // columnas de cada tramo) el índice de celda ya no es un indicador
@@ -11608,6 +11636,7 @@ function _hmPrepararHtmlExport(){
       const align = th.classList.contains('centro') ? 'center' : (th.classList.contains('num') ? 'center' : 'left');
       const sep = th.classList.contains('sep') ? ';border-left:2px solid #94a3b8' : '';
       th.setAttribute('style', thS + ';text-align:' + align + sep);
+      _hmEnvolver(th, `font-weight:bold;font-size:10px;color:#64748b;${FF}`);
     });
     t.querySelectorAll('td').forEach(td => {
       const esEtq = td.classList.contains('etq');
@@ -11616,15 +11645,14 @@ function _hmPrepararHtmlExport(){
       // "cuando los pego los datos salen en negrilla". Word/Outlook puede
       // aplicar su propio negrilla por defecto a una celda sin peso
       // declarado; dejarlo en blanco no alcanza, hay que forzar "normal".
-      td.setAttribute('style', tdS + (esEtq ? ';font-weight:600;color:#475569' : ';font-weight:400;text-align:center') + sep);
+      td.setAttribute('style', tdS + (esEtq ? ';font-weight:bold;color:#475569' : ';font-weight:normal;text-align:center') + sep);
+      _hmEnvolver(td, `font-weight:${esEtq ? 'bold' : 'normal'};font-size:10px;color:${esEtq ? '#475569' : '#1f2937'};${FF}`);
     });
   });
-  // Ningún <b> sobrevive a la exportación -- pedido explícito ("el texto
-  // no debe ser negrilla, ningún texto"): solo fila 1 y columna 1 de las
-  // tablas quedan en negrilla (ya fijado arriba), el resto del texto no.
-  clone.querySelectorAll('b, strong').forEach(b => b.replaceWith(...b.childNodes));
-  clone.querySelectorAll('p').forEach(p => p.setAttribute('style',
-    (p.getAttribute('style') || '') + ';font-family:Arial,Helvetica,sans-serif;font-size:12.5px;font-weight:400;color:#1f2937;margin:8px 0'));
+  clone.querySelectorAll('p').forEach(p => {
+    p.setAttribute('style', (p.getAttribute('style') || '') + `;${FF};font-size:12.5px;font-weight:normal;color:#1f2937;margin:8px 0`);
+    _hmEnvolver(p, `font-weight:normal;font-size:12.5px;color:#1f2937;${FF}`);
+  });
   clone.querySelectorAll('hr').forEach(hr => hr.setAttribute('style', 'border:none;border-top:1px solid #cbd5e1;margin:18px 0'));
 
   // La gráfica va DEBAJO de la primera tabla (datos del tramo), no antes de
@@ -11670,21 +11698,6 @@ function heatmapCopiarCorreo(){
   _hmCopiarCorreoAlPortapapeles()
     .then(() => _hmBotonFeedback('correo-btn-copiar', '✓ Copiado'))
     .catch(() => _hmBotonFeedback('correo-btn-copiar', 'No se pudo copiar'));
-}
-
-function heatmapAbrirCorreoMailto(){
-  // mailto: tiene un límite de longitud muy bajo en varios clientes (en
-  // Outlook de escritorio corta alrededor de 2.000 caracteres); con tablas
-  // y varios tramos el cuerpo lo supera fácil y el correo abría vacío --
-  // pedido explícito ("le doy abrir correo... no sale nada"). Por eso acá
-  // se copia el cuerpo completo al portapapeles y el mailto: solo lleva
-  // destinatario + asunto -- falta pegar (Ctrl+V) adentro del correo.
-  const para = encodeURIComponent(document.getElementById('correo-para').value || '');
-  const asunto = encodeURIComponent(document.getElementById('correo-asunto').value || '');
-  _hmCopiarCorreoAlPortapapeles()
-    .then(() => _hmBotonFeedback('correo-btn-mailto', '✓ Copiado -- pegalo (Ctrl+V) en el correo', 4500))
-    .catch(() => _hmBotonFeedback('correo-btn-mailto', 'No se pudo copiar -- usá "Copiar" y pegalo a mano', 4500));
-  window.location.href = `mailto:${para}?subject=${asunto}`;
 }
 
 async function paramDiccCargarEstado(){
