@@ -1802,7 +1802,8 @@ html,body{overflow-x:hidden;margin:0}
       <div class="msel" id="msel-hm-sub"></div>
       <label style="margin-left:10px">Circuito</label>
       <div class="msel" id="msel-hm-circ"></div>
-      <button type="button" class="btn-theme" style="width:auto;padding:7px 16px" onclick="heatmapAplicarFiltros()">Aplicar filtros</button>
+      <button type="button" class="be-modo-btn be-icon-btn" onclick="heatmapSiguienteCircuito(-1)" title="Circuito anterior" style="width:22px;height:22px;font-size:10px">◀</button>
+      <button type="button" class="be-modo-btn be-icon-btn" onclick="heatmapSiguienteCircuito(1)" title="Circuito siguiente" style="width:22px;height:22px;font-size:10px">▶</button>
       <div style="margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <button type="button" class="be-modo-btn be-icon-btn activo" id="hm-btn-perdida" onclick="heatmapMetrica('perdida')" title="Pérdida">⚡</button>
         <button type="button" class="be-modo-btn be-icon-btn" id="hm-btn-carga" onclick="heatmapMetrica('cargabilidad')" title="Cargabilidad">%</button>
@@ -11053,7 +11054,28 @@ function _hmActualizarOpciones(){
 }
 
 function _hmAlCambiar(){
-  if(!HM_ACTUALIZANDO) _hmActualizarOpciones();
+  // Se aplica solo al cambiar un filtro -- pedido explícito, "quita ese
+  // botón de aplicar filtro para que se aplique automático" (ya no hace
+  // falta el botón "Aplicar filtros").
+  if(!HM_ACTUALIZANDO){
+    _hmActualizarOpciones();
+    heatmapAplicarFiltros();
+  }
+}
+
+// Recorre los circuitos disponibles en el filtro actual (ya angostado por
+// Zona/Subestación) de a uno, sin tener que abrir el desplegable cada vez
+// -- pedido explícito ("unas flechitas para ir cambiando de circuito").
+function heatmapSiguienteCircuito(delta){
+  const st = MSEL['msel-hm-circ'];
+  if(!st || !st.opciones.length) return;
+  const actuales = mselValores('msel-hm-circ');
+  let idx = actuales.length === 1 ? st.opciones.findIndex(o => o.value === actuales[0]) : -1;
+  if(idx === -1) idx = delta > 0 ? -1 : st.opciones.length;
+  const nuevo = (idx + delta + st.opciones.length) % st.opciones.length;
+  mselSetSeleccionSilent('msel-hm-circ', [st.opciones[nuevo].value]);
+  _hmActualizarOpciones();
+  heatmapAplicarFiltros();
 }
 
 function _hmRatio(valor, max){
@@ -11073,8 +11095,8 @@ async function heatmapCargar(){
   _hmActualizarOpciones();
   // Por defecto se filtra a UNA sola zona (la primera) para que el mapa no
   // salga gigante al abrir la pestaña -- pedido explícito ("por defecto
-  // aparezca un filtro, y una zona en específico"). El usuario puede abrir
-  // "Filtros" y cambiarla o quitarla con el botón "Aplicar filtros".
+  // aparezca un filtro, y una zona en específico"). El usuario puede
+  // cambiarla o quitarla desde el filtro (se aplica solo, sin botón).
   if(HM_OPC.zonas && HM_OPC.zonas.length && mselValores('msel-hm-zona').length === 0){
     mselSetSeleccionSilent('msel-hm-zona', [HM_OPC.zonas[0]]);
     _hmActualizarOpciones();
