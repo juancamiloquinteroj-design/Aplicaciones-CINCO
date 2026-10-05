@@ -11295,13 +11295,15 @@ function heatmapRender(d, zs, ss, cs){
     `${d.items.length.toLocaleString('es-CO')} tramos${umbrales}. Haz clic en un cuadro para ver su historia.`;
 
   HM_CELDAS = items;
-  const COLS = 40;
-  let celdas = `<div style="display:grid;grid-template-columns:repeat(${COLS},10px);gap:2px;align-content:start">`;
-  items.forEach((t, i) => {
-    const txt = `${t.estructura || t.circuito} · ${t.tramo} · ${_trNodos(t)} · ${esMetrica ? _trNum(t.valor) + ' kWh/mes' : _trNum(t.valor, 2) + '%'}`;
-    celdas += `<div class="hm-celda" data-i="${i}" title="${_mselEsc(txt)}" style="display:block;width:10px;height:10px;cursor:pointer;background:${_hmColor(t.valor, max)}"></div>`;
-  });
-  celdas += '</div>';
+
+  // Canvas en vez de un <div> por tramo -- con 72.000 celdas, crear y pintar
+  // esa cantidad de elementos HTML es lo que hacia sentir lento el heatmap.
+  // Un solo canvas se dibuja de una pasada; el clic y el tooltip se resuelven
+  // haciendo la cuenta de en que celda cayo el mouse, sin DOM de por medio.
+  const COLS = 40, CELDA = 10, GAP = 2, PASO = CELDA + GAP;
+  const filas = Math.max(1, Math.ceil(items.length / COLS));
+  const anchoCanvas = COLS * PASO - GAP;
+  const altoCanvas = filas * PASO - GAP;
 
   let barra = '<div style="display:flex;flex-direction:column;align-items:flex-start;gap:4px;margin-left:14px">';
   barra += `<div style="font-size:11px;color:var(--text2)">${_trNum(max, esMetrica ? 0 : 2)} ${unidad}</div>`;
@@ -11314,10 +11316,39 @@ function heatmapRender(d, zs, ss, cs){
 
   document.getElementById('hm-leyenda').innerHTML = '';
   const grid = document.getElementById('hm-grid');
-  grid.innerHTML = `<div style="display:flex;align-items:flex-start;overflow:auto">${celdas}${barra}</div>`;
-  grid.onclick = e => {
-    const el = e.target.closest('.hm-celda');
-    if(el) heatmapHistoria(HM_CELDAS[Number(el.dataset.i)]);
+  grid.innerHTML = `<div style="display:flex;align-items:flex-start;overflow:auto">` +
+    `<div style="position:relative">` +
+    `<canvas id="hm-canvas" width="${anchoCanvas}" height="${altoCanvas}" style="display:block;cursor:pointer"></canvas>` +
+    `<div id="hm-tooltip" style="position:absolute;display:none;pointer-events:none;background:#111;color:#fff;font-size:11px;padding:4px 7px;border-radius:5px;white-space:nowrap;z-index:10"></div>` +
+    `</div>${barra}</div>`;
+
+  const canvas = document.getElementById('hm-canvas');
+  const ctx = canvas.getContext('2d');
+  items.forEach((t, i) => {
+    ctx.fillStyle = _hmColor(t.valor, max);
+    ctx.fillRect((i % COLS) * PASO, Math.floor(i / COLS) * PASO, CELDA, CELDA);
+  });
+
+  function _hmCeldaEnPosicion(x, y){
+    const col = Math.floor(x / PASO), fila = Math.floor(y / PASO);
+    if(col < 0 || col >= COLS || x - col * PASO > CELDA || y - fila * PASO > CELDA) return null;
+    const i = fila * COLS + col;
+    return (i >= 0 && i < HM_CELDAS.length) ? i : null;
+  }
+  const tooltip = document.getElementById('hm-tooltip');
+  canvas.onmousemove = e => {
+    const i = _hmCeldaEnPosicion(e.offsetX, e.offsetY);
+    if(i === null){ tooltip.style.display = 'none'; return; }
+    const t = HM_CELDAS[i];
+    tooltip.textContent = `${t.estructura || t.circuito} · ${t.tramo} · ${_trNodos(t)} · ${esMetrica ? _trNum(t.valor) + ' kWh/mes' : _trNum(t.valor, 2) + '%'}`;
+    tooltip.style.left = (e.offsetX + 14) + 'px';
+    tooltip.style.top = (e.offsetY + 10) + 'px';
+    tooltip.style.display = 'block';
+  };
+  canvas.onmouseleave = () => { tooltip.style.display = 'none'; };
+  canvas.onclick = e => {
+    const i = _hmCeldaEnPosicion(e.offsetX, e.offsetY);
+    if(i !== null) heatmapHistoria(HM_CELDAS[i]);
   };
 }
 
