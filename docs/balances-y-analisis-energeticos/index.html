@@ -1821,16 +1821,25 @@ html,body{overflow-x:hidden;margin:0}
   </div>
   <div class="card hidden" id="correo-lleno">
     <div class="card-title">Borrador de correo de alerta</div>
-    <div class="card-sub">Texto editable -- revisalo antes de enviarlo. Esto no envía el correo solo: copialo o abrilo en tu cliente de correo.</div>
-    <div class="fbar" style="margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--border)">
+    <div class="card-sub">Texto editable (podés escribir directo abajo) -- revisalo antes de enviarlo. Esto no envía el correo solo: copialo o abrilo en tu cliente de correo.</div>
+    <div class="fbar" style="margin-bottom:10px;padding-bottom:12px;border-bottom:1px solid var(--border)">
       <label>Precio de energía</label>
-      <input type="number" id="correo-precio" min="0" step="any" oninput="heatmapRecalcularCorreo()"
+      <input type="number" id="correo-precio" min="0" step="any" oninput="heatmapRenderCorreo()"
         style="width:110px;padding:6px 10px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg)">
-      <span style="font-size:11px;color:var(--text3)">$/kWh -- tomado de la Tarifa G+T+R del mes (Evaluación Económica); ajustalo si hace falta</span>
+      <span style="font-size:11px;color:var(--text3)">$/kWh (Tarifa G+T+R del mes, de Evaluación Económica) -- ajustalo si hace falta</span>
       <div style="margin-left:auto;display:flex;gap:8px">
         <button type="button" class="btn-theme" style="width:auto;padding:7px 14px" onclick="heatmapCopiarCorreo()">📋 Copiar</button>
         <button type="button" class="btn-theme" style="width:auto;padding:7px 14px" onclick="heatmapAbrirCorreoMailto()">✉ Abrir en correo</button>
       </div>
+    </div>
+    <!-- Tramos incluidos: un mismo correo puede juntar varios tramos del
+         MISMO circuito -- pedido explícito. Se agregan volviendo al Heatmap,
+         abriendo otro tramo del mismo circuito y tocando de nuevo "Enviar
+         correo de alerta"; cada chip se puede quitar sin perder los demás. -->
+    <div style="margin-bottom:10px">
+      <label style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text3)">Tramos incluidos</label>
+      <div id="correo-chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px"></div>
+      <div style="font-size:11px;color:var(--text3);margin-top:4px">Para sumar otro tramo del mismo circuito: abrilo en el Heatmap y tocá "✉ Enviar correo de alerta" de nuevo.</div>
     </div>
     <div style="display:grid;grid-template-columns:120px 1fr;gap:8px 10px;align-items:center;margin-bottom:14px">
       <label style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text3)">Para</label>
@@ -1838,8 +1847,12 @@ html,body{overflow-x:hidden;margin:0}
       <label style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text3)">Asunto</label>
       <input type="text" id="correo-asunto" style="padding:6px 10px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg)">
     </div>
-    <div class="chart-wrap" style="height:220px;margin-bottom:14px"><canvas id="correo-ch-historia"></canvas></div>
-    <textarea id="correo-cuerpo" spellcheck="false" style="width:100%;min-height:380px;font-family:inherit;font-size:12.5px;line-height:1.6;padding:12px;border:1px solid var(--border);border-radius:10px;background:var(--bg);color:var(--text);box-sizing:border-box;resize:vertical"></textarea>
+    <!-- Pérdida y cargabilidad históricas del tramo, en la MISMA gráfica
+         (doble eje) -- pedido explícito. Con varios tramos, un par de
+         líneas (pérdida + cargabilidad) por cada uno. -->
+    <div class="chart-wrap" style="height:260px;margin-bottom:14px"><canvas id="correo-ch-historia"></canvas></div>
+    <div id="correo-cuerpo" contenteditable="true" spellcheck="false"
+      style="width:100%;min-height:380px;font-size:12.5px;line-height:1.6;padding:14px 16px;border:1px solid var(--border);border-radius:10px;background:var(--bg);color:var(--text);box-sizing:border-box;white-space:pre-wrap"></div>
   </div>
 </div>
 
@@ -11247,14 +11260,37 @@ async function heatmapHistoria(t){
 }
 
 // ==========================================================================
-// Correo de alerta -- redacta un borrador a partir del último tramo abierto
-// en el Heatmap (HM_SEL): datos del tramo, gráfico histórico, cuánto cuesta
-// la pérdida de ese tramo al mes (con la Tarifa G+T+R ya cargada para ese
-// mes en Evaluación Económica) y una propuesta de calibre mayor con una
-// estimación de cuánto bajaría la pérdida si se cambia. No envía el correo
-// -- solo arma el texto para copiar o abrir en el cliente de correo local
-// (mailto:), porque esta app no tiene servidor de envío de correo.
+// Correo de alerta -- redacta un borrador con uno o varios tramos del MISMO
+// circuito (HM_CORREO_TRAMOS), agregados desde "✉ Enviar correo de alerta"
+// en el Heatmap. El costo de cada tramo sale de REFERIR su pérdida al STN
+// con el Factor STN de Nivel 2 -- mismo Factor que usa "Evaluación
+// Económica" para N2-1 (/api/valuacion-pr-niveles), NO la pérdida cruda del
+// tramo multiplicada directo por la tarifa. No envía el correo -- solo arma
+// el texto para copiar o abrir en el cliente de correo local (mailto:),
+// porque esta app no tiene servidor de envío de correo.
 // ==========================================================================
+
+let HM_PR_NIVELES = {};   // {mes: {'1':pr,...,'4':pr}} -- mismo Factor STN que Evaluación Económica
+let HM_PR_CARGADO = false;
+async function heatmapAsegurarPr(){
+  if(HM_PR_CARGADO || DEMO) return;
+  HM_PR_CARGADO = true;
+  try{ HM_PR_NIVELES = await apiGet('/api/valuacion-pr-niveles') || {}; }
+  catch(e){ HM_PR_CARGADO = false; }  // reintenta la próxima
+}
+// Los tramos de este módulo son líneas entre estructuras -- Nivel 2 ("N2-1"
+// en el resto de la app) -- por eso siempre se usa el Factor STN de ese
+// nivel, nunca el de N3/N4.
+function _hmFactorStn(mes){
+  const pr = HM_PR_NIVELES[mes];
+  const v = pr ? +pr['2'] : null;
+  return (v > 0) ? v : 1;
+}
+
+function _hmSubestacionDe(circuito){
+  const c = HM_OPC && HM_OPC.circuitos.find(x => x.circuito === circuito);
+  return c ? c.subestacion : null;
+}
 
 // Tabla de calibres típicos de distribución (código, área en kcmil) en
 // orden creciente -- misma nomenclatura AWG/kcmil que trae "Calibre" del
@@ -11275,104 +11311,161 @@ function _hmProponerCalibre(calibreTxt){
   return {codActual, areaActual, codNuevo, areaNueva, ratio: areaActual / areaNueva};
 }
 
-function heatmapRedactarCorreo(){
+let HM_CORREO_TRAMOS = [];  // [{t,d,serie,ultimo}, ...] -- tramos agregados al borrador actual, todos del mismo circuito
+let HM_CORREO_CH = null;
+
+async function heatmapRedactarCorreo(){
   if(!HM_SEL) return;
+  await heatmapAsegurarPr();
+  // Si el tramo es de otro circuito, empieza un borrador nuevo; si es del
+  // mismo circuito ya abierto, se suma (o reemplaza si ya estaba) -- así un
+  // solo correo puede juntar varios tramos del mismo circuito.
+  const mismoCircuito = HM_CORREO_TRAMOS.length && HM_CORREO_TRAMOS[0].d.circuito === HM_SEL.d.circuito;
+  if(!mismoCircuito) HM_CORREO_TRAMOS = [];
+  const i = HM_CORREO_TRAMOS.findIndex(x => x.d.tramo === HM_SEL.d.tramo);
+  if(i === -1) HM_CORREO_TRAMOS.push(HM_SEL); else HM_CORREO_TRAMOS[i] = HM_SEL;
   document.getElementById('correo-vacio').classList.add('hidden');
   document.getElementById('correo-lleno').classList.remove('hidden');
-  document.getElementById('correo-precio').value = _costoDeMes(HM_SEL.ultimo.mes) || 0;
-  document.getElementById('correo-para').value = '';
-  if(HM_CORREO_CH) HM_CORREO_CH.destroy();
-  const serie = HM_SEL.serie;
-  HM_CORREO_CH = new Chart(document.getElementById('correo-ch-historia'), {
-    data: {
-      labels: serie.map(s => s.mes),
-      datasets: [
-        {type: 'line', label: 'Pérdida del tramo (kWh)', data: serie.map(s => s.perdida_mes_kwh),
-          borderColor: '#2563eb', backgroundColor: '#2563eb22', borderWidth: 2, pointRadius: 3, tension: 0},
-        {type: 'line', label: 'Pérdida total del circuito (kWh)', data: serie.map(s => s.circuito_perdida_total_kwh),
-          borderColor: '#16a34a', backgroundColor: '#16a34a22', borderWidth: 2, pointRadius: 3, tension: 0, spanGaps: true, yAxisID: 'y1'},
-      ],
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: {legend: {display: true, position: 'bottom', labels: {boxWidth: 12, font: {size: 11}}}},
-      scales: {
-        x: {offset: true},
-        y: {position: 'left', title: {display: true, text: 'kWh (tramo)'}},
-        y1: {position: 'right', grid: {drawOnChartArea: false}, title: {display: true, text: 'kWh (circuito)'}},
-      },
-    },
-  });
-  heatmapRecalcularCorreo();
+  if(!mismoCircuito || i === -1) document.getElementById('correo-precio').value = _costoDeMes(HM_SEL.ultimo.mes) || 0;
+  heatmapRenderCorreo();
   tramosIrSub('correo');
 }
 
-function heatmapRecalcularCorreo(){
-  if(!HM_SEL) return;
-  const {d, ultimo} = HM_SEL;
+function heatmapQuitarTramoCorreo(tramo){
+  HM_CORREO_TRAMOS = HM_CORREO_TRAMOS.filter(x => x.d.tramo !== tramo);
+  if(!HM_CORREO_TRAMOS.length){
+    document.getElementById('correo-lleno').classList.add('hidden');
+    document.getElementById('correo-vacio').classList.remove('hidden');
+    return;
+  }
+  heatmapRenderCorreo();
+}
+
+const _hmColorTramo = i => ['#2563eb', '#dc2626', '#16a34a', '#d97706', '#7c3aed', '#0891b2'][i % 6];
+
+function heatmapRenderCorreo(){
+  if(!HM_CORREO_TRAMOS.length) return;
   const precio = parseFloat(document.getElementById('correo-precio').value) || 0;
-  const perdidaActual = ultimo.perdida_mes_kwh || 0;
-  const costoActual = perdidaActual * precio;
-  const costoAnual = costoActual * 12;
+  const primero = HM_CORREO_TRAMOS[0];
+  const subestacion = _hmSubestacionDe(primero.d.circuito);
+  const circuitoNombre = primero.d.estructura || primero.d.circuito;
+
+  document.getElementById('correo-chips').innerHTML = HM_CORREO_TRAMOS.map(x => `
+    <span style="display:inline-flex;align-items:center;gap:6px;background:var(--bg3);border:1px solid var(--border);border-radius:16px;padding:4px 6px 4px 12px;font-size:11px">
+      ${_mselEsc(_trNodos(x.d))}
+      <button type="button" onclick="heatmapQuitarTramoCorreo('${_mselEsc(x.d.tramo)}')" title="Quitar"
+        style="border:0;background:var(--border);color:var(--text2);width:16px;height:16px;border-radius:50%;cursor:pointer;font-size:10px;line-height:1;padding:0">✕</button>
+    </span>`).join('');
 
   document.getElementById('correo-asunto').value =
-    `Alerta de pérdidas técnicas -- tramo ${d.tramo} (${d.estructura || d.circuito})`;
+    `ALERTA PERDIDAS TECNICAS - ${(subestacion || '').toUpperCase()} ${circuitoNombre.toUpperCase()}`.trim();
 
-  const prop = _hmProponerCalibre(d.calibre);
-  let parrafoCalibre;
-  if(prop){
-    const perdidaNueva = perdidaActual * prop.ratio;
-    const ahorroKwh = perdidaActual - perdidaNueva;
-    const ahorroMes = ahorroKwh * precio;
-    const ahorroAnio = ahorroMes * 12;
-    parrafoCalibre =
-`Propuesta de calibre
----------------------
-Calibre actual: ${d.calibre}
-Calibre propuesto: ${prop.codNuevo} ACSR (o equivalente)
+  // Pérdida (kWh, eje izq.) y cargabilidad (%, eje der.) de cada tramo
+  // incluido, en la MISMA gráfica -- pedido explícito.
+  const mesesSet = new Set();
+  HM_CORREO_TRAMOS.forEach(x => x.serie.forEach(s => mesesSet.add(s.mes)));
+  const meses = [...mesesSet].sort();
+  const datasets = [];
+  HM_CORREO_TRAMOS.forEach((x, i) => {
+    const porMes = new Map(x.serie.map(s => [s.mes, s]));
+    const color = _hmColorTramo(i);
+    const etiqueta = _trNodos(x.d);
+    datasets.push({type: 'line', label: `Pérdida ${etiqueta} (kWh)`, yAxisID: 'y',
+      data: meses.map(m => porMes.has(m) ? porMes.get(m).perdida_mes_kwh : null),
+      borderColor: color, backgroundColor: color + '22', borderWidth: 2, pointRadius: 3, tension: 0, spanGaps: true});
+    datasets.push({type: 'line', label: `Cargabilidad ${etiqueta} (%)`, yAxisID: 'y1',
+      data: meses.map(m => porMes.has(m) ? porMes.get(m).cargabilidad_max_pct : null),
+      borderColor: color, backgroundColor: color + '22', borderWidth: 2, borderDash: [5, 3], pointRadius: 2, tension: 0, spanGaps: true});
+  });
+  if(HM_CORREO_CH) HM_CORREO_CH.destroy();
+  HM_CORREO_CH = new Chart(document.getElementById('correo-ch-historia'), {
+    data: {labels: meses, datasets},
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {legend: {display: true, position: 'bottom', labels: {boxWidth: 12, font: {size: 10}}}},
+      scales: {
+        x: {offset: true},
+        y: {position: 'left', title: {display: true, text: 'Pérdida (kWh)'}},
+        y1: {position: 'right', grid: {drawOnChartArea: false}, title: {display: true, text: 'Cargabilidad (%)'}},
+      },
+    },
+  });
 
-Si se cambia el conductor de ${prop.codActual} a ${prop.codNuevo}, la pérdida de este tramo bajaría de forma aproximada de ${_trNum(perdidaActual)} a ${_trNum(perdidaNueva)} kWh/mes.
-Ahorro estimado: ${_trNum(ahorroKwh)} kWh/mes -- $ ${_trNum(ahorroMes)} /mes -- $ ${_trNum(ahorroAnio)} /año (con el precio de energía de arriba).
+  const f$ = n => '$ ' + Math.round(n || 0).toLocaleString('es-CO');
+  const bloques = HM_CORREO_TRAMOS.map(x => {
+    const {d, ultimo} = x;
+    const factorStn = _hmFactorStn(ultimo.mes);
+    const perdidaActual = ultimo.perdida_mes_kwh || 0;
+    const perdidaReferida = perdidaActual * factorStn;
+    const costoActual = perdidaReferida * precio;
+    const costoAnual = costoActual * 12;
+    const nodo1 = d.nodo_1 || '—', nodo2 = d.nodo_2 || d.nodo_1 || '—';
 
-Nota: estimación de orden de magnitud sobre la pérdida del conductor (I²R), asumiendo la misma corriente de carga y que la pérdida escala de forma inversa al área del conductor. No incluye el costo de la obra (cambio de conductor, soportes, tensionado) ni verifica la capacidad mecánica del calibre propuesto -- revisar en campo antes de ejecutar.`;
-  } else {
-    parrafoCalibre =
-`Propuesta de calibre
----------------------
-No se pudo identificar automáticamente un calibre mayor a partir de "${d.calibre || 'sin dato'}". Revisar manualmente si existe un calibre superior disponible para este tramo.`;
-  }
+    const prop = _hmProponerCalibre(d.calibre);
+    let tablaCalibre, notaCalibre = '';
+    if(prop){
+      const perdidaNueva = perdidaActual * prop.ratio;
+      const costoNuevo = perdidaNueva * factorStn * precio;
+      tablaCalibre = `
+      <table class="be-tabla-creadas" style="margin:8px 0 4px">
+        <thead><tr><th>Variable</th><th>Actual</th><th>Propuesto</th></tr></thead>
+        <tbody>
+          <tr><td>Calibre</td><td class="num">${_mselEsc(d.calibre || 'Sin dato')}</td><td class="num">${prop.codNuevo} ACSR</td></tr>
+          <tr><td>Pérdida técnica</td><td class="num">${_trNum(perdidaActual)} kWh/mes</td><td class="num">${_trNum(perdidaNueva)} kWh/mes</td></tr>
+          <tr><td>Disminución de pérdida</td><td class="num">--</td><td class="num">${_trNum(perdidaActual - perdidaNueva)} kWh/mes</td></tr>
+          <tr><td>Costo de pérdida</td><td class="num">${f$(costoActual)}/mes</td><td class="num">${f$(costoNuevo)}/mes</td></tr>
+        </tbody>
+      </table>`;
+      notaCalibre = `<p style="font-size:11px;color:var(--text3);margin:4px 0 0">Estimación de orden de magnitud sobre la pérdida del conductor (I²R), asumiendo la misma corriente de carga y que la pérdida escala de forma inversa al área del conductor. No incluye el costo de la obra (cambio de conductor, soportes, tensionado) ni verifica la capacidad mecánica del calibre propuesto -- revisar en campo antes de ejecutar.</p>`;
+    } else {
+      tablaCalibre = `<p>No se pudo identificar automáticamente un calibre mayor a partir de "${_mselEsc(d.calibre || 'sin dato')}". Revisar manualmente si existe un calibre superior disponible para este tramo.</p>`;
+    }
 
-  document.getElementById('correo-cuerpo').value =
-`Buenas,
+    return `
+      <p>Tramo identificado: comprendido entre Nodo ${_mselEsc(nodo1)} hasta Nodo ${_mselEsc(nodo2)}<br>
+      Pérdida técnica: ${_trNum(perdidaActual)} kWh/mes<br>
+      Nivel de tensión: Nivel 2<br>
+      Cargabilidad tramo (máx.): ${_trNum(ultimo.cargabilidad_max_pct, 2)} %<br>
+      Longitud tramo: ${d.longitud_km != null ? _trNum(d.longitud_km, 3) + ' km' : 'Sin dato'}<br>
+      Calibre actual: ${_mselEsc(d.calibre || 'Sin dato')}</p>
 
-Se identificó un tramo con pérdida técnica relevante en el circuito ${d.estructura || d.circuito} (zona ${d.zona || 'sin dato'}):
+      <p>A continuación se realiza análisis económico de pérdida técnica del tramo Nodo ${_mselEsc(nodo1)} hasta Nodo ${_mselEsc(nodo2)}.<br>
+      Total pérdida referida al STN: ${_trNum(perdidaReferida)} kWh/mes (Factor STN Nivel 2 = ${factorStn.toFixed(6)})<br>
+      Costo de pérdida del tramo: ${f$(costoActual)}/mes -- ${f$(costoAnual)}/año (Aproximado)</p>
 
-Tramo: ${d.tramo}
-Nodos: ${_trNodos(d)}
-Estructura: ${d.nemonico_cgm || 'sin dato'}
-Calibre actual: ${d.calibre || 'sin dato'}
-Mes de referencia: ${ultimo.mes || 'sin dato'}
+      <p>Ahora bien, se realiza propuesta aproximada de cambio de calibre:</p>
+      ${tablaCalibre}
+      ${notaCalibre}`;
+  }).join('<hr style="border:none;border-top:1px solid var(--border);margin:18px 0">');
 
-Pérdida del tramo: ${_trNum(perdidaActual)} kWh/mes
-Costo de esa pérdida: $ ${_trNum(costoActual)} /mes -- $ ${_trNum(costoAnual)} /año (a $ ${_trNum(precio, 2)}/kWh)
-Pérdida técnica total del circuito en el mes: ${ultimo.circuito_perdida_total_kwh != null ? _trNum(ultimo.circuito_perdida_total_kwh) + ' kWh/mes' : 'sin dato'}
-Cargabilidad máxima: ${_trNum(ultimo.cargabilidad_max_pct, 2)} %
-Caída de tensión: ${_trNum(ultimo.caida_max_pct, 2)} %
-
-${parrafoCalibre}
-
-Quedamos atentos a sus comentarios.`;
+  document.getElementById('correo-cuerpo').innerHTML = `
+    <p>Buen día,</p>
+    <p>Se identificó${HM_CORREO_TRAMOS.length > 1 ? 'n ' + HM_CORREO_TRAMOS.length + ' tramos' : ' un tramo'} con pérdida técnica relevante en el circuito ${_mselEsc(circuitoNombre)}, ubicado en la zona ${_mselEsc(primero.d.zona || 'sin dato')}.</p>
+    ${bloques}
+    <p>Quedamos atentos a sus comentarios.</p>`;
 }
 
 function heatmapCopiarCorreo(){
-  const txt = `Para: ${document.getElementById('correo-para').value}\nAsunto: ${document.getElementById('correo-asunto').value}\n\n${document.getElementById('correo-cuerpo').value}`;
-  navigator.clipboard?.writeText(txt).catch(() => {});
+  const asunto = document.getElementById('correo-asunto').value;
+  const cuerpoEl = document.getElementById('correo-cuerpo');
+  const html = `<p><b>Asunto:</b> ${_mselEsc(asunto)}</p>${cuerpoEl.innerHTML}`;
+  const texto = `Asunto: ${asunto}\n\n${cuerpoEl.innerText}`;
+  if(navigator.clipboard && window.ClipboardItem){
+    const item = new ClipboardItem({
+      'text/html': new Blob([html], {type: 'text/html'}),
+      'text/plain': new Blob([texto], {type: 'text/plain'}),
+    });
+    navigator.clipboard.write([item]).catch(() => navigator.clipboard.writeText(texto).catch(() => {}));
+  } else if(navigator.clipboard){
+    navigator.clipboard.writeText(texto).catch(() => {});
+  }
 }
 
 function heatmapAbrirCorreoMailto(){
+  // mailto: solo soporta texto plano -- la tabla se degrada a texto simple.
   const para = encodeURIComponent(document.getElementById('correo-para').value || '');
   const asunto = encodeURIComponent(document.getElementById('correo-asunto').value || '');
-  const cuerpo = encodeURIComponent(document.getElementById('correo-cuerpo').value || '');
+  const cuerpo = encodeURIComponent(document.getElementById('correo-cuerpo').innerText || '');
   window.location.href = `mailto:${para}?subject=${asunto}&body=${cuerpo}`;
 }
 
