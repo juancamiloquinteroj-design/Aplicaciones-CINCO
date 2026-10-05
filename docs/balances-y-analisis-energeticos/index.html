@@ -1839,8 +1839,8 @@ html,body{overflow-x:hidden;margin:0}
         style="width:110px;padding:6px 10px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg)">
       <span style="font-size:11px;color:var(--text3)">$/kWh (Tarifa G+T+R del mes, de Evaluación Económica) -- ajustalo si hace falta</span>
       <div style="margin-left:auto;display:flex;gap:8px">
-        <button type="button" class="btn-theme" style="width:auto;padding:7px 14px" onclick="heatmapCopiarCorreo()">📋 Copiar</button>
-        <button type="button" class="btn-theme" style="width:auto;padding:7px 14px" onclick="heatmapAbrirCorreoMailto()">✉ Abrir en correo</button>
+        <button type="button" class="btn-theme" id="correo-btn-copiar" style="width:auto;padding:7px 14px" onclick="heatmapCopiarCorreo()">📋 Copiar</button>
+        <button type="button" class="btn-theme" id="correo-btn-mailto" style="width:auto;padding:7px 14px" onclick="heatmapAbrirCorreoMailto()">✉ Abrir en correo</button>
       </div>
     </div>
     <!-- Tramos incluidos: un mismo correo puede juntar varios tramos del
@@ -1858,12 +1858,23 @@ html,body{overflow-x:hidden;margin:0}
       <label style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text3)">Asunto</label>
       <input type="text" id="correo-asunto" style="padding:6px 10px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg)">
     </div>
-    <!-- Pérdida y cargabilidad históricas del tramo, en la MISMA gráfica
-         (doble eje) -- pedido explícito. Con varios tramos, un par de
-         líneas (pérdida + cargabilidad) por cada uno. -->
-    <div class="chart-wrap" style="height:260px;margin-bottom:14px"><canvas id="correo-ch-historia"></canvas></div>
-    <div id="correo-cuerpo" contenteditable="true" spellcheck="false"
-      style="width:100%;min-height:380px;font-size:12.5px;line-height:1.6;padding:14px 16px;border:1px solid var(--border);border-radius:10px;background:var(--bg);color:var(--text);box-sizing:border-box;white-space:pre-wrap"></div>
+    <!-- Correo a la izquierda, gráfica a la derecha (pedido explícito: "se
+         desperdicia mucho espacio" cuando iban apiladas) -- esto es solo el
+         acomodo EN LA APP; lo que se copia/abre en el correo real sigue
+         siendo el texto de #correo-cuerpo tal cual, la gráfica no viaja
+         (un mailto:/portapapeles de texto no puede llevar un canvas). La
+         gráfica queda "sticky" para seguir visible mientras se hace scroll
+         por un cuerpo largo (varios tramos). -->
+    <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
+      <div id="correo-cuerpo" contenteditable="true" spellcheck="false"
+        style="flex:1 1 360px;min-width:300px;min-height:300px;font-size:12.5px;line-height:1.6;padding:14px 16px;border:1px solid var(--border);border-radius:10px;background:var(--bg);color:var(--text);box-sizing:border-box;white-space:pre-wrap"></div>
+      <div style="flex:1 1 300px;min-width:260px;position:sticky;top:12px">
+        <!-- Pérdida y cargabilidad históricas del tramo, en la MISMA gráfica
+             (doble eje) -- pedido explícito. Con varios tramos, un par de
+             líneas (pérdida + cargabilidad) por cada uno. -->
+        <div class="chart-wrap" style="height:240px"><canvas id="correo-ch-historia"></canvas></div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -11486,7 +11497,19 @@ function heatmapRenderCorreo(){
     <p>Quedamos atentos a sus comentarios.</p>`;
 }
 
-function heatmapCopiarCorreo(){
+// Cambia el texto de un botón un rato como confirmación (no hay un toast
+// genérico en la app) -- ej. "✓ Copiado" -- y lo devuelve a su texto
+// original solo.
+function _hmBotonFeedback(id, texto, ms){
+  const btn = document.getElementById(id);
+  if(!btn) return;
+  if(!btn.dataset.textoOriginal) btn.dataset.textoOriginal = btn.textContent;
+  btn.textContent = texto;
+  clearTimeout(btn._hmFeedbackTimer);
+  btn._hmFeedbackTimer = setTimeout(() => { btn.textContent = btn.dataset.textoOriginal; }, ms || 2500);
+}
+
+function _hmCopiarCorreoAlPortapapeles(){
   const asunto = document.getElementById('correo-asunto').value;
   const cuerpoEl = document.getElementById('correo-cuerpo');
   const html = `<p><b>Asunto:</b> ${_mselEsc(asunto)}</p>${cuerpoEl.innerHTML}`;
@@ -11496,18 +11519,32 @@ function heatmapCopiarCorreo(){
       'text/html': new Blob([html], {type: 'text/html'}),
       'text/plain': new Blob([texto], {type: 'text/plain'}),
     });
-    navigator.clipboard.write([item]).catch(() => navigator.clipboard.writeText(texto).catch(() => {}));
+    return navigator.clipboard.write([item]).catch(() => navigator.clipboard.writeText(texto));
   } else if(navigator.clipboard){
-    navigator.clipboard.writeText(texto).catch(() => {});
+    return navigator.clipboard.writeText(texto);
   }
+  return Promise.reject(new Error('Sin acceso al portapapeles'));
+}
+
+function heatmapCopiarCorreo(){
+  _hmCopiarCorreoAlPortapapeles()
+    .then(() => _hmBotonFeedback('correo-btn-copiar', '✓ Copiado'))
+    .catch(() => _hmBotonFeedback('correo-btn-copiar', 'No se pudo copiar'));
 }
 
 function heatmapAbrirCorreoMailto(){
-  // mailto: solo soporta texto plano -- la tabla se degrada a texto simple.
+  // mailto: tiene un límite de longitud muy bajo en varios clientes (en
+  // Outlook de escritorio corta alrededor de 2.000 caracteres); con tablas
+  // y varios tramos el cuerpo lo supera fácil y el correo abría vacío --
+  // pedido explícito ("le doy abrir correo... no sale nada"). Por eso acá
+  // se copia el cuerpo completo al portapapeles y el mailto: solo lleva
+  // destinatario + asunto -- falta pegar (Ctrl+V) adentro del correo.
   const para = encodeURIComponent(document.getElementById('correo-para').value || '');
   const asunto = encodeURIComponent(document.getElementById('correo-asunto').value || '');
-  const cuerpo = encodeURIComponent(document.getElementById('correo-cuerpo').innerText || '');
-  window.location.href = `mailto:${para}?subject=${asunto}&body=${cuerpo}`;
+  _hmCopiarCorreoAlPortapapeles()
+    .then(() => _hmBotonFeedback('correo-btn-mailto', '✓ Copiado -- pegalo (Ctrl+V) en el correo', 4500))
+    .catch(() => _hmBotonFeedback('correo-btn-mailto', 'No se pudo copiar -- usá "Copiar" y pegalo a mano', 4500));
+  window.location.href = `mailto:${para}?subject=${asunto}`;
 }
 
 async function paramDiccCargarEstado(){
