@@ -11531,7 +11531,7 @@ function heatmapRenderCorreo(){
     </table>`;
   }
   const notaCalibre = hayPropuesta
-    ? `<p style="font-size:11px;color:var(--text3);margin:4px 0 0">Como referencia para la evaluación de alternativas, se realizó una estimación preliminar del orden de magnitud de las pérdidas del conductor (I²R), manteniendo constante la corriente de carga y considerando que la pérdida varía de forma inversamente proporcional al área de la sección transversal. Esta estimación se presenta únicamente como un valor de referencia y queda sujeta su validación y criterios del Operador de Red.</p>`
+    ? `<p style="font-size:11px;color:var(--text3);margin:4px 0 0">Nota: Como referencia para la evaluación de alternativas, se realizó una estimación preliminar del orden de magnitud de las pérdidas del conductor (I²R), manteniendo constante la corriente de carga y considerando que la pérdida varía de forma inversamente proporcional al área de la sección transversal. Esta estimación se presenta únicamente como un valor de referencia y queda sujeta su validación y criterios como Operador de Red.</p>`
     : '';
 
   const bloques = `
@@ -11595,7 +11595,7 @@ function _hmPrepararHtmlExport(){
   // columnas juntas, justo del tamaño de lo que esté en cada celda" -- con
   // table-layout:auto (el default) y white-space:nowrap cada columna se
   // ajusta sola al contenido.
-  const thS = 'background:#eef2f7;color:#64748b;text-align:left;padding:6px 16px 6px 10px;font-size:11px;' +
+  const thS = 'background:#eef2f7;color:#64748b;text-align:left;padding:6px 16px 6px 10px;font-size:11px;font-weight:700;' +
     'text-transform:uppercase;letter-spacing:.3px;border-bottom:1px solid #cbd5e1;font-family:Arial,Helvetica,sans-serif;white-space:nowrap';
   const tdS = 'padding:6px 16px 6px 10px;border-bottom:1px solid #e2e8f0;color:#1f2937;font-family:Arial,Helvetica,sans-serif;font-size:11px;white-space:nowrap';
   // Por CLASE (.etq/.centro/.num/.sep), no por posición de celda -- con la
@@ -11612,11 +11612,19 @@ function _hmPrepararHtmlExport(){
     t.querySelectorAll('td').forEach(td => {
       const esEtq = td.classList.contains('etq');
       const sep = td.classList.contains('sep') ? ';border-left:2px solid #94a3b8' : '';
-      td.setAttribute('style', tdS + (esEtq ? ';font-weight:600;color:#475569' : ';text-align:center') + sep);
+      // font-weight EXPLÍCITO siempre (nunca heredado) -- pedido explícito:
+      // "cuando los pego los datos salen en negrilla". Word/Outlook puede
+      // aplicar su propio negrilla por defecto a una celda sin peso
+      // declarado; dejarlo en blanco no alcanza, hay que forzar "normal".
+      td.setAttribute('style', tdS + (esEtq ? ';font-weight:600;color:#475569' : ';font-weight:400;text-align:center') + sep);
     });
   });
+  // Ningún <b> sobrevive a la exportación -- pedido explícito ("el texto
+  // no debe ser negrilla, ningún texto"): solo fila 1 y columna 1 de las
+  // tablas quedan en negrilla (ya fijado arriba), el resto del texto no.
+  clone.querySelectorAll('b, strong').forEach(b => b.replaceWith(...b.childNodes));
   clone.querySelectorAll('p').forEach(p => p.setAttribute('style',
-    (p.getAttribute('style') || '') + ';font-family:Arial,Helvetica,sans-serif;font-size:12.5px;color:#1f2937;margin:8px 0'));
+    (p.getAttribute('style') || '') + ';font-family:Arial,Helvetica,sans-serif;font-size:12.5px;font-weight:400;color:#1f2937;margin:8px 0'));
   clone.querySelectorAll('hr').forEach(hr => hr.setAttribute('style', 'border:none;border-top:1px solid #cbd5e1;margin:18px 0'));
 
   // La gráfica va DEBAJO de la primera tabla (datos del tramo), no antes de
@@ -11644,7 +11652,7 @@ function _hmPrepararHtmlExport(){
 function _hmCopiarCorreoAlPortapapeles(){
   const asunto = document.getElementById('correo-asunto').value;
   const cuerpoEl = document.getElementById('correo-cuerpo');
-  const html = `<div style="font-family:Arial,Helvetica,sans-serif"><p style="font-family:Arial,Helvetica,sans-serif;font-size:12.5px;margin:0 0 8px"><b>Asunto:</b> ${_mselEsc(asunto)}</p>${_hmPrepararHtmlExport()}</div>`;
+  const html = `<div style="font-family:Arial,Helvetica,sans-serif"><p style="font-family:Arial,Helvetica,sans-serif;font-size:12.5px;font-weight:400;margin:0 0 8px">Asunto: ${_mselEsc(asunto)}</p>${_hmPrepararHtmlExport()}</div>`;
   const texto = `Asunto: ${asunto}\n\n${cuerpoEl.innerText}`;
   if(navigator.clipboard && window.ClipboardItem){
     const item = new ClipboardItem({
