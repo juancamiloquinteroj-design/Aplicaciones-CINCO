@@ -11153,7 +11153,7 @@ async function heatmapHistoria(t){
   document.getElementById('hm-panel-campos').innerHTML = '<div style="grid-column:1/-1;font-size:12px;color:var(--text3)">Cargando…</div>';
   try{
     const p = new URLSearchParams({circuito: t.circuito, tramo: t.tramo});
-    const d = await apiGet(`/api/tramos/detalle?${p}`);
+    const d = await apiGet(`/api/tramos/detalle?${p}`, 60000);
     const serie = d.serie_mensual || [];
     const ultimo = serie[serie.length - 1] || {};
     document.getElementById('hm-panel-titulo').textContent = `${d.estructura || d.circuito} · ${_trNodos(d)}`;
@@ -11170,16 +11170,33 @@ async function heatmapHistoria(t){
     ].join('');
     const esMetrica = HM_METRICA === 'perdida';
     if(HM_CH) HM_CH.destroy();
+    // En la vista de pérdida, se agrega -- en eje aparte, porque es un orden de
+    // magnitud mayor -- la pérdida técnica TOTAL del circuito (todos los
+    // niveles), sacada de "Resumen Perdida Tecnica.csv", para comparar cuánto
+    // pesa este tramo dentro del circuito completo.
     HM_CH = new Chart(document.getElementById('hm-ch-historia'), {
-      type: esMetrica ? 'bar' : 'line',
       data: {
         labels: serie.map(s => s.mes),
         datasets: esMetrica
-          ? [{label: 'Pérdida mensual (kWh)', data: serie.map(s => s.perdida_mes_kwh), backgroundColor: '#2563eb'}]
-          : [{label: 'Máximo (%)', data: serie.map(s => s.cargabilidad_max_pct), borderColor: '#dc2626', backgroundColor: '#dc262622', tension: 0},
-             {label: 'Promedio (%)', data: serie.map(s => s.cargabilidad_prom_pct), borderColor: '#2563eb', backgroundColor: '#2563eb22', tension: 0}],
+          ? [
+              {type: 'bar', label: 'Pérdida del tramo (kWh)', data: serie.map(s => s.perdida_mes_kwh),
+                backgroundColor: '#2563eb', yAxisID: 'y'},
+              {type: 'line', label: 'Pérdida técnica total del circuito (kWh)', data: serie.map(s => s.circuito_perdida_total_kwh),
+                borderColor: '#16a34a', backgroundColor: '#16a34a22', borderWidth: 2, pointRadius: 3, tension: 0,
+                spanGaps: true, yAxisID: 'y1'},
+            ]
+          : [
+              {type: 'line', label: 'Máximo (%)', data: serie.map(s => s.cargabilidad_max_pct), borderColor: '#dc2626', backgroundColor: '#dc262622', tension: 0},
+              {type: 'line', label: 'Promedio (%)', data: serie.map(s => s.cargabilidad_prom_pct), borderColor: '#2563eb', backgroundColor: '#2563eb22', tension: 0},
+            ],
       },
-      options: {responsive: true, maintainAspectRatio: false},
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        scales: esMetrica ? {
+          y: {position: 'left', title: {display: true, text: 'kWh (tramo)'}},
+          y1: {position: 'right', grid: {drawOnChartArea: false}, title: {display: true, text: 'kWh (circuito)'}},
+        } : undefined,
+      },
     });
   }catch(e){
     document.getElementById('hm-panel-campos').innerHTML = '<div style="grid-column:1/-1;font-size:12px;color:var(--text3)">No se pudo cargar el detalle del tramo.</div>';
