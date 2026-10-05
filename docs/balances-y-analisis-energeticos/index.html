@@ -1768,25 +1768,32 @@ html,body{overflow-x:hidden;margin:0}
 </div>
 
 <div id="tr-sub-heatmap">
-  <div class="fbar" style="margin-bottom:10px;flex-wrap:wrap;gap:10px;align-items:center">
-    <label>Zona</label>
-    <div class="msel" id="msel-hm-zona"></div>
-    <label style="margin-left:10px">Subestación</label>
-    <div class="msel" id="msel-hm-sub"></div>
-    <label style="margin-left:10px">Circuito</label>
-    <div class="msel" id="msel-hm-circ"></div>
-    <button type="button" class="btn-theme" style="width:auto;padding:7px 16px" onclick="heatmapAplicarFiltros()">Aplicar filtros</button>
-    <div style="margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-      <button type="button" class="be-modo-btn be-icon-btn activo" id="hm-btn-perdida" onclick="heatmapMetrica('perdida')" title="Pérdida">⚡</button>
-      <button type="button" class="be-modo-btn be-icon-btn" id="hm-btn-carga" onclick="heatmapMetrica('cargabilidad')" title="Cargabilidad">%</button>
-      <button type="button" class="be-modo-btn be-icon-btn" onclick="heatmapAbrirUmbrales()" title="Umbrales">⚙</button>
-    </div>
-  </div>
   <div class="card">
+    <div class="fbar" style="margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--border);flex-wrap:wrap;gap:10px;align-items:center">
+      <label>Zona</label>
+      <div class="msel" id="msel-hm-zona"></div>
+      <label style="margin-left:10px">Subestación</label>
+      <div class="msel" id="msel-hm-sub"></div>
+      <label style="margin-left:10px">Circuito</label>
+      <div class="msel" id="msel-hm-circ"></div>
+      <button type="button" class="btn-theme" style="width:auto;padding:7px 16px" onclick="heatmapAplicarFiltros()">Aplicar filtros</button>
+      <div style="margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <button type="button" class="be-modo-btn be-icon-btn activo" id="hm-btn-perdida" onclick="heatmapMetrica('perdida')" title="Pérdida">⚡</button>
+        <button type="button" class="be-modo-btn be-icon-btn" id="hm-btn-carga" onclick="heatmapMetrica('cargabilidad')" title="Cargabilidad">%</button>
+        <button type="button" class="be-modo-btn be-icon-btn" onclick="heatmapAbrirUmbrales()" title="Umbrales">⚙</button>
+      </div>
+    </div>
     <div class="card-title" id="hm-titulo">Mapa de calor</div>
     <div class="card-sub" id="hm-sub"></div>
-    <div id="hm-leyenda" style="display:flex;align-items:center;gap:8px;font-size:11px;color:var(--text2);margin:6px 0 10px"></div>
-    <div id="hm-grid" style="overflow:auto;max-height:420px"></div>
+    <!-- El heatmap tiene su propio scroll acotado (puede tener miles de
+         celdas); el panel de detalle (hm-panel-tramo) va AFUERA de ese
+         scroll para que no quede atrapado dentro de una caja de 420px y
+         sus datos se vean sin tener que hacer scroll dentro de un scroll
+         (pedido explícito: "no se ven los datos del tramo"). -->
+    <div style="display:flex;gap:26px;align-items:flex-start;flex-wrap:wrap">
+      <div id="hm-grid" style="overflow:auto;max-height:420px"></div>
+      <div id="hm-panel-tramo" style="flex:1 1 340px;min-width:300px"></div>
+    </div>
   </div>
 
   <div id="hm-modal-umbrales" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;display:flex;align-items:center;justify-content:center" onclick="if(event.target===this) heatmapCerrarUmbrales()">
@@ -1808,7 +1815,32 @@ html,body{overflow-x:hidden;margin:0}
 </div>
 
 <div id="tr-sub-correo" class="hidden">
-  <div class="card"><div class="card-title">Correo de alerta</div><div class="card-sub">En construcción: el borrador editable con vista previa va después del mapa de calor.</div></div>
+  <div class="card" id="correo-vacio">
+    <div class="card-title">Correo de alerta</div>
+    <div class="card-sub">Elegí un tramo en el Heatmap y tocá "✉ Enviar correo de alerta" para redactar un borrador acá.</div>
+  </div>
+  <div class="card hidden" id="correo-lleno">
+    <div class="card-title">Borrador de correo de alerta</div>
+    <div class="card-sub">Texto editable -- revisalo antes de enviarlo. Esto no envía el correo solo: copialo o abrilo en tu cliente de correo.</div>
+    <div class="fbar" style="margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--border)">
+      <label>Precio de energía</label>
+      <input type="number" id="correo-precio" min="0" step="any" oninput="heatmapRecalcularCorreo()"
+        style="width:110px;padding:6px 10px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg)">
+      <span style="font-size:11px;color:var(--text3)">$/kWh -- tomado de la Tarifa G+T+R del mes (Evaluación Económica); ajustalo si hace falta</span>
+      <div style="margin-left:auto;display:flex;gap:8px">
+        <button type="button" class="btn-theme" style="width:auto;padding:7px 14px" onclick="heatmapCopiarCorreo()">📋 Copiar</button>
+        <button type="button" class="btn-theme" style="width:auto;padding:7px 14px" onclick="heatmapAbrirCorreoMailto()">✉ Abrir en correo</button>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:120px 1fr;gap:8px 10px;align-items:center;margin-bottom:14px">
+      <label style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text3)">Para</label>
+      <input type="text" id="correo-para" placeholder="destinatario@empresa.com" style="padding:6px 10px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg)">
+      <label style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text3)">Asunto</label>
+      <input type="text" id="correo-asunto" style="padding:6px 10px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg)">
+    </div>
+    <div class="chart-wrap" style="height:220px;margin-bottom:14px"><canvas id="correo-ch-historia"></canvas></div>
+    <textarea id="correo-cuerpo" spellcheck="false" style="width:100%;min-height:380px;font-family:inherit;font-size:12.5px;line-height:1.6;padding:12px;border:1px solid var(--border);border-radius:10px;background:var(--bg);color:var(--text);box-sizing:border-box;resize:vertical"></textarea>
+  </div>
 </div>
 
 <div id="tr-sub-economico" class="hidden">
@@ -10895,6 +10927,8 @@ let HM_METRICA = 'perdida';
 let HM_CELDAS = [];
 let HM_LISTAS = null;
 let HM_CH = null;
+let HM_SEL = null;       // {t, d, serie, ultimo} del último tramo cargado -- lo usa el correo de alerta
+let HM_CORREO_CH = null;
 
 function tramosIrSub(nombre){
   ['heatmap', 'correo', 'economico', 'topologia'].forEach(n => {
@@ -11017,6 +11051,10 @@ function heatmapRender(d, zs, ss, cs){
   const items = d.items.filter(t =>
     (isNaN(minP) || (t.perdida_mes_kwh ?? 0) >= minP) &&
     (isNaN(minC) || (t.cargabilidad_max_pct ?? 0) >= minC));
+  // Siempre de mayor a menor (pérdida o cargabilidad, según la métrica
+  // activa) -- pedido explícito: así el peor tramo siempre cae primero
+  // (arriba a la izquierda) en vez de seguir el orden de la topología.
+  items.sort((a, b) => (b.valor ?? 0) - (a.valor ?? 0));
   const max = items.reduce((m, t) => Math.max(m, t.valor || 0), 0) || 1;
   // Si queda un solo circuito filtrado, se muestra su nombre completo
   // (estructura) en vez de un genérico "1 circuito" -- pedido explícito.
@@ -11053,27 +11091,27 @@ function heatmapRender(d, zs, ss, cs){
   barra += `<div style="width:16px;height:260px;border-radius:4px;background:linear-gradient(to top, ${pasos.join(',')})"></div>`;
   barra += `<div style="font-size:11px;color:var(--text2)">0 ${unidad}</div></div>`;
 
-  document.getElementById('hm-leyenda').innerHTML = '';
   const grid = document.getElementById('hm-grid');
-  // El espacio libre a la derecha del mapa se usa para el detalle del tramo
-  // elegido -- vacio por defecto, se llena en heatmapHistoria() al hacer clic.
-  grid.innerHTML = `<div style="display:flex;gap:26px;align-items:flex-start;flex-wrap:wrap">` +
-    `<div style="display:flex;align-items:flex-start;overflow:auto">` +
+  grid.innerHTML = `<div style="display:flex;align-items:flex-start;overflow:auto">` +
     `<div style="position:relative">` +
     `<canvas id="hm-canvas" width="${anchoCanvas}" height="${altoCanvas}" style="display:block;cursor:pointer"></canvas>` +
     `<div id="hm-tooltip" style="position:absolute;display:none;pointer-events:none;background:#111;color:#fff;font-size:11px;padding:4px 7px;border-radius:5px;white-space:nowrap;z-index:10"></div>` +
-    `</div>${barra}</div>` +
-    `<div id="hm-panel-tramo" style="flex:1 1 320px;min-width:280px">` +
+    `</div>${barra}</div>`;
+  // El panel de detalle vive AFUERA del hm-grid con scroll acotado (ver
+  // comentario en el HTML) -- así sus datos no quedan atrapados dentro de
+  // una caja de 420px cuando el gráfico+tarjeta no caben ahí.
+  document.getElementById('hm-panel-tramo').innerHTML =
     `<div id="hm-panel-vacio" style="font-size:12px;color:var(--text3);padding:26px 16px;text-align:center;border:1px dashed var(--border);border-radius:10px">Hacé clic en un tramo del mapa para ver su detalle.</div>` +
     `<div id="hm-panel-datos" style="display:none">` +
     `<div id="hm-panel-titulo" style="font-weight:700;font-size:13px;margin-bottom:10px;text-align:center"></div>` +
-    `<div style="display:flex;justify-content:flex-end;margin-bottom:4px">` +
-    `<button type="button" class="be-modo-btn be-icon-btn" style="width:22px;height:22px;font-size:11px;opacity:.6" onclick="heatmapToggleDatos()" title="Ver datos">▤</button>` +
+    `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:4px">` +
+    `<button type="button" class="btn-theme" style="width:auto;padding:5px 12px;font-size:11px" onclick="heatmapRedactarCorreo()">✉ Enviar correo de alerta</button>` +
+    `<button type="button" class="be-modo-btn be-icon-btn" style="width:22px;height:22px;font-size:11px;opacity:.6;flex:none" onclick="heatmapToggleDatos()" title="Ver datos">▤</button>` +
     `</div>` +
     `<div class="chart-wrap" style="height:220px;margin-bottom:12px"><canvas id="hm-ch-historia"></canvas></div>` +
     `<div id="hm-panel-tabla" class="hidden" style="overflow:auto;max-height:180px;margin-bottom:12px"></div>` +
     `<div id="hm-panel-campos"></div>` +
-    `</div></div></div>`;
+    `</div>`;
 
   const canvas = document.getElementById('hm-canvas');
   const ctx = canvas.getContext('2d');
@@ -11137,19 +11175,21 @@ async function heatmapHistoria(t){
     // único indicador central como el Índice de Pérdida); sin el modificador
     // "mini" para que ocupe mejor el espacio libre bajo el gráfico.
     document.getElementById('hm-panel-campos').innerHTML = `<div class="alim-resumen-compacta" style="margin:0">
-      <div class="alim-resumen-compacta-titulo">Datos del tramo (${d.mes || ''})</div>
+      <div class="alim-resumen-compacta-titulo">Datos del tramo (${ultimo.mes || ''})</div>
       <div class="alim-resumen-compacta-grid" style="grid-template-columns:repeat(3,1fr)">
-        ${_hmCampo('Circuito', d.circuito)}
+        ${_hmCampo('Circuito', d.estructura || d.circuito)}
         ${_hmCampo('Código CGM', d.nemonico_cgm || '—')}
         ${_hmCampo('Zona', d.zona || '—')}
         ${_hmCampo('Calibre', d.calibre || 'Sin dato')}
         ${_hmCampo('Distancia', d.longitud_km != null ? `${_trNum(d.longitud_km, 3)} km` : 'Sin dato')}
-        ${_hmCampo('Pérdida del mes', `${_trNum(ultimo.perdida_mes_kwh)} kWh/mes`)}
+        ${_hmCampo('Pérdida del mes (tramo)', `${_trNum(ultimo.perdida_mes_kwh)} kWh/mes`)}
+        ${_hmCampo('Pérdida total del circuito', ultimo.circuito_perdida_total_kwh != null ? `${_trNum(ultimo.circuito_perdida_total_kwh)} kWh/mes` : 'Sin dato')}
         ${_hmCampo('Cargabilidad máx.', `${_trNum(ultimo.cargabilidad_max_pct, 2)} %`)}
         ${_hmCampo('Caída de tensión', `${_trNum(ultimo.caida_max_pct, 2)} %`)}
         ${_hmCampo('Tensión mínima', `${_trNum(ultimo.tension_min_pu, 4)} pu`)}
       </div>
     </div>`;
+    HM_SEL = {t, d, serie, ultimo};
     const esMetrica = HM_METRICA === 'perdida';
     document.getElementById('hm-panel-tabla').innerHTML = esMetrica
       ? `<table class="be-tabla-creadas"><thead><tr><th>Mes</th><th>Pérdida tramo (kWh)</th><th>Pérdida total circuito (kWh)</th></tr></thead><tbody>${
@@ -11204,6 +11244,136 @@ async function heatmapHistoria(t){
   }catch(e){
     document.getElementById('hm-panel-campos').innerHTML = '<div style="font-size:12px;color:var(--text3)">No se pudo cargar el detalle del tramo.</div>';
   }
+}
+
+// ==========================================================================
+// Correo de alerta -- redacta un borrador a partir del último tramo abierto
+// en el Heatmap (HM_SEL): datos del tramo, gráfico histórico, cuánto cuesta
+// la pérdida de ese tramo al mes (con la Tarifa G+T+R ya cargada para ese
+// mes en Evaluación Económica) y una propuesta de calibre mayor con una
+// estimación de cuánto bajaría la pérdida si se cambia. No envía el correo
+// -- solo arma el texto para copiar o abrir en el cliente de correo local
+// (mailto:), porque esta app no tiene servidor de envío de correo.
+// ==========================================================================
+
+// Tabla de calibres típicos de distribución (código, área en kcmil) en
+// orden creciente -- misma nomenclatura AWG/kcmil que trae "Calibre" del
+// Parquet (ej. "2 ACSR", "4/0 ACSR"). Sirve solo para la ESTIMACIÓN de
+// cuánto bajaría la pérdida I²R al subir de calibre (ver _hmProponerCalibre).
+const HM_CALIBRES_KCMIL = [
+  ['6', 26.2], ['4', 41.7], ['2', 66.4], ['1', 83.7], ['1/0', 105.6], ['2/0', 133.1],
+  ['3/0', 167.8], ['4/0', 211.6], ['266.8', 266.8], ['336.4', 336.4], ['397.5', 397.5],
+  ['477', 477], ['556.5', 556.5], ['636', 636], ['795', 795],
+];
+function _hmProponerCalibre(calibreTxt){
+  if(!calibreTxt) return null;
+  const token = String(calibreTxt).trim().split(/\s+/)[0].toUpperCase();
+  const i = HM_CALIBRES_KCMIL.findIndex(c => c[0].toUpperCase() === token);
+  if(i === -1 || i >= HM_CALIBRES_KCMIL.length - 1) return null;
+  const [codActual, areaActual] = HM_CALIBRES_KCMIL[i];
+  const [codNuevo, areaNueva] = HM_CALIBRES_KCMIL[i + 1];
+  return {codActual, areaActual, codNuevo, areaNueva, ratio: areaActual / areaNueva};
+}
+
+function heatmapRedactarCorreo(){
+  if(!HM_SEL) return;
+  document.getElementById('correo-vacio').classList.add('hidden');
+  document.getElementById('correo-lleno').classList.remove('hidden');
+  document.getElementById('correo-precio').value = _costoDeMes(HM_SEL.ultimo.mes) || 0;
+  document.getElementById('correo-para').value = '';
+  if(HM_CORREO_CH) HM_CORREO_CH.destroy();
+  const serie = HM_SEL.serie;
+  HM_CORREO_CH = new Chart(document.getElementById('correo-ch-historia'), {
+    data: {
+      labels: serie.map(s => s.mes),
+      datasets: [
+        {type: 'line', label: 'Pérdida del tramo (kWh)', data: serie.map(s => s.perdida_mes_kwh),
+          borderColor: '#2563eb', backgroundColor: '#2563eb22', borderWidth: 2, pointRadius: 3, tension: 0},
+        {type: 'line', label: 'Pérdida total del circuito (kWh)', data: serie.map(s => s.circuito_perdida_total_kwh),
+          borderColor: '#16a34a', backgroundColor: '#16a34a22', borderWidth: 2, pointRadius: 3, tension: 0, spanGaps: true, yAxisID: 'y1'},
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {legend: {display: true, position: 'bottom', labels: {boxWidth: 12, font: {size: 11}}}},
+      scales: {
+        x: {offset: true},
+        y: {position: 'left', title: {display: true, text: 'kWh (tramo)'}},
+        y1: {position: 'right', grid: {drawOnChartArea: false}, title: {display: true, text: 'kWh (circuito)'}},
+      },
+    },
+  });
+  heatmapRecalcularCorreo();
+  tramosIrSub('correo');
+}
+
+function heatmapRecalcularCorreo(){
+  if(!HM_SEL) return;
+  const {d, ultimo} = HM_SEL;
+  const precio = parseFloat(document.getElementById('correo-precio').value) || 0;
+  const perdidaActual = ultimo.perdida_mes_kwh || 0;
+  const costoActual = perdidaActual * precio;
+  const costoAnual = costoActual * 12;
+
+  document.getElementById('correo-asunto').value =
+    `Alerta de pérdidas técnicas -- tramo ${d.tramo} (${d.estructura || d.circuito})`;
+
+  const prop = _hmProponerCalibre(d.calibre);
+  let parrafoCalibre;
+  if(prop){
+    const perdidaNueva = perdidaActual * prop.ratio;
+    const ahorroKwh = perdidaActual - perdidaNueva;
+    const ahorroMes = ahorroKwh * precio;
+    const ahorroAnio = ahorroMes * 12;
+    parrafoCalibre =
+`Propuesta de calibre
+---------------------
+Calibre actual: ${d.calibre}
+Calibre propuesto: ${prop.codNuevo} ACSR (o equivalente)
+
+Si se cambia el conductor de ${prop.codActual} a ${prop.codNuevo}, la pérdida de este tramo bajaría de forma aproximada de ${_trNum(perdidaActual)} a ${_trNum(perdidaNueva)} kWh/mes.
+Ahorro estimado: ${_trNum(ahorroKwh)} kWh/mes -- $ ${_trNum(ahorroMes)} /mes -- $ ${_trNum(ahorroAnio)} /año (con el precio de energía de arriba).
+
+Nota: estimación de orden de magnitud sobre la pérdida del conductor (I²R), asumiendo la misma corriente de carga y que la pérdida escala de forma inversa al área del conductor. No incluye el costo de la obra (cambio de conductor, soportes, tensionado) ni verifica la capacidad mecánica del calibre propuesto -- revisar en campo antes de ejecutar.`;
+  } else {
+    parrafoCalibre =
+`Propuesta de calibre
+---------------------
+No se pudo identificar automáticamente un calibre mayor a partir de "${d.calibre || 'sin dato'}". Revisar manualmente si existe un calibre superior disponible para este tramo.`;
+  }
+
+  document.getElementById('correo-cuerpo').value =
+`Buenas,
+
+Se identificó un tramo con pérdida técnica relevante en el circuito ${d.estructura || d.circuito} (zona ${d.zona || 'sin dato'}):
+
+Tramo: ${d.tramo}
+Nodos: ${_trNodos(d)}
+Estructura: ${d.nemonico_cgm || 'sin dato'}
+Calibre actual: ${d.calibre || 'sin dato'}
+Mes de referencia: ${ultimo.mes || 'sin dato'}
+
+Pérdida del tramo: ${_trNum(perdidaActual)} kWh/mes
+Costo de esa pérdida: $ ${_trNum(costoActual)} /mes -- $ ${_trNum(costoAnual)} /año (a $ ${_trNum(precio, 2)}/kWh)
+Pérdida técnica total del circuito en el mes: ${ultimo.circuito_perdida_total_kwh != null ? _trNum(ultimo.circuito_perdida_total_kwh) + ' kWh/mes' : 'sin dato'}
+Cargabilidad máxima: ${_trNum(ultimo.cargabilidad_max_pct, 2)} %
+Caída de tensión: ${_trNum(ultimo.caida_max_pct, 2)} %
+
+${parrafoCalibre}
+
+Quedamos atentos a sus comentarios.`;
+}
+
+function heatmapCopiarCorreo(){
+  const txt = `Para: ${document.getElementById('correo-para').value}\nAsunto: ${document.getElementById('correo-asunto').value}\n\n${document.getElementById('correo-cuerpo').value}`;
+  navigator.clipboard?.writeText(txt).catch(() => {});
+}
+
+function heatmapAbrirCorreoMailto(){
+  const para = encodeURIComponent(document.getElementById('correo-para').value || '');
+  const asunto = encodeURIComponent(document.getElementById('correo-asunto').value || '');
+  const cuerpo = encodeURIComponent(document.getElementById('correo-cuerpo').value || '');
+  window.location.href = `mailto:${para}?subject=${asunto}&body=${cuerpo}`;
 }
 
 async function paramDiccCargarEstado(){
