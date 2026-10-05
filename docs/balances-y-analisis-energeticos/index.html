@@ -11509,10 +11509,64 @@ function _hmBotonFeedback(id, texto, ms){
   btn._hmFeedbackTimer = setTimeout(() => { btn.textContent = btn.dataset.textoOriginal; }, ms || 2500);
 }
 
+// El cuerpo en pantalla usa la clase .correo-tabla (CSS de ESTA página) y
+// un <select> interactivo para elegir el calibre propuesto -- ninguno de
+// los dos viaja al portapapeles/Gmail/Outlook (una clase sin su hoja de
+// estilos no pinta nada, y un <select> no tiene sentido pegado en un
+// correo). Pedido explícito: "cuando pego no salen las tablas ni la
+// gráfica". Por eso, antes de copiar, se arma una copia del cuerpo con
+// estilos EN LÍNEA fijos (no var(--...), para que se vea igual sin
+// importar el tema del destinatario), el <select> cambiado por el texto
+// de la opción elegida, y la gráfica convertida a imagen (un <canvas> no
+// es HTML copiable -- se exporta a PNG con Chart.js).
+function _hmPrepararHtmlExport(){
+  const clone = document.getElementById('correo-cuerpo').cloneNode(true);
+
+  // Cualquier color var(--...) que haya quedado de un estilo en línea
+  // original (ej. la nota de "estimación aproximada") no se resuelve fuera
+  // de esta página -- se cambia por su color fijo equivalente.
+  clone.querySelectorAll('[style*="var(--"]').forEach(el => {
+    el.setAttribute('style', el.getAttribute('style')
+      .replace(/var\(--text3\)/g, '#8592a6')
+      .replace(/var\(--text2\)/g, '#4a5568')
+      .replace(/var\(--text\)/g, '#1b2433')
+      .replace(/var\(--border\)/g, '#e2e7ef'));
+  });
+
+  clone.querySelectorAll('select').forEach(sel => {
+    const texto = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].text : sel.value;
+    sel.replaceWith(document.createTextNode(texto));
+  });
+
+  const thS = 'background:#eef2f7;color:#64748b;text-align:left;padding:6px 10px;font-size:10.5px;' +
+    'text-transform:uppercase;letter-spacing:.3px;border-bottom:1px solid #cbd5e1;font-family:Arial,Helvetica,sans-serif';
+  const tdS = 'padding:6px 10px;border-bottom:1px solid #e2e8f0;color:#1f2937;font-family:Arial,Helvetica,sans-serif;font-size:12.5px';
+  clone.querySelectorAll('table').forEach(t => {
+    t.setAttribute('style', 'width:100%;border-collapse:collapse;border:1px solid #cbd5e1;margin:4px 0 12px');
+    t.querySelectorAll('th').forEach((th, i) => th.setAttribute('style', thS + (i > 0 ? ';text-align:right' : '')));
+    t.querySelectorAll('td').forEach(td => {
+      const esPrimera = td.cellIndex === 0;
+      td.setAttribute('style', tdS + (esPrimera ? ';font-weight:600;color:#475569' : ';text-align:right'));
+    });
+  });
+  clone.querySelectorAll('p').forEach(p => p.setAttribute('style',
+    (p.getAttribute('style') || '') + ';font-family:Arial,Helvetica,sans-serif;font-size:12.5px;color:#1f2937;margin:8px 0'));
+  clone.querySelectorAll('hr').forEach(hr => hr.setAttribute('style', 'border:none;border-top:1px solid #cbd5e1;margin:18px 0'));
+
+  let imgHtml = '';
+  if(HM_CORREO_CH){
+    try{
+      const dataUrl = HM_CORREO_CH.toBase64Image('image/png', 1);
+      imgHtml = `<img src="${dataUrl}" alt="Histórico de pérdida y cargabilidad" style="max-width:600px;width:100%;display:block;margin:0 0 16px">`;
+    }catch(e){ /* si falla la exportación de la gráfica, se sigue sin imagen */ }
+  }
+  return imgHtml + clone.innerHTML;
+}
+
 function _hmCopiarCorreoAlPortapapeles(){
   const asunto = document.getElementById('correo-asunto').value;
   const cuerpoEl = document.getElementById('correo-cuerpo');
-  const html = `<p><b>Asunto:</b> ${_mselEsc(asunto)}</p>${cuerpoEl.innerHTML}`;
+  const html = `<div style="font-family:Arial,Helvetica,sans-serif"><p style="font-family:Arial,Helvetica,sans-serif;font-size:12.5px;margin:0 0 8px"><b>Asunto:</b> ${_mselEsc(asunto)}</p>${_hmPrepararHtmlExport()}</div>`;
   const texto = `Asunto: ${asunto}\n\n${cuerpoEl.innerText}`;
   if(navigator.clipboard && window.ClipboardItem){
     const item = new ClipboardItem({
