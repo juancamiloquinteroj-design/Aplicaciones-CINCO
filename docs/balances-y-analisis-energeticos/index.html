@@ -6373,6 +6373,31 @@ html,body{overflow-x:hidden;margin:0}
   </div>
 </div>
 
+<!-- ---------------- RANGO MENSUAL/ANUAL -- modal "Personalizado" GENÉRICO
+     (compartido por todos los filtros mensuales/anuales de la app) ----------------
+     Pedido explícito: "en todas las gráficas... mensuales y anuales
+     coloque filtro de 6 meses, 12 meses o personalizado". En vez de un
+     modal por módulo (serían 20+), uno solo que se "retarga" según qué
+     filtro lo abrió -- ver _mesPresetAbrirPersonalizado/_MES_PRESET_CTX. -->
+<div id="modal-mes-rango-personalizado" class="tm-modal-overlay hidden" onclick="if(event.target===this) _mesPresetCerrarPersonalizado()">
+  <div class="tm-modal">
+    <div class="tm-modal-title" id="mes-rango-personalizado-titulo">Rango personalizado</div>
+    <div class="tm-modal-sub">Elegí el rango de meses a mostrar.</div>
+    <div class="be-field" style="margin-top:12px">
+      <label>Desde</label>
+      <input type="month" id="mes-rango-personalizado-desde">
+    </div>
+    <div class="be-field" style="margin-top:8px">
+      <label>Hasta</label>
+      <input type="month" id="mes-rango-personalizado-hasta">
+    </div>
+    <div class="tm-modal-botones">
+      <button class="btn-theme" style="width:auto;padding:8px 16px;background:transparent;color:var(--text2);border:1px solid var(--border)" onclick="_mesPresetCerrarPersonalizado()">Cerrar</button>
+      <button class="btn-theme" style="width:auto;padding:8px 16px" onclick="_mesPresetGraficarPersonalizado()">▶ Graficar</button>
+    </div>
+  </div>
+</div>
+
 <!-- ---------------- BALANCE DIARIO · EXPORTAR CSV (rango a elegir) ---------------- -->
 <div id="modal-be-exportar" class="tm-modal-overlay hidden" onclick="if(event.target===this) beCancelarExportarCsv()">
   <div class="tm-modal">
@@ -9426,7 +9451,7 @@ async function entrarClientesGrandesConsumos(){
 // URL del túnel de Suplencias_App (Flask propio, corre local en el PC del
 // usuario) -- cambia si se reinicia el túnel, igual que API_BASE_URL del
 // backend de Pérdidas Técnicas; verificar acá si el iframe no carga.
-const SUPLENCIAS_URL = 'https://compile-chambers-corners-overall.trycloudflare.com';
+const SUPLENCIAS_URL = 'https://has-federation-manga-section.trycloudflare.com';
 let _suplenciasCargado = false;
 
 function entrarSuplencias(){
@@ -16266,6 +16291,54 @@ function cerrarModalRangoPersonalizado(){
 function beGraficarPersonalizado(){
   verBalanceEstructura(BE_ACTIVA_ID);
   cerrarModalRangoPersonalizado();
+}
+
+// ==========================================================================
+// Rango rápido GENÉRICO para filtros MENSUALES/ANUALES de cualquier módulo
+// -- pedido explícito ("en todas las gráficas... mensuales y anuales
+// coloque filtro de 6 meses, 12 meses o personalizado"). Mismo espíritu
+// que beAplicarRangoPreset (Diario de Ver Balance) pero parametrizado por
+// IDs + nombre de función de refresco, para no reescribir la misma lógica
+// en cada uno de los 20 módulos que tienen un filtro "desde mes/hasta
+// mes" -- el nombre de función se pasa como STRING (no la función en sí)
+// porque viaja por un atributo onclick="" del HTML.
+function _mesPresetAplicar(idDesde, idHasta, meses, nombreFn){
+  const hoy = new Date();
+  const desde = new Date(hoy.getFullYear(), hoy.getMonth() - (meses - 1), 1);
+  const fmt = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+  const elD = document.getElementById(idDesde), elH = document.getElementById(idHasta);
+  if(!elD || !elH) return;
+  elD.value = fmt(desde);
+  elH.value = fmt(hoy);
+  elD.dataset.manual = '1';
+  if(nombreFn && typeof window[nombreFn] === 'function') window[nombreFn]();
+}
+
+// Un solo modal "Personalizado" compartido -- se "retarga" a los IDs/
+// función del módulo que lo abrió (_MES_PRESET_CTX), en vez de un modal
+// repetido por cada uno de los 20 módulos.
+let _MES_PRESET_CTX = null;
+function _mesPresetAbrirPersonalizado(idDesde, idHasta, nombreFn, titulo){
+  const elD = document.getElementById(idDesde), elH = document.getElementById(idHasta);
+  if(!elD || !elH) return;
+  _MES_PRESET_CTX = {idDesde, idHasta, nombreFn};
+  document.getElementById('mes-rango-personalizado-titulo').textContent = titulo ? `Rango personalizado -- ${titulo}` : 'Rango personalizado';
+  document.getElementById('mes-rango-personalizado-desde').value = elD.value || '';
+  document.getElementById('mes-rango-personalizado-hasta').value = elH.value || '';
+  document.getElementById('modal-mes-rango-personalizado').classList.remove('hidden');
+}
+function _mesPresetCerrarPersonalizado(){
+  document.getElementById('modal-mes-rango-personalizado').classList.add('hidden');
+  _MES_PRESET_CTX = null;
+}
+function _mesPresetGraficarPersonalizado(){
+  if(!_MES_PRESET_CTX) return;
+  const {idDesde, idHasta, nombreFn} = _MES_PRESET_CTX;
+  const elD = document.getElementById(idDesde), elH = document.getElementById(idHasta);
+  if(elD){ elD.value = document.getElementById('mes-rango-personalizado-desde').value; elD.dataset.manual = '1'; }
+  if(elH) elH.value = document.getElementById('mes-rango-personalizado-hasta').value;
+  if(nombreFn && typeof window[nombreFn] === 'function') window[nombreFn]();
+  _mesPresetCerrarPersonalizado();
 }
 
 /* ---- Balances por Estructura -- Editar (metadatos + vigencias por punto) ---- */
