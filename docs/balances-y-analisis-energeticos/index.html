@@ -23998,19 +23998,33 @@ function alim3RenderChartEsp(filasConClave){
         // anterior (pp o kWh según la serie), esté prendido o no el botón
         // "Δ Variación" -- ese botón solo controla la etiqueta fija sobre
         // el gráfico -- pedido explícito.
-        tooltip:{callbacks:{label:c=>{
-          if(c.raw==null) return null;
-          const esPct = c.dataset.yAxisID==='yPct';
-          const arr = esPct ? pctDatos : (c.datasetIndex===0 ? entradaDatos : salidaDatos);
-          const ant = arr[c.dataIndex-1];
-          let extra = '';
-          if(ant!=null){
-            const delta = c.raw - ant;
-            const icono = delta>=0 ? '▲' : '▼';
-            extra = esPct ? ` (${icono} ${Math.abs(delta).toFixed(2)}pp)` : ` (${icono} ${Math.abs(delta).toLocaleString('es-CO',{maximumFractionDigits:0})} kWh)`;
-          }
-          return esPct ? `${c.dataset.label}: ${c.raw.toFixed(2)}%${extra}` : `${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh${extra}`;
-        }}},
+        tooltip:{callbacks:{
+          label:c=>{
+            if(c.raw==null) return null;
+            const esPct = c.dataset.yAxisID==='yPct';
+            const arr = esPct ? pctDatos : (c.datasetIndex===0 ? entradaDatos : salidaDatos);
+            const ant = arr[c.dataIndex-1];
+            let extra = '';
+            if(ant!=null){
+              const delta = c.raw - ant;
+              const icono = delta>=0 ? '▲' : '▼';
+              extra = esPct ? ` (${icono} ${Math.abs(delta).toFixed(2)}pp)` : ` (${icono} ${Math.abs(delta).toLocaleString('es-CO',{maximumFractionDigits:0})} kWh)`;
+            }
+            return esPct ? `${c.dataset.label}: ${c.raw.toFixed(2)}%${extra}` : `${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh${extra}`;
+          },
+          // Pérdida en kWh -- pedido explícito ("quiero que aparezca la
+          // pérdida en kWh, pero solo el número en la ventana emergente, no
+          // como una curva nueva"): el gráfico solo trae Entrada/Salida/
+          // Pérdida % como líneas (a diferencia de N2-1, que sí tiene su
+          // propia línea de Pérdida kWh) -- se agrega acá como una línea
+          // más del tooltip (afterBody), sin tocar los datasets visibles.
+          afterBody:(items)=>{
+            if(!items.length) return;
+            const p = perdidaDatos[items[0].dataIndex];
+            if(p==null) return;
+            return [`Pérdida: ${p.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh${esAnual?'/12M':'/mes'}`];
+          },
+        }},
         zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:3}}},
       },
       scales:{
