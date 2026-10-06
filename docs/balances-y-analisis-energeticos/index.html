@@ -18376,6 +18376,12 @@ let ALIM_FILAS = null;
 // (tarjetas/tabla Top/scatter/zonas/N2-1/informes) sigue usando
 // ALIM_FILAS (sin compactos) exactamente como antes.
 let ALIM_FILAS_TODOS = null;
+// Venta Proyectada (ver load_venta_proyectada.py) -- nombre (cruza contra
+// nombre_spard) -> {anio, mes, e_proyectada_kwh, venta_total_kwh, cociente},
+// siempre el mes más reciente disponible por nombre (ya viene así del
+// backend). Se carga junto con ALIM_FILAS -- mismos consumidores
+// (Alimentadores/N2-1/Subestaciones).
+let VENTA_PROYECTADA = new Map();
 async function _alimAsegurarDatosCargados(){
   if(ALIM_FILAS) return ALIM_FILAS;
   // Acotado a los últimos 30 meses (no TODO el histórico -- 14k+ filas en
@@ -18389,6 +18395,12 @@ async function _alimAsegurarDatosCargados(){
   const idx = hoy.getFullYear()*12 + hoy.getMonth() - 29;
   const desde = `${Math.floor(idx/12)}-${String(idx%12+1).padStart(2,'0')}`;
   const filas = DEMO ? [] : (await apiGet(`/api/alimentadores?desde=${desde}`, AUTH_TIMEOUT_MS)).filas;
+  if(!DEMO){
+    try{
+      const vp = await apiGet('/api/alimentadores/venta-proyectada', AUTH_TIMEOUT_MS);
+      VENTA_PROYECTADA = new Map(vp.filas.map(f => [f.nombre, f]));
+    }catch(e){ VENTA_PROYECTADA = new Map(); /* no bloquea el resto si falla */ }
+  }
   // Los circuitos tipo "Comp" (compactos/compensación, ej. "COMPACTO HOBO
   // - ROSALES (Piscícola...)") NO son alimentadores reales -- son entradas
   // de compensación/ajuste (varias con Pérdida NEGATIVA y Entrada=0,
@@ -19176,6 +19188,33 @@ function _alimNivelTecnicaPorMes(resumenResp){
 // apenas 195k kWh, un "105%" sin sentido). El guard de abajo
 // (perdidaTecnica > perdidaTotal) es la misma protección por si este
 // desajuste apareciera en otro lado.
+// Venta Proyectada -- mismo bloque .alim-resumen-compacta-pct (% grande +
+// etiqueta) que el "Índice Pérdida" de la izquierda, pedido explícito
+// ("del mismo tamaño como esta a la izquierda de indicador mensual").
+// `nombres` es la lista de nombre_spard visibles en la tarjeta actual (un
+// alimentador puntual, o todos los de la zona/tipo filtrados) -- se suma
+// EProyectada/VentaTotal de los que tengan match en VENTA_PROYECTADA
+// (no todos los alimentadores están en el CSV fuente) y se saca el % del
+// conjunto encontrado, no un promedio de porcentajes individuales.
+function _ventaProyectadaBox(nombres){
+  if(!VENTA_PROYECTADA || !VENTA_PROYECTADA.size || !nombres || !nombres.length) return '';
+  let sumaE = 0, sumaV = 0, hallados = 0;
+  nombres.forEach(n => {
+    const f = VENTA_PROYECTADA.get(n);
+    if(!f) return;
+    hallados++;
+    sumaE += f.e_proyectada_kwh || 0;
+    sumaV += f.venta_total_kwh || 0;
+  });
+  if(!hallados || !sumaV) return '';
+  const pct = sumaE / sumaV * 100;
+  const kwh = Math.round(sumaE).toLocaleString('es-CO');
+  return `<div class="alim-resumen-compacta-pct">
+    <div class="valor">${pct.toFixed(2)}%</div>
+    <div class="etiqueta">Venta Proyectada<br>${kwh} kWh/mes proy.</div>
+  </div>`;
+}
+
 function _alimResumenDesglose(perdidaTotal, perdidaTecnica){
   if(perdidaTotal == null || perdidaTecnica == null || perdidaTotal <= 0) return '';
   if(perdidaTecnica > perdidaTotal) return '';
@@ -23701,7 +23740,7 @@ function alim3RenderSeleccion(){
     document.getElementById('alim3-comentarios').innerHTML = '<p style="margin:0;color:var(--text3)">Elige un alimentador puntual para ver sus comentarios.</p>';
 
     const conClave = alim3AgregarZonaMensual(ALIM3_ZONAS_SEL);
-    alim3RenderTarjetas(conClave);
+    alim3RenderTarjetas(conClave, ALIM3_LISTA_CACHE.map(([,nombre]) => nombre));
     alim3RenderChartEsp(conClave);
     alim3RenderChartTecnica(conClave);
     alim3RenderChartAgpe(conClave);
@@ -23720,7 +23759,7 @@ function alim3RenderSeleccion(){
   alim3RenderIndicador(ultima);
   alim3RenderComentarios(filas);
   const conClave = filas.map(f => ({...f, clave: alimN21Clave(f.anio, f.mes)}));
-  alim3RenderTarjetas(conClave);
+  alim3RenderTarjetas(conClave, [etiqueta]);
   alim3RenderChartEsp(conClave);
   alim3RenderChartTecnica(conClave);
   alim3RenderChartAgpe(conClave);
@@ -23747,7 +23786,7 @@ function _alim3Gestionable(perdida, tecnica, gestionableCrudo){
 // tarjetitas sueltas (_alim3Tarjeta, con Mensual/Anual apilados adentro de
 // cada una). Acá van 2 tarjetas lado a lado (Mensual/Anual), mismo
 // contenido que antes pero con el diseño/las clases CSS de Nivel 3/4.
-function alim3RenderTarjetas(filasConClave){
+function alim3RenderTarjetas(filasConClave, nombres){
   const cont = document.getElementById('alim3-tarjetas');
   if(!cont) return;
   const serieBase = filasConClave.map(f => ({
@@ -23812,7 +23851,7 @@ function alim3RenderTarjetas(filasConClave){
           <div><span class="etiqueta">% Pérdida Técnica:</span> <span class="valor">${fpct(pctTecnica)}</span>${dPct(pctTecnica, pctTecnicaAnt)}</div>
           <div><span class="etiqueta">% Pérdida Gestionable:</span> <span class="valor">${fpct(pctGestionable)}</span>${dPct(pctGestionable, pctGestionableAnt)}</div>
         </div>
-        ${_alimResumenDesglose(perdida, tecnica)}
+        ${_ventaProyectadaBox(nombres)}
       </div>
     </div>`;
   };
@@ -26695,6 +26734,11 @@ function alimN21RenderResumen(datos12){
     const d = actual - anterior;
     return ` <span class="alim-resumen-compacta-delta">${d>=0?'▲':'▼'} ${Math.round(Math.abs(d)).toLocaleString('es-CO')}</span>`;
   };
+  // Mismos nombre_spard que entran a la suma de alimN21AgregarMensual
+  // (ALIM_FILAS filtrado por zona) -- ver _ventaProyectadaBox.
+  const nombres = [...new Set(
+    ALIM_FILAS.filter(f => !ALIM_N21_ZONAS_SEL.size || ALIM_N21_ZONAS_SEL.has(f.zona)).map(f => f.nombre_spard)
+  )];
 
   const tarjetaCompacta = (titulo, pct, pctAnterior, entrada, entradaAnt, salida, salidaAnt, perdidaTotal, perdidaTotalAnt) => {
     const dPp = (pct!=null && pctAnterior!=null) ? pct - pctAnterior : null;
@@ -26712,6 +26756,7 @@ function alimN21RenderResumen(datos12){
           <div><span class="etiqueta">Salida:</span> <span class="valor">${fk(salida)}</span>${dTxt(salida, salidaAnt)}</div>
           <div><span class="etiqueta">P. Técnica:</span> <span class="valor">--</span></div>
         </div>
+        ${_ventaProyectadaBox(nombres)}
       </div>
     </div>`;
   };
