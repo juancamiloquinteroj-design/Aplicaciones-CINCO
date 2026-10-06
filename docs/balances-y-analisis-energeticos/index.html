@@ -918,13 +918,6 @@ tfoot td:first-child{text-align:left}
 .be-tabla-scroll{overflow-x:auto}
 .be-tabla-scroll-acotada{max-height:1120px;overflow-y:auto}
 .be-tabla-scroll-acotada thead th{position:sticky;top:0;background:var(--bg2);z-index:5;contain:paint}
-/* Alternativa SIN tope de alto propio -- pedido explícito ("se generan 3
-   scroll... pierdo de vista la fila 1"): con el scroll interno acotado de
-   arriba Y el scroll de la página compitiendo, al saltar de uno a otro se
-   perdía el encabezado (era sticky solo DENTRO del scroll interno). Acá la
-   tabla crece con la página (un solo scroll vertical) y el thead queda
-   sticky contra ESE scroll en cambio. */
-.be-tabla-scroll-pagina thead th{position:sticky;top:0;background:var(--bg2);z-index:5;contain:paint}
 /* Fila 1 del thead = la fila chica de Entrada/Salida -- no es sticky (usa
    td, no th), se va con el scroll; la fila 2 (títulos, th) queda sticky
    arriba de todo. Fila 3 = el viejo pie ("Total del rango") reubicado justo
@@ -5921,7 +5914,15 @@ html,body{overflow-x:hidden;margin:0}
           </div>
         </div>
       </div>
-      <div class="be-tabla-scroll be-tabla-scroll-pagina">
+      <!-- be-tabla-scroll-acotada (no una caja sin tope propio) a propósito --
+           ver beAjustarAltoTablaBalance(): un sticky adentro de
+           .be-tabla-scroll (que ya trae overflow-x:auto) NO reacciona al
+           scroll de la página, porque esa caja ya es su propio contexto de
+           scroll aunque no desborde -- probarlo sin tope dejó la fila de
+           títulos sin pegarse a nada (pedido explícito, seguía
+           perdiéndose). Acá el alto lo pone JS (el resto de la pantalla
+           disponible) en vez de los 1120px fijos de siempre. -->
+      <div class="be-tabla-scroll be-tabla-scroll-acotada" id="be-tabla-scroll-wrap">
         <table class="be-tabla-creadas" id="be-tabla-detalle">
           <thead id="be-tabla-detalle-head"></thead>
           <tbody id="be-tabla-detalle-body"></tbody>
@@ -14736,7 +14737,28 @@ async function cargarTablaBalance(reintentando){
   BE_TABLA_DATOS = datos;
   renderTablaDetalleBalance(datos);
   _beActualizarEtiquetaRangoTabla(desde, hasta);
+  beAjustarAltoTablaBalance();
 }
+
+// El alto de la tabla ya no es un número fijo (1120px) -- se calcula el
+// espacio que QUEDA visible en la pantalla desde donde empieza la tabla
+// hacia abajo, para que el scroll propio de la tabla (donde el
+// encabezado SÍ queda pegado arriba, ver .be-tabla-scroll-acotada) cubra
+// normalmente todo lo que se ve sin tener que además mover el scroll de
+// la página -- pedido explícito ("pierdo de vista la fila 1" al cruzar
+// de un scroll al otro).
+function beAjustarAltoTablaBalance(){
+  const wrap = document.getElementById('be-tabla-scroll-wrap');
+  if(!wrap || wrap.closest('.hidden')) return;
+  const top = wrap.getBoundingClientRect().top;
+  const disponible = window.innerHeight - top - 24;
+  wrap.style.maxHeight = Math.max(280, Math.round(disponible)) + 'px';
+}
+let _beAjustarAltoTimer = null;
+window.addEventListener('resize', () => {
+  clearTimeout(_beAjustarAltoTimer);
+  _beAjustarAltoTimer = setTimeout(beAjustarAltoTablaBalance, 150);
+});
 
 // El botón "Exportar CSV" ya NO exporta directo lo que se ve en pantalla --
 // abre un modal para elegir el rango a mano, prefill con el de la tabla
@@ -16176,6 +16198,11 @@ function beSeleccionarVista(modo){
   bloqueGrafico.classList.toggle('hidden', !esGrafico);
   bloqueTabla.classList.toggle('hidden', esGrafico);
   document.querySelectorAll('#be-vista-toggle .be-modo-btn[data-vista]').forEach(b=>b.classList.toggle('activo', b.dataset.vista===modo));
+  // cargarTablaBalance() ya intentó ajustar el alto de la tabla, pero si
+  // en ese momento estaba en modo Gráfico (display:none) la caja mide 0 y
+  // se salta el cálculo -- al entrar recién acá a Tabla hace falta
+  // recalcularlo con las medidas reales.
+  if(!esGrafico) beAjustarAltoTablaBalance();
   // Al volver de "Tabla" el canvas estuvo con el contenedor en display:none
   // -- Chart.js se queda con el tamaño viejo (0) y el gráfico sale
   // deforme/diminuto hasta refrescar la página -- pedido explícito ("la
