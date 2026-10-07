@@ -348,19 +348,6 @@ body{font-family:var(--app-font);background:var(--bg);color:var(--text);min-heig
 .ini-n21-cards-compactas .inicio-mes-fila span:last-child{font-size:10.5px}
 .ini-n21-cards-compactas .inicio-variacion{font-size:8.5px;padding:1px 4px}
 .ini-n21-cards-compactas .inicio-dash-fila{gap:8px;margin-bottom:0}
-/* Tarjetas de "Pérdida por Zona" en Subestaciones > Pérdida por
-   alimentadores -- ahora van debajo de la gráfica a ancho completo (antes
-   en una columna al lado), pedido explícito de tarjetas pequeñas. */
-.alim-sub-zonas-cards-chicas{grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:0}
-.alim-sub-zonas-cards-chicas .inicio-dash-card{padding:8px 10px}
-.alim-sub-zonas-cards-chicas .card-title{font-size:10px;margin-bottom:5px}
-.alim-sub-zonas-cards-chicas .inicio-dash-grid{gap:5px}
-.alim-sub-zonas-cards-chicas .inicio-mes-panel{padding:5px 7px}
-.alim-sub-zonas-cards-chicas .inicio-mes-titulo{font-size:8.5px;margin-bottom:3px;padding-bottom:3px}
-.alim-sub-zonas-cards-chicas .inicio-mes-fila{font-size:9.5px;padding:1px 0}
-.alim-sub-zonas-cards-chicas .inicio-mes-fila span:first-child{font-size:8.5px}
-.alim-sub-zonas-cards-chicas .inicio-mes-fila span:last-child{font-size:10.5px}
-.alim-sub-zonas-cards-chicas .inicio-variacion{font-size:8.5px;padding:1px 4px}
 .mod-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;margin-bottom:20px}
 .mod-grid-1linea{grid-template-columns:repeat(9,minmax(0,1fr));gap:8px;overflow-x:auto}
 .mod-grid-1linea .mod-card{padding:14px 10px}
@@ -4379,7 +4366,15 @@ html,body{overflow-x:hidden;margin:0}
            (alimSubIrATab). -->
       <span id="alim-sub-subestacion-wrap" class="hidden" style="display:inline-flex;align-items:center;gap:8px">
         <label style="margin-left:10px">Subestación</label>
-        <div class="msel" id="msel-alim-sub-subestacion" style="min-width:220px"></div>
+        <button type="button" class="be-modo-btn be-icon-btn" onclick="alimSubSiguienteSubestacion(-1)" title="Subestación anterior" style="width:22px;height:22px;font-size:10px">◀</button>
+        <div class="msel" style="position:relative">
+          <input type="text" id="alim-sub-buscar-subestacion" placeholder="Buscar / elegir..." autocomplete="off"
+            oninput="alimSubAbrirListaSubestacion()" onfocus="this.select();alimSubAbrirListaSubestacion()"
+            style="width:190px;padding:6px 10px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg);box-sizing:border-box">
+          <div id="alim-sub-lista-subestacion" class="msel-panel hidden" style="width:260px"></div>
+        </div>
+        <button type="button" class="be-modo-btn be-icon-btn" onclick="alimSubSiguienteSubestacion(1)" title="Siguiente subestación" style="width:22px;height:22px;font-size:10px">▶</button>
+        <button type="button" class="be-modo-btn be-icon-btn hidden" id="alim-sub-btn-quitar-subestacion" onclick="alimSubQuitarSubestacion()" title="Quitar subestación elegida" style="width:22px;height:22px;font-size:10px">✕</button>
       </span>
       <span id="alim-sub-conteo" style="margin-left:12px;font-size:11px;color:var(--text3)"></span>
       <!-- Métrica (Entrada/Salida/Pérdida) + Vista (Gráfica/Variación/
@@ -4502,16 +4497,6 @@ html,body{overflow-x:hidden;margin:0}
            gráfica ocupe todo"); antes compartía fila con la columna de
            tarjetas de zona (flex:0 0 500px) al lado. -->
       <div class="chart-wrap" style="height:460px"><canvas id="ch-alim-sub-alimentadores"></canvas></div>
-
-      <div style="margin-top:18px">
-        <div class="fbar" style="justify-content:center;margin-bottom:8px">
-          <div style="font-size:13px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Pérdida por Zona</div>
-        </div>
-        <!-- Tarjetas pequeñas debajo de la gráfica -- pedido explícito
-             ("las tarjetas de pérdidas por zona debajo de la gráfica,
-             tarjetas pequeñas"). -->
-        <div id="alim-sub-zonas-cards" class="inicio-dash-fila alim-sub-zonas-cards-chicas" style="margin-bottom:0"></div>
-      </div>
     </div>
     </div><!-- /#alim-sub-tab-alimentadores -->
 
@@ -22124,9 +22109,13 @@ async function cargarAlimentadoresModulo(nombreVista){
    ========================================================================== */
 let ALIM_SUB_ZONAS = [];
 let ALIM_SUB_ZONAS_SEL = new Set();
+// Subestación -- selección ÚNICA con flechas ◀▶ (pedido explícito: "así
+// como se hizo en Alimentadores"), ya no multiselect. Comparten esta
+// selección las pestañas "Pérdida por alimentadores" y "Cómo se están
+// comportando" (ver alimSubIrATab). null = ninguna elegida.
+let ALIM_SUB_SUBESTACION_SEL = null;
 let ALIM_SUB_METRICA = 'perdida';  // 'entrada' | 'salida' | 'perdida'
 let ALIM_SUB_VISTA = 'lineas';     // 'lineas' | 'heatmap' -- gráfico 1 (pedido explícito: "cambiar esa gráfica por un Heatmap Mensual")
-let ALIM_SUB_ZONA_PANEL_MODO = 'mensual';  // 'mensual' | 'anual' -- panel "Pérdida por Zona"
 let ALIM_SUB_AL_MOSTRAR_ES = false;  // gráfico "Pérdida % por Alimentador" -- agrega Entrada/Salida (kWh)
 let ALIM_SUB_AL_VAR = false;         // gráfico "Pérdida % por Alimentador" -- Δ Variación en las etiquetas
 let chAlimSubSubestaciones = null;
@@ -22151,6 +22140,57 @@ function alimSubRenderConteo(){
   el.textContent = `${n} subestación${n===1?'':'es'}${zonaTxt}`;
 }
 
+// Selector de Subestación -- selección única con buscador desplegable +
+// flechas ◀▶, mismo patrón que el de "Alimentador" en Detalle por
+// Alimentador (alim3AbrirLista/alim3ElegirAlimentador/alim3Siguiente
+// Alimentador) -- pedido explícito ("así como se hizo en Alimentadores").
+// Recorre alimSubSubestacionesDisponibles() (ya acotada a la Zona activa).
+function alimSubAbrirListaSubestacion(){
+  document.getElementById('alim-sub-lista-subestacion')?.classList.remove('hidden');
+  alimSubRenderListaSubestaciones();
+}
+function alimSubCerrarListaSubestacion(){
+  document.getElementById('alim-sub-lista-subestacion')?.classList.add('hidden');
+}
+function alimSubRenderListaSubestaciones(){
+  const cont = document.getElementById('alim-sub-lista-subestacion');
+  if(!cont) return;
+  const texto = (document.getElementById('alim-sub-buscar-subestacion').value || '').trim().toUpperCase();
+  let opciones = alimSubSubestacionesDisponibles();
+  if(texto) opciones = opciones.filter(s => s.toUpperCase().includes(texto));
+  if(!opciones.length){ cont.innerHTML = '<div class="msel-empty">Sin resultados.</div>'; }
+  else{
+    cont.innerHTML = opciones.map(s => {
+      const activo = s === ALIM_SUB_SUBESTACION_SEL;
+      return `<div class="msel-opt" onclick="alimSubElegirSubestacion('${s}')" style="${activo?'background:var(--bg);font-weight:700;color:var(--accent)':''}">${s}</div>`;
+    }).join('');
+  }
+}
+function alimSubElegirSubestacion(sub){
+  ALIM_SUB_SUBESTACION_SEL = sub;
+  const buscador = document.getElementById('alim-sub-buscar-subestacion');
+  if(buscador) buscador.value = sub;
+  alimSubCerrarListaSubestacion();
+  document.getElementById('alim-sub-btn-quitar-subestacion')?.classList.toggle('hidden', !sub);
+  alimSubRenderAlimentadoresYCards();
+}
+function alimSubSiguienteSubestacion(delta){
+  const opciones = alimSubSubestacionesDisponibles();
+  if(!opciones.length) return;
+  let idx = opciones.indexOf(ALIM_SUB_SUBESTACION_SEL);
+  if(idx === -1) idx = delta > 0 ? -1 : opciones.length;
+  const nuevo = (idx + delta + opciones.length) % opciones.length;
+  alimSubElegirSubestacion(opciones[nuevo]);
+}
+function alimSubQuitarSubestacion(){
+  ALIM_SUB_SUBESTACION_SEL = null;
+  const buscador = document.getElementById('alim-sub-buscar-subestacion');
+  if(buscador) buscador.value = '';
+  alimSubCerrarListaSubestacion();
+  document.getElementById('alim-sub-btn-quitar-subestacion')?.classList.add('hidden');
+  alimSubRenderAlimentadoresYCards();
+}
+
 // Click en una zona del croquis (N2-1 o Inicio, solo lectura) -- salta a
 // Subestaciones con esa zona ya filtrada (pedido explícito del usuario:
 // "cuando yo de click en el mapa en alguna zona específico me debe llevar
@@ -22163,9 +22203,20 @@ async function irASubestacionesConZona(zona){
   // para que la zona nueva se refleje.
   if(vistaCargada.alimSubestaciones){
     alimSubRenderZonasChips();
-    mselSetOpciones('msel-alim-sub-subestacion', alimSubSubestacionesDisponibles().map(s => ({value:s, label:s})));
+    _alimSubValidarSeleccion();
     alimSubRenderConteo();
     alimSubRenderTodo();
+  }
+}
+
+// Si la subestación elegida deja de pertenecer a la Zona activa (chips de
+// arriba), se limpia sola -- mismo criterio que ya traía el multiselect
+// viejo ("mselSetOpciones ya descarta sola cualquier subestación elegida
+// que no pertenezca a la zona nueva"), para no quedar con una subestación
+// de otra zona seleccionada y los gráficos en blanco.
+function _alimSubValidarSeleccion(){
+  if(ALIM_SUB_SUBESTACION_SEL && !alimSubSubestacionesDisponibles().includes(ALIM_SUB_SUBESTACION_SEL)){
+    alimSubQuitarSubestacion();
   }
 }
 
@@ -22186,10 +22237,6 @@ async function irAAlimentadores(zonasSet, nemonico){
     alim3RenderTablaTop();
     alim3RenderScatter();
   }
-}
-
-function irAAlimentadoresDesdeSubestaciones(zona){
-  irAAlimentadores(new Set([zona]), null);
 }
 
 function alimSubClave(anio, mes){ return alimN21Clave(anio, mes); }
@@ -22253,11 +22300,7 @@ function alimSubRenderZonasChips(){
 
 function alimSubOnCambioZona(){
   ALIM_SUB_ZONAS_SEL = new Set(mselValores('msel-alim-sub-zona'));
-  // mselSetOpciones ya descarta sola cualquier subestación elegida que no
-  // pertenezca a la zona nueva (y dispara su propio onChange si hizo
-  // falta) -- evita quedar con una subestación de otra zona seleccionada
-  // y los gráficos en blanco.
-  mselSetOpciones('msel-alim-sub-subestacion', alimSubSubestacionesDisponibles().map(s => ({value:s, label:s})));
+  _alimSubValidarSeleccion();
   alimSubRenderConteo();
   alimSubRenderTodo();
 }
@@ -22398,7 +22441,10 @@ async function alimSubCargar(){
   // _alimNivelPoblarRangoDefecto (mismo criterio en toda la app, salvo IP_Reg).
   _alimNivelPoblarRangoDefecto('alim-sub', [...new Set(ALIM_FILAS.map(f => alimSubClave(f.anio, f.mes)))].sort());
 
-  mselInit('msel-alim-sub-subestacion', 'Subestación', 'Ninguna', alimSubSubestacionesDisponibles().map(s => ({value:s, label:s})), alimSubRenderAlimentadoresYCards, []);
+  ALIM_SUB_SUBESTACION_SEL = null;
+  const buscadorSub = document.getElementById('alim-sub-buscar-subestacion');
+  if(buscadorSub) buscadorSub.value = '';
+  document.getElementById('alim-sub-btn-quitar-subestacion')?.classList.add('hidden');
   alimSubRenderConteo();
 
   alimSubIrATab('subestaciones');
@@ -22459,7 +22505,6 @@ function alimSubRenderTodo(){
   alimSubRenderVistaActual();
   alimSubRenderTablaTop();
   alimSubRenderChartAlimentadores();
-  alimSubRenderZonaPanel();
   alimSubRenderAlimentadorCards();
 }
 
@@ -22655,7 +22700,7 @@ function alimSubRenderTablaTop(){
   // -- pedido explícito, se quita de este Top.
   const subestaciones = Object.keys(porGrupo).filter(s => s !== 'COMPACTO');
   if(!subestaciones.length){ cont.innerHTML = ''; return; }
-  const seleccionadas = new Set(mselValores('msel-alim-sub-subestacion'));
+  const seleccionadas = new Set(ALIM_SUB_SUBESTACION_SEL ? [ALIM_SUB_SUBESTACION_SEL] : []);
 
   let filas = subestaciones.map(sub => {
     const serie = alimSubVisibles(porGrupo[sub]).filter(f => f.pct != null);
@@ -22768,7 +22813,7 @@ function alimSubRenderChartTop(filas){
 // Click en una fila de "Top Subestaciones" -> salta a la pestaña "Pérdida
 // por alimentadores" ya filtrada a esa S/E (pedido explícito).
 function alimSubSeleccionarSubestacionTabla(sub){
-  mselSetSeleccion('msel-alim-sub-subestacion', [sub]);
+  alimSubElegirSubestacion(sub);
   alimSubIrATab('alimentadores');   // re-renderiza todo (gráfica + tarjetas + tabla)
 }
 
@@ -22786,14 +22831,9 @@ function alimSubToggleTopVar(){
 // pero agrupando por "nemonico" en vez de "subestacion".
 let ALIM_SUB_AL_MODO = 'mensual';  // 'mensual' | 'anual' -- gráfico "Pérdida % por Alimentador"
 
-// Maneja el gráfico "Pérdida % por Alimentador" Y el panel "Pérdida por
-// Zona" a la vez -- pedido explícito (antes eran 2 pares M/A separados que
-// se veían "repetidos"; ver #alim-sub-al-var-wrap en el filtro de arriba).
 function alimSubToggleAlModo(modo){
   ALIM_SUB_AL_MODO = modo;
-  ALIM_SUB_ZONA_PANEL_MODO = modo;
   alimSubRenderChartAlimentadores();
-  alimSubRenderZonaPanel();
 }
 
 function alimSubToggleAlEntradaSalida(){
@@ -22817,7 +22857,7 @@ function alimSubRenderChartAlimentadores(){
   if(btnEs) btnEs.classList.toggle('activo', ALIM_SUB_AL_MOSTRAR_ES);
   if(btnVar) btnVar.classList.toggle('activo', ALIM_SUB_AL_VAR);
 
-  const subestacionesElegidas = new Set(mselValores('msel-alim-sub-subestacion'));
+  const subestacionesElegidas = new Set(ALIM_SUB_SUBESTACION_SEL ? [ALIM_SUB_SUBESTACION_SEL] : []);
   if(!subestacionesElegidas.size) return;
 
   const nemonicos = [...new Set(
@@ -22987,61 +23027,6 @@ function alimSubRenderChartAlimentadores(){
   requestAnimationFrame(() => { if(chAlimSubAlimentadores) chAlimSubAlimentadores.resize(); });
 }
 
-// Panel de referencia rápida "Pérdida por Zona" al lado de "Pérdida % por
-// Alimentador" -- reusa el mismo indicador N2-1 de Inicio (_iniCalcularPanelesN21),
-// SIEMPRE sobre todas las zonas del operador (no depende de los chips de
-// Zona de arriba, es solo referencia) -- a diferencia de las tarjetas de
-// Inicio, acá el botón Mensual/Anual CAMBIA qué valor se ve (uno a la vez,
-// no los dos juntos), pedido explícito del usuario.
-function alimSubRenderZonaPanel(){
-  const cont = document.getElementById('alim-sub-zonas-cards');
-  if(!cont) return;
-  if(!ALIM_SUB_ZONAS.length){ cont.innerHTML = ''; return; }
-  const esAnual = ALIM_SUB_ZONA_PANEL_MODO === 'anual';
-  const fmtPct = v => v==null ? 'Sin datos' : `${v.toFixed(2)}%`;
-
-  // Total primero + una por zona -- con 5 zonas (impar) la grilla de 2
-  // columnas dejaba una celda vacía; el Total la llena (mismo criterio ya
-  // usado en Inicio) -- pedido explícito ("donde están las tarjetas de
-  // pérdida por zona hay un espacio, ahí quiero ver el total de N2-1").
-  const items = [{clave:null, titulo:'Total', icono:'⚡', color:'var(--accent)'}]
-    .concat(ALIM_SUB_ZONAS.map(zona => ({clave:zona, titulo:zona, icono:'📍', color:colorParaZona(zona)})));
-
-  // Click en "Total" salta a Indicador N2-1; click en una zona puntual
-  // salta a Alimentadores ya filtrado por esa zona -- pedido explícito.
-  cont.innerHTML = items.map(({clave, titulo, icono, color}) => {
-    const p = _iniCalcularPanelesN21(clave ? new Set([clave]) : new Set());
-    const idPref = `alim-sub-z-${clave || 'total'}`;
-    const onclick = clave ? `irAAlimentadoresDesdeSubestaciones('${clave}')` : `mostrarVista('alim-n21')`;
-    const titleAttr = clave ? `title="Ver zona ${clave} en Alimentadores"` : `title="Ver Indicador N2-1"`;
-    if(!p){
-      return `<div class="card inicio-dash-card" style="border-left:4px solid ${color};cursor:pointer" onclick="${onclick}" ${titleAttr}>
-        <div class="card-title">${icono} ${titulo}</div>
-        <div style="font-size:11px;color:var(--text3)">Sin datos suficientes</div>
-      </div>`;
-    }
-    const valorAct = esAnual ? p.anualAct : p.mensualAct;
-    const kwhAct = esAnual ? p.anualActKwh : p.mensualActKwh;
-    const kwhTexto = kwhAct!=null ? `${kwhAct.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh` : '';
-    return `<div class="card inicio-dash-card" style="border-left:4px solid ${color};cursor:pointer" onclick="${onclick}" ${titleAttr}>
-      <div class="card-title">${icono} ${titulo} · ${esAnual?'Anual (12M)':'Mensual'}</div>
-      <div style="font-size:10px;color:var(--text3);margin-bottom:2px">${p.mesActNombre}</div>
-      <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">
-        <div style="font-size:20px;font-weight:800;color:${color}">${fmtPct(valorAct)}</div>
-        <span id="${idPref}-var" class="inicio-variacion"></span>
-      </div>
-      <div style="font-size:10px;color:var(--text3)">${kwhTexto}</div>
-    </div>`;
-  }).join('');
-
-  items.forEach(({clave}) => {
-    const p = _iniCalcularPanelesN21(clave ? new Set([clave]) : new Set());
-    if(!p) return;
-    const valorAnt = esAnual ? p.anualAnt : p.mensualAnt;
-    const valorAct = esAnual ? p.anualAct : p.mensualAct;
-    _iniRenderVariacion(`alim-sub-z-${clave || 'total'}-var`, valorAnt, valorAct);
-  });
-}
 
 // Misma plantilla visual de tarjeta que las de zona de Inicio (Mes
 // anterior/Mes actual x Mensual/Anual con variación) -- "usa el modelo de
@@ -23093,9 +23078,9 @@ function _alimSubTextoAnalisis(nem, anterior, actual){
 function alimSubRenderAlimentadorCards(){
   const cont = document.getElementById('alim-sub-alimentador-cards');
   if(!cont) return;
-  const subestacionesElegidas = new Set(mselValores('msel-alim-sub-subestacion'));
+  const subestacionesElegidas = new Set(ALIM_SUB_SUBESTACION_SEL ? [ALIM_SUB_SUBESTACION_SEL] : []);
   if(!subestacionesElegidas.size){
-    cont.innerHTML = '<div style="font-size:11px;color:var(--text3);padding:8px">Elige una o más subestaciones arriba para ver sus alimentadores.</div>';
+    cont.innerHTML = '<div style="font-size:11px;color:var(--text3);padding:8px">Elige una subestación arriba para ver sus alimentadores.</div>';
     return;
   }
   const nemonicos = [...new Set(
@@ -29661,6 +29646,10 @@ document.addEventListener('click', (ev)=>{
   // un .msel real (ver comentario en el HTML), así que necesita su propio
   // cierre acá.
   if(!ev.target.closest || !ev.target.closest('#alim3-picker-wrap')) alim3CerrarLista();
+  // Desplegable de "Subestación" (Subestaciones > Pérdida por alimentadores
+  // / Cómo se están comportando) -- mismo criterio de cierre al hacer
+  // click afuera.
+  if(!ev.target.closest || !ev.target.closest('#alim-sub-subestacion-wrap')) alimSubCerrarListaSubestacion();
 });
 
 // Mini-pestañas Gráfica/Tabla -- pedido explícito: "cuando haya una
