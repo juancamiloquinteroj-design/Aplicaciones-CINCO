@@ -14432,7 +14432,11 @@ async function verBalanceEstructura(id){
   const cambioDeEstructura = BE_ACTIVA_ID !== id;
   BE_ACTIVA_ID = id;
   renderListaEstructuras();
-  if(cambioDeEstructura) beSeleccionarVista('grafico');
+  // Ya NO fuerza la vista a "Gráfico" al cambiar de estructura -- pedido
+  // explícito ("cuando cambio a la siguiente balance se cambia al grafico,
+  // quiero que se conserve en la tabla"): la vista activa (Gráfico/Tabla)
+  // queda tal cual la tenía el usuario, el estado inicial por defecto
+  // (Gráfico) ya viene así desde el HTML (#be-vista-toggle / #be-tabla-bloque).
   document.getElementById('be-chart-card').classList.remove('hidden');
   document.getElementById('be-granularidad-bar').classList.remove('hidden');
   document.getElementById('be-ver-rango-grupo').classList.remove('hidden');
@@ -14813,7 +14817,13 @@ async function cargarTablaBalance(reintentando){
 function beAjustarAltoTablaBalance(){
   const wrap = document.getElementById('be-tabla-scroll-wrap');
   if(!wrap || wrap.closest('.hidden')) return;
-  const top = wrap.getBoundingClientRect().top;
+  // Math.max(0, ...) -- si la página ya se scrolleó más allá de donde
+  // empieza la tabla, top da NEGATIVO; sin este clamp, "disponible" se
+  // inflaba por encima de lo que la pantalla realmente muestra y el alto
+  // calculado quedaba más grande que el viewport, dejando la fila sticky
+  // recortada contra el borde superior (pedido explícito, bug real:
+  // "cuando la bajo a la parte inferior no se ve completo la fila 1").
+  const top = Math.max(0, wrap.getBoundingClientRect().top);
   const disponible = window.innerHeight - top - 24;
   wrap.style.maxHeight = Math.max(280, Math.round(disponible)) + 'px';
 }
@@ -14822,6 +14832,15 @@ window.addEventListener('resize', () => {
   clearTimeout(_beAjustarAltoTimer);
   _beAjustarAltoTimer = setTimeout(beAjustarAltoTablaBalance, 150);
 });
+// También al hacer scroll de la PÁGINA (no el de la tabla, que tiene su
+// propio overflow-y:auto) -- el cálculo de arriba usa la posición ACTUAL
+// de la tabla en el viewport, así que queda desactualizado apenas la
+// página se mueve; sin este listener, solo se recalculaba al cargar datos
+// o al redimensionar la ventana, nunca al scrollear.
+window.addEventListener('scroll', () => {
+  clearTimeout(_beAjustarAltoTimer);
+  _beAjustarAltoTimer = setTimeout(beAjustarAltoTablaBalance, 100);
+}, {passive: true});
 
 // El botón "Exportar CSV" ya NO exporta directo lo que se ve en pantalla --
 // abre un modal para elegir el rango a mano, prefill con el de la tabla
