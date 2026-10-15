@@ -14802,7 +14802,7 @@ async function cargarTablaBalance(reintentando){
   }
   msg.textContent = '';
   BE_TABLA_DATOS = datos;
-  renderTablaDetalleBalance(datos);
+  renderTablaDetalleBalance(datos, desde, hasta);
   _beActualizarEtiquetaRangoTabla(desde, hasta);
   beAjustarAltoTablaBalance();
 }
@@ -15666,7 +15666,7 @@ function _bePuntoTieneBack(p){ return !!(p.usuario_id_back && p.canal_back); }
 // con una línea gris entre medidores distintos. El respaldo de cada punto
 // (si tiene) queda oculto un nivel más adentro, como un desplegable lateral
 // propio -- el botón ▸ junto al medidor lo despliega sin afectar a los demás.
-function renderTablaDetalleBalance(datos){
+function renderTablaDetalleBalance(datos, rangoDesde, rangoHasta){
   // Se va a reconstruir todo el <tbody> -- la celda que estuviera
   // "seleccionada" (ver Ctrl+C/Ctrl+V) queda huérfana, ya no sirve.
   BE_CELDA_SELECCIONADA = null;
@@ -15917,18 +15917,30 @@ function renderTablaDetalleBalance(datos){
   // debajo de los títulos) en vez de al final -- así queda visible sin
   // tener que bajar hasta el final de la tabla.
   // Pedido explícito: antes mostraba días CON dato -- se invirtió a días
-  // SIN dato (fechas.length - días con dato), para que salte a la vista
-  // qué medidor tiene huecos sin tener que restar a mano contra el total
-  // de días del rango (ej. "muestra 7, el mes tiene 30, debería aparecer
-  // 23"). El "dif" del respaldo (ver más abajo) sigue siendo un conteo
-  // normal -- no es "días sin dato", es otra cosa (cuántos días hubo
-  // diferencia entre principal y respaldo), no se invierte.
+  // SIN dato (total de días DEL RANGO ELEGIDO -- no de "fechas", que son
+  // solo los días donde ALGÚN medidor tuvo dato -- menos días con dato),
+  // para que salte a la vista qué medidor tiene huecos sin tener que
+  // restar a mano (ej. "muestra 7, el mes tiene 30, debería aparecer 23").
+  // Importante: NO se puede usar fechas.length como "total" -- "fechas" es
+  // la UNIÓN de los días con dato de CUALQUIER medidor (ver el backend,
+  // balances_estructura.py), así que un día donde TODOS los medidores
+  // están en blanco ni siquiera aparece ahí. Hace falta el total real de
+  // días del rango elegido (rangoDesde/rangoHasta, los mismos que pide
+  // cargarTablaBalance) -- bug real detectado 2026-10-15 (primer intento
+  // de este fix usó fechas.length y daba el mismo número de antes cuando
+  // coincidía con el total real, o un número chico cuando no).
   const contar = arr => (arr||[]).filter(v=>v!=null).length;
-  const contarSinDato = arr => fechas.length - contar(arr);
+  let totalDiasRango = fechas.length;
+  if(rangoDesde && rangoHasta){
+    const d0 = new Date(rangoDesde+'T00:00:00'), d1 = new Date(rangoHasta+'T00:00:00');
+    const dias = Math.round((d1 - d0) / 86400000) + 1;
+    if(dias > 0) totalDiasRango = dias;
+  }
+  const contarSinDato = arr => totalDiasRango - contar(arr);
   let footDetalle = '';
   gruposPorMedidor.forEach(grupo => grupo.forEach((col,j) => {
     const claseGrupo = (j===0 ? ' grupo-inicio' : '') + (col.es_cliente ? ' cliente' : '');
-    footDetalle += `<td class="num pto be-col-detalle${claseGrupo}" title="Días sin dato en el rango (de ${fechas.length})">${contarSinDato(col.valores)}</td>`;
+    footDetalle += `<td class="num pto be-col-detalle${claseGrupo}" title="Días sin dato en el rango (de ${totalDiasRango})">${contarSinDato(col.valores)}</td>`;
     if(_bePuntoTieneBack(col)){
       const backCount = col.valores.filter((v,i)=> (col.fuentes&&col.fuentes[i]==='back') || (col.dif&&col.dif[i]!=null)).length;
       footDetalle += `<td class="num back be-col-detalle hidden" data-resp-grupo="${col._respIdx}">${backCount}</td>`;
@@ -15968,14 +15980,13 @@ function renderTablaDetalleBalance(datos){
   head.style.setProperty('--be-fila2-top', head.rows[1].offsetHeight + 'px');
 
   // Resumen fuera de la tabla -- una lectura rápida del total del rango,
-  // sin tener que sumar columna por columna.
+  // sin tener que sumar columna por columna. Reutiliza totalDiasRango (ya
+  // calculado arriba desde rangoDesde/rangoHasta) en vez de volver a
+  // aproximarlo desde el primer/último día CON dato -- esa aproximación
+  // se quedaba corta cuando el primer o último día del rango elegido no
+  // tenía dato de NINGÚN medidor.
   const resumen = document.getElementById('be-tabla-detalle-resumen');
-  let diasDelRango = fechas.length;
-  if(fechas.length > 1){
-    const desdeD = new Date(fechas[0]+'T00:00:00'), hastaD = new Date(fechas[fechas.length-1]+'T00:00:00');
-    diasDelRango = Math.round((hastaD - desdeD) / 86400000) + 1;
-  }
-  resumen.innerHTML = `<span>Días con datos: <b style="color:var(--text)">${fechas.length}</b> de ${diasDelRango} días del rango elegido</span>
+  resumen.innerHTML = `<span>Días con datos: <b style="color:var(--text)">${fechas.length}</b> de ${totalDiasRango} días del rango elegido</span>
     <span>${(datos.entradas||[]).length} punto(s) de entrada · ${(datos.salidas||[]).length} punto(s) de salida</span>`;
 }
 
