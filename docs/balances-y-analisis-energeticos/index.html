@@ -15955,8 +15955,8 @@ function renderTablaDetalleBalance(datos, rangoDesde, rangoHasta){
     return `<tr>
       <td>${f}</td>
       ${detalle}
-      <td class="num suma" onclick="beResaltarPrecedentes(event,'${f}','entrada')" style="cursor:pointer" title="Click para ver de cuáles medidores depende">${f2(e)}</td>
-      <td class="num suma" onclick="beResaltarPrecedentes(event,'${f}','salida')" style="cursor:pointer" title="Click para ver de cuáles medidores depende">${f2(s)}</td>
+      <td class="num suma" data-campo="entrada" data-fecha="${f}" onclick="beResaltarPrecedentes(event,'${f}','entrada')" style="cursor:pointer" title="Click para ver de cuáles medidores depende">${f2(e)}</td>
+      <td class="num suma" data-campo="salida" data-fecha="${f}" onclick="beResaltarPrecedentes(event,'${f}','salida')" style="cursor:pointer" title="Click para ver de cuáles medidores depende">${f2(s)}</td>
       ${haySiec ? `<td class="num suma siec">${f2(datos.salida_siec_kwh[i])}</td>` : ''}
       ${hayCliente ? `<td class="num suma">${f2(datos.salida_cliente_kwh[i])}</td>` : ''}
       <td class="num suma" onclick="beResaltarPrecedentes(event,'${f}','perdida')" style="cursor:pointer" title="Click para ver de cuáles medidores depende (Entrada y Salida)">${f2(p)}</td>
@@ -16117,33 +16117,31 @@ function beResaltarPrecedentes(ev, fecha, tipo){
   BE_PRECEDENTE_ACTUAL = {fecha, tipo};
   celda.classList.add('be-precedente-origen');
   BE_PRECEDENTE_CELDA = celda;
-  // Pérdida/Pérdida% dependen de Entrada Y Salida a la vez -- resaltan los
-  // 2 lados de la fila (sin filtro de data-tipo), aunque el TEXTO de la
-  // fórmula (más abajo) no sea una suma de letras para estos 2 casos.
-  const ambosLados = tipo === 'perdida' || tipo === 'perdida_pct';
-  const selector = ambosLados
-    ? `td.pto[data-fecha="${CSS.escape(fecha)}"]`
-    : `td.pto[data-fecha="${CSS.escape(fecha)}"][data-tipo="${tipo}"]`;
-  tbody.querySelectorAll(selector).forEach(td => {
-    if(td.classList.contains('cliente') || td.classList.contains('siec')) return;
-    td.classList.add('be-precedente');
-  });
-  // Pedido explícito ("quiero que la muestre en la celda, así como en el
-  // Excel"... "ahí debería mostrar división o resta debido a lo que
-  // aplique"): Entrada/Salida muestran la suma de letras de columna
-  // (mismas de data-letra/el sistema de ajuste manual); Pérdida es una
-  // RESTA (Entrada - Salida) y Pérdida% una DIVISIÓN (Pérdida / Entrada)
-  // -- no listas de letras, van por nombre. La fórmula va DENTRO de la
-  // celda clickeada, debajo del valor, no en un cartel aparte arriba.
+  // Pedido explícito ("el tema de pérdida y pérdida en % debería es
+  // marcarme la entrada y salida, no todas las medidas"): Pérdida/
+  // Pérdida% NO resaltan los medidores crudos -- resaltan las celdas
+  // Entrada/Salida de ESA MISMA fila (data-campo), que son sus
+  // precedentes DIRECTOS (Pérdida = Entrada - Salida), igual que Excel
+  // solo marca lo que la fórmula referencia directamente, no de dónde
+  // sale Entrada/Salida a su vez.
   let formula;
-  if(tipo === 'perdida'){
-    formula = 'Entrada - Salida';
-  } else if(tipo === 'perdida_pct'){
-    formula = 'Pérdida / Entrada';
+  if(tipo === 'perdida' || tipo === 'perdida_pct'){
+    tbody.querySelectorAll(`td[data-campo="entrada"][data-fecha="${CSS.escape(fecha)}"], td[data-campo="salida"][data-fecha="${CSS.escape(fecha)}"]`)
+      .forEach(td => td.classList.add('be-precedente'));
+    // Pedido explícito ("ahí debería mostrar división o resta debido a lo
+    // que aplique"): Pérdida es una RESTA (Entrada - Salida), Pérdida%
+    // una DIVISIÓN (Pérdida / Entrada) -- van por nombre, no listan letras.
+    formula = tipo === 'perdida' ? 'Entrada - Salida' : 'Pérdida / Entrada';
   } else {
+    // Entrada/Salida sí resaltan sus medidores crudos (columnas
+    // data-tipo="entrada"/"salida") y arman la fórmula con las LETRAS de
+    // columna (mismas de data-letra/el sistema de ajuste manual). "-"
+    // para las marcadas data-resta="1" (se restan en vez de sumarse).
+    const selector = `td.pto[data-fecha="${CSS.escape(fecha)}"][data-tipo="${tipo}"]`;
     const partes = [];
     tbody.querySelectorAll(selector).forEach(td => {
       if(td.classList.contains('cliente') || td.classList.contains('siec')) return;
+      td.classList.add('be-precedente');
       const letra = td.dataset.letra;
       if(letra) partes.push({letra, resta: td.dataset.resta === '1'});
     });
@@ -16152,6 +16150,9 @@ function beResaltarPrecedentes(ev, fecha, tipo){
       : (p.resta ? ' - ' : ' + ') + p.letra
     ).join('');
   }
+  // La fórmula va DENTRO de la celda clickeada, debajo del valor, no en
+  // un cartel aparte arriba (pedido explícito, "quiero que la muestre en
+  // la celda, así como en el Excel").
   if(formula){
     if(celda.dataset.valorOriginal == null) celda.dataset.valorOriginal = celda.innerHTML;
     celda.innerHTML = `${celda.dataset.valorOriginal}<div style="font-size:9px;font-weight:600;color:var(--text3);margin-top:1px">= ${formula}</div>`;
