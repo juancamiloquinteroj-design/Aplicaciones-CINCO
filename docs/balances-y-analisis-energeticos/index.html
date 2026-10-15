@@ -15935,6 +15935,18 @@ function renderTablaDetalleBalance(datos, rangoDesde, rangoHasta){
     const d0 = new Date(rangoDesde+'T00:00:00'), d1 = new Date(rangoHasta+'T00:00:00');
     const dias = Math.round((d1 - d0) / 86400000) + 1;
     if(dias > 0) totalDiasRango = dias;
+    // Pedido explícito ("si estoy analizando octubre o el mes específico
+    // debe mostrarme el total de rango del mes"): cuando Desde/Hasta caen
+    // en el MISMO mes calendario (ej. el filtro por defecto trae 1-14 oct
+    // porque el día de hoy todavía no tiene dato cargado), el total pasa a
+    // ser el mes COMPLETO (31 para octubre), no solo hasta el último día
+    // con dato -- así "días sin dato" cuenta también los días del mes que
+    // faltan por cargar/ocurrir, que es justamente lo que se quiere
+    // detectar. Un rango de varios meses (presets "2 meses"/"6 meses"/etc)
+    // no entra acá -- se queda con el total real desde/hasta de arriba.
+    const [y0, m0] = rangoDesde.split('-').map(Number);
+    const [y1, m1] = rangoHasta.split('-').map(Number);
+    if(y0 === y1 && m0 === m1) totalDiasRango = new Date(y0, m0, 0).getDate();
   }
   const contarSinDato = arr => totalDiasRango - contar(arr);
   let footDetalle = '';
