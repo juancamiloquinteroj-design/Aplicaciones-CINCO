@@ -1000,6 +1000,15 @@ tfoot td:first-child{text-align:left}
 [data-theme="dark"] .be-tabla-creadas td.pto.ajustado{color:#ffc107 !important}
 [data-theme="dark"] .be-tabla-creadas td.pto.ajustado::after{border-color:transparent #ffc107 transparent transparent}
 .be-tabla-creadas td.pto.celda-seleccionada{outline:2px solid var(--accent);z-index:2}
+/* "Rastrear precedentes" al estilo Excel -- click en Entrada/Salida/
+   Pérdida/Pérdida% de "Balance diario" resalta, en esa misma fila, los
+   medidores de los que depende ese número (ver beResaltarPrecedentes).
+   Azul para los medidores (precedentes), naranja para la celda total que
+   se clickeó (origen) -- mismos colores que ya usa la gráfica Técnica vs
+   Total (precedente=#4472C4, origen=#ED7D31), para que se sienta
+   consistente con el resto del módulo. */
+.be-tabla-creadas td.be-precedente{outline:2px solid #4472C4;outline-offset:-2px;z-index:2;background:rgba(68,114,196,.12) !important}
+.be-tabla-creadas td.be-precedente-origen{outline:2px solid #ED7D31;outline-offset:-2px;z-index:2}
 .be-tabla-creadas td.pto.celda-editando{padding:0;outline:2px solid var(--accent2)}
 .be-tabla-creadas td.pto.celda-editando input{width:100%;box-sizing:border-box;border:none;background:var(--bg2);color:var(--text);font:inherit;text-align:right;padding:7px 10px}
 .be-fill-handle{position:absolute;bottom:-1px;right:-1px;width:8px;height:8px;background:var(--accent2);border:1px solid var(--bg2);cursor:crosshair;z-index:3}
@@ -15703,8 +15712,12 @@ function _bePuntoTieneBack(p){ return !!(p.usuario_id_back && p.canal_back); }
 // propio -- el botón ▸ junto al medidor lo despliega sin afectar a los demás.
 function renderTablaDetalleBalance(datos, rangoDesde, rangoHasta){
   // Se va a reconstruir todo el <tbody> -- la celda que estuviera
-  // "seleccionada" (ver Ctrl+C/Ctrl+V) queda huérfana, ya no sirve.
+  // "seleccionada" (ver Ctrl+C/Ctrl+V) queda huérfana, ya no sirve. Lo
+  // mismo para el resaltado de "de cuáles medidores depende" (ver
+  // beResaltarPrecedentes) -- la fila/celda que estuviera marcada ya no
+  // existe en el nuevo <tbody>.
   BE_CELDA_SELECCIONADA = null;
+  BE_PRECEDENTE_ACTUAL = null;
   const head = document.getElementById('be-tabla-detalle-head');
   const foot = document.getElementById('be-tabla-detalle-foot');
   const body = document.getElementById('be-tabla-detalle-body');
@@ -15933,15 +15946,21 @@ function renderTablaDetalleBalance(datos, rangoDesde, rangoHasta){
     gruposPorMedidor.forEach(grupo => grupo.forEach((col,j) => detalle += tdPunto(col, i, j===0)));
     const fueraTipico = BE_TIPICOS_ACTIVA && pct != null && (pct > BE_TIPICOS_ACTIVA.maximo || pct < BE_TIPICOS_ACTIVA.minimo);
     const tituloTipico = fueraTipico ? ` title="Fuera del rango típico de esta estructura (${BE_TIPICOS_ACTIVA.minimo.toFixed(2)}% a ${BE_TIPICOS_ACTIVA.maximo.toFixed(2)}%, calculado ${BE_TIPICOS_ACTIVA.desde} a ${BE_TIPICOS_ACTIVA.hasta})"` : '';
+    // Pedido explícito ("que funcione como Excel que me marque la celda
+    // de cual depende... que sea en salida entrada, perdida y % de
+    // perdida"): click en Entrada/Salida/Pérdida/Pérdida% resalta, EN ESA
+    // MISMA FILA, los medidores de donde sale ese número (ver
+    // beResaltarPrecedentes) -- Pérdida y Pérdida% dependen de AMBOS lados
+    // (Entrada Y Salida), por eso usan tipo 'ambos' en vez de uno solo.
     return `<tr>
       <td>${f}</td>
       ${detalle}
-      <td class="num suma">${f2(e)}</td>
-      <td class="num suma">${f2(s)}</td>
+      <td class="num suma" onclick="beResaltarPrecedentes(event,'${f}','entrada')" style="cursor:pointer" title="Click para ver de cuáles medidores depende">${f2(e)}</td>
+      <td class="num suma" onclick="beResaltarPrecedentes(event,'${f}','salida')" style="cursor:pointer" title="Click para ver de cuáles medidores depende">${f2(s)}</td>
       ${haySiec ? `<td class="num suma siec">${f2(datos.salida_siec_kwh[i])}</td>` : ''}
       ${hayCliente ? `<td class="num suma">${f2(datos.salida_cliente_kwh[i])}</td>` : ''}
-      <td class="num suma">${f2(p)}</td>
-      <td class="num suma${fueraTipico?' fuera-tipico':''}"${tituloTipico}>${pct==null?'--':pct.toFixed(2)+'%'}</td>
+      <td class="num suma" onclick="beResaltarPrecedentes(event,'${f}','ambos')" style="cursor:pointer" title="Click para ver de cuáles medidores depende (Entrada y Salida)">${f2(p)}</td>
+      <td class="num suma${fueraTipico?' fuera-tipico':''}" onclick="beResaltarPrecedentes(event,'${f}','ambos')" style="cursor:pointer"${tituloTipico}>${pct==null?'--':pct.toFixed(2)+'%'}</td>
     </tr>`;
   }).join('');
 
@@ -16061,6 +16080,36 @@ function _beLetraColumna(indice){
 // sobre la celda seleccionada en ese momento (puede ser otra fila/columna).
 let BE_CELDA_SELECCIONADA = null;
 let BE_CLIPBOARD_FORMULA = null;
+let BE_PRECEDENTE_ACTUAL = null;  // {fecha, tipo} -- ver beResaltarPrecedentes
+
+// "Que funcione como Excel que me marque la celda de cual depende" --
+// pedido explícito: click en Entrada/Salida de una fila resalta, EN ESA
+// MISMA fila, los medidores (columnas data-tipo="entrada"/"salida") que
+// la componen -- mismo criterio visual que "rastrear precedentes" de
+// Excel. Los puntos "Es cliente"/SIEC quedan afuera (no entran a
+// Entrada/Salida, se suman aparte en Telemedido/Cliente SIEC, ver más
+// arriba "La Salida de red no incluye los puntos marcados 'Es cliente'").
+// Click de nuevo en la MISMA celda quita el resaltado (toggle); click en
+// otra Entrada/Salida lo mueve ahí.
+function beResaltarPrecedentes(ev, fecha, tipo){
+  ev.stopPropagation();
+  const tbody = document.getElementById('be-tabla-detalle-body');
+  if(!tbody) return;
+  const mismo = BE_PRECEDENTE_ACTUAL && BE_PRECEDENTE_ACTUAL.fecha===fecha && BE_PRECEDENTE_ACTUAL.tipo===tipo;
+  tbody.querySelectorAll('.be-precedente,.be-precedente-origen').forEach(td => td.classList.remove('be-precedente','be-precedente-origen'));
+  if(mismo){ BE_PRECEDENTE_ACTUAL = null; return; }
+  BE_PRECEDENTE_ACTUAL = {fecha, tipo};
+  ev.currentTarget.classList.add('be-precedente-origen');
+  // 'ambos' (Pérdida/Pérdida% dependen de Entrada Y Salida a la vez) --
+  // sin filtro de data-tipo, toma los 2 lados de la fila.
+  const selector = tipo === 'ambos'
+    ? `td.pto[data-fecha="${CSS.escape(fecha)}"]`
+    : `td.pto[data-fecha="${CSS.escape(fecha)}"][data-tipo="${tipo}"]`;
+  tbody.querySelectorAll(selector).forEach(td => {
+    if(td.classList.contains('cliente') || td.classList.contains('siec')) return;
+    td.classList.add('be-precedente');
+  });
+}
 
 function _beInicializarEdicionTabla(){
   const body = document.getElementById('be-tabla-detalle-body');
