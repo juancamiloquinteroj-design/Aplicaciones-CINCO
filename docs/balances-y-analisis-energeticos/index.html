@@ -5991,6 +5991,11 @@ html,body{overflow-x:hidden;margin:0}
           <div class="be-tabla-creadas-titulo" style="margin-bottom:0">Balance diario</div>
           <span style="font-size:11px;color:var(--text3)" title="La tabla siempre muestra el MISMO rango que el gráfico de arriba -- cambialo ahí (fechas, Mes anterior/siguiente, o Diario/Mensual/Anual)">Rango: <b id="be-tabla-rango-actual" style="color:var(--text)">--</b></span>
           <span id="be-tabla-msg" style="font-size:11px;color:#ef476f"></span>
+          <!-- Pedido explícito ("quiero que salga las columnas que suma...
+               cuando doy click a+c+r"): además del resaltado azul en las
+               celdas, muestra la fórmula en texto (letras de columna, ver
+               data-letra en tdPunto) -- se llena en beResaltarPrecedentes. -->
+          <span id="be-formula-precedente" style="font-size:11.5px;font-weight:700;color:var(--accent)"></span>
         </div>
         <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;justify-content:flex-end">
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
@@ -15917,7 +15922,7 @@ function renderTablaDetalleBalance(datos, rangoDesde, rangoHasta){
       ? `Ajuste manual (${formulaAjuste})${autorAjuste ? ' por ' + autorAjuste : ''}: ${comentarioAjuste} -- doble clic, borrar y Enter para quitarlo desde acá.`
       : (usoBack ? 'Este día se usó el medidor de respaldo -- el principal no reportó.' : '');
     const manija = formulaAjuste ? '<div class="be-fill-handle" title="Arrastrar para repetir este ajuste en otros días"></div>' : '';
-    let td = `<td class="num pto be-col-detalle${claseGrupo}${usoBack?' usoback':''}${claseAjustado}"${editable} data-tipo="${col.tipo}" data-orden="${col.orden}" data-fecha="${fechas[i]}" data-letra="${col._letra}" data-formula="${formulaAjuste ? _mselEsc(formulaAjuste) : ''}"${titulo?` title="${_mselEsc(titulo)}"`:''}>${f2(col.valores[i])}${manija}</td>`;
+    let td = `<td class="num pto be-col-detalle${claseGrupo}${usoBack?' usoback':''}${claseAjustado}"${editable} data-tipo="${col.tipo}" data-resta="${col.resta?1:0}" data-orden="${col.orden}" data-fecha="${fechas[i]}" data-letra="${col._letra}" data-formula="${formulaAjuste ? _mselEsc(formulaAjuste) : ''}"${titulo?` title="${_mselEsc(titulo)}"`:''}>${f2(col.valores[i])}${manija}</td>`;
     if(_bePuntoTieneBack(col)){
       const dif = col.dif ? col.dif[i] : null;
       // El respaldo solo "viaja" aparte cuando se usó como reemplazo (ahí es
@@ -16091,13 +16096,19 @@ let BE_PRECEDENTE_ACTUAL = null;  // {fecha, tipo} -- ver beResaltarPrecedentes
 // arriba "La Salida de red no incluye los puntos marcados 'Es cliente'").
 // Click de nuevo en la MISMA celda quita el resaltado (toggle); click en
 // otra Entrada/Salida lo mueve ahí.
+const BE_ETIQUETA_TOTAL = {entrada:'Entrada', salida:'Salida', ambos:'Pérdida'};
 function beResaltarPrecedentes(ev, fecha, tipo){
   ev.stopPropagation();
   const tbody = document.getElementById('be-tabla-detalle-body');
+  const cajaFormula = document.getElementById('be-formula-precedente');
   if(!tbody) return;
   const mismo = BE_PRECEDENTE_ACTUAL && BE_PRECEDENTE_ACTUAL.fecha===fecha && BE_PRECEDENTE_ACTUAL.tipo===tipo;
   tbody.querySelectorAll('.be-precedente,.be-precedente-origen').forEach(td => td.classList.remove('be-precedente','be-precedente-origen'));
-  if(mismo){ BE_PRECEDENTE_ACTUAL = null; return; }
+  if(mismo){
+    BE_PRECEDENTE_ACTUAL = null;
+    if(cajaFormula) cajaFormula.textContent = '';
+    return;
+  }
   BE_PRECEDENTE_ACTUAL = {fecha, tipo};
   ev.currentTarget.classList.add('be-precedente-origen');
   // 'ambos' (Pérdida/Pérdida% dependen de Entrada Y Salida a la vez) --
@@ -16105,10 +16116,26 @@ function beResaltarPrecedentes(ev, fecha, tipo){
   const selector = tipo === 'ambos'
     ? `td.pto[data-fecha="${CSS.escape(fecha)}"]`
     : `td.pto[data-fecha="${CSS.escape(fecha)}"][data-tipo="${tipo}"]`;
+  // Pedido explícito ("quiero que salga las columnas que suma... cuando
+  // doy click a+c+r"): además del resaltado, arma el texto de la fórmula
+  // con las LETRAS de columna (mismas de data-letra/el sistema de ajuste
+  // manual, ver beLetraColumna) -- "-" para las marcadas data-resta="1"
+  // (se restan en vez de sumarse), en el mismo orden en que aparecen.
+  const partes = [];
   tbody.querySelectorAll(selector).forEach(td => {
     if(td.classList.contains('cliente') || td.classList.contains('siec')) return;
     td.classList.add('be-precedente');
+    const letra = td.dataset.letra;
+    if(letra) partes.push({letra, resta: td.dataset.resta === '1'});
   });
+  if(cajaFormula){
+    const etiqueta = BE_ETIQUETA_TOTAL[tipo] || '';
+    const formula = partes.map((p,i) => i===0
+      ? (p.resta ? '-' : '') + p.letra
+      : (p.resta ? ' - ' : ' + ') + p.letra
+    ).join('');
+    cajaFormula.textContent = formula ? `${etiqueta} = ${formula}` : '';
+  }
 }
 
 function _beInicializarEdicionTabla(){
