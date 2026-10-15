@@ -4589,8 +4589,8 @@ html,body{overflow-x:hidden;margin:0}
            que antes iban SIEMPRE visibles, lado a lado, debajo de
            Indicador/Comentarios ("Pérdida Total Vs Pérdida Técnica" +
            "Inyección AGPE") -- ahora son UNA sola gráfica combinada
-           (Técnica vs Total, con AGPE como serie opcional, ver
-           alim3ToggleTecnicaAgpe) que se muestra en el mismo lugar que
+           (Técnica vs Total + AGPE en su propio eje, ver
+           alim3RenderChartTecnica) que se muestra en el mismo lugar que
            Entrada/Salida/Pérdida%, una u otra, nunca las 2 a la vez.
            Solo aplica a "Detalle por Alimentador" -- mismo criterio que
            #alim3-esp-modo-wrap/tipo-wrap/picker-wrap (se ocultan en las
@@ -4682,15 +4682,24 @@ html,body{overflow-x:hidden;margin:0}
       <div id="alim3-grafica-tecnica-bloque" class="hidden">
         <!-- Título dinámico -- pedido explícito: "debe cambiar de acuerdo
              con los filtros" (mismo alimentador/zona elegido que
-             #alim3-titulo-seleccion, actualizado en alim3RenderSeleccion). -->
-        <div id="alim3-titulo-tecnica" style="text-align:center;font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase;margin-bottom:10px">Pérdida Total Vs Pérdida Técnica</div>
+             #alim3-titulo-seleccion, actualizado en alim3RenderSeleccion).
+             AGPE ya no es opcional (pedido explícito: "quítale ese botón
+             de sumar Inyección AGPE, quiero que aparezca de inmediato en
+             el gráfico pero en otro eje") -- siempre aparece, en su propio
+             eje Y derecho. M/A -- pedido explícito, mismo mecanismo que
+             Entrada/Salida/Pérdida% (ALIM3_TECNICA_MODO, ver
+             alim3ToggleTecnicaModo/alim3RenderChartTecnica). -->
+        <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:10px">
+          <div id="alim3-titulo-tecnica" style="text-align:center;font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Pérdida Total Vs Pérdida Técnica</div>
+          <span id="alim3-tecnica-modo-wrap" style="display:inline-flex;gap:3px">
+            <button type="button" class="be-modo-btn be-icon-btn activo" id="alim3-tecnica-btn-mensual" onclick="alim3ToggleTecnicaModo('mensual')" title="Mensual">M</button>
+            <button type="button" class="be-modo-btn be-icon-btn" id="alim3-tecnica-btn-anual" onclick="alim3ToggleTecnicaModo('anual')" title="Anual (12M)">A</button>
+          </span>
+        </div>
         <div class="chart-wrap" style="height:400px"><canvas id="ch-alim3-tecnica"></canvas></div>
-        <!-- "por defecto solo se muestre Técnica Vs Total, con opción de
-             ponerle el AGPE" -- pedido explícito, desmarcado por defecto. -->
-        <label style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--text3);cursor:pointer;margin-top:8px">
-          <input type="checkbox" id="alim3-tecnica-con-agpe" onchange="alim3ToggleTecnicaAgpe()">
-          Sumar Inyección AGPE
-        </label>
+        <!-- "si no se tienen datos anual mostrar algo que diga que a la
+             fecha no se tienen datos anuales" -- pedido explícito. -->
+        <div id="alim3-tecnica-sin-anual" class="hidden" style="text-align:center;color:var(--text3);font-size:13px;padding:60px 0">A la fecha no se tienen datos anuales (hace falta historial de 12 meses completos).</div>
       </div>
 
       <!-- Indicador (metadata del alimentador elegido, alim3RenderIndicador)
@@ -19041,6 +19050,21 @@ document.addEventListener('keydown', (ev)=>{
   acPasoAlimentador(ev.key==='ArrowDown' ? 1 : -1);
 });
 
+// Flechas ◀/▶ del teclado para cambiar de alimentador en "Detalle por
+// Alimentador" -- pedido explícito ("habilites la flecha de izquierda y
+// derecha para ir cambiando de alimentador"), mismo mecanismo que ya
+// tienen los botones ◀/▶ en pantalla (alim3SiguienteAlimentador) y el
+// mismo patrón de atajo que Ciclos (ArrowUp/ArrowDown, ver arriba).
+document.addEventListener('keydown', (ev)=>{
+  if(ev.key !== 'ArrowLeft' && ev.key !== 'ArrowRight') return;
+  const vista = document.getElementById('alim3-tab-detalle');
+  if(!vista || vista.classList.contains('hidden')) return;
+  const tagActivo = document.activeElement && document.activeElement.tagName;
+  if(['INPUT','SELECT','TEXTAREA'].includes(tagActivo)) return;
+  ev.preventDefault();
+  alim3SiguienteAlimentador(ev.key==='ArrowRight' ? 1 : -1);
+});
+
 /* ---- IP Nivel 4 / IP Nivel 3 -- balance DIARIO real (Entrada/Salida
    medidas), depende de "Consolidado Nivel 4.csv" / "Consolidado Zonas
    N3.csv" (ver load_nivel34.py / GET /api/nivel34?nivel=). El "por qué"
@@ -23251,6 +23275,7 @@ let chAlim3Esp = null, chAlim3Tecnica = null, chAlim3Scatter = null;
 // display:none, así que cambiar de modo exige recrear el chart recién
 // cuando el bloque ya es visible.
 let ALIM3_GRAFICA_MODO = 'esp';  // 'esp' | 'tecnica'
+let ALIM3_TECNICA_MODO = 'mensual';  // 'mensual' | 'anual' -- Δ propio de Entrada/Salida/Pérdida%, M/A es independiente para cada gráfica
 let ALIM3_CONCLAVE_ACTUAL = null;
 
 function alim3ToggleGraficaModo(modo){
@@ -23259,16 +23284,19 @@ function alim3ToggleGraficaModo(modo){
   document.getElementById('alim3-grafica-tecnica-bloque')?.classList.toggle('hidden', modo!=='tecnica');
   document.getElementById('alim3-grafica-btn-esp')?.classList.toggle('activo', modo==='esp');
   document.getElementById('alim3-grafica-btn-tecnica')?.classList.toggle('activo', modo==='tecnica');
-  // M/A/Δ (Mensual/Anual/Variación) son conceptos propios del gráfico
-  // Entrada/Salida/Pérdida% -- no aplican a Técnica/Total/AGPE (esa
-  // gráfica siempre muestra el rango completo, sin esos modos).
+  // Δ (Variación) es propio del gráfico Entrada/Salida/Pérdida% -- no
+  // aplica a Técnica/Total/AGPE. M/A sí aplica a las 2 gráficas, pero cada
+  // una con su PROPIO estado/botones (ALIM3_ESP_MODO vs ALIM3_TECNICA_MODO,
+  // #alim3-esp-modo-wrap vs #alim3-tecnica-modo-wrap) -- pedido explícito
+  // ("este gráfico también debe tener los botones de anual y mensual").
   document.getElementById('alim3-esp-modo-wrap')?.classList.toggle('hidden', modo!=='esp');
   if(!ALIM3_CONCLAVE_ACTUAL) return;
   if(modo==='esp') alim3RenderChartEsp(ALIM3_CONCLAVE_ACTUAL);
   else alim3RenderChartTecnica(ALIM3_CONCLAVE_ACTUAL);
 }
 
-function alim3ToggleTecnicaAgpe(){
+function alim3ToggleTecnicaModo(modo){
+  ALIM3_TECNICA_MODO = modo;
   if(ALIM3_CONCLAVE_ACTUAL) alim3RenderChartTecnica(ALIM3_CONCLAVE_ACTUAL);
 }
 
@@ -24169,38 +24197,78 @@ function alim3RenderChartEsp(filasConClave){
 }
 
 // Pedido explícito ("integrarle la gráfica de Inyección de AGPE [a Técnica
-// Vs Total], pero que por defecto solo se muestre Técnica Vs Total, con
-// opción de ponerle el AGPE"): antes eran 2 gráficas separadas, siempre
-// visibles lado a lado (alim3RenderChartTecnica + alim3RenderChartAgpe) --
-// ahora es UNA sola, con AGPE como 3ra serie opcional (checkbox
-// #alim3-tecnica-con-agpe, desmarcado por defecto). Mismo eje Y para las
-// 3 (todas en kWh, mismo orden de magnitud que Pérdida), así que no hace
-// falta un eje secundario.
+// Vs Total]... quítale ese botón de sumar AGPE, quiero que aparezca de
+// inmediato en el gráfico pero en otro eje, el gráfico tendría dos ejes,
+// también debe tener los botones de anual y mensual"): antes eran 2
+// gráficas separadas, siempre visibles lado a lado. Ahora es UNA sola,
+// AGPE siempre presente en su propio eje Y (yAgpe), con M/A propio
+// (ALIM3_TECNICA_MODO) igual que Entrada/Salida/Pérdida% -- si el modo
+// Anual no tiene todavía 12 meses de historia, se avisa en vez de mostrar
+// un gráfico vacío (#alim3-tecnica-sin-anual).
 function alim3RenderChartTecnica(filasConClave){
   const cv = document.getElementById('ch-alim3-tecnica');
   if(!cv) return;
-  const visibles = alim3VisiblesRango(filasConClave);
+  document.getElementById('alim3-tecnica-btn-mensual')?.classList.toggle('activo', ALIM3_TECNICA_MODO==='mensual');
+  document.getElementById('alim3-tecnica-btn-anual')?.classList.toggle('activo', ALIM3_TECNICA_MODO==='anual');
+  const esAnual = ALIM3_TECNICA_MODO === 'anual';
+  const msgVacio = document.getElementById('alim3-tecnica-sin-anual');
+  const wrap = cv.closest('.chart-wrap');
+
+  // Ventana de 12 meses móvil sobre el HISTÓRICO COMPLETO (mismo criterio
+  // que Entrada/Salida/Pérdida%, ver alim3RenderChartEsp) -- recién
+  // después se acota al Rango visible.
+  const serieCompleta = filasConClave.map(f => ({
+    anio:f.anio, mes:f.mes, clave:f.clave,
+    entrada:f.entrada_total, salida:f.salida_total,
+    perdida:f.perdida_kwh, tecnica:f.perdida_tecnica_kwh, agpe:f.entrada_agpe,
+  }));
+  const filas = esAnual
+    ? alim3VisiblesRango(alimN21Con12Meses(serieCompleta)).filter(f => f.perdida12 != null)
+    : alim3VisiblesRango(serieCompleta);
+
+  // "si no se tienen datos anual mostrar algo que diga que a la fecha no
+  // se tienen datos anuales" -- pedido explícito: hace falta historial de
+  // 12 meses completos (igual que el resto de la app, ver "Aún no hay 12
+  // meses de historia" de la tarjeta KPI) -- sin eso, no hay ninguna
+  // ventana que mostrar en modo Anual.
+  const sinDatosAnuales = esAnual && !filas.length;
+  if(wrap) wrap.classList.toggle('hidden', sinDatosAnuales);
+  if(msgVacio) msgVacio.classList.toggle('hidden', !sinDatosAnuales);
+  if(sinDatosAnuales){
+    if(chAlim3Tecnica){ chAlim3Tecnica.destroy(); chAlim3Tecnica = null; }
+    return;
+  }
+
   const dark = document.documentElement.getAttribute('data-theme')==='dark';
   const tickC = dark ? '#ffffff' : '#000000';
   const tickXFuerte = dark ? '#ffffff' : '#000000';
   const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
-  const etiquetas = visibles.map(f => labelMes(f.clave));
-  const conAgpe = !!document.getElementById('alim3-tecnica-con-agpe')?.checked;
+  const etiquetas = filas.map(f => labelMes(f.clave));
+  const totalDatos = filas.map(f => esAnual ? f.perdida12 : f.perdida);
+  const tecnicaDatos = filas.map(f => esAnual ? f.tecnica12 : f.tecnica);
+  const agpeDatos = filas.map(f => esAnual ? f.agpe12 : f.agpe);
 
   if(chAlim3Tecnica) chAlim3Tecnica.destroy();
   if(!etiquetas.length) return;
-  const datasets = [
-    {type:'line', label:'Pérdida Total kWh', data: visibles.map(f=>f.perdida_kwh), borderColor:'#4472C4', backgroundColor:'transparent',
-      borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0, datalabels:{display:false}},
-    {type:'line', label:'Pérdida Técnica kWh', data: visibles.map(f=>f.perdida_tecnica_kwh), borderColor:'#ED7D31', backgroundColor:'transparent',
-      borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0, datalabels:{display:false}},
-  ];
-  if(conAgpe){
-    datasets.push({type:'line', label:'Inyección AGPE kWh', data: visibles.map(f=>f.entrada_agpe), borderColor:'#92D050', backgroundColor:'rgba(146,208,80,.18)',
-      fill:'origin', borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0, datalabels:{display:false}});
-  }
   chAlim3Tecnica = new Chart(cv, {
-    data:{ labels: etiquetas, datasets },
+    data:{
+      labels: etiquetas,
+      datasets:[
+        {type:'line', label: esAnual?'Pérdida Total kWh/12M':'Pérdida Total kWh', yAxisID:'y', data: totalDatos,
+          borderColor:'#4472C4', backgroundColor:'transparent',
+          borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0, datalabels:{display:false}},
+        {type:'line', label: esAnual?'Pérdida Técnica kWh/12M':'Pérdida Técnica kWh', yAxisID:'y', data: tecnicaDatos,
+          borderColor:'#ED7D31', backgroundColor:'transparent',
+          borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0, datalabels:{display:false}},
+        // AGPE ya no es opcional (pedido explícito) -- siempre va, en su
+        // PROPIO eje Y derecho (yAgpe): la inyección AGPE puede ser un
+        // orden de magnitud distinto a la Pérdida, compartir el mismo eje
+        // la aplastaría contra el 0 o se saldría del rango visible.
+        {type:'line', label: esAnual?'Inyección AGPE kWh/12M':'Inyección AGPE kWh', yAxisID:'yAgpe', data: agpeDatos,
+          borderColor:'#92D050', backgroundColor:'rgba(146,208,80,.18)',
+          fill:'origin', borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0, datalabels:{display:false}},
+      ],
+    },
     options:{
       responsive:true, maintainAspectRatio:false,
       layout:{padding:{top:16, right:16}},
@@ -24212,7 +24280,10 @@ function alim3RenderChartTecnica(filasConClave){
       },
       scales:{
         x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:12, weight:'600'}, maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
-        y:{grid:{color:gridC}, ticks:{color:tickC, font:{size:12}, callback:v=>v.toLocaleString('es-CO')}, title:{display:true, text:'kWh', color:tickC, font:{size:10}}},
+        y:{position:'left', grid:{color:gridC}, ticks:{color:tickC, font:{size:12}, callback:v=>v.toLocaleString('es-CO')},
+          title:{display:true, text: esAnual?'Pérdida Anual 12M (kWh)':'Pérdida (kWh)', color:tickC, font:{size:10}}},
+        yAgpe:{position:'right', grid:{drawOnChartArea:false}, ticks:{color:tickC, font:{size:12}, callback:v=>v.toLocaleString('es-CO')},
+          title:{display:true, text: esAnual?'Inyección AGPE Anual 12M (kWh)':'Inyección AGPE (kWh)', color:tickC, font:{size:10}}},
       },
     },
   });
@@ -25758,18 +25829,21 @@ function alimN21TecnicaAgregarMensual(zonas){
 // ya ordenada -- null mientras no haya 12 meses de historia disponibles.
 function alimN21Con12Meses(mensual){
   return mensual.map((f,i) => {
-    if(i < 11) return {...f, entrada12:null, salida12:null, perdida12:null, pct12:null, gestionable12:null, tecnica12:null};
+    if(i < 11) return {...f, entrada12:null, salida12:null, perdida12:null, pct12:null, gestionable12:null, tecnica12:null, agpe12:null};
     const ventana = mensual.slice(i-11, i+1);
     const entrada12 = ventana.reduce((s,x)=>s+x.entrada, 0);
     const salida12 = ventana.reduce((s,x)=>s+x.salida, 0);
     const perdida12 = ventana.reduce((s,x)=>s+x.perdida, 0);
-    // gestionable/tecnica -- opcionales (solo los trae alim3RenderTarjetas);
-    // si algún mes de la ventana no los tiene, no se suman a medias (null).
+    // gestionable/tecnica/agpe -- opcionales (no todos los llamadores los
+    // traen); si algún mes de la ventana no los tiene, no se suman a
+    // medias (null).
     const gestionable12 = ventana.every(x => x.gestionable != null)
       ? ventana.reduce((s,x)=>s+x.gestionable, 0) : null;
     const tecnica12 = ventana.every(x => x.tecnica != null)
       ? ventana.reduce((s,x)=>s+x.tecnica, 0) : null;
-    return {...f, entrada12, salida12, perdida12, gestionable12, tecnica12, pct12: entrada12 ? perdida12/entrada12*100 : null};
+    const agpe12 = ventana.every(x => x.agpe != null)
+      ? ventana.reduce((s,x)=>s+x.agpe, 0) : null;
+    return {...f, entrada12, salida12, perdida12, gestionable12, tecnica12, agpe12, pct12: entrada12 ? perdida12/entrada12*100 : null};
   });
 }
 
