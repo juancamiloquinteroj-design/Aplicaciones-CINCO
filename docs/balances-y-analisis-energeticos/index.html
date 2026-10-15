@@ -15910,17 +15910,25 @@ function renderTablaDetalleBalance(datos){
     </tr>`;
   }).join('');
 
-  // Total del rango -- días CON DATO por columna en el detalle por medidor
+  // Total del rango -- días SIN DATO por columna en el detalle por medidor
   // (cada uno puede tener huecos distintos, ej. el respaldo recién empezó a
   // reportar en cierta fecha) y TOTAL sumado en las columnas de resumen
   // (entrada/salida/pérdida/%). Va como 2da fila del encabezado (sticky,
   // debajo de los títulos) en vez de al final -- así queda visible sin
   // tener que bajar hasta el final de la tabla.
+  // Pedido explícito: antes mostraba días CON dato -- se invirtió a días
+  // SIN dato (fechas.length - días con dato), para que salte a la vista
+  // qué medidor tiene huecos sin tener que restar a mano contra el total
+  // de días del rango (ej. "muestra 7, el mes tiene 30, debería aparecer
+  // 23"). El "dif" del respaldo (ver más abajo) sigue siendo un conteo
+  // normal -- no es "días sin dato", es otra cosa (cuántos días hubo
+  // diferencia entre principal y respaldo), no se invierte.
   const contar = arr => (arr||[]).filter(v=>v!=null).length;
+  const contarSinDato = arr => fechas.length - contar(arr);
   let footDetalle = '';
   gruposPorMedidor.forEach(grupo => grupo.forEach((col,j) => {
     const claseGrupo = (j===0 ? ' grupo-inicio' : '') + (col.es_cliente ? ' cliente' : '');
-    footDetalle += `<td class="num pto be-col-detalle${claseGrupo}">${contar(col.valores)}</td>`;
+    footDetalle += `<td class="num pto be-col-detalle${claseGrupo}" title="Días sin dato en el rango (de ${fechas.length})">${contarSinDato(col.valores)}</td>`;
     if(_bePuntoTieneBack(col)){
       const backCount = col.valores.filter((v,i)=> (col.fuentes&&col.fuentes[i]==='back') || (col.dif&&col.dif[i]!=null)).length;
       footDetalle += `<td class="num back be-col-detalle hidden" data-resp-grupo="${col._respIdx}">${backCount}</td>`;
