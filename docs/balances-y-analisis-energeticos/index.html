@@ -5991,11 +5991,6 @@ html,body{overflow-x:hidden;margin:0}
           <div class="be-tabla-creadas-titulo" style="margin-bottom:0">Balance diario</div>
           <span style="font-size:11px;color:var(--text3)" title="La tabla siempre muestra el MISMO rango que el gráfico de arriba -- cambialo ahí (fechas, Mes anterior/siguiente, o Diario/Mensual/Anual)">Rango: <b id="be-tabla-rango-actual" style="color:var(--text)">--</b></span>
           <span id="be-tabla-msg" style="font-size:11px;color:#ef476f"></span>
-          <!-- Pedido explícito ("quiero que salga las columnas que suma...
-               cuando doy click a+c+r"): además del resaltado azul en las
-               celdas, muestra la fórmula en texto (letras de columna, ver
-               data-letra en tdPunto) -- se llena en beResaltarPrecedentes. -->
-          <span id="be-formula-precedente" style="font-size:11.5px;font-weight:700;color:var(--accent)"></span>
         </div>
         <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;justify-content:flex-end">
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
@@ -15964,8 +15959,8 @@ function renderTablaDetalleBalance(datos, rangoDesde, rangoHasta){
       <td class="num suma" onclick="beResaltarPrecedentes(event,'${f}','salida')" style="cursor:pointer" title="Click para ver de cuáles medidores depende">${f2(s)}</td>
       ${haySiec ? `<td class="num suma siec">${f2(datos.salida_siec_kwh[i])}</td>` : ''}
       ${hayCliente ? `<td class="num suma">${f2(datos.salida_cliente_kwh[i])}</td>` : ''}
-      <td class="num suma" onclick="beResaltarPrecedentes(event,'${f}','ambos')" style="cursor:pointer" title="Click para ver de cuáles medidores depende (Entrada y Salida)">${f2(p)}</td>
-      <td class="num suma${fueraTipico?' fuera-tipico':''}" onclick="beResaltarPrecedentes(event,'${f}','ambos')" style="cursor:pointer"${tituloTipico}>${pct==null?'--':pct.toFixed(2)+'%'}</td>
+      <td class="num suma" onclick="beResaltarPrecedentes(event,'${f}','perdida')" style="cursor:pointer" title="Click para ver de cuáles medidores depende (Entrada y Salida)">${f2(p)}</td>
+      <td class="num suma${fueraTipico?' fuera-tipico':''}" onclick="beResaltarPrecedentes(event,'${f}','perdida_pct')" style="cursor:pointer"${tituloTipico}>${pct==null?'--':pct.toFixed(2)+'%'}</td>
     </tr>`;
   }).join('');
 
@@ -16096,45 +16091,70 @@ let BE_PRECEDENTE_ACTUAL = null;  // {fecha, tipo} -- ver beResaltarPrecedentes
 // arriba "La Salida de red no incluye los puntos marcados 'Es cliente'").
 // Click de nuevo en la MISMA celda quita el resaltado (toggle); click en
 // otra Entrada/Salida lo mueve ahí.
-const BE_ETIQUETA_TOTAL = {entrada:'Entrada', salida:'Salida', ambos:'Pérdida'};
+let BE_PRECEDENTE_CELDA = null;  // <td> origen actualmente modificado -- para poder devolverle su contenido original
 function beResaltarPrecedentes(ev, fecha, tipo){
   ev.stopPropagation();
   const tbody = document.getElementById('be-tabla-detalle-body');
-  const cajaFormula = document.getElementById('be-formula-precedente');
   if(!tbody) return;
+  const celda = ev.currentTarget;
   const mismo = BE_PRECEDENTE_ACTUAL && BE_PRECEDENTE_ACTUAL.fecha===fecha && BE_PRECEDENTE_ACTUAL.tipo===tipo;
   tbody.querySelectorAll('.be-precedente,.be-precedente-origen').forEach(td => td.classList.remove('be-precedente','be-precedente-origen'));
+  // Devolver su valor original a la celda-origen ANTERIOR, si era otra
+  // distinta de la que se acaba de clickear -- antes de tocar nada más.
+  if(BE_PRECEDENTE_CELDA && BE_PRECEDENTE_CELDA !== celda && BE_PRECEDENTE_CELDA.dataset.valorOriginal != null){
+    BE_PRECEDENTE_CELDA.innerHTML = BE_PRECEDENTE_CELDA.dataset.valorOriginal;
+    delete BE_PRECEDENTE_CELDA.dataset.valorOriginal;
+  }
   if(mismo){
     BE_PRECEDENTE_ACTUAL = null;
-    if(cajaFormula) cajaFormula.textContent = '';
+    if(celda.dataset.valorOriginal != null){
+      celda.innerHTML = celda.dataset.valorOriginal;
+      delete celda.dataset.valorOriginal;
+    }
+    BE_PRECEDENTE_CELDA = null;
     return;
   }
   BE_PRECEDENTE_ACTUAL = {fecha, tipo};
-  ev.currentTarget.classList.add('be-precedente-origen');
-  // 'ambos' (Pérdida/Pérdida% dependen de Entrada Y Salida a la vez) --
-  // sin filtro de data-tipo, toma los 2 lados de la fila.
-  const selector = tipo === 'ambos'
+  celda.classList.add('be-precedente-origen');
+  BE_PRECEDENTE_CELDA = celda;
+  // Pérdida/Pérdida% dependen de Entrada Y Salida a la vez -- resaltan los
+  // 2 lados de la fila (sin filtro de data-tipo), aunque el TEXTO de la
+  // fórmula (más abajo) no sea una suma de letras para estos 2 casos.
+  const ambosLados = tipo === 'perdida' || tipo === 'perdida_pct';
+  const selector = ambosLados
     ? `td.pto[data-fecha="${CSS.escape(fecha)}"]`
     : `td.pto[data-fecha="${CSS.escape(fecha)}"][data-tipo="${tipo}"]`;
-  // Pedido explícito ("quiero que salga las columnas que suma... cuando
-  // doy click a+c+r"): además del resaltado, arma el texto de la fórmula
-  // con las LETRAS de columna (mismas de data-letra/el sistema de ajuste
-  // manual, ver beLetraColumna) -- "-" para las marcadas data-resta="1"
-  // (se restan en vez de sumarse), en el mismo orden en que aparecen.
-  const partes = [];
   tbody.querySelectorAll(selector).forEach(td => {
     if(td.classList.contains('cliente') || td.classList.contains('siec')) return;
     td.classList.add('be-precedente');
-    const letra = td.dataset.letra;
-    if(letra) partes.push({letra, resta: td.dataset.resta === '1'});
   });
-  if(cajaFormula){
-    const etiqueta = BE_ETIQUETA_TOTAL[tipo] || '';
-    const formula = partes.map((p,i) => i===0
+  // Pedido explícito ("quiero que la muestre en la celda, así como en el
+  // Excel"... "ahí debería mostrar división o resta debido a lo que
+  // aplique"): Entrada/Salida muestran la suma de letras de columna
+  // (mismas de data-letra/el sistema de ajuste manual); Pérdida es una
+  // RESTA (Entrada - Salida) y Pérdida% una DIVISIÓN (Pérdida / Entrada)
+  // -- no listas de letras, van por nombre. La fórmula va DENTRO de la
+  // celda clickeada, debajo del valor, no en un cartel aparte arriba.
+  let formula;
+  if(tipo === 'perdida'){
+    formula = 'Entrada - Salida';
+  } else if(tipo === 'perdida_pct'){
+    formula = 'Pérdida / Entrada';
+  } else {
+    const partes = [];
+    tbody.querySelectorAll(selector).forEach(td => {
+      if(td.classList.contains('cliente') || td.classList.contains('siec')) return;
+      const letra = td.dataset.letra;
+      if(letra) partes.push({letra, resta: td.dataset.resta === '1'});
+    });
+    formula = partes.map((p,i) => i===0
       ? (p.resta ? '-' : '') + p.letra
       : (p.resta ? ' - ' : ' + ') + p.letra
     ).join('');
-    cajaFormula.textContent = formula ? `${etiqueta} = ${formula}` : '';
+  }
+  if(formula){
+    if(celda.dataset.valorOriginal == null) celda.dataset.valorOriginal = celda.innerHTML;
+    celda.innerHTML = `${celda.dataset.valorOriginal}<div style="font-size:9px;font-weight:600;color:var(--text3);margin-top:1px">= ${formula}</div>`;
   }
 }
 
