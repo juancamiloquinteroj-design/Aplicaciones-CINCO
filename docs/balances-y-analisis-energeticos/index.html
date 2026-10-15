@@ -15726,6 +15726,12 @@ function renderTablaDetalleBalance(datos, rangoDesde, rangoHasta){
     ...(datos.entradas||[]).map(p=>({...p, tipo:'entrada'})),
     ...(datos.salidas||[]).map(p=>({...p, tipo:'salida'})),
   ];
+  // "Mover un medidor de Entrada a Salida (o viceversa) moviendo la
+  // selección" -- pedido explícito, ver beMoverMedidor más abajo. Guarda
+  // el objeto completo (usuario_id/canal/es_cliente/resta/...) de cada
+  // columna, para no tener que ir a buscarlo de nuevo al clickear.
+  BE_TABLA_COLUMNAS_POR_CLAVE = {};
+  columnas.forEach(c => { BE_TABLA_COLUMNAS_POR_CLAVE[`${c.tipo}-${c.orden}`] = c; });
 
   if(!fechas.length){
     head.innerHTML = ''; foot.innerHTML = '';
@@ -16092,6 +16098,7 @@ let BE_PRECEDENTE_ACTUAL = null;  // {fecha, tipo} -- ver beResaltarPrecedentes
 // Click de nuevo en la MISMA celda quita el resaltado (toggle); click en
 // otra Entrada/Salida lo mueve ahí.
 let BE_PRECEDENTE_CELDA = null;  // <td> origen actualmente modificado -- para poder devolverle su contenido original
+let BE_TABLA_COLUMNAS_POR_CLAVE = {};  // "entrada-0"/"salida-1".. -> objeto completo de la columna, ver renderTablaDetalleBalance/beMoverMedidor
 function beResaltarPrecedentes(ev, fecha, tipo){
   ev.stopPropagation();
   const tbody = document.getElementById('be-tabla-detalle-body');
@@ -16159,6 +16166,62 @@ function beResaltarPrecedentes(ev, fecha, tipo){
   }
 }
 
+// "Que yo seleccione la celda y pueda cambiar fácilmente la formulación...
+// que se puedan cambiar solo moviendo la selección de las celdas" -- pedido
+// explícito: con el modo "mover" activo (click en Entrada o Salida de una
+// fila, ver beResaltarPrecedentes), clickear un medidor del OTRO lado en
+// ESA MISMA fila lo mueve al lado activo, desde la fecha de esa fila hacia
+// adelante -- "no debe afectar meses pasados, porque prácticamente es como
+// cambiar la vigencia del medidor" (confirmado explícitamente). 2 llamadas
+// al backend: cerrar la vigencia vieja (sin reemplazo, nuevo endpoint) +
+// abrir el punto en el lado nuevo (agregar_punto, que ya existía).
+// Chequeo SÍNCRONO (nada de red/confirm todavía) -- decide si este click
+// hay que interceptarlo como "mover medidor" ANTES de dejar que el listener
+// de abajo siga con la selección normal de celda. beMoverMedidor (abajo) es
+// async -- no se puede usar su resultado directo acá, por eso el chequeo
+// de condiciones vive aparte.
+function _beEsClickDeMover(td){
+  if(!BE_PRECEDENTE_ACTUAL) return false;
+  const tipoNuevo = BE_PRECEDENTE_ACTUAL.tipo;
+  if(tipoNuevo !== 'entrada' && tipoNuevo !== 'salida') return false;  // Pérdida/Pérdida% no son "un lado" -- no aplica
+  if(td.dataset.fecha !== BE_PRECEDENTE_ACTUAL.fecha) return false;    // solo dentro de la fila en modo mover
+  return td.dataset.tipo && td.dataset.tipo !== tipoNuevo;  // ya está de ese lado -- no hay nada que mover
+}
+
+async function beMoverMedidor(td){
+  if(!requiereEditor()) return;
+  const tipoNuevo = BE_PRECEDENTE_ACTUAL.tipo;
+  const tipoViejo = td.dataset.tipo;
+  const fecha = BE_PRECEDENTE_ACTUAL.fecha;
+  const ordenViejo = Number(td.dataset.orden);
+  const col = BE_TABLA_COLUMNAS_POR_CLAVE[`${tipoViejo}-${ordenViejo}`];
+  if(!col){ alert('No se encontró la información de ese medidor.'); return; }
+  const etiqueta = col.formula ? `🧮 ${col.usuario_id}` : `${col.usuario_id} · ${BE_NOMBRES_CANAL_CORTO[col.canal]||col.canal}`;
+  const nombreViejo = tipoViejo === 'entrada' ? 'Entrada' : 'Salida';
+  const nombreNuevo = tipoNuevo === 'entrada' ? 'Entrada' : 'Salida';
+  if(!confirm(`¿Mover "${etiqueta}" de ${nombreViejo} a ${nombreNuevo} a partir del ${_beFechaFmt(fecha)}?\n\nLos días/meses ANTERIORES a esa fecha no se tocan -- siguen contando del lado de ${nombreViejo} como hasta ahora.`)){
+    return;
+  }
+  try{
+    await apiPost(`/api/balances-estructura/${BE_ACTIVA_ID}/medidores/cerrar`, {tipo: tipoViejo, orden: ordenViejo, vigente_desde: fecha});
+    await apiPost(`/api/balances-estructura/${BE_ACTIVA_ID}/medidores`, {
+      tipo: tipoNuevo,
+      medidor: {
+        usuario_id: col.usuario_id, canal: col.canal,
+        usuario_id_back: col.usuario_id_back, canal_back: col.canal_back,
+        vigente_desde: fecha, es_cliente: col.es_cliente, resta: col.resta, formula: col.formula,
+      },
+    });
+  }catch(e){
+    alert(e.message || 'No se pudo mover el medidor.');
+    return;
+  }
+  BE_PRECEDENTE_ACTUAL = null;
+  BE_PRECEDENTE_CELDA = null;
+  await cargarTablaBalance();
+  await cargarListaEstructuras();
+}
+
 function _beInicializarEdicionTabla(){
   const body = document.getElementById('be-tabla-detalle-body');
   if(!body || body.dataset.edicionLista) return;
@@ -16168,6 +16231,9 @@ function _beInicializarEdicionTabla(){
     if(ev.target.classList.contains('be-fill-handle')) return;  // eso lo maneja el mousedown de abajo (arrastrar)
     const td = ev.target.closest('td.pto[data-editable]');
     if(!td || td.classList.contains('celda-editando')) return;
+    // Modo "mover medidor" activo (ver beResaltarPrecedentes/beMoverMedidor)
+    // -- intercepta el click ANTES de la selección normal de celda.
+    if(_beEsClickDeMover(td)){ beMoverMedidor(td); return; }
     if(BE_CELDA_SELECCIONADA) BE_CELDA_SELECCIONADA.classList.remove('celda-seleccionada');
     BE_CELDA_SELECCIONADA = td;
     td.classList.add('celda-seleccionada');
