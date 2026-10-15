@@ -1635,8 +1635,9 @@ html,body{overflow-x:hidden;margin:0}
     <button class="sidebar-sublink" data-vista="alim-nivel3" data-modulo="alim-nivel3" onclick="mostrarVista('alim-nivel3')">Nivel 3</button>
     <button class="sidebar-sublink" data-vista="alim-n21" data-modulo="alim-n21" onclick="mostrarVista('alim-n21')">Nivel 2-1</button>
     <button class="sidebar-sublink sidebar-sublink-nieto" data-vista="alim-subestaciones" data-modulo="alim-subestaciones" onclick="mostrarVista('alim-subestaciones')">Subestaciones</button>
+    <!-- "Ciclos" ya no es un módulo aparte -- pedido explícito, ahora es la
+         4ta pestaña dentro de "Alimentadores" (ver alim3IrATab('ciclos')). -->
     <button class="sidebar-sublink sidebar-sublink-nieto" data-vista="alim-alimentadores" data-modulo="alim-alimentadores" onclick="mostrarVista('alim-alimentadores')">Alimentadores</button>
-    <button class="sidebar-sublink sidebar-sublink-nieto" data-vista="alim-analisis-ciclo" data-modulo="alim-analisis-ciclo" onclick="mostrarVista('alim-analisis-ciclo')">Ciclos</button>
   </div>
   <button class="sidebar-link" data-vista="perdidas" data-modulo="perdidas" onclick="mostrarVista('perdidas')">Pérdidas Técnicas</button>
   <button class="sidebar-link sidebar-link-padre" id="sidebar-otros-padre" onclick="toggleSubmenuOtros()">
@@ -4530,6 +4531,7 @@ html,body{overflow-x:hidden;margin:0}
       <button type="button" class="pt-tab-btn activo" id="alim3-tab-btn-detalle" onclick="alim3IrATab('detalle')">Detalle por Alimentador</button>
       <button type="button" class="pt-tab-btn" id="alim3-tab-btn-top" onclick="alim3IrATab('top')">Top Alimentadores</button>
       <button type="button" class="pt-tab-btn" id="alim3-tab-btn-variacion" onclick="alim3IrATab('variacion')">Variación de Pérdida</button>
+      <button type="button" class="pt-tab-btn" id="alim3-tab-btn-ciclos" onclick="alim3IrATab('ciclos')">Ciclos</button>
     </div>
 
     <!-- Filtro Rango + Zona (chips) -- ÚNICO nodo, alim3IrATab() lo mueve
@@ -4809,100 +4811,100 @@ html,body{overflow-x:hidden;margin:0}
       </div>
     </div>
     </div><!-- /#alim3-tab-variacion -->
+
+    <!-- ===== PESTAÑA 4 · Ciclos -- antes un módulo aparte del sidebar
+         ("Análisis por Ciclo"), pedido explícito ("quiero que lo de
+         ciclos lo vuelvas una pestaña de alimentadores"): mismo contenido,
+         solo reubicado acá adentro como 4ta pestaña. Depende EXCLUSIVAMENTE
+         de "analisis de ciclos.csv" (ver load_analisis_ciclos.py) --
+         "tipo" se cruza al cargar contra alimentadores_mensual.tipo, no
+         viene en este CSV. Mantiene su PROPIO filtro (Rango/Tipo/
+         Liquidación/Zona/Subestación/Alimentador/Ciclo) totalmente
+         independiente del filtro compartido de las otras 3 pestañas --
+         nunca fueron el mismo dato/rango. -->
+    <div id="alim3-tab-ciclos" class="hidden">
+    <div class="pt-tabs">
+      <button type="button" class="pt-tab-btn activo" id="ac-tab-btn-grafica" onclick="acIrATab('grafica')">Gráfica</button>
+      <button type="button" class="pt-tab-btn" id="ac-tab-btn-tabla" onclick="acIrATab('tabla')">Tabla por Ciclo</button>
+    </div>
+
+    <!-- Filtro Rango/Tipo/Liquidación (+ Mensual/Anual + Borrar) -- ÚNICO
+         nodo, acIrATab() lo mueve al tope de la .card de la pestaña activa,
+         mismo patrón que Subestaciones/Alimentadores. -->
+    <div id="ac-filtro" class="fbar" style="margin-bottom:14px">
+      <input type="month" id="ac-desde" onchange="acAplicarFiltros()" style="display:none">
+      <input type="month" id="ac-hasta" onchange="acAplicarFiltros()" style="display:none">
+      <label>Rango</label>
+      <button type="button" class="be-modo-btn" onclick="_mesPresetAplicar('ac-desde','ac-hasta',6,'acAplicarFiltros')">6 meses</button>
+      <button type="button" class="be-modo-btn" onclick="_mesPresetAplicar('ac-desde','ac-hasta',12,'acAplicarFiltros')">1 año</button>
+      <button type="button" class="be-modo-btn" onclick="_mesPresetAbrirPersonalizado('ac-desde','ac-hasta','acAplicarFiltros','Análisis por Ciclo')">Personalizado</button>
+      <label style="margin-left:10px">Tipo</label>
+      <select id="ac-tipo" onchange="acAplicarFiltros()"><option value="">Todos</option></select>
+      <label>Liquidación</label>
+      <div class="msel" id="msel-ac-liquidacion"></div>
+      <button type="button" class="btn-theme ip-com-modo-btn activo" id="ac-btn-mensual" style="width:auto;padding:0 16px;margin-left:auto" onclick="acCambiarModo('mensual')">📅 Mensual</button>
+      <button type="button" class="btn-theme ip-com-modo-btn" id="ac-btn-anual" style="width:auto;padding:0 16px" onclick="acCambiarModo('anual')">📆 Anual Móvil</button>
+      <button type="button" class="btn-theme" style="width:auto;padding:0 14px" onclick="acLimpiarFiltros()" title="Vuelve Rango/Tipo/Liquidación/Zona/Subestación/Alimentador/Ciclo a su estado inicial">✕ Borrar filtros</button>
+    </div>
+
+    <!-- ===== Ciclos · Gráfica ===== -->
+    <div id="ac-tab-grafica">
+    <div class="card">
+      <div class="fbar" style="margin-bottom:0">
+        <button type="button" class="be-modo-btn" id="ac-btn-desglosar" onclick="acToggleDesglosar()" title="Con 'Todos' elegido: una línea por cada ciclo, o el total combinado. Con 2+ ciclos elegidos a mano: una línea por cada uno, o combinados">🔀 Desglosar por Ciclo</button>
+        <button type="button" class="be-modo-btn" id="ac-btn-n21" onclick="acToggleN21()" title="Sobrepone la Pérdida N2-1 (%) del alimentador elegido -- solo con exactamente 1 alimentador seleccionado">📉 Pérdida N2-1</button>
+        <span id="ac-n21-aviso" style="font-size:11px;color:var(--text3)"></span>
+      </div>
+
+      <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">
+        <div style="flex:2 1 520px;min-width:360px">
+          <div style="text-align:center;margin-bottom:8px">
+            <div style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Venta por Ciclo</div>
+            <div id="ac-subtitulo" style="font-size:12px;color:var(--text3);margin-top:2px"></div>
+          </div>
+          <div class="chart-wrap" style="height:380px"><canvas id="ch-ac-linea"></canvas></div>
+        </div>
+        <div style="flex:1 1 260px;max-width:300px">
+          <label style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:700">Zona</label>
+          <select id="ac-zona" onchange="acAplicarFiltros()" style="width:100%;margin:6px 0 14px"><option value="">Todas</option></select>
+          <label style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:700">Subestación</label>
+          <div class="msel" id="msel-ac-subestacion" style="margin:6px 0 14px"></div>
+          <label style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:700">Nombre Spard</label>
+          <div class="msel" id="msel-ac-alimentador" style="margin:6px 0 14px"></div>
+          <label style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:700">Datos del Ciclo</label>
+          <table class="be-tabla-creadas" style="margin-top:6px"><tbody id="ac-datos-ciclo"></tbody></table>
+        </div>
+      </div>
+
+      <div class="card-title" style="margin-top:18px">Ciclo</div>
+      <div id="ac-ciclos-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:8px;margin-top:10px"></div>
+    </div>
+    </div><!-- /#ac-tab-grafica -->
+
+    <!-- ===== Ciclos · Tabla por Ciclo -- pedido explícito, antes iba
+         debajo de la gráfica en la misma pantalla. ===== -->
+    <div id="ac-tab-tabla" class="hidden">
+    <div class="card">
+      <div class="fbar" style="margin:0 0 10px">
+        <input type="month" id="ac-tabla-desde" onchange="acRenderTablaCiclos()" style="display:none">
+        <input type="month" id="ac-tabla-hasta" onchange="acRenderTablaCiclos()" style="display:none">
+        <label title="Ventana propia de esta tabla, independiente del Rango de arriba -- por defecto los últimos 12 meses reales, se corre sola al aparecer un mes nuevo">Rango de la tabla</label>
+        <button type="button" class="be-modo-btn" onclick="_mesPresetAplicar('ac-tabla-desde','ac-tabla-hasta',6,'acRenderTablaCiclos')">6 meses</button>
+        <button type="button" class="be-modo-btn" onclick="_mesPresetAplicar('ac-tabla-desde','ac-tabla-hasta',12,'acRenderTablaCiclos')">1 año</button>
+        <button type="button" class="be-modo-btn" onclick="_mesPresetAbrirPersonalizado('ac-tabla-desde','ac-tabla-hasta','acRenderTablaCiclos','Análisis por Ciclo -- Tabla')">Personalizado</button>
+      </div>
+      <div class="be-tabla-scroll be-tabla-scroll-acotada" style="max-height:720px">
+        <table class="be-tabla-creadas">
+          <thead><tr id="ac-tabla-ciclos-head"></tr></thead>
+          <tbody id="ac-tabla-ciclos-body"></tbody>
+        </table>
+      </div>
+    </div>
+    </div><!-- /#ac-tab-tabla -->
+    </div><!-- /#alim3-tab-ciclos -->
   </div>
 </div>
 <!-- fin vista-alim-alimentadores -->
-
-<!-- ---------------- ANÁLISIS POR CICLO (submódulo de Alimentadores) ---------------- -->
-<!-- Depende EXCLUSIVAMENTE de "analisis de ciclos.csv" (ver
-     load_analisis_ciclos.py) -- "tipo" se cruza al cargar contra
-     alimentadores_mensual.tipo, no viene en este CSV. -->
-<div id="vista-alim-analisis-ciclo" class="vista-modulo hidden">
-  <div class="sec-hdr">
-    <div class="sec-title">Análisis por Ciclo</div>
-    <div class="sec-sub">Energía liquidada por ciclo de facturación, mes a mes -- depende de "analisis de ciclos.csv".</div>
-  </div>
-
-  <div class="pt-tabs">
-    <button type="button" class="pt-tab-btn activo" id="ac-tab-btn-grafica" onclick="acIrATab('grafica')">Gráfica</button>
-    <button type="button" class="pt-tab-btn" id="ac-tab-btn-tabla" onclick="acIrATab('tabla')">Tabla por Ciclo</button>
-  </div>
-
-  <!-- Filtro Rango/Tipo/Liquidación (+ Mensual/Anual + Borrar) -- ÚNICO
-       nodo, acIrATab() lo mueve al tope de la .card de la pestaña activa,
-       mismo patrón que Subestaciones/Alimentadores. -->
-  <div id="ac-filtro" class="fbar" style="margin-bottom:14px">
-    <input type="month" id="ac-desde" onchange="acAplicarFiltros()" style="display:none">
-    <input type="month" id="ac-hasta" onchange="acAplicarFiltros()" style="display:none">
-    <label>Rango</label>
-    <button type="button" class="be-modo-btn" onclick="_mesPresetAplicar('ac-desde','ac-hasta',6,'acAplicarFiltros')">6 meses</button>
-    <button type="button" class="be-modo-btn" onclick="_mesPresetAplicar('ac-desde','ac-hasta',12,'acAplicarFiltros')">1 año</button>
-    <button type="button" class="be-modo-btn" onclick="_mesPresetAbrirPersonalizado('ac-desde','ac-hasta','acAplicarFiltros','Análisis por Ciclo')">Personalizado</button>
-    <label style="margin-left:10px">Tipo</label>
-    <select id="ac-tipo" onchange="acAplicarFiltros()"><option value="">Todos</option></select>
-    <label>Liquidación</label>
-    <div class="msel" id="msel-ac-liquidacion"></div>
-    <button type="button" class="btn-theme ip-com-modo-btn activo" id="ac-btn-mensual" style="width:auto;padding:0 16px;margin-left:auto" onclick="acCambiarModo('mensual')">📅 Mensual</button>
-    <button type="button" class="btn-theme ip-com-modo-btn" id="ac-btn-anual" style="width:auto;padding:0 16px" onclick="acCambiarModo('anual')">📆 Anual Móvil</button>
-    <button type="button" class="btn-theme" style="width:auto;padding:0 14px" onclick="acLimpiarFiltros()" title="Vuelve Rango/Tipo/Liquidación/Zona/Subestación/Alimentador/Ciclo a su estado inicial">✕ Borrar filtros</button>
-  </div>
-
-  <!-- ===== PESTAÑA 1 · Gráfica ===== -->
-  <div id="ac-tab-grafica">
-  <div class="card">
-    <div class="fbar" style="margin-bottom:0">
-      <button type="button" class="be-modo-btn" id="ac-btn-desglosar" onclick="acToggleDesglosar()" title="Con 'Todos' elegido: una línea por cada ciclo, o el total combinado. Con 2+ ciclos elegidos a mano: una línea por cada uno, o combinados">🔀 Desglosar por Ciclo</button>
-      <button type="button" class="be-modo-btn" id="ac-btn-n21" onclick="acToggleN21()" title="Sobrepone la Pérdida N2-1 (%) del alimentador elegido -- solo con exactamente 1 alimentador seleccionado">📉 Pérdida N2-1</button>
-      <span id="ac-n21-aviso" style="font-size:11px;color:var(--text3)"></span>
-    </div>
-
-    <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">
-      <div style="flex:2 1 520px;min-width:360px">
-        <div style="text-align:center;margin-bottom:8px">
-          <div style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Venta por Ciclo</div>
-          <div id="ac-subtitulo" style="font-size:12px;color:var(--text3);margin-top:2px"></div>
-        </div>
-        <div class="chart-wrap" style="height:380px"><canvas id="ch-ac-linea"></canvas></div>
-      </div>
-      <div style="flex:1 1 260px;max-width:300px">
-        <label style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:700">Zona</label>
-        <select id="ac-zona" onchange="acAplicarFiltros()" style="width:100%;margin:6px 0 14px"><option value="">Todas</option></select>
-        <label style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:700">Subestación</label>
-        <div class="msel" id="msel-ac-subestacion" style="margin:6px 0 14px"></div>
-        <label style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:700">Nombre Spard</label>
-        <div class="msel" id="msel-ac-alimentador" style="margin:6px 0 14px"></div>
-        <label style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:700">Datos del Ciclo</label>
-        <table class="be-tabla-creadas" style="margin-top:6px"><tbody id="ac-datos-ciclo"></tbody></table>
-      </div>
-    </div>
-
-    <div class="card-title" style="margin-top:18px">Ciclo</div>
-    <div id="ac-ciclos-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:8px;margin-top:10px"></div>
-  </div>
-  </div><!-- /#ac-tab-grafica -->
-
-  <!-- ===== PESTAÑA 2 · Tabla por Ciclo -- pedido explícito, antes iba
-       debajo de la gráfica en la misma pantalla. ===== -->
-  <div id="ac-tab-tabla" class="hidden">
-  <div class="card">
-    <div class="fbar" style="margin:0 0 10px">
-      <input type="month" id="ac-tabla-desde" onchange="acRenderTablaCiclos()" style="display:none">
-      <input type="month" id="ac-tabla-hasta" onchange="acRenderTablaCiclos()" style="display:none">
-      <label title="Ventana propia de esta tabla, independiente del Rango de arriba -- por defecto los últimos 12 meses reales, se corre sola al aparecer un mes nuevo">Rango de la tabla</label>
-      <button type="button" class="be-modo-btn" onclick="_mesPresetAplicar('ac-tabla-desde','ac-tabla-hasta',6,'acRenderTablaCiclos')">6 meses</button>
-      <button type="button" class="be-modo-btn" onclick="_mesPresetAplicar('ac-tabla-desde','ac-tabla-hasta',12,'acRenderTablaCiclos')">1 año</button>
-      <button type="button" class="be-modo-btn" onclick="_mesPresetAbrirPersonalizado('ac-tabla-desde','ac-tabla-hasta','acRenderTablaCiclos','Análisis por Ciclo -- Tabla')">Personalizado</button>
-    </div>
-    <div class="be-tabla-scroll be-tabla-scroll-acotada" style="max-height:720px">
-      <table class="be-tabla-creadas">
-        <thead><tr id="ac-tabla-ciclos-head"></tr></thead>
-        <tbody id="ac-tabla-ciclos-body"></tbody>
-      </table>
-    </div>
-  </div>
-  </div><!-- /#ac-tab-tabla -->
-</div>
-<!-- fin vista-alim-analisis-ciclo -->
 
 <!-- ---------------- TEMPERATURA VS ENTRADA ---------------- -->
 <div id="vista-temp-entrada" class="vista-modulo hidden">
@@ -8480,7 +8482,7 @@ async function mostrarVista(nombre){
   document.getElementById('sidebar-ip-padre').classList.toggle('activa', esIndicadorPerdidas);
   if(esIndicadorPerdidas) abrirSubmenuIP();
 
-  const esAlimentadores = nombre==='alim-resumen' || nombre==='alim-nivel4' || nombre==='alim-nivel3' || nombre==='alim-n21' || nombre==='alim-subestaciones' || nombre==='alim-alimentadores' || nombre==='alim-analisis-ciclo';
+  const esAlimentadores = nombre==='alim-resumen' || nombre==='alim-nivel4' || nombre==='alim-nivel3' || nombre==='alim-n21' || nombre==='alim-subestaciones' || nombre==='alim-alimentadores';
   document.getElementById('sidebar-alim-padre').classList.toggle('activa', esAlimentadores);
   if(esAlimentadores) abrirSubmenuAlim();
 
@@ -8578,10 +8580,7 @@ async function mostrarVista(nombre){
     vistaCargada.alimAlimentadores = true;
     await cargarAlimentadoresModulo('alim-alimentadores');
   }
-  if(nombre==='alim-analisis-ciclo' && !vistaCargada.alimAnalisisCiclo){
-    vistaCargada.alimAnalisisCiclo = true;
-    await cargarAnalisisCiclos();
-  }
+  // 'alim-analisis-ciclo' ya no es una vista propia -- ver alim3IrATab('ciclos').
   if(nombre==='temp-entrada' && !vistaCargada.tempEntrada){
     vistaCargada.tempEntrada = true;
     await tempEntradaCargar();
@@ -19011,7 +19010,7 @@ function acPasoAlimentador(delta){
 
 document.addEventListener('keydown', (ev)=>{
   if(ev.key !== 'ArrowUp' && ev.key !== 'ArrowDown') return;
-  const vista = document.getElementById('vista-alim-analisis-ciclo');
+  const vista = document.getElementById('alim3-tab-ciclos');
   if(!vista || vista.classList.contains('hidden')) return;
   const tagActivo = document.activeElement && document.activeElement.tagName;
   if(['INPUT','SELECT','TEXTAREA'].includes(tagActivo)) return;
@@ -23191,12 +23190,13 @@ let ALIM3_ZONAS_SEL = new Set();
 let ALIM3_TIPOS = [];
 let ALIM3_TIPOS_SEL = new Set();
 
-// "Cto-Rva" (reserva) y "Cto-off" (apagado) son variantes de "Cto" --
-// pedido explícito: que el filtro solo muestre CC/Comp/Cto, sin esos dos
-// sueltos aparte. Se agrupan bajo "Cto" acá, en un solo lugar, en vez de
-// tocar cada sitio que compara f.tipo.
+// "Cto-Rva" (reserva) y "Cto-off" (apagado) son variantes de "Cto", y
+// "Comp-off" lo es de "Comp" -- pedido explícito: que el filtro solo
+// muestre CC/Comp/Cto, sin esos sueltos aparte. Se agrupan acá, en un solo
+// lugar, en vez de tocar cada sitio que compara f.tipo.
 function alim3TipoNormalizado(tipo){
   if(tipo==='Cto-Rva' || tipo==='Cto-off') return 'Cto';
+  if(tipo==='Comp-off') return 'Comp';
   return tipo;
 }
 let ALIM3_NEMONICO_SEL = null;
@@ -23264,15 +23264,22 @@ async function alim3Cargar(){
 // El nodo #alim3-filtro (Rango + Zona) se mueve al tope de la .card de la
 // pestaña activa.
 let ALIM3_TAB_ACTUAL = 'detalle';
+let _alim3CiclosCargado = false;
 function alim3IrATab(nombre){
   ALIM3_TAB_ACTUAL = nombre;
-  ['detalle','top','variacion'].forEach(t=>{
+  ['detalle','top','variacion','ciclos'].forEach(t=>{
     document.getElementById('alim3-tab-'+t)?.classList.toggle('hidden', t!==nombre);
     document.getElementById('alim3-tab-btn-'+t)?.classList.toggle('activo', t===nombre);
   });
-  const card = document.querySelector('#alim3-tab-'+nombre+' > .card');
-  const filtro = document.getElementById('alim3-filtro');
-  if(card && filtro && filtro.parentElement !== card) card.prepend(filtro);
+  // "Ciclos" tiene su PROPIO filtro independiente (#ac-filtro, nunca fue
+  // el mismo dato/rango que las otras 3 pestañas) -- #alim3-filtro no
+  // tiene nada que hacer ahí, así que ni se mueve (se queda oculto junto
+  // con la pestaña anterior que lo tenía).
+  if(nombre !== 'ciclos'){
+    const card = document.querySelector('#alim3-tab-'+nombre+' > .card');
+    const filtro = document.getElementById('alim3-filtro');
+    if(card && filtro && filtro.parentElement !== card) card.prepend(filtro);
+  }
   // El M/A/Δ, Tipo y el buscador de Alimentador del filtro compartido solo
   // aplican a "Detalle por Alimentador" -- se ocultan en las demás
   // pestañas (mismo criterio que Nivel 4/Nivel 3/N2-1/Subestaciones,
@@ -23283,6 +23290,16 @@ function alim3IrATab(nombre){
   document.getElementById('alim3-top-modo-wrap')?.classList.toggle('hidden', nombre !== 'top');
   alim3ActualizarControlesVariacion();
   if(nombre !== 'detalle') alim3CerrarLista();
+  // "Ciclos" -- pedido explícito ("quiero que lo de ciclos lo vuelvas una
+  // pestaña de alimentadores"), antes un módulo propio del sidebar que
+  // cargaba sus datos en mostrarVista('alim-analisis-ciclo'); ahora que es
+  // una pestaña más, la carga (pesada, ver cargarAnalisisCiclos) se dispara
+  // UNA sola vez, recién la primera vez que se entra a esta pestaña.
+  if(nombre === 'ciclos' && !_alim3CiclosCargado){
+    _alim3CiclosCargado = true;
+    cargarAnalisisCiclos();
+  }
+  if(nombre === 'ciclos') return;
   alim3RenderTodo();
 }
 
@@ -23840,10 +23857,17 @@ function alim3RenderTarjetas(filasConClave, nombres){
 
   const fk = v => v==null ? '--' : Math.round(v).toLocaleString('es-CO') + ' kWh';
   const fpct = v => v==null ? '--' : v.toFixed(2)+'%';
+  // Pedido explícito ("también quiero que muestre la variación así
+  // pequeño en %"): además del Δ en kWh de siempre, ahora muestra al lado
+  // el cambio relativo (% de cuánto varió ESTE valor respecto al período
+  // anterior) -- distinto de dPct de abajo, que es para métricas que YA
+  // son porcentaje (variación en puntos porcentuales, "pp").
   const dTxt = (a, b) => {
     if(a==null || b==null) return '';
     const d = a - b;
-    return ` <span class="alim-resumen-compacta-delta">${d>=0?'▲':'▼'} ${Math.round(Math.abs(d)).toLocaleString('es-CO')}</span>`;
+    const pct = b ? (d / b * 100) : null;
+    const pctTxt = pct==null ? '' : ` (${pct>=0?'+':'-'}${Math.abs(pct).toFixed(1)}%)`;
+    return ` <span class="alim-resumen-compacta-delta">${d>=0?'▲':'▼'} ${Math.round(Math.abs(d)).toLocaleString('es-CO')}${pctTxt}</span>`;
   };
   const dPct = (a, b) => {
     if(a==null || b==null) return '';
