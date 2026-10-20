@@ -4608,6 +4608,16 @@ html,body{overflow-x:hidden;margin:0}
         <button type="button" class="be-modo-btn activo" id="alim3-grafica-btn-esp" onclick="alim3ToggleGraficaModo('esp')" title="Entrada / Salida / Pérdida %" style="padding:0 8px;font-size:10.5px;white-space:nowrap">🔀 E-S</button>
         <button type="button" class="be-modo-btn" id="alim3-grafica-btn-tecnica" onclick="alim3ToggleGraficaModo('tecnica')" title="Pérdida Total vs Pérdida Técnica (con opción de sumar Inyección AGPE)" style="padding:0 8px;font-size:10.5px;white-space:nowrap">⚡ Téc</button>
       </span>
+      <!-- AñoMes de la tarjeta "Indicador Mensual/Anual" -- pedido explícito
+           ("la tarjeta está fija para el último mes, pero también quiero
+           ver los datos de un mes anterior"): mismo patrón que el selector
+           "AñoMes" de Top Alimentadores (#alim3-mes-top), pero
+           independiente -- esta tarjeta puede quedar viendo un mes
+           distinto al de esa tabla. Se puebla en alim3RenderTarjetas. -->
+      <span id="alim3-mes-tarjeta-wrap" style="display:inline-flex;align-items:center;gap:6px">
+        <label>AñoMes</label>
+        <select id="alim3-mes-tarjeta" onchange="alim3CambiarMesTarjeta(this.value)"></select>
+      </span>
       <!-- M/A/Δ de "Detalle por Alimentador" -- pedido explícito ("los
            filtros que están debajo del título... los quiero en la parte
            superior derecha donde dice 214 alimentadores"), antes centrados
@@ -23424,6 +23434,13 @@ let ALIM3_NEMONICO_SEL = null;
 let ALIM3_MES_TOP = null;
 let ALIM3_ESP_MODO = 'mensual';  // 'mensual' | 'anual' -- gráfico Entradas/Salidas/Pérdida
 let ALIM3_ESP_VAR = false;       // Δ Variación en la etiqueta de Pérdida %
+// AñoMes que muestra la tarjeta "Indicador Mensual/Anual" -- null = el
+// último mes disponible (comportamiento de siempre). Pedido explícito
+// ("la tarjeta está fija para el último mes, pero también quiero ver los
+// datos de un mes anterior"): mismo patrón de selector que ALIM3_MES_TOP
+// (Top Alimentadores), independiente de ese -- esta tarjeta puede estar
+// viendo un mes distinto al de la tabla Top.
+let ALIM3_MES_TARJETA = null;
 let ALIM3_TOP_MODO = 'mensual';  // 'mensual' | 'anual' -- tabla/scatter Top Alimentadores
 let ALIM3_TOP_ORDEN_COL = 'gestLongitud';  // columna de orden de la tabla Top Alimentadores
 let ALIM3_TOP_ORDEN_DIR = 'desc';          // 'asc' | 'desc'
@@ -23539,6 +23556,7 @@ function alim3IrATab(nombre){
   // pestañas (mismo criterio que Nivel 4/Nivel 3/N2-1/Subestaciones,
   // pedido explícito ya aplicado ahí).
   document.getElementById('alim3-grafica-modo-wrap')?.classList.toggle('hidden', nombre !== 'detalle');
+  document.getElementById('alim3-mes-tarjeta-wrap')?.classList.toggle('hidden', nombre !== 'detalle');
   document.getElementById('alim3-esp-modo-wrap')?.classList.toggle('hidden', nombre !== 'detalle' || ALIM3_GRAFICA_MODO !== 'esp');
   document.getElementById('alim3-tecnica-modo-wrap')?.classList.toggle('hidden', nombre !== 'detalle' || ALIM3_GRAFICA_MODO !== 'tecnica');
   document.getElementById('alim3-tipo-wrap')?.classList.toggle('hidden', nombre !== 'detalle');
@@ -24106,10 +24124,21 @@ function alim3RenderTarjetas(filasConClave, nombres){
   })).filter(f => f.pct != null);
   if(serieBase.length < 2){ cont.innerHTML = ''; return; }
   const anual = alimN21Con12Meses(serieBase);
-  const actual = serieBase[serieBase.length-1];
-  const anterior = serieBase[serieBase.length-2];
+
+  // AñoMes elegido en #alim3-mes-tarjeta -- si no hay uno elegido, o el
+  // elegido ya no existe en ESTE alimentador/zona (ej. venía de otro
+  // alimentador con más historia), cae al último disponible, mismo
+  // criterio que alim3PoblarSelectorMesTop.
+  const claves = serieBase.map(f => f.clave);
+  if(!ALIM3_MES_TARJETA || !claves.includes(ALIM3_MES_TARJETA)) ALIM3_MES_TARJETA = claves[claves.length-1];
+  const selMes = document.getElementById('alim3-mes-tarjeta');
+  if(selMes) selMes.innerHTML = claves.map(c => `<option value="${c}"${c===ALIM3_MES_TARJETA?' selected':''}>${labelMesLargo(c)}</option>`).join('');
+
+  const idxActual = claves.indexOf(ALIM3_MES_TARJETA);
+  const actual = serieBase[idxActual];
+  const anterior = idxActual > 0 ? serieBase[idxActual-1] : null;
   const actual12 = anual.find(f => f.clave===actual.clave && f.pct12!=null) || null;
-  const anterior12 = anual.find(f => f.clave===anterior.clave && f.pct12!=null) || null;
+  const anterior12 = anterior ? (anual.find(f => f.clave===anterior.clave && f.pct12!=null) || null) : null;
 
   const fk = v => v==null ? '--' : Math.round(v).toLocaleString('es-CO') + ' kWh';
   const fpct = v => v==null ? '--' : v.toFixed(2)+'%';
@@ -24191,16 +24220,16 @@ function alim3RenderTarjetas(filasConClave, nombres){
   // Nivel 4/N2-1 (_alimNivelRenderResumenGrupos/alimN21RenderResumen).
   if(ALIM3_ESP_MODO === 'anual'){
     cont.innerHTML = actual12
-      ? tarjeta('Indicador Anual (12M)',
+      ? tarjeta(`Indicador Anual (12M) -- hasta ${labelMesLargo(actual.clave)}`,
           actual12.entrada12, anterior12?anterior12.entrada12:null, actual12.salida12, anterior12?anterior12.salida12:null,
           actual12.perdida12, anterior12?anterior12.perdida12:null, actual12.tecnica12, anterior12?anterior12.tecnica12:null,
           actual12.gestionable12, anterior12?anterior12.gestionable12:null)
       : '<div style="color:var(--text3);font-size:12px">Aún no hay 12 meses de historia.</div>';
   } else {
-    cont.innerHTML = tarjeta('Indicador Mensual',
-      actual.entrada, anterior.entrada, actual.salida, anterior.salida,
-      actual.perdida, anterior.perdida, actual.tecnica, anterior.tecnica,
-      actual.gestionable, anterior.gestionable);
+    cont.innerHTML = tarjeta(`Indicador Mensual -- ${labelMesLargo(actual.clave)}`,
+      actual.entrada, anterior?anterior.entrada:null, actual.salida, anterior?anterior.salida:null,
+      actual.perdida, anterior?anterior.perdida:null, actual.tecnica, anterior?anterior.tecnica:null,
+      actual.gestionable, anterior?anterior.gestionable:null);
   }
 }
 
@@ -24476,6 +24505,15 @@ function alim3CambiarMesTop(clave){
   ALIM3_MES_TOP = clave;
   alim3RenderTablaTop();
   alim3RenderScatter();
+}
+
+// Cambiar el AñoMes de la tarjeta "Indicador Mensual/Anual" de "Detalle
+// por Alimentador" -- pedido explícito. Independiente de ALIM3_MES_TOP
+// (Top Alimentadores tiene su propio selector). Re-renderiza toda la
+// selección actual, mismo patrón que alim3ToggleEspModo/alim3ToggleEspVariacion.
+function alim3CambiarMesTarjeta(clave){
+  ALIM3_MES_TARJETA = clave;
+  alim3RenderSeleccion();
 }
 
 function alim3ToggleTopModo(modo){
