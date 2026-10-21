@@ -2083,7 +2083,16 @@ html,body{overflow-x:hidden;margin:0}
         <label style="margin-left:12px">Nivel de tensión</label>
         <div class="msel" id="msel-nivel"></div>
         <label style="margin-left:12px">Alimentador</label>
+        <!-- Flechas para ir pasando de un alimentador a otro -- pedido
+             explícito ("ponerle las flechas a la selección del alimentador
+             para ir cambiando fácilmente"), mismo mecanismo que ya tiene
+             "Detalle por Alimentador" (alim3SiguienteAlimentador): dejan la
+             selección en EXACTAMENTE ese 1 alimentador (reemplazan,
+             no suman), dan la vuelta al llegar a una punta. También
+             funcionan con ◀/▶ del teclado (ver el keydown más abajo). -->
+        <button type="button" class="be-modo-btn be-icon-btn" onclick="detallePasoAlimentador(-1)" title="Alimentador anterior" style="width:22px;height:22px;font-size:10px">◀</button>
         <div class="msel" id="msel-alimentador"></div>
+        <button type="button" class="be-modo-btn be-icon-btn" onclick="detallePasoAlimentador(1)" title="Siguiente alimentador" style="width:22px;height:22px;font-size:10px">▶</button>
         <input type="month" id="det-desde" onchange="detalleSyncRango()" style="display:none">
         <input type="month" id="det-hasta" onchange="detalleSyncRango()" style="display:none">
         <!-- Rango rápido genérico en vez de los campos de fecha a la vista
@@ -2154,8 +2163,12 @@ html,body{overflow-x:hidden;margin:0}
           <div class="card-title" style="margin-bottom:0">Variación de Pérdida Técnica por Circuito</div>
           <div id="circvar-caption" style="font-size:11px;color:var(--text3);font-weight:700"></div>
         </div>
-        <div class="tbl-wrap tbl-compacta alim3-tabla-sticky" id="circvar-tbl-wrap" style="max-height:420px;overflow-y:auto">
-          <table>
+        <!-- be-tabla-creadas (no tbl-compacta) -- pedido explícito ("volverla
+             como las otras tablas, para que no se vea escuelera"): sin las
+             líneas verticales entre celdas que trae .tbl-compacta, mismo
+             look limpio que el resto de la app. -->
+        <div class="tbl-wrap alim3-tabla-sticky" id="circvar-tbl-wrap" style="max-height:420px;overflow-y:auto">
+          <table class="be-tabla-creadas">
             <thead><tr>
               <th style="text-align:left;cursor:pointer" onclick="circVarOrdenar('nemonico')" title="Click para ordenar">Circuito <span id="circvar-th-nemonico" class="alim3-th-flecha"></span></th>
               <th style="cursor:pointer" onclick="circVarOrdenar('zona')" title="Click para ordenar">Zona <span id="circvar-th-zona" class="alim3-th-flecha"></span></th>
@@ -19254,6 +19267,19 @@ document.addEventListener('keydown', (ev)=>{
   alim3SiguienteAlimentador(ev.key==='ArrowRight' ? 1 : -1);
 });
 
+// Mismo atajo ◀/▶ para "Detalle por Circuito" (Pérdidas Técnicas) --
+// pedido explícito ("debe funcionar con el teclado"). Solo mientras esa
+// pestaña está visible, igual que arriba.
+document.addEventListener('keydown', (ev)=>{
+  if(ev.key !== 'ArrowLeft' && ev.key !== 'ArrowRight') return;
+  const vista = document.getElementById('perdidas-tab-detalle');
+  if(!vista || vista.classList.contains('hidden')) return;
+  const tagActivo = document.activeElement && document.activeElement.tagName;
+  if(['INPUT','SELECT','TEXTAREA'].includes(tagActivo)) return;
+  ev.preventDefault();
+  detallePasoAlimentador(ev.key==='ArrowRight' ? 1 : -1);
+});
+
 /* ---- IP Nivel 4 / IP Nivel 3 -- balance DIARIO real (Entrada/Salida
    medidas), depende de "Consolidado Nivel 4.csv" / "Consolidado Zonas
    N3.csv" (ver load_nivel34.py / GET /api/nivel34?nivel=). El "por qué"
@@ -30204,7 +30230,18 @@ function aplicarFiltrosDebounced(){
   _debounceAlim = setTimeout(aplicarFiltros, 450);
 }
 
+// Secuencia para descartar respuestas que lleguen DESPUÉS de una llamada
+// más nueva a aplicarFiltros -- pedido explícito ("cuando se cambia de
+// circuito cambia la pérdida de abajo, pero la gráfica sigue igual"):
+// como el selector de Alimentador llama aplicarFiltrosDebounced (450ms),
+// cambiar de circuito 2 veces seguidas puede dejar 2 fetch de /api/resumen
+// en vuelo a la vez -- si el más viejo responde DESPUÉS que el más nuevo,
+// pisaba RESUMEN/el gráfico con datos de un circuito que ya no es el
+// elegido (el título no se nota porque ese se pone ANTES del await, en
+// el orden de llamada, nunca se desordena).
+let AF_SEQ = 0;
 async function aplicarFiltros(){
+  const miSeq = ++AF_SEQ;
   const zona = mselValores('msel-zona');
   const nivel = mselValores('msel-nivel');
   const alimentador = mselValores('msel-alimentador');
@@ -30230,26 +30267,46 @@ async function aplicarFiltros(){
   }
   document.getElementById('chart-titulo').textContent = titulo;
 
-  RESUMEN = await apiGet(`/api/resumen?${qs.toString()}`);
+  const resumenNuevo = await apiGet(`/api/resumen?${qs.toString()}`);
+  if(miSeq !== AF_SEQ) return;  // una llamada más nueva ya arrancó -- no pisar su resultado
+  RESUMEN = resumenNuevo;
 
   // 2+ circuitos elegidos -- además de la suma agregada (RESUMEN, la usan
   // las tarjetas de abajo tal cual siempre), se trae la serie de CADA UNO
   // por separado para poder compararlos en la gráfica (pedido explícito).
   if(alimentador.length >= 2){
     try{
-      DET_COMPARAR_SERIES = await Promise.all(alimentador.map(async nemonico => {
+      const seriesNuevas = await Promise.all(alimentador.map(async nemonico => {
         const qsUno = new URLSearchParams(qs);
         qsUno.delete('alimentador');
         qsUno.append('alimentador', nemonico);
         return {nemonico, resumen: await apiGet(`/api/resumen?${qsUno.toString()}`)};
       }));
-    }catch(e){ DET_COMPARAR_SERIES = null; }
+      if(miSeq !== AF_SEQ) return;
+      DET_COMPARAR_SERIES = seriesNuevas;
+    }catch(e){ if(miSeq !== AF_SEQ) return; DET_COMPARAR_SERIES = null; }
   } else {
     DET_COMPARAR_SERIES = null;
   }
 
   renderPrincipal();
   await cargarZonas();
+}
+
+// Flechas ◀/▶ (botones + teclado) de "Detalle por Circuito" -- pedido
+// explícito. Reemplaza la selección entera por EXACTAMENTE el alimentador
+// siguiente/anterior (no suma a lo que ya estuviera elegido), recorre la
+// lista de opciones actual del msel (ya filtrada por Zona/Nivel) y da la
+// vuelta al llegar a una punta -- mismo patrón que alim3SiguienteAlimentador.
+function detallePasoAlimentador(delta){
+  const st = MSEL['msel-alimentador'];
+  if(!st || !st.opciones.length) return;
+  const valores = st.opciones.map(o=>o.value);
+  const actual = [...st.seleccion][0];
+  let idx = valores.indexOf(actual);
+  if(idx === -1) idx = delta > 0 ? -1 : valores.length;
+  const nuevo = (idx + delta + valores.length) % valores.length;
+  mselSetSeleccion('msel-alimentador', [valores[nuevo]]);
 }
 
 async function limpiarFiltros(){
