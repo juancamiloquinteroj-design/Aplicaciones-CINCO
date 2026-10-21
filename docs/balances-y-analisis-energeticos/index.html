@@ -2189,7 +2189,7 @@ html,body{overflow-x:hidden;margin:0}
     <!-- Tarjetas rápidas + nota de análisis (detalleRenderTarjetas()).
          Dentro del mismo panel, separadas por una línea fina a sangre. -->
     <div style="border-top:1px solid var(--border);margin:14px -22px 0;padding:14px 22px 0;display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap">
-      <div class="inicio-dash-fila" id="det-tarjetas" style="flex:1 1 420px;margin-bottom:0;gap:8px;grid-template-columns:repeat(auto-fit,minmax(120px,1fr))"></div>
+      <div id="det-tarjetas" style="flex:1 1 420px;margin-bottom:0"></div>
       <div style="flex:0 1 300px;min-width:240px;font-size:11px;line-height:1.6;color:var(--text2);background:var(--bg);border:1px solid var(--border);border-radius:9px;padding:10px 12px;display:flex;gap:7px">
         <span style="font-size:15px;flex-shrink:0">⚖️</span>
         <span id="det-nota-analisis">—</span>
@@ -31016,22 +31016,28 @@ function detalleRenderTarjetas(){
   const fk = v => v==null?'--':`${Math.round(v).toLocaleString('es-CO')} kWh`;
   const fp = v => v==null?'--':`${v.toFixed(2)}%`;
 
-  // Tarjeta compacta de 2 renglones.
-  const tc = (icono,titulo,l1,v1,l2,v2,c1,c2) => `<div class="card inicio-dash-card" style="padding:9px 12px">
-    <div class="card-title" style="font-size:10.5px;line-height:1.2">${icono} ${titulo}</div>
-    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:6px"><span style="font-size:9.5px;color:var(--text3)">${l1}</span><b style="color:${c1||'var(--text)'};font-size:12.5px">${v1}</b></div>
-    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:4px"><span style="font-size:9.5px;color:var(--text3)">${l2}</span><b style="color:${c2||'var(--text)'};font-size:12.5px">${v2}</b></div>
+  // Misma tarjeta compacta de Alimentadores/Nivel 3/Nivel 4 (.alim-resumen-
+  // compacta: % grande a la izquierda + grid a la derecha) -- pedido
+  // explícito ("las tarjetas inferiores deben ser como la de Alimentadores,
+  // que es una tabla"), reemplaza las 4 tarjetitas sueltas de antes.
+  const dKwh = deltaKwh==null ? '' : ` <span class="alim-resumen-compacta-delta" style="white-space:nowrap">${deltaKwh>=0?'▲':'▼'} ${Math.round(Math.abs(deltaKwh)).toLocaleString('es-CO')} kWh</span>`;
+  const variacionPct = deltaPp==null ? '' : ` (${deltaPp>=0?'▲':'▼'} ${deltaPp>=0?'+':'-'}${Math.abs(deltaPp).toFixed(2)} pp)`;
+
+  cont.innerHTML = `<div class="alim-resumen-compacta" style="margin:0">
+    <div class="alim-resumen-compacta-titulo">${nombre} -- ${labelMes(M[n])}</div>
+    <div class="alim-resumen-compacta-fila">
+      <div class="alim-resumen-compacta-pct">
+        <div class="valor">${fp(pct)}</div>
+        <div class="etiqueta">Pérdida Técnica${variacionPct}</div>
+      </div>
+      <div class="alim-resumen-compacta-grid" style="grid-template-columns:1fr 1fr 1fr 1fr">
+        <div><span class="etiqueta">Pérdida Técnica:</span> <span class="valor">${fk(kwh)}</span>${dKwh}</div>
+        <div><span class="etiqueta">Anual 12M:</span> <span class="valor">${fk(kwh12)}</span></div>
+        <div><span class="etiqueta">% Anual 12M:</span> <span class="valor">${fp(pct12)}</span></div>
+        <div><span class="etiqueta">Reconocimiento CREG:</span> <span class="valor">${creg!=null?creg.toFixed(2)+'%':'--'}</span></div>
+      </div>
+    </div>
   </div>`;
-
-  const varColor = deltaPp==null ? 'var(--text3)' : (deltaPp>0.005 ? 'var(--red)' : deltaPp<-0.005 ? 'var(--green)' : 'var(--text3)');
-  const varPp = deltaPp==null ? '--' : `${deltaPp>0?'▲':deltaPp<0?'▼':'■'} ${Math.abs(deltaPp).toFixed(2)} pp`;
-  const varKwh = deltaKwh==null ? '--' : `${deltaKwh>0?'▲':deltaKwh<0?'▼':'■'} ${Math.round(Math.abs(deltaKwh)).toLocaleString('es-CO')} kWh`;
-
-  cont.innerHTML =
-    tc('📍','Seleccionado','Mes', labelMes(M[n]), 'Filtro', `<span style="font-size:9px">${nombre.length>20?nombre.slice(0,20)+'…':nombre}</span>`) +
-    tc('⚡','Pérdida Técnica','Mensual', fk(kwh), 'Anual 12M', fk(kwh12), '#00B0F0', '#00B0F0') +
-    tc('📉','Pérdida Técnica %','Mensual', fp(pct), 'Anual 12M', fp(pct12), '#ED7D31', '#ED7D31') +
-    tc('📊','Variación','pp', varPp, 'kWh', varKwh, varColor, varColor);
 
   // Nota de análisis del Reconocimiento CREG -- pedido explícito ("el
   // reconocimiento debe decirme más y hacer un análisis: decir cuándo se
