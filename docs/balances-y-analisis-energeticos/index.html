@@ -23478,6 +23478,11 @@ function alim3ToggleVarAnterior(){
   document.getElementById('alim3-var-tbl-wrap').classList.toggle('alim3-mostrar-anterior', ALIM3_VAR_MOSTRAR_ANTERIOR);
 }
 let chAlim3Esp = null, chAlim3Scatter = null;
+// Qué curvas de la gráfica Entrada/Salida/Pérdida%/Técnica/AGPE dejó el
+// usuario prendidas/apagadas en la leyenda -- sobrevive a los re-renders
+// (cambiar AñoMes, M/A, alimentador...), ver alim3RenderChartEsp. null =
+// todavía no hay nada guardado, usa los hidden:true por defecto.
+let ALIM3_ESP_CURVAS_OCULTAS = null;
 // ALIM3_CONCLAVE_ACTUAL guarda los últimos datos renderizados
 // (alim3RenderSeleccion) para poder re-dibujar la gráfica sin pedir nada
 // de nuevo (ej. al cambiar el AñoMes de la tarjeta).
@@ -23754,7 +23759,13 @@ function alim3RenderTiposChips(){
 // filtra Top Alimentadores/Variación de Pérdida -- pedido explícito era
 // puntual a ese buscador, no a los totales del módulo.
 function alim3ToggleTipo(tipo){
-  if(ALIM3_TIPOS_SEL.has(tipo)) ALIM3_TIPOS_SEL.delete(tipo); else ALIM3_TIPOS_SEL.add(tipo);
+  // Selección única -- pedido explícito ("que solo permita 1, si doy
+  // click en otro se quite la selección y seleccione el nuevo"). Clickear
+  // el que ya está activo lo deselecciona (vuelve a "todos los tipos",
+  // mismo comportamiento de siempre cuando el set queda vacío).
+  const yaActivo = ALIM3_TIPOS_SEL.has(tipo);
+  ALIM3_TIPOS_SEL.clear();
+  if(!yaActivo) ALIM3_TIPOS_SEL.add(tipo);
   alim3RenderTiposChips();
   if(ALIM3_NEMONICO_SEL){
     const sigueDisponible = ALIM_FILAS_TODOS.some(f => f.nemonico === ALIM3_NEMONICO_SEL && (!ALIM3_ZONAS_SEL.size || ALIM3_ZONAS_SEL.has(f.zona)) && (!ALIM3_TIPOS_SEL.size || ALIM3_TIPOS_SEL.has(alim3TipoNormalizado(f.tipo))));
@@ -24320,36 +24331,51 @@ function alim3RenderChartEsp(filasConClave){
     font:{size:13,weight:'800'}, color:'#FFC000',
   };
 
+  const esp3Datasets = [
+    {type:'line', label: esAnual?'Entrada kWh/12M':'Entrada Total kWh', yAxisID:'y', order:3, fill:'origin',
+      data: entradaDatos, borderColor:'#00B050', backgroundColor:'rgba(0,176,80,.20)',
+      borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0, datalabels:{display:false}},
+    {type:'line', label: esAnual?'Salida kWh/12M':'Salida Total kWh', yAxisID:'y', order:2, fill:'origin',
+      data: salidaDatos, borderColor:'#C00000', backgroundColor:'rgba(192,0,0,.20)',
+      borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0, datalabels:{display:false}},
+    {type:'line', label: esAnual?'Pérdida %/12M':'Pérdida %', yAxisID:'yPct', order:1, borderDash:[4,3],
+      data: pctDatos, borderColor:'#FFC000', backgroundColor:'transparent',
+      borderWidth:2, pointRadius:2, spanGaps:true, tension:0, datalabels: datalabelsPct},
+    // Las 3 de acá empiezan APAGADAS (hidden:true) -- pedido explícito
+    // ("por defecto solo estén seleccionadas Pérdida%/Salida/Entrada,
+    // el resto sin seleccionar... el usuario las prende desde la
+    // leyenda si quiere"). Mismos colores/eje que tenía la gráfica
+    // "Técnica Vs Total" ya quitada, para que se sientan consistentes.
+    {type:'line', label: esAnual?'Pérdida Total kWh/12M':'Pérdida Total kWh', yAxisID:'y', order:4, hidden:true,
+      data: perdidaDatos, borderColor:'#4472C4', backgroundColor:'transparent',
+      borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0, datalabels:{display:false}},
+    {type:'line', label: esAnual?'Pérdida Técnica kWh/12M':'Pérdida Técnica kWh', yAxisID:'y', order:5, hidden:true,
+      data: tecnicaDatos, borderColor:'#ED7D31', backgroundColor:'transparent',
+      borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0, datalabels:{display:false}},
+    {type:'line', label: esAnual?'Inyección AGPE kWh/12M':'Inyección AGPE kWh', yAxisID:'yAgpe', order:6, hidden:true,
+      data: agpeDatos, borderColor:'#92D050', backgroundColor:'rgba(146,208,80,.18)',
+      fill:'origin', borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0, datalabels:{display:false}},
+  ];
+  // Qué curvas tenía prendidas/apagadas el usuario ANTES de este
+  // re-render (cambiar AñoMes/M-A/alimentador/etc. destruye y recrea el
+  // chart, lo que por defecto resetea todo a los hidden:true de arriba)
+  // -- pedido explícito ("si habilito una leyenda nueva y cambio de
+  // gráfico se deshabilita lo que tenía filtrado, quiero que aparezca").
+  // Se guarda por ÍNDICE (no por label, que cambia entre mensual/anual)
+  // en una variable de módulo que sobrevive entre renders.
+  if(chAlim3Esp){
+    ALIM3_ESP_CURVAS_OCULTAS = esp3Datasets.map((_,i) => chAlim3Esp.data.datasets[i] ? !chAlim3Esp.isDatasetVisible(i) : undefined);
+  }
+  if(ALIM3_ESP_CURVAS_OCULTAS){
+    esp3Datasets.forEach((d,i) => { if(ALIM3_ESP_CURVAS_OCULTAS[i] !== undefined) d.hidden = ALIM3_ESP_CURVAS_OCULTAS[i]; });
+  }
+
   if(chAlim3Esp) chAlim3Esp.destroy();
   if(!etiquetas.length) return;
   chAlim3Esp = new Chart(cv, {
     data:{
       labels: etiquetas,
-      datasets:[
-        {type:'line', label: esAnual?'Entrada kWh/12M':'Entrada Total kWh', yAxisID:'y', order:3, fill:'origin',
-          data: entradaDatos, borderColor:'#00B050', backgroundColor:'rgba(0,176,80,.20)',
-          borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0, datalabels:{display:false}},
-        {type:'line', label: esAnual?'Salida kWh/12M':'Salida Total kWh', yAxisID:'y', order:2, fill:'origin',
-          data: salidaDatos, borderColor:'#C00000', backgroundColor:'rgba(192,0,0,.20)',
-          borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0, datalabels:{display:false}},
-        {type:'line', label: esAnual?'Pérdida %/12M':'Pérdida %', yAxisID:'yPct', order:1, borderDash:[4,3],
-          data: pctDatos, borderColor:'#FFC000', backgroundColor:'transparent',
-          borderWidth:2, pointRadius:2, spanGaps:true, tension:0, datalabels: datalabelsPct},
-        // Las 3 de acá empiezan APAGADAS (hidden:true) -- pedido explícito
-        // ("por defecto solo estén seleccionadas Pérdida%/Salida/Entrada,
-        // el resto sin seleccionar... el usuario las prende desde la
-        // leyenda si quiere"). Mismos colores/eje que tenía la gráfica
-        // "Técnica Vs Total" ya quitada, para que se sientan consistentes.
-        {type:'line', label: esAnual?'Pérdida Total kWh/12M':'Pérdida Total kWh', yAxisID:'y', order:4, hidden:true,
-          data: perdidaDatos, borderColor:'#4472C4', backgroundColor:'transparent',
-          borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0, datalabels:{display:false}},
-        {type:'line', label: esAnual?'Pérdida Técnica kWh/12M':'Pérdida Técnica kWh', yAxisID:'y', order:5, hidden:true,
-          data: tecnicaDatos, borderColor:'#ED7D31', backgroundColor:'transparent',
-          borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0, datalabels:{display:false}},
-        {type:'line', label: esAnual?'Inyección AGPE kWh/12M':'Inyección AGPE kWh', yAxisID:'yAgpe', order:6, hidden:true,
-          data: agpeDatos, borderColor:'#92D050', backgroundColor:'rgba(146,208,80,.18)',
-          fill:'origin', borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0, datalabels:{display:false}},
-      ],
+      datasets: esp3Datasets,
     },
     options:{
       responsive:true, maintainAspectRatio:false,
