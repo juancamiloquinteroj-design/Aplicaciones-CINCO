@@ -4873,8 +4873,18 @@ html,body{overflow-x:hidden;margin:0}
       <select id="ac-tipo" onchange="acAplicarFiltros()"><option value="">Todos</option></select>
       <label>Liquidación</label>
       <div class="msel" id="msel-ac-liquidacion"></div>
-      <button type="button" class="btn-theme ip-com-modo-btn activo be-icon-btn" id="ac-btn-mensual" style="width:auto;margin-left:auto" onclick="acCambiarModo('mensual')" title="Mensual">M</button>
-      <button type="button" class="btn-theme ip-com-modo-btn be-icon-btn" id="ac-btn-anual" style="width:auto" onclick="acCambiarModo('anual')" title="Anual Móvil">A</button>
+      <!-- Zona/Subestación/Nombre Spard -- pedido explícito ("yo los quiero
+           en la parte superior"), antes en la columna de la derecha junto
+           a la gráfica. Mismo #ac-filtro compartido que ya viaja entre las
+           2 pestañas (acIrATab), así que quedan aplicando en ambas. -->
+      <label style="margin-left:10px">Zona</label>
+      <select id="ac-zona" onchange="acAplicarFiltros()"><option value="">Todas</option></select>
+      <label>Subestación</label>
+      <div class="msel" id="msel-ac-subestacion"></div>
+      <label>Nombre Spard</label>
+      <div class="msel" id="msel-ac-alimentador"></div>
+      <button type="button" class="be-modo-btn be-icon-btn activo" id="ac-btn-mensual" style="margin-left:auto" onclick="acCambiarModo('mensual')" title="Mensual">M</button>
+      <button type="button" class="be-modo-btn be-icon-btn" id="ac-btn-anual" onclick="acCambiarModo('anual')" title="Anual Móvil">A</button>
       <button type="button" class="btn-theme" style="width:auto;padding:0 14px" onclick="acLimpiarFiltros()" title="Vuelve Rango/Tipo/Liquidación/Zona/Subestación/Alimentador/Ciclo a su estado inicial">✕ Borrar filtros</button>
     </div>
 
@@ -4887,25 +4897,15 @@ html,body{overflow-x:hidden;margin:0}
         <span id="ac-n21-aviso" style="font-size:11px;color:var(--text3)"></span>
       </div>
 
-      <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">
-        <div style="flex:2 1 520px;min-width:360px">
-          <div style="text-align:center;margin-bottom:8px">
-            <div style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Venta por Ciclo</div>
-            <div id="ac-subtitulo" style="font-size:12px;color:var(--text3);margin-top:2px"></div>
-          </div>
-          <div class="chart-wrap" style="height:380px"><canvas id="ch-ac-linea"></canvas></div>
-        </div>
-        <div style="flex:1 1 260px;max-width:300px">
-          <label style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:700">Zona</label>
-          <select id="ac-zona" onchange="acAplicarFiltros()" style="width:100%;margin:6px 0 14px"><option value="">Todas</option></select>
-          <label style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:700">Subestación</label>
-          <div class="msel" id="msel-ac-subestacion" style="margin:6px 0 14px"></div>
-          <label style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:700">Nombre Spard</label>
-          <div class="msel" id="msel-ac-alimentador" style="margin:6px 0 14px"></div>
-          <label style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:700">Datos del Ciclo</label>
-          <table class="be-tabla-creadas" style="margin-top:6px"><tbody id="ac-datos-ciclo"></tbody></table>
-        </div>
+      <!-- Zona/Subestación/Nombre Spard subieron al filtro de arriba, y la
+           tabla "Datos del Ciclo" se quitó (pedido explícito, "debe
+           desaparecer" -- quedó redundante con la tabla dinámica de Ciclo
+           de más abajo). La gráfica pasa a ocupar todo el ancho. -->
+      <div style="text-align:center;margin-bottom:8px">
+        <div style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Venta por Ciclo</div>
+        <div id="ac-subtitulo" style="font-size:12px;color:var(--text3);margin-top:2px"></div>
       </div>
+      <div class="chart-wrap" style="height:380px"><canvas id="ch-ac-linea"></canvas></div>
 
       <!-- Pedido explícito: la fila de botones grandes se reemplaza por una
            tabla dinámica (1 columna por ciclo, filas Tipo/Participación/
@@ -18881,48 +18881,6 @@ function acAplicarFiltros(){
   acRenderTablaCiclos();
   acRenderChart();
   acRenderSubtitulo();
-  acRenderDatosCiclo();
-}
-
-// Tarjetas "Datos del Ciclo" -- pedido explícito ("una tabla bonita que
-// me diga datos del ciclo"), al lado de los filtros de Zona/Subestación/
-// Nombre Spard. Resume el ciclo elegido (o el agregado de "Todos") DENTRO
-// del Rango de fechas actual: energía, usuarios y participación del
-// último mes disponible, y cuántas zonas/subestaciones/alimentadores
-// distintos entran en el filtro activo.
-// Pedido explícito: tabla chica de 2 columnas (etiqueta/valor), NO
-// tarjetas -- mismo <tbody> que las demás tablas de la app
-// (.be-tabla-creadas), solo que angosta y sin encabezado.
-function acRenderDatosCiclo(){
-  const cont = document.getElementById('ac-datos-ciclo');
-  if(!cont) return;
-  const fila = (etiqueta, valor) => `<tr><td style="color:var(--text3)">${etiqueta}</td><td style="font-weight:700;text-align:right">${valor}</td></tr>`;
-
-  const filas = acFilasFiltradas(null);
-  if(!filas.length){
-    cont.innerHTML = fila('Ciclo', acEtiquetaCiclos()) + fila('Datos', 'Sin datos para este filtro');
-    return;
-  }
-
-  // Pedido explícito: la energía es del ÚLTIMO MES (mensual), no la suma
-  // de todo el Rango -- mismo criterio que Usuarios/Participación, que ya
-  // eran una foto del mes más reciente.
-  const ultimaClave = [...new Set(filas.map(acClave))].sort().slice(-1)[0];
-  const filasUltimoMes = filas.filter(f => acClave(f)===ultimaClave);
-  const kwhLiquidada = filasUltimoMes.reduce((s,f)=>s+(f.energia_liquidada_kwh||0), 0);
-  const kwhPonderada = filasUltimoMes.reduce((s,f)=>s+(f.energia_ponderada_kwh||0), 0);
-  const usuarios = filasUltimoMes.reduce((s,f)=>s+(f.usuarios||0), 0);
-  const participacionProm = filasUltimoMes.length
-    ? filasUltimoMes.reduce((s,f)=>s+(f.participacion_pct||0), 0) / filasUltimoMes.length
-    : null;
-
-  cont.innerHTML = [
-    fila('Ciclo', acEtiquetaCiclos()),
-    fila(`Energía Liquidada (${labelMes(ultimaClave)})`, kwhLiquidada.toLocaleString('es-CO',{maximumFractionDigits:0})+' kWh'),
-    fila(`Energía Ponderada (${labelMes(ultimaClave)})`, kwhPonderada.toLocaleString('es-CO',{maximumFractionDigits:0})+' kWh'),
-    fila(`Usuarios (${labelMes(ultimaClave)})`, usuarios.toLocaleString('es-CO')),
-    fila(`Participación (${labelMes(ultimaClave)})`, participacionProm!=null ? participacionProm.toFixed(2)+'%' : '--'),
-  ].join('');
 }
 
 // Tabla dinámica (1 columna por ciclo, filas Tipo/Participación/Clientes/
