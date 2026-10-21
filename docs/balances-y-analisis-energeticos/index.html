@@ -4873,8 +4873,8 @@ html,body{overflow-x:hidden;margin:0}
       <select id="ac-tipo" onchange="acAplicarFiltros()"><option value="">Todos</option></select>
       <label>Liquidación</label>
       <div class="msel" id="msel-ac-liquidacion"></div>
-      <button type="button" class="btn-theme ip-com-modo-btn activo" id="ac-btn-mensual" style="width:auto;padding:0 16px;margin-left:auto" onclick="acCambiarModo('mensual')">📅 Mensual</button>
-      <button type="button" class="btn-theme ip-com-modo-btn" id="ac-btn-anual" style="width:auto;padding:0 16px" onclick="acCambiarModo('anual')">📆 Anual Móvil</button>
+      <button type="button" class="btn-theme ip-com-modo-btn activo be-icon-btn" id="ac-btn-mensual" style="width:auto;margin-left:auto" onclick="acCambiarModo('mensual')" title="Mensual">M</button>
+      <button type="button" class="btn-theme ip-com-modo-btn be-icon-btn" id="ac-btn-anual" style="width:auto" onclick="acCambiarModo('anual')" title="Anual Móvil">A</button>
       <button type="button" class="btn-theme" style="width:auto;padding:0 14px" onclick="acLimpiarFiltros()" title="Vuelve Rango/Tipo/Liquidación/Zona/Subestación/Alimentador/Ciclo a su estado inicial">✕ Borrar filtros</button>
     </div>
 
@@ -4882,8 +4882,8 @@ html,body{overflow-x:hidden;margin:0}
     <div id="ac-tab-grafica">
     <div class="card">
       <div class="fbar" style="margin-bottom:0">
-        <button type="button" class="be-modo-btn" id="ac-btn-desglosar" onclick="acToggleDesglosar()" title="Con 'Todos' elegido: una línea por cada ciclo, o el total combinado. Con 2+ ciclos elegidos a mano: una línea por cada uno, o combinados">🔀 Desglosar por Ciclo</button>
-        <button type="button" class="be-modo-btn" id="ac-btn-n21" onclick="acToggleN21()" title="Sobrepone la Pérdida N2-1 (%) del alimentador elegido -- solo con exactamente 1 alimentador seleccionado">📉 Pérdida N2-1</button>
+        <button type="button" class="be-modo-btn be-icon-btn" id="ac-btn-desglosar" onclick="acToggleDesglosar()" title="Desglosar por Ciclo -- con 'Todos' elegido: una línea por cada ciclo, o el total combinado. Con 2+ ciclos elegidos a mano: una línea por cada uno, o combinados">🔀</button>
+        <button type="button" class="be-modo-btn be-icon-btn" id="ac-btn-n21" onclick="acToggleN21()" title="Pérdida N2-1 -- sobrepone la Pérdida N2-1 (%) del alimentador elegido -- solo con exactamente 1 alimentador seleccionado">📉</button>
         <span id="ac-n21-aviso" style="font-size:11px;color:var(--text3)"></span>
       </div>
 
@@ -4907,8 +4907,20 @@ html,body{overflow-x:hidden;margin:0}
         </div>
       </div>
 
+      <!-- Pedido explícito: la fila de botones grandes se reemplaza por una
+           tabla dinámica (1 columna por ciclo, filas Tipo/Participación/
+           Clientes/Liquidación) -- "Todos" se queda como botón aparte, con
+           el mismo comportamiento excluyente de siempre (acSeleccionarCiclo).
+           Click en el número de un ciclo (encabezado de su columna) lo
+           elige/quita, igual que antes el botón. -->
       <div class="card-title" style="margin-top:18px">Ciclo</div>
-      <div id="ac-ciclos-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:8px;margin-top:10px"></div>
+      <div style="display:flex;align-items:center;gap:10px;margin:10px 0 8px">
+        <button type="button" class="be-modo-btn" id="ac-btn-todos-ciclos" style="padding:8px 18px;font-size:13px" onclick="acSeleccionarCiclo(null)">Todos</button>
+        <span style="font-size:11px;color:var(--text3)">Click en el número de un ciclo para elegirlo (se pueden elegir varios)</span>
+      </div>
+      <div class="be-tabla-scroll">
+        <table class="be-tabla-creadas" style="width:auto"><tbody id="ac-ciclos-grid"></tbody></table>
+      </div>
     </div>
     </div><!-- /#ac-tab-grafica -->
 
@@ -18892,10 +18904,6 @@ function acRenderDatosCiclo(){
     return;
   }
 
-  const zonas = new Set(filas.map(f=>f.zona)).size;
-  const subestaciones = new Set(filas.map(f=>f.subestacion)).size;
-  const alimentadores = new Set(filas.map(f=>f.alimentador)).size;
-
   // Pedido explícito: la energía es del ÚLTIMO MES (mensual), no la suma
   // de todo el Rango -- mismo criterio que Usuarios/Participación, que ya
   // eran una foto del mes más reciente.
@@ -18914,32 +18922,63 @@ function acRenderDatosCiclo(){
     fila(`Energía Ponderada (${labelMes(ultimaClave)})`, kwhPonderada.toLocaleString('es-CO',{maximumFractionDigits:0})+' kWh'),
     fila(`Usuarios (${labelMes(ultimaClave)})`, usuarios.toLocaleString('es-CO')),
     fila(`Participación (${labelMes(ultimaClave)})`, participacionProm!=null ? participacionProm.toFixed(2)+'%' : '--'),
-    fila('Zonas', zonas),
-    fila('Subestaciones', subestaciones),
-    fila('Alimentadores', alimentadores),
   ].join('');
 }
 
+// Tabla dinámica (1 columna por ciclo, filas Tipo/Participación/Clientes/
+// Liquidación) -- pedido explícito, reemplaza la fila de botones grandes
+// de antes. "Todos" sigue siendo el botón aparte (#ac-btn-todos-ciclos,
+// ver acSeleccionarCiclo) con el mismo criterio excluyente de siempre:
+// conjunto vacío = Todos, clickear un ciclo lo agrega/quita del set
+// (multiselección real), clickear "Todos" limpia cualquier selección
+// puntual. Click en el NÚMERO del ciclo (encabezado de su columna) hace
+// lo mismo que antes el botón.
 function acRenderCiclosGrid(){
   const cont = document.getElementById('ac-ciclos-grid');
-  const ciclos = [...new Set(acFilasFiltradas('ciclo').map(f=>f.ciclo))].sort((a,b)=>a-b);
-  // Conjunto vacío = "Todos" (suma de todos los ciclos, igual que el Power
-  // BI de referencia sin ningún ciclo elegido en el slicer) -- SIEMPRE
-  // válido. Se descartan del set solo los ciclos puntuales que ya no
-  // aparecen con el filtro actual (los demás quedan tal cual elegidos,
-  // nunca se fuerza un ciclo por defecto ni se limpia todo de un tirón).
+  const btnTodos = document.getElementById('ac-btn-todos-ciclos');
+  const filas = acFilasFiltradas('ciclo');
+  const ciclos = [...new Set(filas.map(f=>f.ciclo))].sort((a,b)=>a-b);
+  // Se descartan del set solo los ciclos puntuales que ya no aparecen con
+  // el filtro actual (los demás quedan tal cual elegidos, nunca se fuerza
+  // un ciclo por defecto ni se limpia todo de un tirón).
   AC_CICLOS_SEL = new Set([...AC_CICLOS_SEL].filter(c => ciclos.includes(c)));
-  // be-modo-btn (no btn-theme) -- btn-theme no tiene estilo ".activo"
-  // definido, por eso no se notaba cuál estaba elegido. Botones más
-  // grandes también pedido explícito ("se ven muy pequeños"). Cada botón
-  // de ciclo se puede combinar con otros (multiselección real, pedido
-  // explícito: "o se selecciona 1 o se seleccionan todos... no se pueden
-  // seleccionar solo 2 o 3") -- "Todos" es la única opción excluyente,
-  // clickearlo limpia cualquier selección puntual.
-  const botonTodos = `<button type="button" class="be-modo-btn${AC_CICLOS_SEL.size===0?' activo':''}" style="padding:10px 4px;font-size:13px" onclick="acSeleccionarCiclo(null)">Todos</button>`;
-  cont.innerHTML = botonTodos + ciclos.map(c => `
-    <button type="button" class="be-modo-btn${AC_CICLOS_SEL.has(c)?' activo':''}" style="padding:10px 4px;font-size:13px" onclick="acSeleccionarCiclo(${c})">${c}</button>
-  `).join('');
+  if(btnTodos) btnTodos.classList.toggle('activo', AC_CICLOS_SEL.size===0);
+  if(!cont) return;
+  if(!ciclos.length){
+    cont.innerHTML = '<tr><td style="color:var(--text3)">Sin datos para este filtro.</td></tr>';
+    return;
+  }
+
+  const porCiclo = new Map(ciclos.map(c => [c, []]));
+  filas.forEach(f => porCiclo.get(f.ciclo).push(f));
+  // Foto del mes más reciente de CADA ciclo -- mismo criterio que
+  // acRenderDatosCiclo (Usuarios/Participación/Energía ya eran así).
+  const filasUltimoMesDe = c => {
+    const fs = porCiclo.get(c);
+    const ultimaClave = [...new Set(fs.map(acClave))].sort().slice(-1)[0];
+    return fs.filter(f => acClave(f)===ultimaClave);
+  };
+
+  const headCeldas = ciclos.map(c => {
+    const activo = AC_CICLOS_SEL.has(c);
+    return `<th style="text-align:center;cursor:pointer;padding:6px 10px${activo?';background:var(--accent);color:#fff':''}" onclick="acSeleccionarCiclo(${c})" title="Click para elegir/quitar este ciclo">${c}</th>`;
+  }).join('');
+
+  const filaHtml = (etiqueta, valorDe) => `<tr><td style="color:var(--text3);white-space:nowrap;font-weight:600">${etiqueta}</td>`
+    + ciclos.map(c => `<td style="text-align:center">${valorDe(c)}</td>`).join('') + '</tr>';
+
+  cont.innerHTML = `<tr><td></td>${headCeldas}</tr>`
+    + filaHtml('Tipo', c => {
+        const liq = [...new Set(filasUltimoMesDe(c).map(f=>f.liquidacion).filter(Boolean))];
+        return liq.length ? liq.join('/') : '--';
+      })
+    + filaHtml('Participación', c => {
+        const fs = filasUltimoMesDe(c);
+        const prom = fs.length ? fs.reduce((s,f)=>s+(f.participacion_pct||0),0)/fs.length : null;
+        return prom!=null ? prom.toFixed(0)+'%' : '--';
+      })
+    + filaHtml('Clientes', c => filasUltimoMesDe(c).reduce((s,f)=>s+(f.usuarios||0),0).toLocaleString('es-CO'))
+    + filaHtml('Liquidación', c => filasUltimoMesDe(c).reduce((s,f)=>s+(f.energia_liquidada_kwh||0),0).toLocaleString('es-CO',{maximumFractionDigits:0}));
 }
 
 // Tabla de todos los ciclos visibles (según el resto de filtros) con su
