@@ -4112,16 +4112,30 @@ html,body{overflow-x:hidden;margin:0}
     </div>
 
     <!-- ===== Pestaña "Demanda" -- pedido explícito: curva de Entrada
-         Zonal (IPT Institucional, suma de las 5 zonas) para ver cómo se
-         comporta la demanda de un mes contra el mismo mes del año
-         anterior. Dato totalmente aparte del resto de Nivel 3 (no viene
-         de Resumen de Alimentadores.csv), ver alimNivel3RenderDemanda. -->
+         Zonal (IPT Institucional, suma de las 5 zonas -- o de las zonas
+         elegidas en el filtro de arriba) para ver cómo se comporta la
+         demanda de un mes contra el mismo mes del año anterior. Dato
+         totalmente aparte del resto de Nivel 3 (no viene de Resumen de
+         Alimentadores.csv), ver alimNivel3RenderDemanda. Rango PROPIO
+         (alim-nivel3-demanda-desde/hasta), independiente del Rango de
+         arriba -- mínimo 2 años por defecto (pedido explícito), mismo
+         patrón que "Rango de la tabla" en Ciclos. -->
     <div id="alim-nivel3-tab-demanda" class="hidden">
       <div class="card">
+        <div class="fbar" style="margin-bottom:12px">
+          <input type="month" id="alim-nivel3-demanda-desde" onchange="alimNivel3RenderDemanda()" style="display:none">
+          <input type="month" id="alim-nivel3-demanda-hasta" onchange="alimNivel3RenderDemanda()" style="display:none">
+          <label>Rango</label>
+          <button type="button" class="be-modo-btn be-icon-btn" style="width:22px;height:22px;font-size:10px" onclick="_mesPresetAplicar('alim-nivel3-demanda-desde','alim-nivel3-demanda-hasta',12,'alimNivel3RenderDemanda')" title="1 año">1A</button>
+          <button type="button" class="be-modo-btn be-icon-btn" style="width:22px;height:22px;font-size:10px" onclick="_mesPresetAplicar('alim-nivel3-demanda-desde','alim-nivel3-demanda-hasta',24,'alimNivel3RenderDemanda')" title="2 años">2A</button>
+          <button type="button" class="be-modo-btn be-icon-btn" style="width:22px;height:22px;font-size:10px" onclick="_mesPresetAbrirPersonalizado('alim-nivel3-demanda-desde','alim-nivel3-demanda-hasta','alimNivel3RenderDemanda','Nivel 3 -- Demanda')" title="Rango personalizado">📅</button>
+          <button type="button" class="be-modo-btn" id="alim-nivel3-demanda-btn-sobreponer" style="margin-left:auto" onclick="alimNivel3DemandaToggleSobreponer()" title="Dibuja cada año como su propia línea (Ene→Dic), superpuestas, para comparar la forma de la curva año contra año">🔁 Sobreponer años</button>
+        </div>
         <div style="text-align:center;margin-bottom:8px">
           <div style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Entrada a Distribución</div>
-          <div style="font-size:12px;color:var(--text3);margin-top:2px">Entrada Zonal (IPT Institucional) -- suma de las 5 zonas</div>
+          <div style="font-size:12px;color:var(--text3);margin-top:2px">Entrada Zonal (IPT Institucional)</div>
         </div>
+        <div id="alim-nivel3-demanda-resumen" class="alim-resumen-mini"></div>
         <div class="chart-wrap" style="height:380px"><canvas id="ch-alim-nivel3-demanda"></canvas></div>
         <div id="alim-nivel3-demanda-interanual" style="margin-top:20px"></div>
       </div>
@@ -4959,7 +4973,6 @@ html,body{overflow-x:hidden;margin:0}
       <div style="display:flex;align-items:center;gap:10px;margin:10px 0 8px">
         <label style="font-size:11px;color:var(--text3);font-weight:700">Mes</label>
         <select id="ac-grid-mes" onchange="acCambiarMesGrid(this.value)" style="padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg)"></select>
-        <span style="font-size:11px;color:var(--text3)">Click en el número de un ciclo para elegirlo (clickear otro lo reemplaza, Ctrl+click para varios)</span>
       </div>
       <div class="be-tabla-scroll">
         <table class="be-tabla-creadas" style="width:auto"><tbody id="ac-ciclos-grid"></tbody></table>
@@ -20712,7 +20725,16 @@ async function alimNivel3Cargar(){
 function alimNivel3RenderZonasChips(){
   mselInit('msel-alim-nivel3-zona', 'Zona', 'Todas',
     (ALIM_NIVEL3_ZONAS||[]).map(z => ({value:z, label:z})),
-    alimNivel3RenderTodo, [...ALIM_NIVEL3_ZONAS_SEL]);
+    alimNivel3AlCambiarZona, [...ALIM_NIVEL3_ZONAS_SEL]);
+}
+
+// La Zona ahora también filtra "Demanda" (dato aparte, IPT Institucional
+// -- ver alimNivel3RenderDemanda) -- solo la vuelve a dibujar si esa
+// pestaña está visible (Chart.js la pinta con tamaño 0 si el canvas
+// estaba oculto, mismo criterio que en otras pestañas de la app).
+function alimNivel3AlCambiarZona(){
+  alimNivel3RenderTodo();
+  if(!document.getElementById('alim-nivel3-tab-demanda')?.classList.contains('hidden')) alimNivel3RenderDemanda();
 }
 
 // Pestañas del módulo IP Nivel 3 (mismo patrón que perdidasIrATab).
@@ -20729,7 +20751,9 @@ function alimNivel3IrATab(nombre){
   // en las demás pestañas (incluida "Comparativo Zonas", donde no cambiaba
   // nada al tocarlo -- pedido explícito) se oculta.
   document.getElementById('alim-nivel3-ip-modo-wrap')?.classList.toggle('hidden', nombre !== 'ip');
-  document.getElementById('alim-nivel3-zona-wrap')?.classList.toggle('hidden', nombre === 'demanda');
+  // Zona SÍ aplica en "Demanda" (pedido explícito: "debe haber un filtro
+  // por zonas" -- sin elegir ninguna, sigue siendo la suma de las 5).
+  // Variación/Relleno en cambio no tienen equivalente ahí todavía.
   document.getElementById('alim-nivel3-var-relleno-wrap')?.classList.toggle('hidden', nombre === 'demanda');
   if((ALIM_NIVEL3_FILAS||[]).length) alimNivel3RenderTodo();
   if(nombre === 'mapa') alimNivel3CargarMapa();
@@ -20740,64 +20764,161 @@ function alimNivel3IrATab(nombre){
 }
 
 // ===== Pestaña "Demanda" (IP Nivel 3) =====
-// Curva de Entrada Zonal (IPT Institucional, ver ipiSerieCompleta -- con
-// zona=null suma las 5 zonas) -- pedido explícito ("graficar el campo...
-// Entrada Zona y la sumatoria de todas las zonas, para ver cómo se
-// comporta la demanda de un mes respecto al mes del año anterior").
-// Respeta el Rango de fechas compartido (#alim-nivel3-filtro) pero
-// IGNORA el filtro de Zona a propósito -- siempre es el total
-// institucional, no por zona.
+// Curva de Entrada Zonal (IPT Institucional) -- pedido explícito
+// ("graficar el campo... Entrada Zona y la sumatoria de todas las
+// zonas, para ver cómo se comporta la demanda de un mes respecto al mes
+// del año anterior"). SÍ respeta el filtro de Zona compartido (pedido
+// explícito, "debe haber un filtro por zonas" -- sin elegir ninguna,
+// sigue siendo la suma de las 5) -- por eso no se puede reusar
+// ipiSerieCompleta tal cual (solo acepta UNA zona o "todas", acá puede
+// ser un SUBCONJUNTO), se arma la serie a mano sumando IPI_FILAS.
+// Rango PROPIO (alim-nivel3-demanda-desde/hasta, independiente del
+// Rango de arriba), por defecto los últimos 24 meses reales (pedido
+// explícito, "mínimo debe mostrar dos años"). "Sobreponer años"
+// (ALIM_NIVEL3_DEMANDA_SOBREPONER) dibuja cada año como su propia línea
+// Ene→Dic en vez de una sola línea continua, para comparar la forma de
+// la curva año contra año.
 let chAlimNivel3Demanda = null;
+let ALIM_NIVEL3_DEMANDA_SOBREPONER = false;
+
+function alimNivel3DemandaToggleSobreponer(){
+  ALIM_NIVEL3_DEMANDA_SOBREPONER = !ALIM_NIVEL3_DEMANDA_SOBREPONER;
+  document.getElementById('alim-nivel3-demanda-btn-sobreponer')?.classList.toggle('activo', ALIM_NIVEL3_DEMANDA_SOBREPONER);
+  alimNivel3RenderDemanda();
+}
+
+function _alimNivel3DemandaSerie(){
+  const zonasSel = mselValores('msel-alim-nivel3-zona');
+  const porClave = new Map();
+  for(const f of IPI_FILAS){
+    if(zonasSel.length && !zonasSel.includes(f.zona)) continue;
+    const c = ipiClave(f);
+    porClave.set(c, (porClave.get(c) || 0) + (f.entrada_zonal || 0));
+  }
+  return [...porClave.entries()].sort(([a],[b]) => a<b?-1:1)
+    .map(([clave, entradaZonal]) => ({clave, entradaZonal})).filter(f => f.entradaZonal);
+}
 
 async function alimNivel3RenderDemanda(){
   const cont = document.getElementById('ch-alim-nivel3-demanda')?.parentElement;
+  const contResumen = document.getElementById('alim-nivel3-demanda-resumen');
   const contInteranual = document.getElementById('alim-nivel3-demanda-interanual');
   if(!cont) return;
   if(!(await _ipiAsegurarDatosCargados()) || !IPI_FILAS.length){
     cont.innerHTML = '<div style="text-align:center;color:var(--text3);padding:40px">Sin datos de IPT Institucional todavía.</div>';
+    if(contResumen) contResumen.innerHTML = '';
     if(contInteranual) contInteranual.innerHTML = '';
     return;
   }
-  const serieCompleta = ipiSerieCompleta(null).filter(f => f.entradaZonal);
-  const desde = document.getElementById('alim-nivel3-desde').value ? document.getElementById('alim-nivel3-desde').value.slice(0,7) : null;
-  const hasta = document.getElementById('alim-nivel3-hasta').value ? document.getElementById('alim-nivel3-hasta').value.slice(0,7) : null;
+  const serieCompleta = _alimNivel3DemandaSerie();
+
+  // Rango propio -- si todavía no se eligió nada, arranca en los últimos
+  // 24 meses reales (o todo el histórico si hay menos de 24).
+  const inDesde = document.getElementById('alim-nivel3-demanda-desde');
+  const inHasta = document.getElementById('alim-nivel3-demanda-hasta');
+  if(inDesde && inHasta && !inDesde.value && !inHasta.value && serieCompleta.length){
+    const claves = serieCompleta.map(f => f.clave);
+    inDesde.value = claves[Math.max(0, claves.length-24)];
+    inHasta.value = claves[claves.length-1];
+  }
+  const desde = inDesde?.value ? inDesde.value.slice(0,7) : null;
+  const hasta = inHasta?.value ? inHasta.value.slice(0,7) : null;
   const visibles = serieCompleta.filter(f => (!desde || f.clave>=desde) && (!hasta || f.clave<=hasta));
 
   const dark = document.documentElement.getAttribute('data-theme')==='dark';
-  const tickC = dark ? '#aab8d1' : '#4b5e7a';
-  const tickXFuerte = dark ? '#ffffff' : '#000000';
+  const tickC = dark ? '#ffffff' : '#000000';
+  const tickXFuerte = tickC;
   const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
+
+  // Mismo estilo de líneas que el resto de Nivel 3/Nivel 4
+  // (_alimNivelConstruirChartMensual): tension:0 (sin curvas/"bordes
+  // redondeados"), relleno plano al color de la línea, leyenda abajo.
+  let labels, datasets;
+  if(ALIM_NIVEL3_DEMANDA_SOBREPONER){
+    const porAnio = new Map();
+    for(const f of visibles){
+      const [anio, mes] = f.clave.split('-').map(Number);
+      if(!porAnio.has(anio)) porAnio.set(anio, new Array(12).fill(null));
+      porAnio.get(anio)[mes-1] = f.entradaZonal;
+    }
+    const anios = [...porAnio.keys()].sort();
+    labels = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+    datasets = anios.map((a,i) => ({
+      type:'line', label:String(a), data: porAnio.get(a), yAxisID:'y',
+      borderColor: acColorCiclo(i, anios.length), backgroundColor:'transparent',
+      borderWidth:2.5, pointRadius:2, fill:false, tension:0, spanGaps:true,
+    }));
+  } else {
+    labels = visibles.map(f => labelMes(f.clave));
+    datasets = [{
+      type:'line', label:'Entrada a Distribución', data: visibles.map(f=>f.entradaZonal), yAxisID:'y',
+      borderColor: IPI_COLOR_ENTRADA, backgroundColor:'rgba(0,176,80,.20)',
+      borderWidth:2, pointRadius:1.5, fill:'origin', tension:0, spanGaps:true,
+    }];
+  }
 
   if(chAlimNivel3Demanda) chAlimNivel3Demanda.destroy();
   chAlimNivel3Demanda = new Chart(document.getElementById('ch-alim-nivel3-demanda'), {
-    type:'line',
-    data:{
-      labels: visibles.map(f=>labelMes(f.clave)),
-      datasets:[{
-        label:'Total', data: visibles.map(f=>f.entradaZonal),
-        borderColor: IPI_COLOR_ENTRADA, backgroundColor: dark ? 'rgba(0,176,80,.18)' : 'rgba(0,176,80,.15)',
-        borderWidth:2.5, pointRadius:2, fill:true, tension:0.15, spanGaps:true,
-      }],
-    },
+    data:{ labels, datasets },
     options:{
       responsive:true, maintainAspectRatio:false,
-      layout:{padding:{top:20, right:24, left:8, bottom:4}},
+      layout:{padding:{top:28, right:20}},
       interaction:{mode:'index', intersect:false},
       plugins:{
-        legend:{display:true, position:'right', labels:{boxWidth:12, font:{size:12}, color:tickC}},
+        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:12}, color:tickC}},
         tooltip:{callbacks:{label:c=> c.raw==null ? null : `${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`}},
         zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:3}}},
       },
       scales:{
-        x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:12, weight:'600'}, maxRotation:45, minRotation:45}},
-        y:{grid:{color:gridC}, ticks:{color:tickC, font:{size:12}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
-          title:{display:true, text:'kWh', color:tickC, font:{size:12}}},
+        x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:12, weight:'600'},
+          maxRotation:0, minRotation:0,
+          callback: ALIM_NIVEL3_DEMANDA_SOBREPONER ? undefined : _tickDosLineas, autoSkip:false}},
+        y:{position:'left', grid:{color:gridC},
+          ticks:{color:tickC, font:{size:12}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
+          title:{display:true, text:'Energía (kWh)', color:tickC, font:{size:10}}},
       },
     },
   });
 
   const claveActual = visibles.length ? visibles[visibles.length-1].clave : null;
+  if(contResumen) contResumen.innerHTML = _alimNivel3DemandaResumenHtml(serieCompleta, claveActual);
   if(contInteranual) contInteranual.innerHTML = _demandaInteranualHtml(serieCompleta, claveActual);
+}
+
+// Tarjeta compacta de arriba -- misma estructura/clases que
+// _alimNivelRenderResumenGrupos (alim-resumen-compacta), adaptada a UNA
+// sola métrica (Entrada Zonal) en vez del Índice Pérdida.
+function _alimNivel3DemandaResumenHtml(serie, claveActual){
+  if(!claveActual) return '<div style="color:var(--text3);font-size:12px">Sin datos para el rango.</div>';
+  const porClave = new Map(serie.map(f=>[f.clave,f]));
+  const actual = porClave.get(claveActual);
+  if(!actual) return '<div style="color:var(--text3);font-size:12px">Sin datos para el rango.</div>';
+  const [anio, mes] = claveActual.split('-').map(Number);
+  const idxAnt = anio*12 + (mes-1) - 1;
+  const claveMesAnt = `${Math.floor(idxAnt/12)}-${String((idxAnt%12)+1).padStart(2,'0')}`;
+  const claveAnioAnt = `${anio-1}-${String(mes).padStart(2,'0')}`;
+  const mesAnt = porClave.get(claveMesAnt);
+  const anioAnt = porClave.get(claveAnioAnt);
+  const fk = v => v==null ? '--' : Math.round(v).toLocaleString('es-CO') + ' kWh/Mes';
+  const deltaMensual = mesAnt ? actual.entradaZonal - mesAnt.entradaZonal : null;
+  const deltaInteranual = anioAnt ? actual.entradaZonal - anioAnt.entradaZonal : null;
+  const deltaInteranualPct = (anioAnt && anioAnt.entradaZonal) ? deltaInteranual/anioAnt.entradaZonal*100 : null;
+  const dTxt = d => d==null ? '' : ` <span class="alim-resumen-compacta-delta">${d>=0?'▲':'▼'} ${Math.round(Math.abs(d)).toLocaleString('es-CO')}</span>`;
+  return `<div class="alim-resumen-compacta">
+    <div class="alim-resumen-compacta-titulo">Entrada a Distribución · ${labelMesLargo(claveActual)}</div>
+    <div class="alim-resumen-compacta-fila">
+      <div class="alim-resumen-compacta-pct">
+        <div class="valor">${fk(actual.entradaZonal)}</div>
+        <div class="etiqueta">Mes actual${dTxt(deltaMensual)}</div>
+      </div>
+      <div class="alim-resumen-compacta-grid">
+        <div><span class="etiqueta">Mes anterior:</span> <span class="valor">${fk(mesAnt?.entradaZonal)}</span></div>
+        <div><span class="etiqueta">Mismo mes año anterior:</span> <span class="valor">${fk(anioAnt?.entradaZonal)}</span></div>
+        <div><span class="etiqueta">Variación mensual:</span> <span class="valor">${deltaMensual==null?'--':`${deltaMensual>=0?'+':''}${Math.round(deltaMensual).toLocaleString('es-CO')} kWh`}</span></div>
+        <div><span class="etiqueta">Variación interanual:</span> <span class="valor">${deltaInteranualPct==null?'--':`${deltaInteranualPct>=0?'+':''}${deltaInteranualPct.toFixed(1)}%`}</span></div>
+      </div>
+    </div>
+  </div>`;
 }
 
 // Un lado de la comparación (Interanual: mismo mes del año anterior, no
