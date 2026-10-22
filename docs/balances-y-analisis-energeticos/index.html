@@ -4929,7 +4929,7 @@ html,body{overflow-x:hidden;margin:0}
       <div class="card-title" style="margin-top:18px">Ciclo</div>
       <div style="display:flex;align-items:center;gap:10px;margin:10px 0 8px">
         <button type="button" class="be-modo-btn" id="ac-btn-todos-ciclos" style="padding:8px 18px;font-size:13px" onclick="acSeleccionarCiclo(null)">Todos</button>
-        <span style="font-size:11px;color:var(--text3)">Click en el número de un ciclo para elegirlo (se pueden elegir varios)</span>
+        <span style="font-size:11px;color:var(--text3)">Click en el número de un ciclo para elegirlo (clickear otro lo reemplaza)</span>
       </div>
       <div class="be-tabla-scroll">
         <table class="be-tabla-creadas" style="width:auto"><tbody id="ac-ciclos-grid"></tbody></table>
@@ -18910,11 +18910,11 @@ function acAplicarFiltros(){
 // Tabla dinámica (1 columna por ciclo, filas Tipo/Participación/Clientes/
 // Liquidación) -- pedido explícito, reemplaza la fila de botones grandes
 // de antes. "Todos" sigue siendo el botón aparte (#ac-btn-todos-ciclos,
-// ver acSeleccionarCiclo) con el mismo criterio excluyente de siempre:
-// conjunto vacío = Todos, clickear un ciclo lo agrega/quita del set
-// (multiselección real), clickear "Todos" limpia cualquier selección
-// puntual. Click en el NÚMERO del ciclo (encabezado de su columna) hace
-// lo mismo que antes el botón.
+// ver acSeleccionarCiclo) con selección EXCLUYENTE: conjunto vacío =
+// Todos, clickear un ciclo deja SOLO ese elegido (suelta cualquier otro),
+// clickear el mismo que ya está solo elegido vuelve a Todos. Click en el
+// NÚMERO del ciclo (encabezado de su columna) hace lo mismo que antes el
+// botón.
 function acRenderCiclosGrid(){
   const cont = document.getElementById('ac-ciclos-grid');
   const btnTodos = document.getElementById('ac-btn-todos-ciclos');
@@ -19045,17 +19045,17 @@ function acRenderSubtitulo(){
   cont.textContent = partes.join(' -- ');
 }
 
-// "Todos" (ciclo===null) limpia el set entero -- es excluyente con
-// cualquier selección puntual. Un ciclo puntual hace TOGGLE (se agrega si
-// no estaba, se quita si ya estaba) -- así se arman subconjuntos
-// (ej. ciclos 2 y 5) con clicks sucesivos, pedido explícito.
+// Selección EXCLUYENTE (pedido explícito, reemplaza la multiselección de
+// antes): "Todos" (ciclo===null) limpia el set entero. Clickear un ciclo
+// puntual deja el set con SOLO ese (suelta cualquier otro que hubiera
+// elegido antes), y clickear el mismo que ya está solo elegido vuelve a
+// "Todos" -- mismo criterio que el resto de filtros tipo botón de la app
+// (ver alim3ToggleTipo).
 function acSeleccionarCiclo(ciclo){
-  if(ciclo==null){
+  if(ciclo==null || (AC_CICLOS_SEL.size===1 && AC_CICLOS_SEL.has(ciclo))){
     AC_CICLOS_SEL = new Set();
-  } else if(AC_CICLOS_SEL.has(ciclo)){
-    AC_CICLOS_SEL.delete(ciclo);
   } else {
-    AC_CICLOS_SEL.add(ciclo);
+    AC_CICLOS_SEL = new Set([ciclo]);
   }
   acAplicarFiltros();
 }
@@ -19149,14 +19149,14 @@ function acRenderChart(){
   let etiquetas = [];
   const datasets = [];
 
-  // Una línea por ciclo cuando: hay 2+ ciclos elegidos a mano (ahí sí
-  // tiene sentido verlos por separado, para eso se eligieron puntuales) o
-  // cuando es "Todos" con el botón Desglosar activo (comportamiento
-  // previo, sin cambios). Con exactamente 1 ciclo elegido siempre es una
-  // sola línea (da igual el botón Desglosar). Con "Todos" y Desglosar
-  // apagado, se combinan en una sola línea (filasCompletas ya viene
-  // filtrada al subconjunto elegido, o a todo si el set está vacío).
-  const dividirPorCiclo = AC_CICLOS_SEL.size>=2 || (AC_CICLOS_SEL.size===0 && AC_DESGLOSAR_CICLO);
+  // Una línea por ciclo solo con "Todos" y el botón Desglosar activo (la
+  // selección de un ciclo puntual ahora es excluyente -- ver
+  // acSeleccionarCiclo -- así que nunca hay 2+ a la vez). Con exactamente
+  // 1 ciclo elegido siempre es una sola línea (da igual Desglosar). Con
+  // "Todos" y Desglosar apagado, se combinan en una sola línea
+  // (filasCompletas ya viene filtrada al subconjunto elegido, o a todo si
+  // el set está vacío).
+  const dividirPorCiclo = AC_CICLOS_SEL.size===0 && AC_DESGLOSAR_CICLO;
   if(dividirPorCiclo){
     const porCicloClave = new Map();   // ciclo -> Map(clave -> kwh)
     for(const f of filasCompletas){
