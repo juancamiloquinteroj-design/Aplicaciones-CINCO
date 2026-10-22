@@ -18943,7 +18943,7 @@ function acRenderCiclosGrid(){
 
   const headCeldas = ciclos.map(c => {
     const activo = AC_CICLOS_SEL.has(c);
-    return `<th style="text-align:center;cursor:pointer;padding:6px 10px${activo?';background:var(--accent);color:#fff':''}" onclick="acSeleccionarCiclo(${c})" title="Click para elegir/quitar este ciclo">${c}</th>`;
+    return `<th style="text-align:center;cursor:pointer;padding:6px 10px${activo?';background:var(--accent);color:#fff':''}" onclick="acSeleccionarCiclo(${c},event)" title="Click para elegir solo este ciclo -- Ctrl+click para elegir varios">${c}</th>`;
   }).join('');
 
   const filaHtml = (etiqueta, valorDe) => `<tr><td style="color:var(--text3);white-space:nowrap;font-weight:600">${etiqueta}</td>`
@@ -19025,7 +19025,7 @@ function acRenderTablaCiclos(){
       celdaVariacion = `<td style="text-align:right;font-weight:700;color:${color}">${alerta}${icono} ${Math.abs(delta).toLocaleString('es-CO',{maximumFractionDigits:0})} (${Math.abs(deltaPct).toFixed(1)}%)</td>`;
     }
 
-    return `<tr style="cursor:pointer;${AC_CICLOS_SEL.has(c)?'background:var(--bg3)':''}" onclick="acSeleccionarCiclo(${c})">
+    return `<tr style="cursor:pointer;${AC_CICLOS_SEL.has(c)?'background:var(--bg3)':''}" onclick="acSeleccionarCiclo(${c},event)" title="Click para elegir solo este ciclo -- Ctrl+click para elegir varios">
       <td style="font-weight:700">${c}</td>${celdasMes}${celdaVariacion}
     </tr>`;
   }).join('');
@@ -19045,14 +19045,23 @@ function acRenderSubtitulo(){
   cont.textContent = partes.join(' -- ');
 }
 
-// Selección EXCLUYENTE (pedido explícito, reemplaza la multiselección de
-// antes): "Todos" (ciclo===null) limpia el set entero. Clickear un ciclo
-// puntual deja el set con SOLO ese (suelta cualquier otro que hubiera
-// elegido antes), y clickear el mismo que ya está solo elegido vuelve a
-// "Todos" -- mismo criterio que el resto de filtros tipo botón de la app
-// (ver alim3ToggleTipo).
-function acSeleccionarCiclo(ciclo){
-  if(ciclo==null || (AC_CICLOS_SEL.size===1 && AC_CICLOS_SEL.has(ciclo))){
+// Selección EXCLUYENTE por defecto (pedido explícito): "Todos"
+// (ciclo===null) limpia el set entero. Clickear un ciclo puntual deja el
+// set con SOLO ese (suelta cualquier otro que hubiera elegido antes), y
+// clickear el mismo que ya está solo elegido vuelve a "Todos" -- mismo
+// criterio que el resto de filtros tipo botón de la app (ver
+// alim3ToggleTipo). Con Ctrl/Cmd apretado, en cambio, el click SÍ
+// multiselecciona (agrega/quita del set sin tocar los demás) -- pedido
+// explícito ("si tengo presionado control... ahí sí pueda seleccionar
+// varios").
+function acSeleccionarCiclo(ciclo, ev){
+  const conCtrl = ev && (ev.ctrlKey || ev.metaKey);
+  if(ciclo==null){
+    AC_CICLOS_SEL = new Set();
+  } else if(conCtrl){
+    if(AC_CICLOS_SEL.has(ciclo)) AC_CICLOS_SEL.delete(ciclo);
+    else AC_CICLOS_SEL.add(ciclo);
+  } else if(AC_CICLOS_SEL.size===1 && AC_CICLOS_SEL.has(ciclo)){
     AC_CICLOS_SEL = new Set();
   } else {
     AC_CICLOS_SEL = new Set([ciclo]);
@@ -19149,14 +19158,14 @@ function acRenderChart(){
   let etiquetas = [];
   const datasets = [];
 
-  // Una línea por ciclo solo con "Todos" y el botón Desglosar activo (la
-  // selección de un ciclo puntual ahora es excluyente -- ver
-  // acSeleccionarCiclo -- así que nunca hay 2+ a la vez). Con exactamente
+  // Una línea por ciclo cuando: hay 2+ ciclos elegidos (solo posible con
+  // Ctrl+click, ver acSeleccionarCiclo -- un click normal siempre deja 0 o
+  // 1) o cuando es "Todos" con el botón Desglosar activo. Con exactamente
   // 1 ciclo elegido siempre es una sola línea (da igual Desglosar). Con
   // "Todos" y Desglosar apagado, se combinan en una sola línea
   // (filasCompletas ya viene filtrada al subconjunto elegido, o a todo si
   // el set está vacío).
-  const dividirPorCiclo = AC_CICLOS_SEL.size===0 && AC_DESGLOSAR_CICLO;
+  const dividirPorCiclo = AC_CICLOS_SEL.size>=2 || (AC_CICLOS_SEL.size===0 && AC_DESGLOSAR_CICLO);
   if(dividirPorCiclo){
     const porCicloClave = new Map();   // ciclo -> Map(clave -> kwh)
     for(const f of filasCompletas){
@@ -23788,7 +23797,7 @@ function alim3RenderTiposChips(){
   if(!cont) return;
   cont.innerHTML = ALIM3_TIPOS.map(t => {
     const activo = ALIM3_TIPOS_SEL.has(t);
-    return `<button type="button" class="be-modo-btn${activo?' activo':''}" style="padding:3px 9px;font-size:10.5px" onclick="alim3ToggleTipo('${t}')">${t}</button>`;
+    return `<button type="button" class="be-modo-btn${activo?' activo':''}" style="padding:3px 9px;font-size:10.5px" onclick="alim3ToggleTipo('${t}',event)" title="Click para elegir solo este tipo -- Ctrl+click para elegir varios">${t}</button>`;
   }).join('');
 }
 
@@ -23796,14 +23805,23 @@ function alim3RenderTiposChips(){
 // pestaña (Detalle por Alimentador), a diferencia de Zona que también
 // filtra Top Alimentadores/Variación de Pérdida -- pedido explícito era
 // puntual a ese buscador, no a los totales del módulo.
-function alim3ToggleTipo(tipo){
+function alim3ToggleTipo(tipo, ev){
   // Selección única -- pedido explícito ("que solo permita 1, si doy
   // click en otro se quite la selección y seleccione el nuevo"). Clickear
   // el que ya está activo lo deselecciona (vuelve a "todos los tipos",
-  // mismo comportamiento de siempre cuando el set queda vacío).
-  const yaActivo = ALIM3_TIPOS_SEL.has(tipo);
-  ALIM3_TIPOS_SEL.clear();
-  if(!yaActivo) ALIM3_TIPOS_SEL.add(tipo);
+  // mismo comportamiento de siempre cuando el set queda vacío). Con
+  // Ctrl/Cmd apretado, el click SÍ multiselecciona (agrega/quita del set
+  // sin tocar los demás) -- mismo criterio que acSeleccionarCiclo.
+  const conCtrl = ev && (ev.ctrlKey || ev.metaKey);
+  if(conCtrl){
+    if(ALIM3_TIPOS_SEL.has(tipo)) ALIM3_TIPOS_SEL.delete(tipo);
+    else ALIM3_TIPOS_SEL.add(tipo);
+  } else if(ALIM3_TIPOS_SEL.size===1 && ALIM3_TIPOS_SEL.has(tipo)){
+    ALIM3_TIPOS_SEL.clear();
+  } else {
+    ALIM3_TIPOS_SEL.clear();
+    ALIM3_TIPOS_SEL.add(tipo);
+  }
   alim3RenderTiposChips();
   if(ALIM3_NEMONICO_SEL){
     const sigueDisponible = ALIM_FILAS_TODOS.some(f => f.nemonico === ALIM3_NEMONICO_SEL && (!ALIM3_ZONAS_SEL.size || ALIM3_ZONAS_SEL.has(f.zona)) && (!ALIM3_TIPOS_SEL.size || ALIM3_TIPOS_SEL.has(alim3TipoNormalizado(f.tipo))));
