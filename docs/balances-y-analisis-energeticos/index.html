@@ -3862,6 +3862,7 @@ html,body{overflow-x:hidden;margin:0}
       <button type="button" class="pt-tab-btn" id="alim-nivel3-tab-btn-tecnica" onclick="alimNivel3IrATab('tecnica')">Pérdida Técnica Nivel 3</button>
       <button type="button" class="pt-tab-btn" id="alim-nivel3-tab-btn-comparativo" onclick="alimNivel3IrATab('comparativo')">Comparativo Zonas</button>
       <button type="button" class="pt-tab-btn" id="alim-nivel3-tab-btn-mapa" onclick="alimNivel3IrATab('mapa')">Mapa por Zonas</button>
+      <button type="button" class="pt-tab-btn" id="alim-nivel3-tab-btn-demanda" onclick="alimNivel3IrATab('demanda')">Demanda</button>
     </div>
 
     <!-- Filtro Rango + Zona (desplegable, como Pérdidas Técnicas) + CSV --
@@ -4099,6 +4100,22 @@ html,body{overflow-x:hidden;margin:0}
             </div>
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- ===== Pestaña "Demanda" -- pedido explícito: curva de Entrada
+         Zonal (IPT Institucional, suma de las 5 zonas) para ver cómo se
+         comporta la demanda de un mes contra el mismo mes del año
+         anterior. Dato totalmente aparte del resto de Nivel 3 (no viene
+         de Resumen de Alimentadores.csv), ver alimNivel3RenderDemanda. -->
+    <div id="alim-nivel3-tab-demanda" class="hidden">
+      <div class="card">
+        <div style="text-align:center;margin-bottom:8px">
+          <div style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Entrada a Distribución</div>
+          <div style="font-size:12px;color:var(--text3);margin-top:2px">Entrada Zonal (IPT Institucional) -- suma de las 5 zonas</div>
+        </div>
+        <div class="chart-wrap" style="height:380px"><canvas id="ch-alim-nivel3-demanda"></canvas></div>
+        <div id="alim-nivel3-demanda-interanual" style="margin-top:20px"></div>
       </div>
     </div>
 
@@ -20692,7 +20709,7 @@ function alimNivel3RenderZonasChips(){
 
 // Pestañas del módulo IP Nivel 3 (mismo patrón que perdidasIrATab).
 function alimNivel3IrATab(nombre){
-  ['ip','tecnica','comparativo','mapa'].forEach(t=>{
+  ['ip','tecnica','comparativo','mapa','demanda'].forEach(t=>{
     document.getElementById('alim-nivel3-tab-'+t)?.classList.toggle('hidden', t!==nombre);
     document.getElementById('alim-nivel3-tab-btn-'+t)?.classList.toggle('activo', t===nombre);
   });
@@ -20706,6 +20723,138 @@ function alimNivel3IrATab(nombre){
   document.getElementById('alim-nivel3-ip-modo-wrap')?.classList.toggle('hidden', nombre !== 'ip');
   if((ALIM_NIVEL3_FILAS||[]).length) alimNivel3RenderTodo();
   if(nombre === 'mapa') alimNivel3CargarMapa();
+  // "Demanda" es un dato totalmente aparte (IPT Institucional, no
+  // Resumen de Alimentadores.csv) -- mismo patrón que "mapa", se carga
+  // por su cuenta en vez de depender de alimNivel3RenderTodo.
+  if(nombre === 'demanda') alimNivel3RenderDemanda();
+}
+
+// ===== Pestaña "Demanda" (IP Nivel 3) =====
+// Curva de Entrada Zonal (IPT Institucional, ver ipiSerieCompleta -- con
+// zona=null suma las 5 zonas) -- pedido explícito ("graficar el campo...
+// Entrada Zona y la sumatoria de todas las zonas, para ver cómo se
+// comporta la demanda de un mes respecto al mes del año anterior").
+// Respeta el Rango de fechas compartido (#alim-nivel3-filtro) pero
+// IGNORA el filtro de Zona a propósito -- siempre es el total
+// institucional, no por zona.
+let chAlimNivel3Demanda = null;
+
+async function alimNivel3RenderDemanda(){
+  const cont = document.getElementById('ch-alim-nivel3-demanda')?.parentElement;
+  const contInteranual = document.getElementById('alim-nivel3-demanda-interanual');
+  if(!cont) return;
+  if(!(await _ipiAsegurarDatosCargados()) || !IPI_FILAS.length){
+    cont.innerHTML = '<div style="text-align:center;color:var(--text3);padding:40px">Sin datos de IPT Institucional todavía.</div>';
+    if(contInteranual) contInteranual.innerHTML = '';
+    return;
+  }
+  const serieCompleta = ipiSerieCompleta(null).filter(f => f.entradaZonal);
+  const desde = document.getElementById('alim-nivel3-desde').value ? document.getElementById('alim-nivel3-desde').value.slice(0,7) : null;
+  const hasta = document.getElementById('alim-nivel3-hasta').value ? document.getElementById('alim-nivel3-hasta').value.slice(0,7) : null;
+  const visibles = serieCompleta.filter(f => (!desde || f.clave>=desde) && (!hasta || f.clave<=hasta));
+
+  const dark = document.documentElement.getAttribute('data-theme')==='dark';
+  const tickC = dark ? '#aab8d1' : '#4b5e7a';
+  const tickXFuerte = dark ? '#ffffff' : '#000000';
+  const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
+
+  if(chAlimNivel3Demanda) chAlimNivel3Demanda.destroy();
+  chAlimNivel3Demanda = new Chart(document.getElementById('ch-alim-nivel3-demanda'), {
+    type:'line',
+    data:{
+      labels: visibles.map(f=>labelMes(f.clave)),
+      datasets:[{
+        label:'Total', data: visibles.map(f=>f.entradaZonal),
+        borderColor: IPI_COLOR_ENTRADA, backgroundColor: dark ? 'rgba(0,176,80,.18)' : 'rgba(0,176,80,.15)',
+        borderWidth:2.5, pointRadius:2, fill:true, tension:0.15, spanGaps:true,
+      }],
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      layout:{padding:{top:20, right:24, left:8, bottom:4}},
+      interaction:{mode:'index', intersect:false},
+      plugins:{
+        legend:{display:true, position:'right', labels:{boxWidth:12, font:{size:12}, color:tickC}},
+        tooltip:{callbacks:{label:c=> c.raw==null ? null : `${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`}},
+        zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:3}}},
+      },
+      scales:{
+        x:{grid:{display:false}, offset:true, ticks:{color:tickXFuerte, font:{size:12, weight:'600'}, maxRotation:45, minRotation:45}},
+        y:{grid:{color:gridC}, ticks:{color:tickC, font:{size:12}, callback:v=>v.toLocaleString('es-CO')+' kWh'},
+          title:{display:true, text:'kWh', color:tickC, font:{size:12}}},
+      },
+    },
+  });
+
+  const claveActual = visibles.length ? visibles[visibles.length-1].clave : null;
+  if(contInteranual) contInteranual.innerHTML = _demandaInteranualHtml(serieCompleta, claveActual);
+}
+
+// Un lado de la comparación (Interanual: mismo mes del año anterior, no
+// mezcla estacionalidad -- o Mensual: mes inmediatamente anterior) --
+// mismo criterio que _narrativaEntradaSalidaDatos, pero acá UNA sola
+// métrica (Entrada Zonal), no un par Entrada/Salida.
+function _demandaDatos(serie, claveActual, modo){
+  if(!serie.length || !claveActual) return null;
+  const porClave = new Map(serie.map(f=>[f.clave, f]));
+  const actual = porClave.get(claveActual);
+  if(!actual) return null;
+  const [anio, mes] = claveActual.split('-').map(Number);
+  let claveAnterior;
+  if(modo === 'mensual'){
+    const idx = anio*12 + (mes-1) - 1;
+    claveAnterior = `${Math.floor(idx/12)}-${String((idx%12)+1).padStart(2,'0')}`;
+  } else {
+    claveAnterior = `${anio-1}-${String(mes).padStart(2,'0')}`;
+  }
+  const anterior = porClave.get(claveAnterior);
+  if(!anterior || !anterior.entradaZonal) return null;
+  const delta = actual.entradaZonal - anterior.entradaZonal;
+  return {claveActual, claveAnterior, actual: actual.entradaZonal, anterior: anterior.entradaZonal,
+    delta, deltaPct: delta/anterior.entradaZonal*100};
+}
+
+// Misma convención visual que _narrativaTablaHtml (be-tabla-creadas,
+// columnas con borde, Δ/Δ%), pero con UNA sola fila -- acá no hay
+// Entrada/Salida para comparar, solo la demanda.
+function _demandaTablaHtml(datos, tituloTabla){
+  if(!datos){
+    return `<div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;margin:10px 0 4px">${tituloTabla}</div>
+      <p style="color:var(--text3);font-size:12px;margin:0">No hay suficiente histórico todavía para calcular esta comparación.</p>`;
+  }
+  const fKwh = v => Math.round(v).toLocaleString('es-CO');
+  const fPct = v => v.toLocaleString('es-CO', {maximumFractionDigits:2, minimumFractionDigits:2});
+  const signo = v => v>=0 ? '+' : '';
+  const BORDE = 'border-right:1px solid var(--border)';
+  const thEstilo = 'color:var(--text);font-weight:800';
+  return `
+    <div class="narrativa-tabla-titulo" style="font-size:11px;font-weight:800;color:var(--text);text-transform:uppercase;margin:10px 0 4px;text-align:center">${tituloTabla}</div>
+    <div class="be-tabla-scroll">
+      <table class="be-tabla-creadas" style="width:auto;border:1px solid var(--border)">
+        <thead><tr>
+          <th style="${thEstilo};${BORDE}"></th><th style="${thEstilo};${BORDE}">${labelMesLargo(datos.claveAnterior)}</th><th style="${thEstilo};${BORDE}">${labelMesLargo(datos.claveActual)}</th><th style="${thEstilo};${BORDE}">Δ</th><th style="${thEstilo}">Δ%</th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td style="text-align:left;font-weight:700;color:var(--text);${BORDE}">Entrada Zonal</td>
+            <td style="color:var(--text);${BORDE}">${fKwh(datos.anterior)} kWh</td>
+            <td style="color:var(--text);${BORDE}">${fKwh(datos.actual)} kWh</td>
+            <td style="color:var(--text);${BORDE}">${signo(datos.delta)}${fKwh(datos.delta)} kWh</td>
+            <td style="color:var(--text)">${signo(datos.deltaPct)}${fPct(datos.deltaPct)}%</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function _demandaInteranualHtml(serie, claveActual){
+  const datosInteranual = _demandaDatos(serie, claveActual, 'interanual');
+  const datosMensual = _demandaDatos(serie, claveActual, 'mensual');
+  return `<div style="display:flex;gap:28px;flex-wrap:wrap;justify-content:center">
+    <div>${_demandaTablaHtml(datosInteranual, 'Interanual (año contra año)')}</div>
+    <div>${_demandaTablaHtml(datosMensual, 'Mensual (mes contra mes)')}</div>
+  </div>`;
 }
 
 // ===== Pestaña "Mapa por Zonas" (IP Nivel 3) =====
