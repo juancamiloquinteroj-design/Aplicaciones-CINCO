@@ -4932,8 +4932,9 @@ html,body{overflow-x:hidden;margin:0}
            elige/quita, igual que antes el botón. -->
       <div class="card-title" style="margin-top:18px">Ciclo</div>
       <div style="display:flex;align-items:center;gap:10px;margin:10px 0 8px">
-        <button type="button" class="be-modo-btn" id="ac-btn-todos-ciclos" style="padding:8px 18px;font-size:13px" onclick="acSeleccionarCiclo(null)">Todos</button>
-        <span style="font-size:11px;color:var(--text3)">Click en el número de un ciclo para elegirlo (clickear otro lo reemplaza)</span>
+        <label style="font-size:11px;color:var(--text3);font-weight:700">Mes</label>
+        <select id="ac-grid-mes" onchange="acCambiarMesGrid(this.value)" style="padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg)"></select>
+        <span style="font-size:11px;color:var(--text3)">Click en el número de un ciclo para elegirlo (clickear otro lo reemplaza, Ctrl+click para varios)</span>
       </div>
       <div class="be-tabla-scroll">
         <table class="be-tabla-creadas" style="width:auto"><tbody id="ac-ciclos-grid"></tbody></table>
@@ -18727,6 +18728,11 @@ let AC_FILAS = [];
 // SUBCONJUNTO (ej. ciclos 2 y 5 nada más), como cualquier otro filtro
 // multiselect de la app.
 let AC_CICLOS_SEL = new Set();
+// Mes que alimenta Tipo/Proyectado/Participación/Clientes/Liquidación de
+// la tabla de Ciclo -- pedido explícito (reemplaza el botón "Todos" de
+// arriba, antes cada ciclo mostraba en silencio su propio último mes
+// disponible, sin indicar cuál). null = el más reciente disponible.
+let AC_GRID_MES = null;
 function acEtiquetaCiclos(){
   if(AC_CICLOS_SEL.size===0) return 'Todos';
   if(AC_CICLOS_SEL.size===1) return `Ciclo ${[...AC_CICLOS_SEL][0]}`;
@@ -18885,6 +18891,7 @@ function acLimpiarFiltros(){
   mselSetSeleccion('msel-ac-subestacion', []);
   mselSetSeleccion('msel-ac-alimentador', []);
   AC_CICLOS_SEL = new Set();
+  AC_GRID_MES = null;
   AC_MODO = 'mensual';
   document.getElementById('ac-btn-mensual').classList.add('activo');
   document.getElementById('ac-btn-anual').classList.remove('activo');
@@ -18916,37 +18923,44 @@ function acAplicarFiltros(){
 
 // Tabla dinámica (1 columna por ciclo, filas Tipo/Participación/Clientes/
 // Liquidación) -- pedido explícito, reemplaza la fila de botones grandes
-// de antes. "Todos" sigue siendo el botón aparte (#ac-btn-todos-ciclos,
-// ver acSeleccionarCiclo) con selección EXCLUYENTE: conjunto vacío =
-// Todos, clickear un ciclo deja SOLO ese elegido (suelta cualquier otro),
-// clickear el mismo que ya está solo elegido vuelve a Todos. Click en el
-// NÚMERO del ciclo (encabezado de su columna) hace lo mismo que antes el
-// botón.
+// de antes. Selección de ciclo EXCLUYENTE: clickear un ciclo deja SOLO ese
+// elegido (suelta cualquier otro), clickear el mismo que ya está solo
+// elegido vuelve a Todos, Ctrl+click multiselecciona (ver
+// acSeleccionarCiclo). El MES que alimenta las filas de abajo ya NO es
+// "el último de cada ciclo" en silencio -- hay un selector propio
+// (#ac-grid-mes, AC_GRID_MES) que se ve y se puede cambiar, mismo mes
+// para TODOS los ciclos de la tabla (pedido explícito, reemplaza el botón
+// "Todos" que había ahí -- ya no hace falta, clickear el ciclo elegido de
+// nuevo lo suelta igual).
 function acRenderCiclosGrid(){
   const cont = document.getElementById('ac-ciclos-grid');
-  const btnTodos = document.getElementById('ac-btn-todos-ciclos');
+  const selMes = document.getElementById('ac-grid-mes');
   const filas = acFilasFiltradas('ciclo');
   const ciclos = [...new Set(filas.map(f=>f.ciclo))].sort((a,b)=>a-b);
   // Se descartan del set solo los ciclos puntuales que ya no aparecen con
   // el filtro actual (los demás quedan tal cual elegidos, nunca se fuerza
   // un ciclo por defecto ni se limpia todo de un tirón).
   AC_CICLOS_SEL = new Set([...AC_CICLOS_SEL].filter(c => ciclos.includes(c)));
-  if(btnTodos) btnTodos.classList.toggle('activo', AC_CICLOS_SEL.size===0);
   if(!cont) return;
   if(!ciclos.length){
     cont.innerHTML = '<tr><td style="color:var(--text3)">Sin datos para este filtro.</td></tr>';
+    if(selMes) selMes.innerHTML = '';
     return;
+  }
+
+  // Opciones del selector de mes = meses con algún dato dentro del filtro
+  // actual, más reciente primero. Si el mes elegido ya no aparece (cambió
+  // el filtro de arriba, o todavía no se eligió ninguno), cae al más
+  // reciente disponible -- mismo default de siempre.
+  const claves = [...new Set(filas.map(acClave))].sort();
+  if(!AC_GRID_MES || !claves.includes(AC_GRID_MES)) AC_GRID_MES = claves[claves.length-1];
+  if(selMes){
+    selMes.innerHTML = [...claves].reverse().map(c => `<option value="${c}"${c===AC_GRID_MES?' selected':''}>${labelMes(c)}</option>`).join('');
   }
 
   const porCiclo = new Map(ciclos.map(c => [c, []]));
   filas.forEach(f => porCiclo.get(f.ciclo).push(f));
-  // Foto del mes más reciente de CADA ciclo -- mismo criterio que
-  // acRenderDatosCiclo (Usuarios/Participación/Energía ya eran así).
-  const filasUltimoMesDe = c => {
-    const fs = porCiclo.get(c);
-    const ultimaClave = [...new Set(fs.map(acClave))].sort().slice(-1)[0];
-    return fs.filter(f => acClave(f)===ultimaClave);
-  };
+  const filasDelMes = c => porCiclo.get(c).filter(f => acClave(f)===AC_GRID_MES);
 
   const headCeldas = ciclos.map(c => {
     const activo = AC_CICLOS_SEL.has(c);
@@ -18958,20 +18972,25 @@ function acRenderCiclosGrid(){
 
   cont.innerHTML = `<tr><td></td>${headCeldas}</tr>`
     + filaHtml('Tipo', c => {
-        const liq = [...new Set(filasUltimoMesDe(c).map(f=>f.liquidacion).filter(Boolean))];
+        const liq = [...new Set(filasDelMes(c).map(f=>f.liquidacion).filter(Boolean))];
         return liq.length ? liq.join('/') : '--';
       })
     + filaHtml('Proyectado', c => {
-        const proy = [...new Set(filasUltimoMesDe(c).map(f=>f.proyectado).filter(Boolean))];
+        const proy = [...new Set(filasDelMes(c).map(f=>f.proyectado).filter(Boolean))];
         return proy.length ? proy.join('/') : '--';
       })
     + filaHtml('Participación', c => {
-        const fs = filasUltimoMesDe(c);
+        const fs = filasDelMes(c);
         const prom = fs.length ? fs.reduce((s,f)=>s+(f.participacion_pct||0),0)/fs.length : null;
         return prom!=null ? prom.toFixed(0)+'%' : '--';
       })
-    + filaHtml('Clientes', c => filasUltimoMesDe(c).reduce((s,f)=>s+(f.usuarios||0),0).toLocaleString('es-CO'))
-    + filaHtml('Liquidación', c => filasUltimoMesDe(c).reduce((s,f)=>s+(f.energia_liquidada_kwh||0),0).toLocaleString('es-CO',{maximumFractionDigits:0}));
+    + filaHtml('Clientes', c => filasDelMes(c).reduce((s,f)=>s+(f.usuarios||0),0).toLocaleString('es-CO'))
+    + filaHtml('Liquidación', c => filasDelMes(c).reduce((s,f)=>s+(f.energia_liquidada_kwh||0),0).toLocaleString('es-CO',{maximumFractionDigits:0}));
+}
+
+function acCambiarMesGrid(clave){
+  AC_GRID_MES = clave || null;
+  acRenderCiclosGrid();
 }
 
 // Tabla de todos los ciclos visibles (según el resto de filtros) con su
