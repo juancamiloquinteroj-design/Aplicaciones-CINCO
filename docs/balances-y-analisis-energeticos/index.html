@@ -4145,7 +4145,6 @@ html,body{overflow-x:hidden;margin:0}
         <div id="alim-nivel3-demanda-resumen" class="alim-resumen-mini"></div>
         <div style="text-align:center;margin-bottom:8px">
           <div id="alim-nivel3-demanda-titulo" style="font-size:16px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase">Entrada a Distribución</div>
-          <div style="font-size:12px;color:var(--text3);margin-top:2px">Entrada Zonal (IPT Institucional)</div>
         </div>
         <div class="chart-wrap" style="height:380px"><canvas id="ch-alim-nivel3-demanda"></canvas></div>
         <div id="alim-nivel3-demanda-interanual" style="margin-top:20px"></div>
@@ -20827,6 +20826,23 @@ function _alimNivel3DemandaSerie(){
     .map(([clave, entradaZonal]) => ({clave, entradaZonal})).filter(f => f.entradaZonal);
 }
 
+// Serie mensual de CADA una de las 5 zonas (sin filtrar por la Zona
+// elegida) -- se usa en el gráfico de línea cuando NO hay exactamente 1
+// zona elegida (0 = Todas, o 2+): pedido explícito ("cuando seleccione
+// dos zonas quiero que se pongan todas las zonas en el gráfico y cuando
+// esté seleccionado todas muestre todas") -- con exactamente 1 zona
+// elegida, en cambio, sigue siendo una sola línea (_alimNivel3DemandaSerie).
+function _alimNivel3DemandaSeriePorZona(){
+  const porZonaClave = new Map();
+  for(const f of IPI_FILAS){
+    const c = ipiClave(f);
+    if(!porZonaClave.has(f.zona)) porZonaClave.set(f.zona, new Map());
+    const m = porZonaClave.get(f.zona);
+    m.set(c, (m.get(c) || 0) + (f.entrada_zonal || 0));
+  }
+  return porZonaClave;
+}
+
 // 1 valor por Zona, de UN mes puntual (modo 'barras-zona') -- respeta el
 // mismo filtro de Zona de arriba (si hay zonas elegidas, solo esas).
 function _alimNivel3DemandaPorZonaMes(claveActual){
@@ -20924,13 +20940,27 @@ async function alimNivel3RenderDemanda(){
     labels = porZona.map(([z]) => z);
     datasets = [{type:'bar', label: claveActual ? labelMesLargo(claveActual) : '', data: porZona.map(([,v]) => v), yAxisID:'y',
       backgroundColor: porZona.map(([z]) => colorParaZona(z)), borderWidth:0}];
-  } else {
+  } else if(zonasSel.length === 1){
     labels = visibles.map(f => labelMes(f.clave));
     datasets = [{
       type:'line', label:'Entrada a Distribución', data: visibles.map(f=>f.entradaZonal), yAxisID:'y',
       borderColor: IPI_COLOR_ENTRADA, backgroundColor:'rgba(0,176,80,.20)',
       borderWidth:2, pointRadius:1.5, fill:'origin', tension:0, spanGaps:true,
     }];
+  } else {
+    // 0 (Todas) o 2+ zonas elegidas -- una línea POR zona (pedido
+    // explícito), en vez de una sola línea con la suma.
+    const porZonaClave = _alimNivel3DemandaSeriePorZona();
+    const zonas = [...porZonaClave.keys()].sort();
+    labels = clavesVisibles.map(labelMes);
+    datasets = zonas.map(z => {
+      const m = porZonaClave.get(z);
+      return {
+        type:'line', label:`Zona ${z}`, data: clavesVisibles.map(c => m.has(c) ? m.get(c) : null), yAxisID:'y',
+        borderColor: colorParaZona(z), backgroundColor:'transparent',
+        borderWidth:2, pointRadius:1.5, fill:false, tension:0, spanGaps:true,
+      };
+    });
   }
 
   if(chAlimNivel3Demanda) chAlimNivel3Demanda.destroy();
