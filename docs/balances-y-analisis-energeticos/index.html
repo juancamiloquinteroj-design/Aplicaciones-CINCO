@@ -20872,18 +20872,28 @@ function _alimNivel3DemandaMismoMesTodosLosAnios(serie, claveActual){
     .map(c => ({clave: c, valor: porClave.get(c).entradaZonal}));
 }
 
-// 1 valor por Zona, de UN mes puntual (modo 'barras-zona') -- respeta el
-// mismo filtro de Zona de arriba (si hay zonas elegidas, solo esas).
-function _alimNivel3DemandaPorZonaMes(claveActual){
-  if(!claveActual) return [];
+// Por Zona, del MISMO mes calendario (ej. Septiembre) de CADA año con
+// dato -- modo 'barras-zona' (pedido explícito: "en el eje X muestre
+// meses y años, por ejemplo Septiembre-2026 con Septiembre de 2025...
+// las columnas todas juntas sin separación entre ellas para poder ver
+// la evolución de cada zona y cada mes"). Respeta el mismo filtro de
+// Zona de arriba (si hay zonas elegidas, solo esas).
+function _alimNivel3DemandaPorZonaTodosLosAnios(claveActual){
+  if(!claveActual) return {anios:[], zonas:[], porZonaClave:new Map()};
+  const mesNum = Number(claveActual.split('-')[1]);
   const zonasSel = mselValores('msel-alim-nivel3-zona');
-  const porZona = new Map();
+  const porZonaClave = new Map();   // zona -> Map(clave -> valor)
+  const aniosSet = new Set();
   for(const f of IPI_FILAS){
-    if(ipiClave(f) !== claveActual) continue;
+    const c = ipiClave(f);
+    if(Number(c.split('-')[1]) !== mesNum) continue;
     if(zonasSel.length && !zonasSel.includes(f.zona)) continue;
-    porZona.set(f.zona, (porZona.get(f.zona) || 0) + (f.entrada_zonal || 0));
+    aniosSet.add(Number(c.split('-')[0]));
+    if(!porZonaClave.has(f.zona)) porZonaClave.set(f.zona, new Map());
+    const m = porZonaClave.get(f.zona);
+    m.set(c, (m.get(c) || 0) + (f.entrada_zonal || 0));
   }
-  return [...porZona.entries()].sort(([a],[b]) => a<b?-1:1);
+  return {anios: [...aniosSet].sort(), zonas: [...porZonaClave.keys()].sort(), porZonaClave};
 }
 
 async function alimNivel3RenderDemanda(){
@@ -21009,15 +21019,30 @@ async function alimNivel3RenderDemanda(){
       }];
     }
   } else if(modo === 'barras-zona'){
-    const porZona = _alimNivel3DemandaPorZonaMes(claveActual);
-    labels = porZona.map(([z]) => z);
-    datasets = [{type:'bar', label: claveActual ? labelMesLargo(claveActual) : '', data: porZona.map(([,v]) => v), yAxisID:'y',
-      backgroundColor: porZona.map(([z]) => colorParaZona(z)), borderWidth:0,
-      datalabels:{
-        display: ALIM_NIVEL3_DEMANDA_ETIQUETAS, anchor:'end', align:'top', offset:4,
-        formatter: v => v==null ? '' : Math.round(v).toLocaleString('es-CO')+' kWh',
-        font:{size:10, weight:'700'}, color: tickC,
-      }}];
+    // Grupos por período (el mismo mes calendario del Mes elegido arriba,
+    // un año tras otro -- ej. Septiembre-2026, Septiembre-2025...), con
+    // una barra por Zona DENTRO de cada grupo, pegadas entre sí (sin
+    // separación) para poder comparar la evolución de cada zona mes a
+    // mes/año a año -- pedido explícito, mismo estilo que un gráfico de
+    // barras agrupadas de referencia.
+    const {anios, zonas, porZonaClave} = _alimNivel3DemandaPorZonaTodosLosAnios(claveActual);
+    const mesNum = claveActual ? Number(claveActual.split('-')[1]) : null;
+    labels = anios.map(a => labelMesLargo(`${a}-${String(mesNum).padStart(2,'0')}`));
+    datasets = zonas.map(z => {
+      const m = porZonaClave.get(z);
+      const color = colorParaZona(z);
+      return {
+        type:'bar', label:`Zona ${z}`, yAxisID:'y',
+        data: anios.map(a => { const c = `${a}-${String(mesNum).padStart(2,'0')}`; return m.has(c) ? m.get(c) : null; }),
+        backgroundColor: color, borderWidth:0,
+        barPercentage:1, categoryPercentage:0.85,
+        datalabels:{
+          display: ALIM_NIVEL3_DEMANDA_ETIQUETAS, anchor:'end', align:'top', offset:2,
+          formatter: v => v==null ? '' : Math.round(v).toLocaleString('es-CO')+' kWh',
+          font:{size:8.5, weight:'700'}, color,
+        },
+      };
+    });
   } else if(zonasSel.length <= 1){
     // 0 zonas (Todas) -- acumulado de las 5 (pedido explícito: "en todas
     // quiero que se vea el acumulado como si se sumara todas las
@@ -21064,7 +21089,7 @@ async function alimNivel3RenderDemanda(){
       layout:{padding:{top:28, right:20}},
       interaction:{mode:'index', intersect:false},
       plugins:{
-        legend:{display: !esBarras, position:'bottom', labels:{boxWidth:12, font:{size:12}, color:tickC}},
+        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:12}, color:tickC}},
         tooltip:{callbacks:{label:c=> c.raw==null ? null : `${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`}},
         ...(esBarras ? {} : {zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:3}}}}),
       },
