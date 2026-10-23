@@ -16001,7 +16001,7 @@ function renderTablaDetalleBalance(datos, rangoDesde, rangoHasta){
       : comentarioAjuste
       ? `Ajuste manual (${formulaAjuste})${autorAjuste ? ' por ' + autorAjuste : ''}: ${comentarioAjuste} -- doble clic, borrar y Enter para quitarlo desde acá.`
       : (usoBack ? 'Este día se usó el medidor de respaldo -- el principal no reportó.' : '');
-    const manija = formulaAjuste ? '<div class="be-fill-handle" title="Arrastrar para repetir este ajuste en otros días"></div>' : '';
+    const manija = formulaAjuste ? '<div class="be-fill-handle" title="Arrastrar hacia abajo: repite esta fórmula en otros días. Arrastrar al costado: la aplica a otras columnas, corriendo las letras (A→B→C...) como en Excel."></div>' : '';
     let td = `<td class="num pto be-col-detalle${claseGrupo}${usoBack?' usoback':''}${claseAjustado}"${editable} data-tipo="${col.tipo}" data-resta="${col.resta?1:0}" data-orden="${col.orden}" data-fecha="${fechas[i]}" data-letra="${col._letra}" data-formula="${formulaAjuste ? _mselEsc(formulaAjuste) : ''}"${titulo?` title="${_mselEsc(titulo)}"`:''}>${f2(col.valores[i])}${manija}</td>`;
     if(_bePuntoTieneBack(col)){
       const dif = col.dif ? col.dif[i] : null;
@@ -16152,6 +16152,13 @@ function renderTablaDetalleBalance(datos, rangoDesde, rangoHasta){
 // exige un comentario -- es la justificación de por qué se pisa un dato
 // real, y queda guardado como auditoría (ver EstructuraBalanceAjuste).
 let BE_AJUSTE_PENDIENTE = null;  // {tipo, orden, fechaDesde, fechaHasta, formula} -- esperando el comentario del modal
+// Arrastre HORIZONTAL (mismo día, otra columna/medidor) -- pedido
+// explícito ("desplazar la formulación por celda así como funciona el
+// Excel"): a diferencia de BE_AJUSTE_PENDIENTE (1 sola fórmula repetida
+// en un rango de días), acá son VARIAS fórmulas (una por columna de
+// destino, cada una con sus letras ya corridas) para el MISMO día --
+// comparten un solo comentario. Ver _beAplicarArrastreHorizontal.
+let BE_AJUSTE_LOTE_PENDIENTE = null;  // {tipo, fecha, items:[{orden,letra,formula}]}
 let BE_ARRASTRE = null;          // {tipo, orden, fechaOrigen, formula, tdOrigen, ultimaTd} -- mientras se sostiene el tirador
 let BE_COLUMNAS_ACTUALES = [];   // [{letra,tipo,orden}] -- letra de cada columna EN ESTE RENDER, para que las fórmulas puedan referenciar otras columnas (ej. "=B*1.05")
 
@@ -16464,7 +16471,7 @@ function _beAbrirModalAjuste(resumenTexto){
   document.getElementById('beaj-rango-wrap').classList.add('hidden');
   const hastaInput = document.getElementById('beaj-hasta');
   hastaInput.value = '';
-  hastaInput.min = BE_AJUSTE_PENDIENTE ? BE_AJUSTE_PENDIENTE.fechaDesde : '';
+  hastaInput.min = BE_AJUSTE_PENDIENTE ? BE_AJUSTE_PENDIENTE.fechaDesde : (BE_AJUSTE_LOTE_PENDIENTE ? BE_AJUSTE_LOTE_PENDIENTE.fecha : '');
   document.getElementById('beaj-msg').className = 'tm-modal-msg';
   document.getElementById('beaj-msg').textContent = '';
   document.getElementById('modal-be-ajuste').classList.remove('hidden');
@@ -16483,6 +16490,7 @@ function beToggleRangoAjuste(){
 
 function beCancelarAjuste(){
   BE_AJUSTE_PENDIENTE = null;
+  BE_AJUSTE_LOTE_PENDIENTE = null;
   document.getElementById('modal-be-ajuste').classList.add('hidden');
   cargarTablaBalance();
 }
@@ -16492,24 +16500,45 @@ async function beConfirmarAjuste(){
   const msg = document.getElementById('beaj-msg');
   const comentario = document.getElementById('beaj-comentario').value.trim();
   if(!comentario){ msg.className='tm-modal-msg err'; msg.textContent='El comentario es obligatorio.'; return; }
-  if(!BE_AJUSTE_PENDIENTE){ document.getElementById('modal-be-ajuste').classList.add('hidden'); return; }
-  let fechaHasta = BE_AJUSTE_PENDIENTE.fechaHasta;
+  if(!BE_AJUSTE_PENDIENTE && !BE_AJUSTE_LOTE_PENDIENTE){ document.getElementById('modal-be-ajuste').classList.add('hidden'); return; }
+
+  // "Repetir hasta" -- mismo campo del modal para los 2 casos (un solo
+  // ajuste, o el lote del arrastre horizontal): si se llena, TODAS las
+  // fórmulas del lote se repiten día a día también, igual que el arrastre
+  // vertical de siempre.
+  const fechaBase = BE_AJUSTE_PENDIENTE ? BE_AJUSTE_PENDIENTE.fechaDesde : BE_AJUSTE_LOTE_PENDIENTE.fecha;
+  let fechaHasta = BE_AJUSTE_PENDIENTE ? BE_AJUSTE_PENDIENTE.fechaHasta : BE_AJUSTE_LOTE_PENDIENTE.fecha;
   if(!document.getElementById('beaj-rango-wrap').classList.contains('hidden')){
     const hasta = document.getElementById('beaj-hasta').value;
     if(hasta){
-      if(hasta < BE_AJUSTE_PENDIENTE.fechaDesde){
+      if(hasta < fechaBase){
         msg.className='tm-modal-msg err'; msg.textContent='"Repetir hasta" no puede ser anterior al día del ajuste.'; return;
       }
       fechaHasta = hasta;
     }
   }
+
   try{
-    await apiPost(`/api/balances-estructura/${BE_ACTIVA_ID}/ajustes`, {
-      tipo: BE_AJUSTE_PENDIENTE.tipo, orden: BE_AJUSTE_PENDIENTE.orden,
-      fecha_desde: BE_AJUSTE_PENDIENTE.fechaDesde, fecha_hasta: fechaHasta,
-      formula: BE_AJUSTE_PENDIENTE.formula, comentario, columnas: BE_COLUMNAS_ACTUALES,
-    });
+    if(BE_AJUSTE_LOTE_PENDIENTE){
+      const {tipo, fecha, items} = BE_AJUSTE_LOTE_PENDIENTE;
+      // En serie (no Promise.all) -- si una falla, las de antes ya quedan
+      // guardadas y el error dice justo cuál faltó, en vez de una mezcla
+      // de resultados parciales de pedidos en paralelo.
+      for(const it of items){
+        await apiPost(`/api/balances-estructura/${BE_ACTIVA_ID}/ajustes`, {
+          tipo, orden: it.orden, fecha_desde: fecha, fecha_hasta: fechaHasta,
+          formula: it.formula, comentario, columnas: BE_COLUMNAS_ACTUALES,
+        });
+      }
+    } else {
+      await apiPost(`/api/balances-estructura/${BE_ACTIVA_ID}/ajustes`, {
+        tipo: BE_AJUSTE_PENDIENTE.tipo, orden: BE_AJUSTE_PENDIENTE.orden,
+        fecha_desde: BE_AJUSTE_PENDIENTE.fechaDesde, fecha_hasta: fechaHasta,
+        formula: BE_AJUSTE_PENDIENTE.formula, comentario, columnas: BE_COLUMNAS_ACTUALES,
+      });
+    }
     BE_AJUSTE_PENDIENTE = null;
+    BE_AJUSTE_LOTE_PENDIENTE = null;
     document.getElementById('modal-be-ajuste').classList.add('hidden');
     // Recarga todo (tabla, gráfico diario y tarjetas) -- el ajuste afecta el
     // balance real de esos días, no solo esta tabla.
@@ -16525,26 +16554,42 @@ function _beIniciarArrastre(ev){
   const td = ev.target.closest('td.pto');
   if(!td || !td.dataset.formula) return;
   BE_ARRASTRE = {
-    tipo: td.dataset.tipo, orden: td.dataset.orden, fechaOrigen: td.dataset.fecha,
+    tipo: td.dataset.tipo, orden: td.dataset.orden, letra: td.dataset.letra, fechaOrigen: td.dataset.fecha,
     formula: td.dataset.formula, tdOrigen: td, ultimaTd: td,
   };
   document.addEventListener('mouseover', _beArrastreMouseOver);
   document.addEventListener('mouseup', _beArrastreMouseUp, {once:true});
 }
 
+// 2 ejes posibles, excluyentes según hacia dónde se mueva el mouse desde
+// la celda de origen -- VERTICAL (misma columna/medidor, otro día: repite
+// la MISMA fórmula sin cambios, el offset de día ya es relativo) u
+// HORIZONTAL (mismo día, otra columna/medidor: corre las letras de la
+// fórmula, pedido explícito "desplazar la formulación por celda así como
+// funciona el Excel"). Si no coincide con ninguno de los 2 (se movió el
+// mouse a una celda que no comparte ni columna ni día) no se resalta nada.
 function _beArrastreMouseOver(ev){
   if(!BE_ARRASTRE) return;
   const td = ev.target.closest('td.pto[data-editable]');
-  if(!td || td.dataset.tipo!==BE_ARRASTRE.tipo || td.dataset.orden!==BE_ARRASTRE.orden) return;
+  if(!td || td.dataset.tipo!==BE_ARRASTRE.tipo) return;
   document.querySelectorAll('.celda-arrastrando').forEach(el=>el.classList.remove('celda-arrastrando'));
   const tabla = document.getElementById('be-tabla-detalle');
-  const filaOrigen = BE_ARRASTRE.tdOrigen.closest('tr').rowIndex;
-  const filaActual = td.closest('tr').rowIndex;
-  const [desde, hasta] = filaOrigen <= filaActual ? [filaOrigen, filaActual] : [filaActual, filaOrigen];
-  for(let r=desde; r<=hasta; r++){
-    const fila = tabla.rows[r]; if(!fila) continue;
-    const celda = [...fila.cells].find(c=>c.dataset && c.dataset.tipo===BE_ARRASTRE.tipo && c.dataset.orden===BE_ARRASTRE.orden);
-    if(celda) celda.classList.add('celda-arrastrando');
+  if(td.dataset.orden === BE_ARRASTRE.orden){
+    const filaOrigen = BE_ARRASTRE.tdOrigen.closest('tr').rowIndex;
+    const filaActual = td.closest('tr').rowIndex;
+    const [desde, hasta] = filaOrigen <= filaActual ? [filaOrigen, filaActual] : [filaActual, filaOrigen];
+    for(let r=desde; r<=hasta; r++){
+      const fila = tabla.rows[r]; if(!fila) continue;
+      const celda = [...fila.cells].find(c=>c.dataset && c.dataset.tipo===BE_ARRASTRE.tipo && c.dataset.orden===BE_ARRASTRE.orden);
+      if(celda) celda.classList.add('celda-arrastrando');
+    }
+  } else if(td.dataset.fecha === BE_ARRASTRE.fechaOrigen && td.dataset.letra){
+    const fila = BE_ARRASTRE.tdOrigen.closest('tr');
+    const [lmin, lmax] = BE_ARRASTRE.letra <= td.dataset.letra ? [BE_ARRASTRE.letra, td.dataset.letra] : [td.dataset.letra, BE_ARRASTRE.letra];
+    [...fila.cells].forEach(c => {
+      if(!c.dataset || c.dataset.tipo!==BE_ARRASTRE.tipo || !c.dataset.letra) return;
+      if(c.dataset.letra >= lmin && c.dataset.letra <= lmax) c.classList.add('celda-arrastrando');
+    });
   }
   BE_ARRASTRE.ultimaTd = td;
 }
@@ -16553,14 +16598,74 @@ function _beArrastreMouseUp(){
   document.removeEventListener('mouseover', _beArrastreMouseOver);
   document.querySelectorAll('.celda-arrastrando').forEach(el=>el.classList.remove('celda-arrastrando'));
   if(!BE_ARRASTRE) return;
-  const fechaFin = BE_ARRASTRE.ultimaTd.dataset.fecha;
-  const [fechaDesde, fechaHasta] = fechaFin >= BE_ARRASTRE.fechaOrigen
-    ? [BE_ARRASTRE.fechaOrigen, fechaFin] : [fechaFin, BE_ARRASTRE.fechaOrigen];
-  const {tipo, orden, formula} = BE_ARRASTRE;
+  const {tipo, orden, letra, formula, fechaOrigen, tdOrigen, ultimaTd} = BE_ARRASTRE;
   BE_ARRASTRE = null;
-  if(fechaDesde === fechaHasta) return;  // no se movió de la celda de origen
-  BE_AJUSTE_PENDIENTE = {tipo, orden: Number(orden), fechaDesde, fechaHasta, formula};
-  _beAbrirModalAjuste(`${tipo==='entrada'?'Entrada':'Salida'} -- del ${fechaDesde} al ${fechaHasta}: se repite la fórmula "${formula}" en cada día`);
+  if(ultimaTd === tdOrigen) return;  // no se movió de la celda de origen
+
+  if(ultimaTd.dataset.orden === orden){
+    // Vertical -- comportamiento de siempre.
+    const fechaFin = ultimaTd.dataset.fecha;
+    const [fechaDesde, fechaHasta] = fechaFin >= fechaOrigen ? [fechaOrigen, fechaFin] : [fechaFin, fechaOrigen];
+    BE_AJUSTE_PENDIENTE = {tipo, orden: Number(orden), fechaDesde, fechaHasta, formula};
+    _beAbrirModalAjuste(`${tipo==='entrada'?'Entrada':'Salida'} -- del ${fechaDesde} al ${fechaHasta}: se repite la fórmula "${formula}" en cada día`);
+  } else if(ultimaTd.dataset.fecha === fechaOrigen){
+    // Horizontal -- NUEVO.
+    _beAplicarArrastreHorizontal(tipo, fechaOrigen, letra, formula, ultimaTd);
+  }
+}
+
+// ENTRADA/SALIDA/TELEMEDIDO/PERDIDA son totales de la estructura, NUNCA
+// una columna -- igual que en formula_ajuste.py (backend), nunca se corren
+// al arrastrar de costado.
+const _BE_PALABRAS_RESERVADAS_FORMULA = /^(ENTRADA|SALIDA|TELEMEDIDO|PERDIDA)$/i;
+
+// Corre las letras de columna de una fórmula según `offsetCol` posiciones
+// (A->B con offset 1, B->A con offset -1, etc.) -- mismo motor de
+// referencias que formula_ajuste.py (letra + offset de día opcional,
+// ej. "B-1"), pero acá se toca la LETRA, no el offset de día. Devuelve
+// null si alguna letra referenciada se saldría de las columnas que existen
+// hoy en la tabla (el llamador se encarga de avisar/omitir esa columna).
+function _beDesplazarFormulaColumnas(formula, offsetCol){
+  if(!offsetCol) return formula;
+  const letrasValidas = new Set(BE_COLUMNAS_ACTUALES.map(c => c.letra));
+  let fueraDeRango = false;
+  const resultado = formula.replace(/\b([A-Za-z]+)(\s*[+-]\s*\d+)?\b/g, (m, token, diaOffset) => {
+    if(_BE_PALABRAS_RESERVADAS_FORMULA.test(token)) return m;
+    if(token.length !== 1){ fueraDeRango = true; return m; }
+    const idx = token.toUpperCase().charCodeAt(0) - 65 + offsetCol;
+    const nuevaLetra = String.fromCharCode(65 + idx);
+    if(idx < 0 || idx > 25 || !letrasValidas.has(nuevaLetra)){ fueraDeRango = true; return m; }
+    return (token === token.toUpperCase() ? nuevaLetra : nuevaLetra.toLowerCase()) + (diaOffset || '');
+  });
+  return fueraDeRango ? null : resultado;
+}
+
+// Arrastre horizontal -- una fórmula POR columna de destino (todas del
+// mismo día/tipo que la celda de origen), con las letras ya corridas.
+// Las columnas donde la referencia se saldría de la tabla se omiten (con
+// aviso en el resumen del modal) en vez de guardar una fórmula rota.
+function _beAplicarArrastreHorizontal(tipo, fecha, letraOrigen, formulaOrigen, tdDestino){
+  const fila = tdDestino.closest('tr');
+  const [lmin, lmax] = letraOrigen <= tdDestino.dataset.letra ? [letraOrigen, tdDestino.dataset.letra] : [tdDestino.dataset.letra, letraOrigen];
+  const items = [];
+  let huboFueraDeRango = false;
+  [...fila.cells].forEach(c => {
+    if(!c.dataset || c.dataset.tipo!==tipo || !c.dataset.letra) return;
+    if(c.dataset.letra < lmin || c.dataset.letra > lmax || c.dataset.letra === letraOrigen) return;
+    const offset = c.dataset.letra.charCodeAt(0) - letraOrigen.charCodeAt(0);
+    const nueva = _beDesplazarFormulaColumnas(formulaOrigen, offset);
+    if(nueva == null){ huboFueraDeRango = true; return; }
+    items.push({orden: Number(c.dataset.orden), letra: c.dataset.letra, formula: nueva});
+  });
+  if(!items.length){
+    alert('La fórmula no se puede correr a ninguna de las columnas de destino -- alguna letra que usa se saldría de la tabla.');
+    return;
+  }
+  items.sort((a,b) => a.letra < b.letra ? -1 : 1);
+  BE_AJUSTE_LOTE_PENDIENTE = {tipo, fecha, items};
+  const resumen = items.map(it => `${it.letra}="${it.formula}"`).join(' · ');
+  _beAbrirModalAjuste(`${tipo==='entrada'?'Entrada':'Salida'} -- ${fecha}: se aplica a ${items.length} columna(s) -- ${resumen}`
+    + (huboFueraDeRango ? ' (alguna columna quedó afuera: su letra de referencia se saldría de la tabla).' : ''));
 }
 
 // Desplegable lateral del respaldo: cada punto con respaldo tiene su propio
