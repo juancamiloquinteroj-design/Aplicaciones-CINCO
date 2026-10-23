@@ -3894,6 +3894,9 @@ html,body{overflow-x:hidden;margin:0}
         <button type="button" class="be-modo-btn be-icon-btn" id="alim-nivel3-demanda-btn-sobreponer" onclick="alimNivel3DemandaCambiarModo('sobreponer')" title="Sobreponer años -- dibuja cada año como su propia línea Ene→Dic, superpuestas, para comparar la forma de la curva año contra año">🔁</button>
         <button type="button" class="be-modo-btn be-icon-btn" id="alim-nivel3-demanda-btn-barras-anio" onclick="alimNivel3DemandaCambiarModo('barras-anio')" title="Barras: el Mes elegido (arriba) contra el mismo mes del año anterior">📊</button>
         <button type="button" class="be-modo-btn be-icon-btn" id="alim-nivel3-demanda-btn-barras-zona" onclick="alimNivel3DemandaCambiarModo('barras-zona')" title="Barras: Entrada Zonal de cada Zona para el Mes elegido (arriba)">Z</button>
+        <!-- Solo visible dentro de "Z" -- pedido explícito ("que se
+             habilite uno nuevo para colocar líneas"). -->
+        <button type="button" class="be-modo-btn be-icon-btn hidden" id="alim-nivel3-demanda-btn-zona-lineas" onclick="alimNivel3DemandaToggleZonaLineas()" title="Ver la misma serie por Zona como líneas en vez de barras">📈</button>
         <button type="button" class="be-modo-btn be-icon-btn activo" id="alim-nivel3-demanda-btn-etiquetas" onclick="alimNivel3DemandaToggleEtiquetas()" title="Mostrar/ocultar el dato encima de cada punto/barra">🏷️</button>
       </span>
       <span id="alim-nivel3-var-relleno-wrap" style="display:inline-flex;gap:6px;margin-left:auto">
@@ -20808,18 +20811,29 @@ let ALIM_NIVEL3_DEMANDA_MES = null;
 // las gráficas". Controla el datalabel encima de cada punto/barra en
 // los 4 modos (linea, sobreponer, barras-anio, barras-zona).
 let ALIM_NIVEL3_DEMANDA_ETIQUETAS = true;
+// Solo aplica dentro de "Z" (barras-zona) -- pedido explícito ("que se
+// habilite uno nuevo para colocar líneas"): dibuja la misma serie por
+// Zona/período como líneas en vez de barras agrupadas.
+let ALIM_NIVEL3_DEMANDA_ZONA_LINEAS = false;
 
 function alimNivel3DemandaCambiarModo(modo){
   ALIM_NIVEL3_DEMANDA_MODO = (ALIM_NIVEL3_DEMANDA_MODO === modo) ? 'linea' : modo;
   document.getElementById('alim-nivel3-demanda-btn-sobreponer')?.classList.toggle('activo', ALIM_NIVEL3_DEMANDA_MODO==='sobreponer');
   document.getElementById('alim-nivel3-demanda-btn-barras-anio')?.classList.toggle('activo', ALIM_NIVEL3_DEMANDA_MODO==='barras-anio');
   document.getElementById('alim-nivel3-demanda-btn-barras-zona')?.classList.toggle('activo', ALIM_NIVEL3_DEMANDA_MODO==='barras-zona');
+  document.getElementById('alim-nivel3-demanda-btn-zona-lineas')?.classList.toggle('hidden', ALIM_NIVEL3_DEMANDA_MODO!=='barras-zona');
   alimNivel3RenderDemanda();
 }
 
 function alimNivel3DemandaToggleEtiquetas(){
   ALIM_NIVEL3_DEMANDA_ETIQUETAS = !ALIM_NIVEL3_DEMANDA_ETIQUETAS;
   document.getElementById('alim-nivel3-demanda-btn-etiquetas')?.classList.toggle('activo', ALIM_NIVEL3_DEMANDA_ETIQUETAS);
+  alimNivel3RenderDemanda();
+}
+
+function alimNivel3DemandaToggleZonaLineas(){
+  ALIM_NIVEL3_DEMANDA_ZONA_LINEAS = !ALIM_NIVEL3_DEMANDA_ZONA_LINEAS;
+  document.getElementById('alim-nivel3-demanda-btn-zona-lineas')?.classList.toggle('activo', ALIM_NIVEL3_DEMANDA_ZONA_LINEAS);
   alimNivel3RenderDemanda();
 }
 
@@ -20888,10 +20902,15 @@ function _alimNivel3DemandaPorZonaTodosLosAnios(claveActual){
     const c = ipiClave(f);
     if(Number(c.split('-')[1]) !== mesNum) continue;
     if(zonasSel.length && !zonasSel.includes(f.zona)) continue;
+    // Años "placeholder" sin dato real todavía traen entrada_zonal=0 en
+    // las 5 zonas (ej. 2020/2021 para electrohuila) -- se excluyen, si no
+    // aparecían como un período más en el eje X sin ninguna barra visible
+    // (pedido explícito: "porque aparece desde 2020?").
+    if(!f.entrada_zonal) continue;
     aniosSet.add(Number(c.split('-')[0]));
     if(!porZonaClave.has(f.zona)) porZonaClave.set(f.zona, new Map());
     const m = porZonaClave.get(f.zona);
-    m.set(c, (m.get(c) || 0) + (f.entrada_zonal || 0));
+    m.set(c, (m.get(c) || 0) + f.entrada_zonal);
   }
   return {anios: [...aniosSet].sort(), zonas: [...porZonaClave.keys()].sort(), porZonaClave};
 }
@@ -20958,7 +20977,9 @@ async function alimNivel3RenderDemanda(){
   document.getElementById('alim-nivel3-demanda-btn-barras-anio')?.classList.toggle('activo', modo==='barras-anio');
   document.getElementById('alim-nivel3-demanda-btn-barras-zona')?.classList.toggle('activo', modo==='barras-zona');
   document.getElementById('alim-nivel3-demanda-btn-etiquetas')?.classList.toggle('activo', ALIM_NIVEL3_DEMANDA_ETIQUETAS);
-  const esBarras = modo === 'barras-zona';
+  document.getElementById('alim-nivel3-demanda-btn-zona-lineas')?.classList.toggle('hidden', modo!=='barras-zona');
+  document.getElementById('alim-nivel3-demanda-btn-zona-lineas')?.classList.toggle('activo', ALIM_NIVEL3_DEMANDA_ZONA_LINEAS);
+  const esBarras = modo === 'barras-zona' && !ALIM_NIVEL3_DEMANDA_ZONA_LINEAS;
   let labels = [], datasets = [];
   if(modo === 'sobreponer'){
     const porAnio = new Map();
@@ -21024,23 +21045,32 @@ async function alimNivel3RenderDemanda(){
     // una barra por Zona DENTRO de cada grupo, pegadas entre sí (sin
     // separación) para poder comparar la evolución de cada zona mes a
     // mes/año a año -- pedido explícito, mismo estilo que un gráfico de
-    // barras agrupadas de referencia.
+    // barras agrupadas de referencia. Con "📈" activo (ALIM_NIVEL3_
+    // DEMANDA_ZONA_LINEAS), la misma serie se dibuja como líneas en vez
+    // de barras -- pedido explícito ("que se habilite uno nuevo para
+    // colocar líneas").
     const {anios, zonas, porZonaClave} = _alimNivel3DemandaPorZonaTodosLosAnios(claveActual);
     const mesNum = claveActual ? Number(claveActual.split('-')[1]) : null;
     labels = anios.map(a => labelMesLargo(`${a}-${String(mesNum).padStart(2,'0')}`));
     datasets = zonas.map(z => {
       const m = porZonaClave.get(z);
       const color = colorParaZona(z);
-      return {
-        type:'bar', label:`Zona ${z}`, yAxisID:'y',
-        data: anios.map(a => { const c = `${a}-${String(mesNum).padStart(2,'0')}`; return m.has(c) ? m.get(c) : null; }),
+      const data = anios.map(a => { const c = `${a}-${String(mesNum).padStart(2,'0')}`; return m.has(c) ? m.get(c) : null; });
+      const datalabels = {
+        display: ALIM_NIVEL3_DEMANDA_ETIQUETAS, anchor:'end', align:'top', offset: ALIM_NIVEL3_DEMANDA_ZONA_LINEAS ? 6 : 2,
+        formatter: v => v==null ? '' : Math.round(v).toLocaleString('es-CO')+' kWh',
+        font:{size:8.5, weight:'700'}, color,
+      };
+      return ALIM_NIVEL3_DEMANDA_ZONA_LINEAS ? {
+        type:'line', label:`Zona ${z}`, yAxisID:'y', data,
+        borderColor: color, backgroundColor:'transparent',
+        borderWidth:2, pointRadius:2, fill:false, tension:0, spanGaps:true,
+        datalabels,
+      } : {
+        type:'bar', label:`Zona ${z}`, yAxisID:'y', data,
         backgroundColor: color, borderWidth:0,
         barPercentage:1, categoryPercentage:0.85,
-        datalabels:{
-          display: ALIM_NIVEL3_DEMANDA_ETIQUETAS, anchor:'end', align:'top', offset:2,
-          formatter: v => v==null ? '' : Math.round(v).toLocaleString('es-CO')+' kWh',
-          font:{size:8.5, weight:'700'}, color,
-        },
+        datalabels,
       };
     });
   } else if(zonasSel.length <= 1){
@@ -21089,7 +21119,11 @@ async function alimNivel3RenderDemanda(){
       layout:{padding:{top:28, right:20}},
       interaction:{mode:'index', intersect:false},
       plugins:{
-        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:12}, color:tickC}},
+        // usePointStyle:false en modo barras -- el marcador circular por
+        // defecto de la app (ver Chart.defaults arriba) no toma bien el
+        // backgroundColor de un dataset tipo 'bar' y la leyenda salía sin
+        // color (pedido explícito: "la leyenda sale sin color").
+        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:12}, color:tickC, usePointStyle:!esBarras}},
         tooltip:{callbacks:{label:c=> c.raw==null ? null : `${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`}},
         ...(esBarras ? {} : {zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:3}}}}),
       },
