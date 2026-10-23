@@ -6433,6 +6433,7 @@ html,body{overflow-x:hidden;margin:0}
       <div id="beaj-rango-wrap" class="hidden" style="margin-top:8px">
         <label style="font-size:11px;color:var(--text3)">Repetir hasta (inclusive)</label>
         <input type="date" id="beaj-hasta">
+        <button type="button" class="be-editar-btn" style="width:auto;margin-left:6px;padding:4px 10px;font-size:11px" onclick="beAjusteHastaUltimoDia()" title="El último día que hoy tiene dato real en esta tabla -- cuando entren días nuevos, hay que repetir/arrastrar de nuevo para cubrirlos">Hasta el último día con dato</button>
       </div>
     </div>
     <div class="be-field" style="margin-top:12px">
@@ -16001,7 +16002,14 @@ function renderTablaDetalleBalance(datos, rangoDesde, rangoHasta){
       : comentarioAjuste
       ? `Ajuste manual (${formulaAjuste})${autorAjuste ? ' por ' + autorAjuste : ''}: ${comentarioAjuste} -- doble clic, borrar y Enter para quitarlo desde acá.`
       : (usoBack ? 'Este día se usó el medidor de respaldo -- el principal no reportó.' : '');
-    const manija = formulaAjuste ? '<div class="be-fill-handle" title="Arrastrar hacia abajo: repite esta fórmula en otros días. Arrastrar al costado: la aplica a otras columnas, corriendo las letras (A→B→C...) como en Excel."></div>' : '';
+    // El tirador vive en TODA celda editable, tenga o no un ajuste
+    // guardado todavía -- pedido explícito ("cómo arrastro ese campo
+    // ahí??"): antes solo aparecía si ya había una fórmula escrita a
+    // mano, así que no había forma de arrancar un ajuste nuevo
+    // arrastrando. Si la celda no tiene fórmula, _beIniciarArrastre usa
+    // "=letra" (el dato crudo de esa columna ese día) como punto de
+    // partida.
+    const manija = editable ? '<div class="be-fill-handle" title="Arrastrar hacia abajo: repite esta fórmula en otros días. Arrastrar al costado: la aplica a otras columnas, corriendo las letras (A→B→C...) como en Excel."></div>' : '';
     let td = `<td class="num pto be-col-detalle${claseGrupo}${usoBack?' usoback':''}${claseAjustado}"${editable} data-tipo="${col.tipo}" data-resta="${col.resta?1:0}" data-orden="${col.orden}" data-fecha="${fechas[i]}" data-letra="${col._letra}" data-formula="${formulaAjuste ? _mselEsc(formulaAjuste) : ''}"${titulo?` title="${_mselEsc(titulo)}"`:''}>${f2(col.valores[i])}${manija}</td>`;
     if(_bePuntoTieneBack(col)){
       const dif = col.dif ? col.dif[i] : null;
@@ -16361,7 +16369,10 @@ document.addEventListener('keydown', (ev)=>{
   const tecla = ev.key.toLowerCase();
   if(tecla === 'c'){
     ev.preventDefault();
-    BE_CLIPBOARD_FORMULA = BE_CELDA_SELECCIONADA.dataset.formula || null;
+    // Mismo fallback que _beIniciarArrastre -- copiar una celda SIN
+    // fórmula todavía copia "=letra" (su dato crudo), no queda sin hacer
+    // nada.
+    BE_CLIPBOARD_FORMULA = BE_CELDA_SELECCIONADA.dataset.formula || (BE_CELDA_SELECCIONADA.dataset.letra ? `=${BE_CELDA_SELECCIONADA.dataset.letra}` : null);
     BE_CLIPBOARD_LETRA = BE_CELDA_SELECCIONADA.dataset.letra || null;
   }else if(tecla === 'v'){
     if(!BE_CLIPBOARD_FORMULA) return;
@@ -16499,6 +16510,21 @@ function beToggleRangoAjuste(){
   if(!document.getElementById('beaj-rango-wrap').classList.contains('hidden')) hastaInput.focus();
 }
 
+// "Hasta que se haga otro cambio sobre esa columna" (pedido explícito) --
+// el backend precalcula un valor POR DÍA a partir del dato crudo del
+// medidor, así que no puede aplicar un ajuste a días futuros sin lectura
+// todavía (fallaría apenas llegue a uno). Lo más cercano que SÍ puede
+// hacer: repetir hasta el último día que esta tabla tiene cargado ahora
+// mismo (BE_TABLA_DATOS.fechas, el mismo dato crudo que ya se ve en
+// pantalla) -- cuando entren días nuevos, hay que repetir/arrastrar de
+// nuevo para cubrirlos, pero es automático y cubre todo lo disponible
+// hoy de una sola vez.
+function beAjusteHastaUltimoDia(){
+  const fechas = (BE_TABLA_DATOS && BE_TABLA_DATOS.fechas) || [];
+  if(!fechas.length) return;
+  document.getElementById('beaj-hasta').value = fechas[fechas.length - 1];
+}
+
 function beCancelarAjuste(){
   BE_AJUSTE_PENDIENTE = null;
   BE_AJUSTE_LOTE_PENDIENTE = null;
@@ -16563,10 +16589,14 @@ async function beConfirmarAjuste(){
 function _beIniciarArrastre(ev){
   ev.preventDefault();
   const td = ev.target.closest('td.pto');
-  if(!td || !td.dataset.formula) return;
+  if(!td || !td.dataset.letra) return;
+  // Sin fórmula guardada todavía -- arranca de "=letra" (el dato crudo de
+  // esta columna, este día), para poder iniciar un ajuste nuevo
+  // arrastrando en vez de tener que escribirlo a mano primero.
+  const formula = td.dataset.formula || `=${td.dataset.letra}`;
   BE_ARRASTRE = {
     tipo: td.dataset.tipo, orden: td.dataset.orden, letra: td.dataset.letra, fechaOrigen: td.dataset.fecha,
-    formula: td.dataset.formula, tdOrigen: td, ultimaTd: td, eje: null,
+    formula, tdOrigen: td, ultimaTd: td, eje: null,
   };
   document.addEventListener('mouseover', _beArrastreMouseOver);
   document.addEventListener('mouseup', _beArrastreMouseUp, {once:true});
