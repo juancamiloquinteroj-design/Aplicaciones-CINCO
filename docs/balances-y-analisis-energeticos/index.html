@@ -16175,6 +16175,7 @@ function _beLetraColumna(indice){
 // sobre la celda seleccionada en ese momento (puede ser otra fila/columna).
 let BE_CELDA_SELECCIONADA = null;
 let BE_CLIPBOARD_FORMULA = null;
+let BE_CLIPBOARD_LETRA = null;   // letra de la celda copiada -- para correr las letras de la fórmula al pegar en OTRA columna, mismo criterio que el arrastre horizontal (pedido explícito: "todo como desplazar las celdas y demás")
 let BE_PRECEDENTE_ACTUAL = null;  // {fecha, tipo} -- ver beResaltarPrecedentes
 
 // "Que funcione como Excel que me marque la celda de cual depende" --
@@ -16361,15 +16362,25 @@ document.addEventListener('keydown', (ev)=>{
   if(tecla === 'c'){
     ev.preventDefault();
     BE_CLIPBOARD_FORMULA = BE_CELDA_SELECCIONADA.dataset.formula || null;
+    BE_CLIPBOARD_LETRA = BE_CELDA_SELECCIONADA.dataset.letra || null;
   }else if(tecla === 'v'){
     if(!BE_CLIPBOARD_FORMULA) return;
     ev.preventDefault();
     const td = BE_CELDA_SELECCIONADA;
+    // Misma lógica que el arrastre horizontal -- si se pega en OTRA
+    // columna, las letras de la fórmula se corren según cuánto cambió la
+    // letra (A->B, B->C...), no solo se copia el texto tal cual.
+    const offsetCol = (BE_CLIPBOARD_LETRA && td.dataset.letra) ? (td.dataset.letra.charCodeAt(0) - BE_CLIPBOARD_LETRA.charCodeAt(0)) : 0;
+    const formula = offsetCol ? _beDesplazarFormulaColumnas(BE_CLIPBOARD_FORMULA, offsetCol) : BE_CLIPBOARD_FORMULA;
+    if(formula == null){
+      alert('La fórmula copiada no se puede pegar acá -- alguna letra que usa se saldría de la tabla.');
+      return;
+    }
     BE_AJUSTE_PENDIENTE = {
       tipo: td.dataset.tipo, orden: Number(td.dataset.orden),
-      fechaDesde: td.dataset.fecha, fechaHasta: td.dataset.fecha, formula: BE_CLIPBOARD_FORMULA,
+      fechaDesde: td.dataset.fecha, fechaHasta: td.dataset.fecha, formula,
     };
-    _beAbrirModalAjuste(`${td.dataset.tipo==='entrada'?'Entrada':'Salida'} -- ${td.dataset.fecha}: pegar ajuste "${BE_CLIPBOARD_FORMULA}"`);
+    _beAbrirModalAjuste(`${td.dataset.tipo==='entrada'?'Entrada':'Salida'} -- ${td.dataset.fecha}: pegar ajuste "${formula}"`);
   }
 });
 
