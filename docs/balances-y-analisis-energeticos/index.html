@@ -3894,6 +3894,7 @@ html,body{overflow-x:hidden;margin:0}
         <button type="button" class="be-modo-btn be-icon-btn" id="alim-nivel3-demanda-btn-sobreponer" onclick="alimNivel3DemandaCambiarModo('sobreponer')" title="Sobreponer años -- dibuja cada año como su propia línea Ene→Dic, superpuestas, para comparar la forma de la curva año contra año">🔁</button>
         <button type="button" class="be-modo-btn be-icon-btn" id="alim-nivel3-demanda-btn-barras-anio" onclick="alimNivel3DemandaCambiarModo('barras-anio')" title="Barras: el Mes elegido (arriba) contra el mismo mes del año anterior">📊</button>
         <button type="button" class="be-modo-btn be-icon-btn" id="alim-nivel3-demanda-btn-barras-zona" onclick="alimNivel3DemandaCambiarModo('barras-zona')" title="Barras: Entrada Zonal de cada Zona para el Mes elegido (arriba)">Z</button>
+        <button type="button" class="be-modo-btn be-icon-btn activo" id="alim-nivel3-demanda-btn-etiquetas" onclick="alimNivel3DemandaToggleEtiquetas()" title="Mostrar/ocultar el dato encima de cada punto/barra">🏷️</button>
       </span>
       <span id="alim-nivel3-var-relleno-wrap" style="display:inline-flex;gap:6px;margin-left:auto">
         <button type="button" class="be-modo-btn be-icon-btn" id="alim-nivel3-btn-var" onclick="alimNivel3ToggleVariacion()" title="Variación">Δ</button>
@@ -20802,12 +20803,22 @@ let chAlimNivel3Demanda = null;
 // gráfica activa" -- arranca en "Sobreponer años".
 let ALIM_NIVEL3_DEMANDA_MODO = 'sobreponer';
 let ALIM_NIVEL3_DEMANDA_MES = null;
+// Pedido explícito: "debe haber un botón para habilitar y deshabilitar
+// la etiqueta" -- controla el datalabel encima de cada punto/barra en
+// los modos que lo traen (barras-anio, barras-zona).
+let ALIM_NIVEL3_DEMANDA_ETIQUETAS = true;
 
 function alimNivel3DemandaCambiarModo(modo){
   ALIM_NIVEL3_DEMANDA_MODO = (ALIM_NIVEL3_DEMANDA_MODO === modo) ? 'linea' : modo;
   document.getElementById('alim-nivel3-demanda-btn-sobreponer')?.classList.toggle('activo', ALIM_NIVEL3_DEMANDA_MODO==='sobreponer');
   document.getElementById('alim-nivel3-demanda-btn-barras-anio')?.classList.toggle('activo', ALIM_NIVEL3_DEMANDA_MODO==='barras-anio');
   document.getElementById('alim-nivel3-demanda-btn-barras-zona')?.classList.toggle('activo', ALIM_NIVEL3_DEMANDA_MODO==='barras-zona');
+  alimNivel3RenderDemanda();
+}
+
+function alimNivel3DemandaToggleEtiquetas(){
+  ALIM_NIVEL3_DEMANDA_ETIQUETAS = !ALIM_NIVEL3_DEMANDA_ETIQUETAS;
+  document.getElementById('alim-nivel3-demanda-btn-etiquetas')?.classList.toggle('activo', ALIM_NIVEL3_DEMANDA_ETIQUETAS);
   alimNivel3RenderDemanda();
 }
 
@@ -20935,6 +20946,7 @@ async function alimNivel3RenderDemanda(){
   document.getElementById('alim-nivel3-demanda-btn-sobreponer')?.classList.toggle('activo', modo==='sobreponer');
   document.getElementById('alim-nivel3-demanda-btn-barras-anio')?.classList.toggle('activo', modo==='barras-anio');
   document.getElementById('alim-nivel3-demanda-btn-barras-zona')?.classList.toggle('activo', modo==='barras-zona');
+  document.getElementById('alim-nivel3-demanda-btn-etiquetas')?.classList.toggle('activo', ALIM_NIVEL3_DEMANDA_ETIQUETAS);
   const esBarras = modo === 'barras-zona';
   let labels = [], datasets = [];
   if(modo === 'sobreponer'){
@@ -20967,12 +20979,18 @@ async function alimNivel3RenderDemanda(){
         borderColor: IPI_COLOR_ENTRADA, backgroundColor:'rgba(0,176,80,.20)',
         borderWidth:2, pointRadius:3, fill:'origin', tension:0, spanGaps:true,
         datalabels:{
-          display:true, anchor:'end', align:'top', offset:10,
+          display: ALIM_NIVEL3_DEMANDA_ETIQUETAS, anchor:'end', align:'top', offset:10,
+          // SIEMPRE un array de 2 líneas (la 2da vacía si no hay año
+          // anterior) -- el `font` de abajo también es un array [línea1,
+          // línea2]; devolver a veces un string plano y a veces un array
+          // hacía que esa línea 1 saliera con tamaños distintos según el
+          // punto (pedido explícito: "porque no todas tienen el mismo
+          // tamaño de letra?").
           formatter:(v, ctx)=>{
             if(v==null) return '';
             const base = Math.round(v).toLocaleString('es-CO')+' kWh';
             const anteriorV = ctx.dataIndex>0 ? puntos[ctx.dataIndex-1].valor : null;
-            if(anteriorV==null) return base;
+            if(anteriorV==null) return [base, ''];
             const delta = v - anteriorV;
             const deltaPct = anteriorV ? delta/anteriorV*100 : 0;
             return [base, `${delta>=0?'▲':'▼'} ${Math.abs(deltaPct).toFixed(1)}%`];
@@ -20987,7 +21005,7 @@ async function alimNivel3RenderDemanda(){
     datasets = [{type:'bar', label: claveActual ? labelMesLargo(claveActual) : '', data: porZona.map(([,v]) => v), yAxisID:'y',
       backgroundColor: porZona.map(([z]) => colorParaZona(z)), borderWidth:0,
       datalabels:{
-        display:true, anchor:'end', align:'top', offset:4,
+        display: ALIM_NIVEL3_DEMANDA_ETIQUETAS, anchor:'end', align:'top', offset:4,
         formatter: v => v==null ? '' : Math.round(v).toLocaleString('es-CO')+' kWh',
         font:{size:10, weight:'700'}, color: tickC,
       }}];
