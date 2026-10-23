@@ -6456,6 +6456,70 @@ html,body{overflow-x:hidden;margin:0}
   </div>
 </div>
 
+<!-- ---------------- BALANCE DIARIO · CAMBIAR MEDIDOR DESDE UNA FECHA ----------------
+     Pedido explícito ("lo que yo quiero evitar es [abrir Editar Estructura]
+     y que se pueda desde la tabla"): mismo endpoint atómico que ya usa
+     "✎ Editar -- Nueva vigencia" (POST /medidores/vigencia), pero sin salir
+     de Ver Balance -- se abre al clickear un medidor en modo "mover"
+     (ver beResaltarPrecedentes/beMoverMedidor). -->
+<div id="modal-be-mover" class="tm-modal-overlay hidden" onclick="if(event.target===this) beMoverCancelar()">
+  <div class="tm-modal">
+    <div class="tm-modal-title">Cambiar medidor</div>
+    <div class="tm-modal-sub" id="bemov-resumen"></div>
+    <div class="be-punto-vig-form abierto" style="margin-top:12px;padding:0;background:transparent">
+      <div class="fila">
+        <div class="be-buscador">
+          <input type="text" class="bemov-usuario" placeholder="Buscar nuevo medidor principal..." autocomplete="off"
+            oninput="beBuscarMedidor(this)" onfocus="beBuscarMedidor(this)"
+            onkeydown="beBuscadorTecla(event,this)" onblur="beBuscadorCerrarDiferido(this)">
+          <div class="be-buscador-lista hidden"></div>
+        </div>
+        <select class="bemov-fuente" disabled title="Principal o Respaldo -- se completa solo al elegir el medidor del buscador"></select>
+        <select class="bemov-canal">
+          <optgroup label="Importación">
+            <option value="canal1">Canal 1 (kWhD)</option>
+            <option value="canal2">Canal 2 (kVarhD)</option>
+          </optgroup>
+          <optgroup label="Exportación">
+            <option value="canal3">Canal 3 (kWhR)</option>
+            <option value="canal4">Canal 4 (kVarhR)</option>
+          </optgroup>
+        </select>
+        <span></span>
+      </div>
+      <div class="fila">
+        <div class="be-buscador">
+          <input type="text" class="bemov-usuario-back" placeholder="Respaldo (opcional)..." autocomplete="off"
+            oninput="beBuscarMedidor(this)" onfocus="beBuscarMedidor(this)"
+            onkeydown="beBuscadorTecla(event,this)" onblur="beBuscadorCerrarDiferido(this)">
+          <div class="be-buscador-lista hidden"></div>
+        </div>
+        <select class="bemov-fuente-back" disabled title="Principal o Respaldo -- se completa solo al elegir el medidor del buscador"></select>
+        <select class="bemov-canal-back">
+          <optgroup label="Importación">
+            <option value="canal1">Canal 1 (kWhD)</option>
+            <option value="canal2">Canal 2 (kVarhD)</option>
+          </optgroup>
+          <optgroup label="Exportación">
+            <option value="canal3">Canal 3 (kWhR)</option>
+            <option value="canal4">Canal 4 (kVarhR)</option>
+          </optgroup>
+        </select>
+        <span></span>
+      </div>
+    </div>
+    <div class="be-field" style="margin-top:10px">
+      <label>Vigente desde (inclusive -- los días anteriores no se tocan)</label>
+      <input type="date" id="bemov-desde">
+    </div>
+    <div id="bemov-msg" class="tm-modal-msg"></div>
+    <div class="tm-modal-botones">
+      <button class="btn-theme" style="width:auto;padding:8px 16px;background:transparent;color:var(--text2);border:1px solid var(--border)" onclick="beMoverCancelar()">Cancelar</button>
+      <button class="btn-theme" style="width:auto;padding:8px 16px" onclick="beMoverGuardar()">Guardar</button>
+    </div>
+  </div>
+</div>
+
 <!-- ---------------- BALANCE DIARIO · QUITAR AJUSTE (rango acotado) ---------------- -->
 <div id="modal-be-borrar-ajuste" class="tm-modal-overlay hidden" onclick="if(event.target===this) beCancelarBorrarAjuste()">
   <div class="tm-modal">
@@ -16301,10 +16365,13 @@ function _beEsClickDeMover(td){
   return !!td.dataset.tipo;
 }
 
-async function beMoverMedidor(td){
+let BE_MOVER_PENDIENTE = null;  // {tipo, orden} -- celda de origen del cambio de medidor
+
+function beMoverMedidor(td){
   if(!requiereEditor()) return;
   const tipo = td.dataset.tipo, orden = Number(td.dataset.orden);
   const fecha = BE_PRECEDENTE_ACTUAL.fecha;
+  const col = BE_TABLA_COLUMNAS_POR_CLAVE[`${tipo}-${orden}`];
   document.querySelectorAll('.be-precedente,.be-precedente-origen').forEach(c => c.classList.remove('be-precedente','be-precedente-origen'));
   if(BE_PRECEDENTE_CELDA && BE_PRECEDENTE_CELDA.dataset.valorOriginal != null){
     BE_PRECEDENTE_CELDA.innerHTML = BE_PRECEDENTE_CELDA.dataset.valorOriginal;
@@ -16313,14 +16380,67 @@ async function beMoverMedidor(td){
   BE_PRECEDENTE_ACTUAL = null;
   BE_PRECEDENTE_CELDA = null;
 
-  await abrirModalEditarEstructura(BE_ACTIVA_ID);
-  const punto = document.querySelector(`#modal-be-editar .be-punto[data-tipo="${tipo}"][data-orden="${orden}"]`);
-  if(!punto) return;
-  const btnNuevaVigencia = punto.querySelector('.be-punto-acciones button[onclick*="beedMostrarVigenciaForm"]');
-  if(btnNuevaVigencia) btnNuevaVigencia.click();
-  const desdeInput = punto.querySelector('.beed-vig-desde');
-  if(desdeInput) desdeInput.value = fecha;
-  punto.scrollIntoView({behavior:'smooth', block:'center'});
+  BE_MOVER_PENDIENTE = {tipo, orden};
+  const etiquetaActual = col ? (col.formula ? `🧮 ${col.usuario_id}` : `${col.usuario_id} · ${BE_NOMBRES_CANAL_CORTO[col.canal]||col.canal}`) : 'este punto';
+  document.getElementById('bemov-resumen').textContent =
+    `${tipo==='entrada'?'Entrada':'Salida'} -- hoy es "${etiquetaActual}". Elegí el medidor nuevo y desde cuándo aplica (los días anteriores no se tocan).`;
+  const cont = document.getElementById('modal-be-mover');
+  ['bemov-usuario','bemov-usuario-back'].forEach(cls=>{
+    const input = cont.querySelector(`.${cls}`);
+    input.value = ''; delete input.dataset.customerId; delete input.dataset.formula;
+  });
+  const fuente = cont.querySelector('.bemov-fuente'); fuente.innerHTML=''; fuente.disabled=true;
+  const fuenteBack = cont.querySelector('.bemov-fuente-back'); fuenteBack.innerHTML=''; fuenteBack.disabled=true;
+  cont.querySelector('.bemov-canal').value = tipo==='salida' ? 'canal3' : 'canal1';
+  cont.querySelector('.bemov-canal-back').value = tipo==='salida' ? 'canal3' : 'canal1';
+  document.getElementById('bemov-desde').value = fecha;
+  document.getElementById('bemov-msg').className = 'tm-modal-msg';
+  document.getElementById('bemov-msg').textContent = '';
+  cont.classList.remove('hidden');
+}
+
+function beMoverCancelar(){
+  BE_MOVER_PENDIENTE = null;
+  document.getElementById('modal-be-mover').classList.add('hidden');
+}
+
+// Mismo endpoint atómico que ya usa "✎ Editar -- Nueva vigencia"
+// (beedGuardarVigencia) -- 1 sola llamada, sin salir de la tabla (pedido
+// explícito: "lo que yo quiero evitar es [abrir Editar Estructura] y que
+// se pueda desde la tabla").
+async function beMoverGuardar(){
+  if(!requiereEditor() || !BE_MOVER_PENDIENTE) return;
+  const {tipo, orden} = BE_MOVER_PENDIENTE;
+  const msg = document.getElementById('bemov-msg');
+  const cont = document.getElementById('modal-be-mover');
+  const principal = _beLeerMedidor(cont.querySelector('.bemov-usuario'));
+  const desde = document.getElementById('bemov-desde').value;
+  if(!principal){ msg.className='tm-modal-msg err'; msg.textContent='Elige el nuevo medidor principal del buscador.'; return; }
+  if(!desde){ msg.className='tm-modal-msg err'; msg.textContent='Poné la fecha desde la que aplica.'; return; }
+  const canal = cont.querySelector('.bemov-canal').value;
+  const backInput = cont.querySelector('.bemov-usuario-back');
+  let usuario_id_back = null, canal_back = null;
+  if(backInput.value.trim()){
+    const back = _beLeerMedidor(backInput);
+    if(!back){ msg.className='tm-modal-msg err'; msg.textContent='El respaldo escrito no coincide con ningún medidor real.'; return; }
+    usuario_id_back = back.usuario_id;
+    canal_back = cont.querySelector('.bemov-canal-back').value;
+  }
+  try{
+    await apiPost(`/api/balances-estructura/${BE_ACTIVA_ID}/medidores/vigencia`, {
+      tipo, orden, usuario_id: principal.usuario_id, canal: principal.formula ? 'canal1' : canal,
+      usuario_id_back: principal.formula ? null : usuario_id_back, canal_back: principal.formula ? null : canal_back,
+      vigente_desde: desde, formula: principal.formula || null,
+    });
+  }catch(e){
+    msg.className = 'tm-modal-msg err';
+    msg.textContent = e.message || 'No se pudo guardar el cambio de medidor.';
+    return;
+  }
+  BE_MOVER_PENDIENTE = null;
+  document.getElementById('modal-be-mover').classList.add('hidden');
+  await cargarListaEstructuras();
+  await verBalanceEstructura(BE_ACTIVA_ID);
 }
 
 function _beInicializarEdicionTabla(){
