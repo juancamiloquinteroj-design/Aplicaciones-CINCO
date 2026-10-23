@@ -16267,64 +16267,52 @@ function beResaltarPrecedentes(ev, fecha, tipo){
 // "Que yo seleccione la celda y pueda cambiar fácilmente la formulación...
 // que se puedan cambiar solo moviendo la selección de las celdas" -- pedido
 // explícito: con el modo "mover" activo (click en Entrada o Salida de una
-// fila, ver beResaltarPrecedentes), clickear un medidor del OTRO lado en
-// ESA MISMA fila lo mueve al lado activo, desde la fecha de esa fila hacia
-// adelante -- "no debe afectar meses pasados, porque prácticamente es como
-// cambiar la vigencia del medidor" (confirmado explícitamente). 2 llamadas
-// al backend: cerrar la vigencia vieja (sin reemplazo, nuevo endpoint) +
-// abrir el punto en el lado nuevo (agregar_punto, que ya existía).
-// Chequeo SÍNCRONO (nada de red/confirm todavía) -- decide si este click
-// hay que interceptarlo como "mover medidor" ANTES de dejar que el listener
-// de abajo siga con la selección normal de celda. beMoverMedidor (abajo) es
-// async -- no se puede usar su resultado directo acá, por eso el chequeo
-// de condiciones vive aparte.
+// fila, ver beResaltarPrecedentes), clickear un medidor de ESA MISMA fila
+// (del mismo lado o del otro -- ej. "que ya no sea A+C sino A+E desde esa
+// fecha en adelante") salta directo al formulario "Nueva vigencia" de ese
+// punto en "✎ Editar Estructura", con la fecha de esa fila ya puesta. El
+// usuario elige ahí el medidor/canal nuevo y lo guarda con el flujo de
+// siempre -- 1 sola llamada atómica a /medidores/vigencia, "no debe
+// afectar meses pasados, porque prácticamente es como cambiar la
+// vigencia del medidor" (confirmado explícitamente).
+//
+// Rediseño 2026-10-23: la versión anterior hacía 2 llamadas (cerrar +
+// agregar_punto) para MOVER un medidor entre Entrada/Salida -- eso causó
+// una incidencia real en producción (estructura 159, 2026-10-15): si la
+// 2a llamada fallaba, la vigencia vieja ya quedaba cerrada sin reemplazo
+// y la columna caía a cero. En vez de reintentar ese camino con otro
+// endpoint nuevo, esto reusa el formulario de vigencia YA probado del
+// modal "✎ Editar" (beedGuardarVigencia, mismo endpoint atómico
+// /medidores/vigencia que ya usa ese modal en producción) -- sin escribir
+// ninguna ruta de escritura de datos nueva.
 function _beEsClickDeMover(td){
-  // DESACTIVADO (2026-10-15): el flujo cerrar+agregar_punto causó una
-  // incidencia real en producción (estructura 159) -- la 2a llamada no
-  // garantiza éxito y deja la vigencia vieja cerrada sin reemplazo, columna
-  // en cero. Queda inerte hasta rediseñar para reasignar el orden existente
-  // en el mismo tipo, en vez de crear un punto nuevo. Usar "✎ Editar" mientras tanto.
-  return false;
-  // eslint-disable-next-line no-unreachable
   if(!BE_PRECEDENTE_ACTUAL) return false;
-  const tipoNuevo = BE_PRECEDENTE_ACTUAL.tipo;
-  if(tipoNuevo !== 'entrada' && tipoNuevo !== 'salida') return false;  // Pérdida/Pérdida% no son "un lado" -- no aplica
-  if(td.dataset.fecha !== BE_PRECEDENTE_ACTUAL.fecha) return false;    // solo dentro de la fila en modo mover
-  return td.dataset.tipo && td.dataset.tipo !== tipoNuevo;  // ya está de ese lado -- no hay nada que mover
+  const tipoActivo = BE_PRECEDENTE_ACTUAL.tipo;
+  if(tipoActivo !== 'entrada' && tipoActivo !== 'salida') return false;  // Pérdida/Pérdida% no son "un lado" -- no aplica
+  if(td.dataset.fecha !== BE_PRECEDENTE_ACTUAL.fecha) return false;      // solo dentro de la fila en modo mover
+  return !!td.dataset.tipo;
 }
 
 async function beMoverMedidor(td){
   if(!requiereEditor()) return;
-  const tipoNuevo = BE_PRECEDENTE_ACTUAL.tipo;
-  const tipoViejo = td.dataset.tipo;
+  const tipo = td.dataset.tipo, orden = Number(td.dataset.orden);
   const fecha = BE_PRECEDENTE_ACTUAL.fecha;
-  const ordenViejo = Number(td.dataset.orden);
-  const col = BE_TABLA_COLUMNAS_POR_CLAVE[`${tipoViejo}-${ordenViejo}`];
-  if(!col){ alert('No se encontró la información de ese medidor.'); return; }
-  const etiqueta = col.formula ? `🧮 ${col.usuario_id}` : `${col.usuario_id} · ${BE_NOMBRES_CANAL_CORTO[col.canal]||col.canal}`;
-  const nombreViejo = tipoViejo === 'entrada' ? 'Entrada' : 'Salida';
-  const nombreNuevo = tipoNuevo === 'entrada' ? 'Entrada' : 'Salida';
-  if(!confirm(`¿Mover "${etiqueta}" de ${nombreViejo} a ${nombreNuevo} a partir del ${_beFechaFmt(fecha)}?\n\nLos días/meses ANTERIORES a esa fecha no se tocan -- siguen contando del lado de ${nombreViejo} como hasta ahora.`)){
-    return;
-  }
-  try{
-    await apiPost(`/api/balances-estructura/${BE_ACTIVA_ID}/medidores/cerrar`, {tipo: tipoViejo, orden: ordenViejo, vigente_desde: fecha});
-    await apiPost(`/api/balances-estructura/${BE_ACTIVA_ID}/medidores`, {
-      tipo: tipoNuevo,
-      medidor: {
-        usuario_id: col.usuario_id, canal: col.canal,
-        usuario_id_back: col.usuario_id_back, canal_back: col.canal_back,
-        vigente_desde: fecha, es_cliente: col.es_cliente, resta: col.resta, formula: col.formula,
-      },
-    });
-  }catch(e){
-    alert(e.message || 'No se pudo mover el medidor.');
-    return;
+  document.querySelectorAll('.be-precedente,.be-precedente-origen').forEach(c => c.classList.remove('be-precedente','be-precedente-origen'));
+  if(BE_PRECEDENTE_CELDA && BE_PRECEDENTE_CELDA.dataset.valorOriginal != null){
+    BE_PRECEDENTE_CELDA.innerHTML = BE_PRECEDENTE_CELDA.dataset.valorOriginal;
+    delete BE_PRECEDENTE_CELDA.dataset.valorOriginal;
   }
   BE_PRECEDENTE_ACTUAL = null;
   BE_PRECEDENTE_CELDA = null;
-  await cargarTablaBalance();
-  await cargarListaEstructuras();
+
+  await abrirModalEditarEstructura(BE_ACTIVA_ID);
+  const punto = document.querySelector(`#modal-be-editar .be-punto[data-tipo="${tipo}"][data-orden="${orden}"]`);
+  if(!punto) return;
+  const btnNuevaVigencia = punto.querySelector('.be-punto-acciones button[onclick*="beedMostrarVigenciaForm"]');
+  if(btnNuevaVigencia) btnNuevaVigencia.click();
+  const desdeInput = punto.querySelector('.beed-vig-desde');
+  if(desdeInput) desdeInput.value = fecha;
+  punto.scrollIntoView({behavior:'smooth', block:'center'});
 }
 
 function _beInicializarEdicionTabla(){
