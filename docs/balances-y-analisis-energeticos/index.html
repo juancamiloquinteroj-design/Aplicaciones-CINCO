@@ -20804,8 +20804,9 @@ let chAlimNivel3Demanda = null;
 let ALIM_NIVEL3_DEMANDA_MODO = 'sobreponer';
 let ALIM_NIVEL3_DEMANDA_MES = null;
 // Pedido explícito: "debe haber un botón para habilitar y deshabilitar
-// la etiqueta" -- controla el datalabel encima de cada punto/barra en
-// los modos que lo traen (barras-anio, barras-zona).
+// la etiqueta" -- "el botón de etiquetas debería funcionar para todas
+// las gráficas". Controla el datalabel encima de cada punto/barra en
+// los 4 modos (linea, sobreponer, barras-anio, barras-zona).
 let ALIM_NIVEL3_DEMANDA_ETIQUETAS = true;
 
 function alimNivel3DemandaCambiarModo(modo){
@@ -20958,11 +20959,19 @@ async function alimNivel3RenderDemanda(){
     }
     const anios = [...porAnio.keys()].sort();
     labels = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
-    datasets = anios.map((a,i) => ({
-      type:'line', label:String(a), data: porAnio.get(a), yAxisID:'y',
-      borderColor: acColorCiclo(i, anios.length), backgroundColor:'transparent',
-      borderWidth:2.5, pointRadius:2, fill:false, tension:0, spanGaps:true,
-    }));
+    datasets = anios.map((a,i) => {
+      const color = acColorCiclo(i, anios.length);
+      return {
+        type:'line', label:String(a), data: porAnio.get(a), yAxisID:'y',
+        borderColor: color, backgroundColor:'transparent',
+        borderWidth:2.5, pointRadius:2, fill:false, tension:0, spanGaps:true,
+        datalabels:{
+          display: ALIM_NIVEL3_DEMANDA_ETIQUETAS, anchor:'end', align:'top', offset:4,
+          formatter: v => v==null ? '' : Math.round(v).toLocaleString('es-CO')+' kWh',
+          font:{size:9, weight:'700'}, color,
+        },
+      };
+    });
   } else if(modo === 'barras-anio'){
     // Pedido explícito ("podría mostrar más años hacia atrás" + "esa
     // gráfica no me gusta mejor que sea una de líneas con variación y
@@ -21019,6 +21028,11 @@ async function alimNivel3RenderDemanda(){
       type:'line', label:'Entrada a Distribución', data: visibles.map(f=>f.entradaZonal), yAxisID:'y',
       borderColor: IPI_COLOR_ENTRADA, backgroundColor:'rgba(0,176,80,.20)',
       borderWidth:2, pointRadius:1.5, fill:'origin', tension:0, spanGaps:true,
+      datalabels:{
+        display: ALIM_NIVEL3_DEMANDA_ETIQUETAS, anchor:'end', align:'top', offset:6,
+        formatter: v => v==null ? '' : Math.round(v).toLocaleString('es-CO')+' kWh',
+        font:{size:9, weight:'700'}, color: IPI_COLOR_ENTRADA,
+      },
     }];
   } else {
     // 2+ zonas elegidas -- una línea POR zona elegida (pedido explícito),
@@ -21028,10 +21042,16 @@ async function alimNivel3RenderDemanda(){
     labels = clavesVisibles.map(labelMes);
     datasets = zonas.map(z => {
       const m = porZonaClave.get(z) || new Map();
+      const color = colorParaZona(z);
       return {
         type:'line', label:`Zona ${z}`, data: clavesVisibles.map(c => m.has(c) ? m.get(c) : null), yAxisID:'y',
-        borderColor: colorParaZona(z), backgroundColor:'transparent',
+        borderColor: color, backgroundColor:'transparent',
         borderWidth:2, pointRadius:1.5, fill:false, tension:0, spanGaps:true,
+        datalabels:{
+          display: ALIM_NIVEL3_DEMANDA_ETIQUETAS, anchor:'end', align:'top', offset:4,
+          formatter: v => v==null ? '' : Math.round(v).toLocaleString('es-CO')+' kWh',
+          font:{size:9, weight:'700'}, color,
+        },
       };
     });
   }
