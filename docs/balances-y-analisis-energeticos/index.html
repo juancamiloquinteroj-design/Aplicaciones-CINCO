@@ -16566,7 +16566,7 @@ function _beIniciarArrastre(ev){
   if(!td || !td.dataset.formula) return;
   BE_ARRASTRE = {
     tipo: td.dataset.tipo, orden: td.dataset.orden, letra: td.dataset.letra, fechaOrigen: td.dataset.fecha,
-    formula: td.dataset.formula, tdOrigen: td, ultimaTd: td,
+    formula: td.dataset.formula, tdOrigen: td, ultimaTd: td, eje: null,
   };
   document.addEventListener('mouseover', _beArrastreMouseOver);
   document.addEventListener('mouseup', _beArrastreMouseUp, {once:true});
@@ -16577,15 +16577,25 @@ function _beIniciarArrastre(ev){
 // la MISMA fórmula sin cambios, el offset de día ya es relativo) u
 // HORIZONTAL (mismo día, otra columna/medidor: corre las letras de la
 // fórmula, pedido explícito "desplazar la formulación por celda así como
-// funciona el Excel"). Si no coincide con ninguno de los 2 (se movió el
-// mouse a una celda que no comparte ni columna ni día) no se resalta nada.
+// funciona el Excel"). El eje se FIJA al primero que se detecta válido
+// (igual que el fill handle real de Excel) y ya no se suelta aunque el
+// mouse se desvíe en diagonal el resto del arrastre -- antes, un
+// desvío de 1px bastaba para que la celda final no coincidiera ni en
+// columna ni en día, y el arrastre se perdía en silencio sin abrir el
+// modal (pedido explícito: "no funciona... arrastrar el campo... y que
+// vaya con la fórmula").
 function _beArrastreMouseOver(ev){
   if(!BE_ARRASTRE) return;
   const td = ev.target.closest('td.pto[data-editable]');
   if(!td || td.dataset.tipo!==BE_ARRASTRE.tipo) return;
+  const esVertical = td.dataset.orden === BE_ARRASTRE.orden;
+  const esHorizontal = !esVertical && td.dataset.fecha === BE_ARRASTRE.fechaOrigen && !!td.dataset.letra;
+  if(!esVertical && !esHorizontal) return;  // diagonal/celda sin relación -- se ignora, no pisa el último válido
+  if(BE_ARRASTRE.eje && BE_ARRASTRE.eje !== (esVertical ? 'vertical' : 'horizontal')) return;  // ya fijado al otro eje
+  BE_ARRASTRE.eje = esVertical ? 'vertical' : 'horizontal';
   document.querySelectorAll('.celda-arrastrando').forEach(el=>el.classList.remove('celda-arrastrando'));
   const tabla = document.getElementById('be-tabla-detalle');
-  if(td.dataset.orden === BE_ARRASTRE.orden){
+  if(esVertical){
     const filaOrigen = BE_ARRASTRE.tdOrigen.closest('tr').rowIndex;
     const filaActual = td.closest('tr').rowIndex;
     const [desde, hasta] = filaOrigen <= filaActual ? [filaOrigen, filaActual] : [filaActual, filaOrigen];
@@ -16594,7 +16604,7 @@ function _beArrastreMouseOver(ev){
       const celda = [...fila.cells].find(c=>c.dataset && c.dataset.tipo===BE_ARRASTRE.tipo && c.dataset.orden===BE_ARRASTRE.orden);
       if(celda) celda.classList.add('celda-arrastrando');
     }
-  } else if(td.dataset.fecha === BE_ARRASTRE.fechaOrigen && td.dataset.letra){
+  } else {
     const fila = BE_ARRASTRE.tdOrigen.closest('tr');
     const [lmin, lmax] = BE_ARRASTRE.letra <= td.dataset.letra ? [BE_ARRASTRE.letra, td.dataset.letra] : [td.dataset.letra, BE_ARRASTRE.letra];
     [...fila.cells].forEach(c => {
@@ -16609,18 +16619,18 @@ function _beArrastreMouseUp(){
   document.removeEventListener('mouseover', _beArrastreMouseOver);
   document.querySelectorAll('.celda-arrastrando').forEach(el=>el.classList.remove('celda-arrastrando'));
   if(!BE_ARRASTRE) return;
-  const {tipo, orden, letra, formula, fechaOrigen, tdOrigen, ultimaTd} = BE_ARRASTRE;
+  const {tipo, orden, letra, formula, fechaOrigen, tdOrigen, ultimaTd, eje} = BE_ARRASTRE;
   BE_ARRASTRE = null;
-  if(ultimaTd === tdOrigen) return;  // no se movió de la celda de origen
+  if(ultimaTd === tdOrigen || !eje) return;  // no se movió de la celda de origen (o nunca entró a un eje válido)
 
-  if(ultimaTd.dataset.orden === orden){
-    // Vertical -- comportamiento de siempre.
+  if(eje === 'vertical'){
+    // Mismo medidor, otro día -- repite la MISMA fórmula sin cambios.
     const fechaFin = ultimaTd.dataset.fecha;
     const [fechaDesde, fechaHasta] = fechaFin >= fechaOrigen ? [fechaOrigen, fechaFin] : [fechaFin, fechaOrigen];
     BE_AJUSTE_PENDIENTE = {tipo, orden: Number(orden), fechaDesde, fechaHasta, formula};
     _beAbrirModalAjuste(`${tipo==='entrada'?'Entrada':'Salida'} -- del ${fechaDesde} al ${fechaHasta}: se repite la fórmula "${formula}" en cada día`);
-  } else if(ultimaTd.dataset.fecha === fechaOrigen){
-    // Horizontal -- NUEVO.
+  } else {
+    // Mismo día, otro medidor -- corre las letras de columna (A->B->C...).
     _beAplicarArrastreHorizontal(tipo, fechaOrigen, letra, formula, ultimaTd);
   }
 }
