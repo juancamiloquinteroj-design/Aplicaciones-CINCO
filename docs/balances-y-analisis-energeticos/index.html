@@ -20935,7 +20935,7 @@ async function alimNivel3RenderDemanda(){
   document.getElementById('alim-nivel3-demanda-btn-sobreponer')?.classList.toggle('activo', modo==='sobreponer');
   document.getElementById('alim-nivel3-demanda-btn-barras-anio')?.classList.toggle('activo', modo==='barras-anio');
   document.getElementById('alim-nivel3-demanda-btn-barras-zona')?.classList.toggle('activo', modo==='barras-zona');
-  const esBarras = modo === 'barras-anio' || modo === 'barras-zona';
+  const esBarras = modo === 'barras-zona';
   let labels = [], datasets = [];
   if(modo === 'sobreponer'){
     const porAnio = new Map();
@@ -20952,21 +20952,45 @@ async function alimNivel3RenderDemanda(){
       borderWidth:2.5, pointRadius:2, fill:false, tension:0, spanGaps:true,
     }));
   } else if(modo === 'barras-anio'){
-    // Pedido explícito ("podría mostrar más años hacia atrás") -- ya NO
-    // es solo el mes elegido contra el año anterior (2 barras): una
-    // barra por CADA año con dato de ese mismo mes calendario, todo el
-    // histórico disponible. La más reciente (el Mes elegido) resaltada.
+    // Pedido explícito ("podría mostrar más años hacia atrás" + "esa
+    // gráfica no me gusta mejor que sea una de líneas con variación y
+    // los datos de cada mes") -- línea (no barras), una por CADA año con
+    // dato de ese mismo mes calendario, todo el histórico disponible.
+    // Cada punto muestra su valor y la variación (▲/▼ %) vs. el año
+    // anterior -- mismo patrón de etiqueta de 2 líneas que el resto de
+    // la app (ver datalabelsPct en _alimNivelConstruirChartMensual).
     const puntos = _alimNivel3DemandaMismoMesTodosLosAnios(serieCompleta, claveActual);
     if(puntos.length){
       labels = puntos.map(p => labelMesLargo(p.clave));
-      datasets = [{type:'bar', label:'Entrada a Distribución', data: puntos.map(p=>p.valor), yAxisID:'y',
-        backgroundColor: puntos.map((p,i) => i===puntos.length-1 ? IPI_COLOR_ENTRADA : IPI_COLOR_ENTRADA+'80'), borderWidth:0}];
+      datasets = [{
+        type:'line', label:'Entrada a Distribución', data: puntos.map(p=>p.valor), yAxisID:'y',
+        borderColor: IPI_COLOR_ENTRADA, backgroundColor:'rgba(0,176,80,.20)',
+        borderWidth:2, pointRadius:3, fill:'origin', tension:0, spanGaps:true,
+        datalabels:{
+          display:true, anchor:'end', align:'top', offset:10,
+          formatter:(v, ctx)=>{
+            if(v==null) return '';
+            const base = Math.round(v).toLocaleString('es-CO')+' kWh';
+            const anteriorV = ctx.dataIndex>0 ? puntos[ctx.dataIndex-1].valor : null;
+            if(anteriorV==null) return base;
+            const delta = v - anteriorV;
+            const deltaPct = anteriorV ? delta/anteriorV*100 : 0;
+            return [base, `${delta>=0?'▲':'▼'} ${Math.abs(deltaPct).toFixed(1)}%`];
+          },
+          color: tickC, ...ipEstiloTarjetaVariacion(dark),
+        },
+      }];
     }
   } else if(modo === 'barras-zona'){
     const porZona = _alimNivel3DemandaPorZonaMes(claveActual);
     labels = porZona.map(([z]) => z);
     datasets = [{type:'bar', label: claveActual ? labelMesLargo(claveActual) : '', data: porZona.map(([,v]) => v), yAxisID:'y',
-      backgroundColor: porZona.map(([z]) => colorParaZona(z)), borderWidth:0}];
+      backgroundColor: porZona.map(([z]) => colorParaZona(z)), borderWidth:0,
+      datalabels:{
+        display:true, anchor:'end', align:'top', offset:4,
+        formatter: v => v==null ? '' : Math.round(v).toLocaleString('es-CO')+' kWh',
+        font:{size:10, weight:'700'}, color: tickC,
+      }}];
   } else if(zonasSel.length <= 1){
     // 0 zonas (Todas) -- acumulado de las 5 (pedido explícito: "en todas
     // quiero que se vea el acumulado como si se sumara todas las
