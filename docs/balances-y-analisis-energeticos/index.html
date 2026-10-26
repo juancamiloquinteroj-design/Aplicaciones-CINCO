@@ -2422,6 +2422,15 @@ html,body{overflow-x:hidden;margin:0}
         style="width:64px;padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg)"
         onchange="tmAplicarFiltros()">
       <span style="font-size:11px;color:var(--text3)">días</span>
+      <!-- Diario/Mensual -- pedido explícito ("me gustaria que hubiera un
+           boton para verlo de manera mensual"). Mismo patrón D/M que Ver
+           Balance (be-modo-btn + .activo). Re-agrega del lado del cliente
+           los datos YA traídos (ver TM_ULTIMOS_DATOS/tmToggleGranularidad)
+           -- no vuelve a pedirle nada al backend. -->
+      <span style="display:inline-flex;gap:3px;margin-left:10px">
+        <button type="button" class="be-modo-btn activo" id="tm-gran-btn-diario" onclick="tmToggleGranularidad('diario')" title="Diario">D</button>
+        <button type="button" class="be-modo-btn" id="tm-gran-btn-mensual" onclick="tmToggleGranularidad('mensual')" title="Mensual -- suma del mes">M</button>
+      </span>
       <button class="btn-theme" style="width:auto;padding:0 14px;margin-left:auto" onclick="abrirModalDescargaTm()" title="Descargar el detalle diario en CSV">⬇ Descargar CSV</button>
     </div>
 
@@ -17479,7 +17488,57 @@ async function tmAplicarFiltros(){
   }catch(e){
     // Se deja el gráfico vacío -- no es crítico para el resto de la app.
   }
-  renderTelemedida(datos, canales.length ? canales : ['canal1']);
+  TM_ULTIMOS_DATOS = datos;
+  TM_ULTIMOS_CANALES = canales.length ? canales : ['canal1'];
+  renderTelemedida(TM_ULTIMOS_DATOS, TM_ULTIMOS_CANALES);
+}
+
+// Granularidad del gráfico -- pedido explícito ("me gustaria que hubiera
+// un boton para verlo de manera mensual"). Re-agrega del lado del cliente
+// los datos YA traídos por tmAplicarFiltros (TM_ULTIMOS_DATOS/CANALES) --
+// cambiar de Diario a Mensual no vuelve a pedirle nada al backend.
+let TM_GRANULARIDAD = 'diario';  // 'diario' | 'mensual'
+let TM_ULTIMOS_DATOS = {fechas:[], series:[]};
+let TM_ULTIMOS_CANALES = ['canal1'];
+
+function tmToggleGranularidad(valor){
+  if(TM_GRANULARIDAD === valor) return;
+  TM_GRANULARIDAD = valor;
+  document.getElementById('tm-gran-btn-diario').classList.toggle('activo', valor==='diario');
+  document.getElementById('tm-gran-btn-mensual').classList.toggle('activo', valor==='mensual');
+  renderTelemedida(TM_ULTIMOS_DATOS, TM_ULTIMOS_CANALES);
+}
+
+// Suma los valores diarios de cada mes (kWh es energía -- se SUMA, no se
+// promedia). Fecha de salida = "AAAA-MM-01", mismo formato ISO que ya
+// espera el resto de renderTelemedida/tmPluginSeparadores -- así el eje X,
+// los separadores de año y el formateo de ticks siguen funcionando sin
+// ningún caso especial para el modo mensual.
+function _tmAgregarMensual(fechas, series){
+  const claves = [];
+  const indicePorClave = new Map();
+  fechas.forEach(f => {
+    const clave = f.slice(0,7) + '-01';
+    if(!indicePorClave.has(clave)){ indicePorClave.set(clave, claves.length); claves.push(clave); }
+  });
+  const nuevasSeries = series.map(s => {
+    const nueva = {...s};
+    Object.keys(s).forEach(k => {
+      if(!Array.isArray(s[k])) return;  // deja nombre/usuario_id/socket_id/cuenta tal cual
+      const sumas = new Array(claves.length).fill(0);
+      const tieneDato = new Array(claves.length).fill(false);
+      fechas.forEach((f, i) => {
+        const v = s[k][i];
+        if(v == null) return;
+        const idx = indicePorClave.get(f.slice(0,7) + '-01');
+        sumas[idx] += v;
+        tieneDato[idx] = true;
+      });
+      nueva[k] = sumas.map((v, i) => tieneDato[i] ? v : null);
+    });
+    return nueva;
+  });
+  return {fechas: claves, series: nuevasSeries};
 }
 
 // Promedio móvil de 30 días -- la "tendencia" pedida, más útil que una
@@ -17571,7 +17630,10 @@ const tmPluginCrosshair = {
 };
 Chart.register(tmPluginCrosshair);
 
-function renderTelemedida(datos, canales){
+function renderTelemedida(datosOriginal, canales){
+  const datos = TM_GRANULARIDAD==='mensual'
+    ? _tmAgregarMensual(datosOriginal.fechas||[], datosOriginal.series||[])
+    : datosOriginal;
   const ctx = document.getElementById('ch-telemedida');
   const dark = document.documentElement.getAttribute('data-theme')==='dark';
   const tickC = dark ? '#ffffff' : '#000000';
@@ -17610,11 +17672,15 @@ function renderTelemedida(datos, canales){
         pointRadius:0, pointHoverRadius:3, tension:0, spanGaps:true,
       });
       if(data.length >= 14){
+        // Ventana de la tendencia: 30 días en modo Diario, 3 meses en
+        // Mensual (30 puntos mensuales de "tendencia" sería casi toda la
+        // serie, no serviría como suavizado).
+        const ventanaTendencia = TM_GRANULARIDAD==='mensual' ? 3 : 30;
         datasets.push({
           // Color fijo (no el del canal) -- así "tendencia" se reconoce
           // como un concepto aparte del dato real, sin importar qué canal
           // o usuario sea.
-          type:'line', label:`Tendencia · ${etiqueta}`, data: tmPromedioMovil(data, 30),
+          type:'line', label:`Tendencia · ${etiqueta}`, data: tmPromedioMovil(data, ventanaTendencia),
           borderColor: TM_COLOR_TENDENCIA, backgroundColor:'transparent',
           borderWidth:2, borderDash:[7,4], pointRadius:0, tension:0, spanGaps:true,
         });
