@@ -5941,6 +5941,27 @@ html,body{overflow-x:hidden;margin:0}
         <button type="button" class="be-editar-btn be-icon-btn" onclick="abrirModalTipicos()" title="Calcular datos típicos">📐</button>
       </div>
     </div>
+    <!-- Buscador global de estructuras -- pedido explícito ("quiero que
+         haya un buscador de estructuras donde pueda buscar todas las
+         estructuras ir escribiendo y me aparezca recomendada o parecida,
+         deben aparecer todas"). Busca sobre BE_ESTRUCTURAS_TODAS (SIN
+         filtro de Zona/Nivel/Tipo -- a propósito, para encontrar cualquier
+         estructura sin tener que ajustar esos filtros primero), con el
+         mismo patrón visual/teclado de los demás buscadores de la app
+         (.be-buscador, ver beBuscarMedidor/beBuscarCircuito). No trunca
+         resultados (el usuario pidió explícitamente que aparezcan TODOS
+         los que coincidan). -->
+    <div class="be-ver-filtro-grupo be-ver-filtro-caja">
+      <div class="be-ver-filtro-grupo-titulo">Buscar estructura</div>
+      <div class="be-ver-filtro-grupo-fila">
+        <div class="be-buscador" style="width:230px">
+          <input type="text" id="be-buscador-estructura-ver" placeholder="Nombre o código..." autocomplete="off"
+            oninput="beBuscarEstructuraVer(this)" onfocus="beBuscarEstructuraVer(this)"
+            onkeydown="beBuscadorEstructuraVerTecla(event,this)" onblur="beBuscadorCerrarDiferido(this)">
+          <div class="be-buscador-lista hidden"></div>
+        </div>
+      </div>
+    </div>
     <div id="be-filtro-cliente" class="be-ver-filtro-grupo hidden">
       <div class="be-ver-filtro-grupo-titulo">Sobreponer cliente(s)</div>
       <div class="be-ver-filtro-grupo-fila">
@@ -14197,6 +14218,60 @@ async function cargarListaEstructuras(reintentando){
   renderTablaBalanceNivelCreados();
 }
 
+// Buscador global de estructuras de "Ver Balance" -- mismo patrón que
+// beBuscarMedidor/beBuscarCircuito (ver _beMedidorInputHtml más arriba),
+// pero sobre BE_ESTRUCTURAS_TODAS (sin filtro de Zona/Nivel/Tipo) para que
+// encuentre cualquier estructura sin tener que ajustar esos filtros
+// primero. Sin límite de resultados -- pedido explícito ("deben aparecer
+// todas"); la lista ya scrollea (.be-buscador-lista, max-height 220px).
+function beBuscarEstructuraVer(input){
+  const texto = input.value.trim().toLowerCase();
+  const lista = input.nextElementSibling;
+  if(!texto){ lista.classList.add('hidden'); lista.innerHTML=''; return; }
+  const coincidencias = BE_ESTRUCTURAS_TODAS.filter(e => (e.nombre||'').toLowerCase().includes(texto));
+  lista.innerHTML = coincidencias.length
+    ? coincidencias.map((e,i)=>
+        `<div class="be-buscador-opt${i===0?' activa':''}" data-id="${e.id}" data-etiqueta="${_mselEsc(e.nombre)}" onmousedown="beElegirEstructuraVer(event,this)">${_mselEsc(e.nombre)} <span style="color:var(--text3)">-- Nivel ${e.nivel_tension}${e.tipo ? ' · '+_mselEsc(BE_NOMBRES_TIPO[e.tipo]||e.tipo) : ''}</span></div>`
+      ).join('')
+    : '<div class="be-buscador-vacio">Sin resultados</div>';
+  lista.classList.remove('hidden');
+}
+
+async function beElegirEstructuraVer(ev, opt){
+  ev.preventDefault();  // evita el blur del input antes del click (perdería la selección)
+  const lista = opt.parentElement;
+  const input = lista.previousElementSibling;
+  input.value = opt.dataset.etiqueta;
+  lista.classList.add('hidden');
+  const id = parseInt(opt.dataset.id);
+  // La búsqueda mira TODAS las estructuras sin importar el filtro de Zona/
+  // Nivel/Tipo activo -- si la elegida no está en ese filtro, se limpia
+  // para que "Estructura" la muestre seleccionada y el título traiga su
+  // tipo/nota correctos (ver fallback en verBalanceEstructura).
+  if(!BE_ESTRUCTURAS.some(e => e.id === id)){
+    document.getElementById('be-filtro-zona').value = '';
+    document.getElementById('be-filtro-nivel').value = '';
+    document.getElementById('be-filtro-tipo').value = '';
+    await cargarListaEstructuras();
+  }
+  verBalanceEstructura(id);
+}
+
+function beBuscadorEstructuraVerTecla(ev, input){
+  const lista = input.nextElementSibling;
+  if(lista.classList.contains('hidden')) return;
+  const opts = [...lista.querySelectorAll('.be-buscador-opt')];
+  if(!opts.length) return;
+  let idx = opts.findIndex(o=>o.classList.contains('activa'));
+  if(ev.key==='ArrowDown'){ ev.preventDefault(); idx=(idx+1+opts.length)%opts.length; }
+  else if(ev.key==='ArrowUp'){ ev.preventDefault(); idx=(idx-1+opts.length)%opts.length; }
+  else if(ev.key==='Enter'){ ev.preventDefault(); if(idx>=0) beElegirEstructuraVer(ev, opts[idx]); return; }
+  else if(ev.key==='Escape'){ lista.classList.add('hidden'); return; }
+  else return;
+  opts.forEach(o=>o.classList.remove('activa'));
+  opts[idx].classList.add('activa');
+}
+
 // Vuelve Nivel/Tipo/Estructura a "Todos" de una -- sin esto había que
 // limpiar los 3 desplegables a mano, uno por uno.
 async function beBorrarFiltrosVer(){
@@ -14663,7 +14738,7 @@ async function verBalanceEstructura(id){
   // "Graficar" antes de que el pedido viejo terminara), esta respuesta ya
   // está vieja -- no pisar lo que la llamada más nueva ya esté mostrando.
   if(miSeq !== _beVerBalanceSeq) return;
-  const estructura = BE_ESTRUCTURAS.find(e=>e.id===id);
+  const estructura = BE_ESTRUCTURAS.find(e=>e.id===id) || BE_ESTRUCTURAS_TODAS.find(e=>e.id===id);
   const tipoTxt = estructura && estructura.tipo ? ` · ${BE_NOMBRES_TIPO[estructura.tipo]||estructura.tipo}` : '';
   document.getElementById('be-chart-titulo').textContent = `${datos.nombre} -- Nivel ${datos.nivel_tension}${tipoTxt}`;
   document.getElementById('be-chart-nota').textContent = estructura && estructura.nota ? `📝 ${estructura.nota}` : '';
