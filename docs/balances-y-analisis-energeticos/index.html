@@ -17088,7 +17088,11 @@ function _mesPresetGraficarPersonalizado(){
 // Combos de refresco -- para los módulos que necesitan más de UNA función
 // al cambiar el rango (_mesPresetAplicar solo acepta un nombre).
 function _ipRefrescarChartYTabla(){ ipRenderChart(); ipRenderTablaNivel(); }
-function _alim3RefrescarRango(){ alim3RenderSeleccion(); alim3RenderTablaVariacion(); alim3RenderChartCircuitos(); }
+async function _alim3RefrescarRango(){
+  const desde = document.getElementById('alim3-desde').value ? document.getElementById('alim3-desde').value.slice(0,7) : null;
+  await _alimAsegurarRangoCargado(desde);
+  alim3RenderSeleccion(); alim3RenderTablaVariacion(); alim3RenderChartCircuitos();
+}
 
 /* ---- Balances por Estructura -- Editar (metadatos + vigencias por punto) ---- */
 
@@ -19116,7 +19120,37 @@ async function _alimAsegurarDatosCargados(){
   // exacto, "necesito que coincida").
   ALIM_FILAS = filas.filter(f => f.tipo !== 'Comp');
   ALIM_FILAS_TODOS = filas;
+  _ALIM_FILAS_DESDE_CACHADO = desde;
   return ALIM_FILAS;
+}
+
+// Si el usuario elige un "Desde" más viejo que lo que ya está en caché
+// (ALIM_FILAS se carga una sola vez, acotado a los últimos 30 meses por
+// velocidad -- ver el comentario de arriba), se pide SOLO el tramo
+// faltante (no todo de nuevo) y se mezcla en el caché compartido -- pedido
+// explícito ("quiero poder unificar [...] para poder ver el histórico
+// hacia atrás de pérdida de cada alimentador de acuerdo con la fecha que
+// seleccione", y luego "solo veo desde 2024" al intentarlo). Así el
+// "Rango personalizado" de cualquier submódulo de Alimentadores (N2-1,
+// Subestaciones, Alimentadores, Nivel 3, Nivel 4) puede llegar hasta donde
+// haya datos (2020 en adelante, ver load_alimentadores.py) sin pagar el
+// costo de bajar los 14k+ filas completas en la carga inicial.
+let _ALIM_FILAS_DESDE_CACHADO = null;  // "YYYY-MM" del mes más viejo ya en ALIM_FILAS/ALIM_FILAS_TODOS
+async function _alimAsegurarRangoCargado(desde){
+  if(DEMO || !desde || !ALIM_FILAS || !_ALIM_FILAS_DESDE_CACHADO) return;
+  if(desde >= _ALIM_FILAS_DESDE_CACHADO) return;  // ya cubierto por el caché
+  const [ay, am] = _ALIM_FILAS_DESDE_CACHADO.split('-').map(Number);
+  const idxHasta = ay * 12 + (am - 1) - 1;  // mes inmediatamente anterior al más viejo ya cacheado
+  const hastaFaltante = `${Math.floor(idxHasta / 12)}-${String(idxHasta % 12 + 1).padStart(2, '0')}`;
+  let extra;
+  try{
+    extra = (await apiGet(`/api/alimentadores?desde=${desde}&hasta=${hastaFaltante}`, AUTH_TIMEOUT_MS)).filas;
+  }catch(e){ return; }  // si falla, se queda con lo que ya tenía -- no rompe la vista
+  if(extra.length){
+    ALIM_FILAS_TODOS = extra.concat(ALIM_FILAS_TODOS);
+    ALIM_FILAS = ALIM_FILAS_TODOS.filter(f => f.tipo !== 'Comp');
+  }
+  _ALIM_FILAS_DESDE_CACHADO = desde;
 }
 
 /* ---- Análisis por Ciclo (submódulo de Alimentadores) -- depende
@@ -23765,7 +23799,10 @@ function alimSubRenderAlimentadoresYCards(){
   alimSubRenderTablaTop();  // refresca el resaltado de la fila elegida
 }
 
-function alimSubRenderTodo(){
+async function alimSubRenderTodo(){
+  // Ver _alimAsegurarRangoCargado -- mismo criterio que N2-1/Alimentadores.
+  const desde = document.getElementById('alim-sub-desde').value ? document.getElementById('alim-sub-desde').value.slice(0,7) : null;
+  await _alimAsegurarRangoCargado(desde);
   alimSubRenderVistaActual();
   alimSubRenderTablaTop();
   alimSubRenderChartAlimentadores();
@@ -27356,7 +27393,12 @@ function alimN21RenderDonutZonas(datosPorZona){
   }
 }
 
-function alimN21RenderTodo(){
+async function alimN21RenderTodo(){
+  // Ver _alimAsegurarRangoCargado -- si el "Desde" elegido es más viejo
+  // que lo ya cacheado en ALIM_FILAS, trae solo el tramo faltante antes
+  // de recalcular/dibujar.
+  const desde = document.getElementById('alim-n21-desde').value ? document.getElementById('alim-n21-desde').value.slice(0,7) : null;
+  await _alimAsegurarRangoCargado(desde);
   // Zona sale del desplegable .msel.
   ALIM_N21_ZONAS_SEL = new Set(mselValores('msel-alim-n21-zona'));
   const datos12 = alimN21Con12Meses(alimN21AgregarMensual(ALIM_N21_ZONAS_SEL));
