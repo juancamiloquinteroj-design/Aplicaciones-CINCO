@@ -25191,11 +25191,23 @@ function _alim3Gestionable(perdida, tecnica, gestionableCrudo){
 function alim3RenderTarjetas(filasConClave, nombres){
   const cont = document.getElementById('alim3-tarjetas');
   if(!cont) return;
+  // Antes se descartaban (.filter(f => f.pct != null)) los meses donde
+  // Entrada=0 -- ahí Perdida % queda indefinida (no se puede dividir entre
+  // cero) -- pero eso los hacía invisibles para el selector de AñoMes de
+  // la tarjeta, que entonces saltaba en silencio hasta el último mes con
+  // un % calculable. Caso real: un circuito "Comp" (compensación) con
+  // Entrada=0 y Salida positiva en 2026 (Perdida negativa, correcta) hacía
+  // que la tarjeta mostrara Mayo-2025 sin avisar, mientras la gráfica de
+  // al lado sí mostraba 2026 -- pedido explícito al reportar la
+  // inconsistencia ("debería tener pérdida negativa"). pctDe() más abajo
+  // ya devuelve null a salvo cuando entrada es 0/falsy, así que estos
+  // meses igual muestran "--" en el %, pero con los kWh reales (incluida
+  // la pérdida negativa) en vez de desaparecer del todo.
   const serieBase = filasConClave.map(f => ({
     anio: f.anio, mes: f.mes, clave: f.clave,
     entrada: f.entrada_total, salida: f.salida_total, perdida: f.perdida_kwh, pct: f.perdida_pct,
     gestionable: _alim3Gestionable(f.perdida_kwh, f.perdida_tecnica_kwh, f.gestionable_kwh), tecnica: f.perdida_tecnica_kwh,
-  })).filter(f => f.pct != null);
+  }));
   if(serieBase.length < 2){ cont.innerHTML = ''; return; }
   const anual = alimN21Con12Meses(serieBase);
 
