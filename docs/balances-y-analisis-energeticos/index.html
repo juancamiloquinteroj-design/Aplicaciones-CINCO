@@ -37977,7 +37977,9 @@ function catnodLeerFiltros(){
   };
 }
 
-async function catnodAplicarFiltros(){
+let CATNOD_AUTO_CAMBIO_MES = null;
+
+async function catnodAplicarFiltros(autoReintento){
   const f = catnodLeerFiltros();
   const qs = new URLSearchParams({anio: f.anio, mes: f.mes, anual: f.anual});
   if(f.zona) qs.set('zona', f.zona);
@@ -37993,6 +37995,27 @@ async function catnodAplicarFiltros(){
     document.getElementById('catnod-kpis').innerHTML = `<div style="color:var(--danger,#d9534f)">${e.message}</div>`;
     return;
   }
+
+  // Auto-fallback a un mes con lecturas -- pedido explícito ("que el
+  // filtro sea automático y muestre... los meses que sí tengan
+  // lecturas"). Hay alimentadores con ciclo bimestral/trimestral (ver
+  // ciclo_no_mensual en el backend), así que en vez de adivinar "2 meses
+  // atrás" a ciegas, se usa el mes real más reciente que SÍ tiene dato
+  // para este filtro exacto. autoReintento evita loop si ese mes
+  // sugerido, por lo que sea, tampoco tuviera datos.
+  if(!autoReintento && !f.anual && resumen.ciclo_no_mensual && resumen.ciclo_no_mensual.meses_con_dato.length){
+    const sugerido = resumen.ciclo_no_mensual.meses_con_dato[0];
+    const valorSugerido = `${sugerido.anio}-${sugerido.mes}`;
+    const sel = document.getElementById('catnod-f-periodo');
+    if([...sel.options].some(o => o.value === valorSugerido)){
+      CATNOD_AUTO_CAMBIO_MES = {desde: {anio: f.anio, mes: f.mes}, hasta: sugerido};
+      sel.value = valorSugerido;
+      await catnodAplicarFiltros(true);
+      return;
+    }
+  }
+  if(!autoReintento) CATNOD_AUTO_CAMBIO_MES = null;
+
   catnodRenderKpis(resumen, f);
   catnodRenderTablaRangos(resumen.rango_perdidas);
   await catnodCargarHistorialAlimentador(f.alimentador);
@@ -38070,7 +38093,11 @@ function catnodRenderKpis(resumen, f){
   }
 
   const aviso = document.getElementById('catnod-ciclo-aviso');
-  if(resumen.ciclo_no_mensual){
+  if(CATNOD_AUTO_CAMBIO_MES){
+    const {desde, hasta} = CATNOD_AUTO_CAMBIO_MES;
+    aviso.textContent = `${catnodMesLabel(desde.anio, desde.mes)} no tenía lecturas de macromedida para este filtro (ciclo no mensual, ej. bimestral) -- se cambió automáticamente a ${catnodMesLabel(hasta.anio, hasta.mes)}, el mes más reciente que sí tiene dato.`;
+    aviso.classList.remove('hidden');
+  }else if(resumen.ciclo_no_mensual){
     const meses = resumen.ciclo_no_mensual.meses_con_dato.map(p => catnodMesLabel(p.anio, p.mes)).join(', ');
     aviso.textContent = `Este filtro no tiene lecturas de macromedida en ${catnodMesLabel(f.anio,f.mes)} -- no es un error de cruce, es que ese grupo de nodos se lee en otros meses (ciclo no mensual). Últimos meses con dato: ${meses}.`;
     aviso.classList.remove('hidden');
@@ -38105,7 +38132,11 @@ async function catnodCargarHistorialAlimentador(alimentador){
     return;
   }
   document.getElementById('catnod-hist-alim-titulo').textContent = `Histórico del Alimentador -- ${alimentador} (${datos.nemonico})`;
-  const labels = datos.historial.map(h => catnodMesLabel(h.anio, h.mes));
+  // Desde enero/2026 -- pedido explícito ("la gráfica que muestre desde
+  // enero del 2026"): el histórico completo (desde 2020) saturaba el eje X.
+  const CATNOD_HIST_ANIO_DESDE = 2026;
+  const historial = datos.historial.filter(h => h.anio >= CATNOD_HIST_ANIO_DESDE);
+  const labels = historial.map(h => catnodMesLabel(h.anio, h.mes));
   const ctx = document.getElementById('catnod-ch-hist-alim');
   if(catnodChHistAlim) catnodChHistAlim.destroy();
   // Mismo estilo que la gráfica real de "Alimentadores -- Detalle por
@@ -38117,22 +38148,22 @@ async function catnodCargarHistorialAlimentador(alimentador){
       labels,
       datasets: [
         {type:'line', label:'Entrada Total kWh', yAxisID:'y', order:3, fill:'origin',
-          data: datos.historial.map(h => h.entrada_total), borderColor:'#00B050', backgroundColor:'rgba(0,176,80,.20)',
+          data: historial.map(h => h.entrada_total), borderColor:'#00B050', backgroundColor:'rgba(0,176,80,.20)',
           borderWidth:2, pointRadius:1.5, tension:0, datalabels:{display:false}},
         {type:'line', label:'Salida Total kWh', yAxisID:'y', order:2, fill:'origin',
-          data: datos.historial.map(h => h.salida_total), borderColor:'#C00000', backgroundColor:'rgba(192,0,0,.20)',
+          data: historial.map(h => h.salida_total), borderColor:'#C00000', backgroundColor:'rgba(192,0,0,.20)',
           borderWidth:2, pointRadius:1.5, tension:0, datalabels:{display:false}},
         {type:'line', label:'Pérdida Total kWh', yAxisID:'y', order:4,
-          data: datos.historial.map(h => h.perdida_kwh), borderColor:'#4472C4', backgroundColor:'transparent',
+          data: historial.map(h => h.perdida_kwh), borderColor:'#4472C4', backgroundColor:'transparent',
           borderWidth:2, pointRadius:1.5, tension:0, datalabels:{display:false}},
         {type:'line', label:'Pérdida Técnica kWh', yAxisID:'y', order:5, hidden:true,
-          data: datos.historial.map(h => h.perdida_tecnica_kwh), borderColor:'#ED7D31', backgroundColor:'transparent',
+          data: historial.map(h => h.perdida_tecnica_kwh), borderColor:'#ED7D31', backgroundColor:'transparent',
           borderWidth:2, pointRadius:1.5, tension:0, datalabels:{display:false}},
         {type:'line', label:'Pérdida Gestionable kWh', yAxisID:'y', order:6, hidden:true,
-          data: datos.historial.map(h => h.gestionable_kwh), borderColor:'#d9534f', backgroundColor:'transparent',
+          data: historial.map(h => h.gestionable_kwh), borderColor:'#d9534f', backgroundColor:'transparent',
           borderWidth:2, pointRadius:1.5, tension:0, datalabels:{display:false}},
         {type:'line', label:'Pérdida %', yAxisID:'yPct', order:1, borderDash:[4,3],
-          data: datos.historial.map(h => h.perdida_pct==null?null:h.perdida_pct*100), borderColor:'#FFC000', backgroundColor:'transparent',
+          data: historial.map(h => h.perdida_pct==null?null:h.perdida_pct*100), borderColor:'#FFC000', backgroundColor:'transparent',
           borderWidth:2, pointRadius:2, spanGaps:true, tension:0,
           datalabels:{display:true, anchor:'end', align:'top', offset:8, formatter:v=>v==null?'':v.toFixed(2)+'%', font:{size:11,weight:'800'}, color:'#FFC000'}},
       ],
