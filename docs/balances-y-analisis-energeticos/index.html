@@ -5468,7 +5468,8 @@ html,body{overflow-x:hidden;margin:0}
       </div>
     </div>
 
-    <div class="tarjetas-fila-unica" id="catnod-kpis"></div>
+    <div id="catnod-kpis"></div>
+    <div id="catnod-ciclo-aviso" class="hidden" style="background:#e0a82622;border:1px solid #e0a82655;border-radius:8px;padding:10px 14px;font-size:12.5px;color:var(--text2);margin-bottom:16px"></div>
 
     <div class="card" style="margin-bottom:16px">
       <div style="font-weight:700;font-size:13px;margin-bottom:10px;color:var(--text)">Rango de Pérdidas</div>
@@ -5496,8 +5497,12 @@ html,body{overflow-x:hidden;margin:0}
     </div>
 
     <div class="card">
-      <div style="font-weight:700;font-size:13px;margin-bottom:4px;color:var(--text)">Comparativa de Alimentadores -- Pérdida Total / Técnica / Gestionable</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:4px">
+        <div style="font-weight:700;font-size:13px;color:var(--text)">Comparativa de Alimentadores -- Pérdida Total / Técnica / Gestionable</div>
+        <span style="font-size:11px;color:var(--text3)">Top 15 por Pérdida Total</span>
+      </div>
       <div id="catnod-comp-mes" style="font-size:11.5px;color:var(--text3);margin-bottom:10px"></div>
+      <div class="chart-wrap" style="height:340px;margin-bottom:16px"><canvas id="catnod-ch-comparativa"></canvas></div>
       <div class="tbl-wrap tbl-compacta" style="max-height:420px;overflow:auto"><table id="catnod-tbl-comparativa"></table></div>
     </div>
   </div>
@@ -37961,34 +37966,42 @@ async function catnodAplicarFiltros(){
 
 function catnodRenderKpis(resumen, f){
   const sufijoPeriodo = f.anual ? '(año)' : '(mes)';
-  const tarjetas = [
+  const ga = resumen.gestionable_alimentador;
+  const filasGrid = [
     ['Total Nodos', resumen.total_nodos.toLocaleString('es-CO')],
     ['Con Macromedida', resumen.con_macromedida.toLocaleString('es-CO')],
     ['Sin Macromedida', resumen.sin_macromedida.toLocaleString('es-CO')],
     [`kWh Pérdida ${sufijoPeriodo}`, catnodKwh(resumen.kwh_perdida_mes)],
   ];
-  let extra = '';
-  const ga = resumen.gestionable_alimentador;
-  if(ga){
-    if(ga.encontrado){
-      const notaMes = (ga.anio===f.anio && ga.mes===f.mes) ? '' : ` (${catnodMesLabel(ga.anio, ga.mes)})`;
-      extra = `<div class="be-resumen-tile" style="border-color:#d9534f55">
-        <div class="etiqueta">Gestionable -- este alimentador</div>
-        <div class="valor" style="color:#d9534f">${catnodKwh(ga.gestionable_kwh)}</div>
-        <div class="sub">${notaMes || 'kWh'}</div>
-      </div>`;
-    }else{
-      extra = `<div class="be-resumen-tile">
-        <div class="etiqueta">Gestionable -- este alimentador</div>
-        <div class="sub">Sin cruce con "Resumen de Alimentadores.csv" todavía.</div>
-      </div>`;
-    }
+  if(ga && ga.encontrado){
+    const notaMes = (ga.anio===f.anio && ga.mes===f.mes) ? '' : ` (${catnodMesLabel(ga.anio, ga.mes)})`;
+    filasGrid.push([`Gestionable -- alimentador${notaMes}`, catnodKwh(ga.gestionable_kwh)]);
+  }else if(ga && !ga.encontrado){
+    filasGrid.push(['Gestionable -- alimentador', 'sin cruce']);
   }
-  document.getElementById('catnod-kpis').innerHTML = tarjetas.map(([t,v]) => `
-    <div class="be-resumen-tile">
-      <div class="etiqueta">${t}</div>
-      <div class="valor">${v}</div>
-    </div>`).join('') + extra;
+
+  document.getElementById('catnod-kpis').innerHTML = `
+    <div class="alim-resumen-compacta" style="margin:0 0 16px 0">
+      <div class="alim-resumen-compacta-titulo">Resumen ${f.anual ? f.anio : catnodMesLabel(f.anio,f.mes)}</div>
+      <div class="alim-resumen-compacta-fila">
+        <div class="alim-resumen-compacta-pct">
+          <div class="valor">${catnodPct(resumen.pct_perdida_mes)}</div>
+          <div class="etiqueta">% Pérdida ${sufijoPeriodo}</div>
+        </div>
+        <div class="alim-resumen-compacta-grid" style="grid-template-columns:repeat(2,1fr)">
+          ${filasGrid.map(([et,v]) => `<div><span class="etiqueta">${et}:</span> <span class="valor">${v}</span></div>`).join('')}
+        </div>
+      </div>
+    </div>`;
+
+  const aviso = document.getElementById('catnod-ciclo-aviso');
+  if(resumen.ciclo_no_mensual){
+    const meses = resumen.ciclo_no_mensual.meses_con_dato.map(p => catnodMesLabel(p.anio, p.mes)).join(', ');
+    aviso.textContent = `Este filtro no tiene lecturas de macromedida en ${catnodMesLabel(f.anio,f.mes)} -- no es un error de cruce, es que ese grupo de nodos se lee en otros meses (ciclo no mensual). Últimos meses con dato: ${meses}.`;
+    aviso.classList.remove('hidden');
+  }else{
+    aviso.classList.add('hidden');
+  }
 }
 
 let catnodChRangos = null;
@@ -38135,6 +38148,28 @@ async function catnodVerHistorial(nodo){
   });
 }
 
+let catnodChComparativa = null;
+function catnodRenderChartComparativa(alimentadores){
+  const ctx = document.getElementById('catnod-ch-comparativa');
+  if(!ctx) return;
+  const top = [...alimentadores].sort((a,b) => b.perdida_kwh - a.perdida_kwh).slice(0, 15);
+  if(catnodChComparativa) catnodChComparativa.destroy();
+  catnodChComparativa = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: top.map(a => a.nemonico),
+      datasets: [
+        {label: 'Pérdida Técnica', data: top.map(a => a.perdida_tecnica_kwh), backgroundColor: '#2a6fdb'},
+        {label: 'Gestionable', data: top.map(a => a.gestionable_kwh), backgroundColor: '#d9534f'},
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      scales: { x: {stacked: true}, y: {stacked: true, title: {display: true, text: 'kWh'}} },
+    },
+  });
+}
+
 async function catnodRenderComparativa(anio, mes){
   const tbl = document.getElementById('catnod-tbl-comparativa');
   const nota = document.getElementById('catnod-comp-mes');
@@ -38149,6 +38184,7 @@ async function catnodRenderComparativa(anio, mes){
     ? `Mes: ${catnodMesLabel(datos.anio, datos.mes)}`
     : `"Resumen de Alimentadores.csv" no tiene datos de ${catnodMesLabel(anio,mes)} todavía -- mostrando el mes más reciente disponible: ${catnodMesLabel(datos.anio, datos.mes)}.`;
   if(!datos.alimentadores.length){ tbl.innerHTML = '<tbody><tr><td style="color:var(--text3)">Sin datos.</td></tr></tbody>'; return; }
+  catnodRenderChartComparativa(datos.alimentadores);
   let sumaGestionable = 0, sumaTotal = 0, sumaTecnica = 0;
   const filas = datos.alimentadores.map(a => {
     sumaGestionable += a.gestionable_kwh; sumaTotal += a.perdida_kwh; sumaTecnica += a.perdida_tecnica_kwh;
