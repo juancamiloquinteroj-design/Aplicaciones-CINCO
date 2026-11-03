@@ -5504,6 +5504,15 @@ html,body{overflow-x:hidden;margin:0}
           <div style="font-weight:700;font-size:13px;margin-bottom:8px;color:var(--text)">Ficha del Alimentador</div>
           <div class="tbl-wrap tbl-compacta"><table id="catnod-tbl-ficha"></table></div>
         </div>
+        <div style="flex:0 1 auto;border-left:1px solid var(--border);padding-left:18px">
+          <div style="font-weight:700;font-size:13px;margin-bottom:8px;color:var(--text)">Propietario</div>
+          <div class="tbl-wrap tbl-compacta"><table id="catnod-tbl-propietario"></table></div>
+        </div>
+        <div style="flex:0 1 auto;border-left:1px solid var(--border);padding-left:18px">
+          <div style="font-weight:700;font-size:13px;margin-bottom:8px;color:var(--text)">Tipo de Activo</div>
+          <div style="font-size:10px;color:var(--text3);margin-bottom:6px">Uso: &gt;1 usuario -- Conexión: 1 usuario</div>
+          <div class="tbl-wrap tbl-compacta"><table id="catnod-tbl-tipoactivo"></table></div>
+        </div>
       </div>
     </div>
 
@@ -5529,6 +5538,20 @@ html,body{overflow-x:hidden;margin:0}
       <div id="catnod-comp-mes" style="font-size:11.5px;color:var(--text3);margin-bottom:10px"></div>
       <div class="chart-wrap" style="height:340px;margin-bottom:16px"><canvas id="catnod-ch-comparativa"></canvas></div>
       <div class="tbl-wrap tbl-compacta" style="max-height:420px;overflow:auto"><table id="catnod-tbl-comparativa"></table></div>
+    </div>
+  </div>
+</div>
+<!-- Modal: listado de nodos de un rango de pérdida (clic en una fila de
+     "Rango de Pérdidas") -- pedido explícito ("que se despliegue una
+     nueva ventana y me diga el listado de nodos... así como en la
+     pestaña nodos del Excel"). -->
+<div id="catnod-modal-rango" class="tm-modal-overlay hidden" onclick="if(event.target===this) catnodCerrarModalRango()">
+  <div class="tm-modal" style="width:min(720px,94vw);max-height:80vh;display:flex;flex-direction:column">
+    <div class="tm-modal-title" id="catnod-modal-rango-titulo">Nodos en el rango</div>
+    <div class="tm-modal-sub" id="catnod-modal-rango-sub"></div>
+    <div class="tbl-wrap tbl-compacta" style="overflow:auto;margin-top:10px;flex:1"><table id="catnod-modal-rango-tbl"></table></div>
+    <div class="tm-modal-botones">
+      <button class="btn-theme" style="width:auto;padding:8px 16px" onclick="catnodCerrarModalRango()">Cerrar</button>
     </div>
   </div>
 </div>
@@ -38141,6 +38164,8 @@ function catnodRenderKpis(resumen, f){
 
   catnodRenderResumenNodos(resumen);
   catnodRenderFicha(resumen, f, ga);
+  catnodRenderPropietario(resumen);
+  catnodRenderTipoActivo(resumen);
 
   // El cambio automático de mes (ver catnodAplicarFiltros) queda SILENCIOSO
   // -- pedido explícito ("quita este letrero"), ya no se muestra el aviso.
@@ -38262,7 +38287,7 @@ function catnodNumOD(v){ return (v==null || v===0) ? '0' : v.toLocaleString('es-
 // con fila TOTAL MACROMEDIDOS al final.
 function catnodRenderTablaRangos(rangos){
   const filas = rangos.map(r => `
-    <tr style="background:${catnodColorHex(r.color)}30">
+    <tr style="background:${catnodColorHex(r.color)}30;cursor:pointer" onclick="catnodAbrirModalRango('${r.rango}')" title="Ver los nodos de este rango">
       <td style="font-weight:700;color:${catnodColorHex(r.color)}">${r.rango}</td>
       <td>${r.nodos.toLocaleString('es-CO')}</td>
       <td>${Math.round(r.usuarios).toLocaleString('es-CO')}</td>
@@ -38309,6 +38334,40 @@ function catnodRenderTablaRangos(rangos){
     </tbody>`;
 }
 
+// Modal "nodos de este rango" -- pedido explícito ("que se despliegue una
+// nueva ventana... así como en la pestaña nodos del Excel"). Reusa
+// CATNOD_NODOS_CACHE (ya cargado por catnodCargarNodos con los MISMOS
+// filtros/mes que está mostrando la tabla) -- no hace un fetch nuevo.
+function catnodAbrirModalRango(rangoLabel){
+  const modal = document.getElementById('catnod-modal-rango');
+  const tbl = document.getElementById('catnod-modal-rango-tbl');
+  const sub = document.getElementById('catnod-modal-rango-sub');
+  document.getElementById('catnod-modal-rango-titulo').textContent = `Nodos en el rango ${rangoLabel}`;
+  modal.classList.remove('hidden');
+
+  if(!CATNOD_NODOS_CACHE.length){
+    sub.textContent = 'Elige una Zona, Municipio o Alimentador en los filtros de arriba (y modo Mensual) para poder ver el listado de nodos.';
+    tbl.innerHTML = '';
+    return;
+  }
+  const claveMatch = rangoLabel === 'Negativos' ? 'negativos' : rangoLabel;
+  const nodos = CATNOD_NODOS_CACHE.filter(n => n.rango === claveMatch);
+  sub.textContent = `${nodos.length} nodo${nodos.length===1?'':'s'} -- clic en un nodo para ver su histórico.`;
+  if(!nodos.length){ tbl.innerHTML = '<tbody><tr><td style="color:var(--text3)">Sin nodos en este rango para el filtro actual.</td></tr></tbody>'; return; }
+  tbl.innerHTML = `
+    <thead><tr><th>Nodo</th><th>Alimentador</th><th>Municipio</th><th>Usuarios</th><th>kWh Pérdida</th><th>% Pérdida</th></tr></thead>
+    <tbody>${nodos.map(n => `
+      <tr style="cursor:pointer" onclick="catnodCerrarModalRango();catnodVerHistorial('${catnodEsc(n.nodo)}')">
+        <td style="font-weight:600">${catnodEsc(n.nodo)}</td>
+        <td>${catnodEsc(n.alimentador || '--')}</td>
+        <td>${catnodEsc(n.municipio || '--')}</td>
+        <td>${Math.round(n.usuarios).toLocaleString('es-CO')}</td>
+        <td>${catnodKwh(n.consumo_perdidas)}</td>
+        <td>${catnodPct(n.perdida_pct)}</td>
+      </tr>`).join('')}</tbody>`;
+}
+function catnodCerrarModalRango(){ document.getElementById('catnod-modal-rango').classList.add('hidden'); }
+
 // Vuelta a la tabla horizontal -- pedido explícito ("la quiero como antes,
 // así no me gusta"). Encabezados cortos (como Rango de Pérdidas) para que
 // no se corte en la columna angosta.
@@ -38327,6 +38386,26 @@ function catnodRenderResumenNodos(resumen){
     <tbody>
       ${filas.map(([et,v,bg]) => `<tr style="background:${bg}"><td style="font-weight:700">${et}</td><td style="text-align:center;font-weight:700">${v.toLocaleString('es-CO')}</td></tr>`).join('')}
     </tbody>`;
+}
+
+// Propietario (EH/Gobernación/Particular/...) -- pedido explícito.
+function catnodRenderPropietario(resumen){
+  const filas = (resumen.propietarios || []).map(p => `
+    <tr><td style="font-weight:600">${catnodEsc(p.propietario)}</td><td style="text-align:right;font-weight:700">${p.nodos.toLocaleString('es-CO')}</td></tr>`).join('');
+  document.getElementById('catnod-tbl-propietario').innerHTML = `<tbody>${filas || '<tr><td style="color:var(--text3)">Sin datos.</td></tr>'}</tbody>`;
+}
+
+// Activo de Uso (>1 usuario) / Conexión (1 usuario) / Sin Usuarios (0) --
+// regla confirmada por el usuario, ver docstring del backend.
+function catnodRenderTipoActivo(resumen){
+  const t = resumen.tipo_activo || {uso:0, conexion:0, sin_usuarios:0};
+  const filas = [
+    ['Activo de Uso', t.uso],
+    ['Activo de Conexión', t.conexion],
+    ['Sin Usuarios', t.sin_usuarios],
+  ];
+  document.getElementById('catnod-tbl-tipoactivo').innerHTML = `<tbody>${filas.map(([et,v]) =>
+    `<tr><td style="font-weight:600">${et}</td><td style="text-align:right;font-weight:700">${v.toLocaleString('es-CO')}</td></tr>`).join('')}</tbody>`;
 }
 
 function catnodRenderTablaNoIdent(ni){
