@@ -5469,12 +5469,9 @@ html,body{overflow-x:hidden;margin:0}
     <div id="catnod-kpis"></div>
     <div id="catnod-ciclo-aviso" class="hidden"></div>
 
-    <div class="card" id="catnod-hist-alim-card" style="margin-bottom:10px;display:none">
+    <div class="card" id="catnod-hist-alim-card" style="margin-bottom:10px">
       <div style="font-weight:700;font-size:13px;margin-bottom:8px;color:var(--text)" id="catnod-hist-alim-titulo">Histórico del Alimentador</div>
       <div class="chart-wrap" style="height:280px"><canvas id="catnod-ch-hist-alim"></canvas></div>
-    </div>
-    <div class="card" id="catnod-hist-alim-vacio" style="margin-bottom:10px">
-      <div style="color:var(--text3);font-size:12.5px">Elige un Alimentador en los filtros de arriba para ver su histórico de Pérdida Total/Técnica/Gestionable.</div>
     </div>
 
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px">
@@ -37869,6 +37866,7 @@ let catnodChHistorial = null;
 
 function catnodEsc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function catnodMesLabel(anio, mes){ return `${BE_MESES_NOMBRE[mes-1]} ${anio}`; }
+function catnodMesLabelCorto(anio, mes){ return `${PF_MESES_ABREV[mes-1]} ${anio}`; }
 function catnodColorHex(color){ return {verde:'#2a9d5c', amarillo:'#e0a826', naranja:'#e0772a', rojo:'#d9534f'}[color] || '#999'; }
 function catnodPct(v){ return v==null ? '--' : `${(v*100).toFixed(1)}%`; }
 function catnodKwh(v){ return v==null ? '--' : Math.round(v).toLocaleString('es-CO'); }
@@ -38113,35 +38111,33 @@ function catnodRenderKpis(resumen, f){
 
 let catnodChHistAlim = null;
 async function catnodCargarHistorialAlimentador(alimentador){
+  // Siempre hay gráfica: con alimentador elegido es la suya, sin elegir
+  // ninguno es la ACUMULADA de todos -- pedido explícito ("debería salir
+  // el gráfico acumulado... el gráfico debe salir").
   const card = document.getElementById('catnod-hist-alim-card');
-  const vacio = document.getElementById('catnod-hist-alim-vacio');
-  if(!alimentador){
-    card.style.display = 'none';
-    vacio.style.display = '';
-    return;
-  }
-  vacio.style.display = 'none';
   card.style.display = '';
-  document.getElementById('catnod-hist-alim-titulo').textContent = `${alimentador} (cargando…)`;
+  document.getElementById('catnod-hist-alim-titulo').textContent = alimentador ? `${alimentador} (cargando…)` : 'Total -- Todos los Alimentadores (cargando…)';
   let datos;
+  const qs = alimentador ? `?alimentador=${encodeURIComponent(alimentador)}` : '';
   try{
-    datos = await apiGet(`/api/categorizacion-nodos/historial-alimentador?alimentador=${encodeURIComponent(alimentador)}`);
+    datos = await apiGet(`/api/categorizacion-nodos/historial-alimentador${qs}`);
   }catch(e){
     document.getElementById('catnod-hist-alim-titulo').textContent = `No se pudo cargar el histórico: ${e.message}`;
     return;
   }
   if(!datos.encontrado){
-    card.style.display = 'none';
-    vacio.style.display = '';
-    vacio.querySelector('div').textContent = `"${alimentador}" no tiene cruce con "Resumen de Alimentadores.csv" todavía -- sin histórico disponible.`;
+    document.getElementById('catnod-hist-alim-titulo').textContent = alimentador
+      ? `"${alimentador}" no tiene cruce con "Resumen de Alimentadores.csv" todavía -- sin histórico disponible.`
+      : 'Sin datos de "Resumen de Alimentadores.csv" todavía.';
+    if(catnodChHistAlim){ catnodChHistAlim.destroy(); catnodChHistAlim = null; }
     return;
   }
-  document.getElementById('catnod-hist-alim-titulo').textContent = `${alimentador} (${datos.nemonico})`;
+  document.getElementById('catnod-hist-alim-titulo').textContent = alimentador ? `${alimentador} (${datos.nemonico})` : 'Total -- Todos los Alimentadores';
   // Desde enero/2026 -- pedido explícito ("la gráfica que muestre desde
   // enero del 2026"): el histórico completo (desde 2020) saturaba el eje X.
   const CATNOD_HIST_ANIO_DESDE = 2026;
   const historial = datos.historial.filter(h => h.anio >= CATNOD_HIST_ANIO_DESDE);
-  const labels = historial.map(h => catnodMesLabel(h.anio, h.mes));
+  const labels = historial.map(h => catnodMesLabelCorto(h.anio, h.mes));
   const ctx = document.getElementById('catnod-ch-hist-alim');
   if(catnodChHistAlim) catnodChHistAlim.destroy();
   // Mismo estilo que la gráfica real de "Alimentadores -- Detalle por
@@ -38179,7 +38175,7 @@ async function catnodCargarHistorialAlimentador(alimentador){
       interaction:{mode:'index', intersect:false},
       plugins:{ legend:{display:true, position:'bottom', labels:{boxWidth:10, font:{size:11}}} },
       scales: {
-        x:{grid:{display:false}},
+        x:{grid:{display:false}, offset:true, ticks:{maxRotation:0, minRotation:0, callback:_tickDosLineas, autoSkip:false}},
         y:{type:'linear', position:'left', grace:'15%', title:{display:true, text:'Energía (kWh)', font:{size:10}}},
         yPct:{type:'linear', position:'right', grace:'20%', grid:{drawOnChartArea:false}, ticks:{callback:v=>v.toFixed(0)+'%'}, title:{display:true, text:'Pérdida (%)', font:{size:10}}},
       },
@@ -38206,15 +38202,29 @@ function catnodRenderTablaRangos(rangos){
       <td>${r.rural.nodos.toLocaleString('es-CO')}</td>
       <td>${catnodKwhOD(r.rural.kwh_perdida)}</td>
     </tr>`).join('');
+  // Los kWh de "Negativos" son nodos en mal estado (medida invertida, fraude,
+  // etc.) -- pedido explícito ("ahí se deben ignorar los negativos, solo
+  // sumar los positivos... por lo cual no se debe sumar"): sumarlos
+  // cancelaba casi toda la pérdida real de las demás franjas. Nodos/
+  // Usuarios SÍ suman todas las filas (son conteos reales, no se distorsionan).
   const total = rangos.reduce((a,r) => ({
-    nodos: a.nodos+r.nodos, usuarios: a.usuarios+r.usuarios, kwh: a.kwh+r.kwh_perdida,
-    uN: a.uN+r.urbano.nodos, uK: a.uK+r.urbano.kwh_perdida, rN: a.rN+r.rural.nodos, rK: a.rK+r.rural.kwh_perdida,
+    nodos: a.nodos+r.nodos, usuarios: a.usuarios+r.usuarios,
+    kwh: a.kwh + (r.rango==='Negativos' ? 0 : r.kwh_perdida),
+    uN: a.uN+r.urbano.nodos, uK: a.uK + (r.rango==='Negativos' ? 0 : r.urbano.kwh_perdida),
+    rN: a.rN+r.rural.nodos, rK: a.rK + (r.rango==='Negativos' ? 0 : r.rural.kwh_perdida),
   }), {nodos:0,usuarios:0,kwh:0,uN:0,uK:0,rN:0,rK:0});
   document.getElementById('catnod-tbl-rangos').innerHTML = `
-    <thead><tr>
-      <th>Rango de Pérdidas</th><th>Nodos</th><th>Usuarios</th><th>kWh/mes-Pérdida</th>
-      <th colspan="2">Urbanos</th><th colspan="2">Rurales</th>
-    </tr></thead>
+    <thead>
+      <tr>
+        <th rowspan="2">Rango de Pérdidas</th><th colspan="3">Todos los nodos del rango</th>
+        <th colspan="2">Urbanos</th><th colspan="2">Rurales</th>
+      </tr>
+      <tr>
+        <th>Nodos (cant.)</th><th>Usuarios (cant.)</th><th>kWh/mes Pérdida</th>
+        <th>Nodos (cant.)</th><th>kWh/mes Pérdida</th>
+        <th>Nodos (cant.)</th><th>kWh/mes Pérdida</th>
+      </tr>
+    </thead>
     <tbody>${filas}
       <tr style="font-weight:700;border-top:2px solid var(--border)">
         <td>TOTAL MACROMEDIDOS</td>
@@ -38232,28 +38242,26 @@ function catnodRenderTablaRangos(rangos){
 function catnodRenderTablaNoIdent(ni){
   const rojo = catnodColorHex('rojo');
   document.getElementById('catnod-tbl-noident').innerHTML = `
-    <thead><tr>
-      <th>Pérdidas No Identificadas</th><th>Nodos</th><th>Usuarios</th>
-      <th colspan="2">Urbanos</th><th colspan="2">Rurales</th>
-    </tr></thead>
+    <thead>
+      <tr>
+        <th rowspan="2">Pérdidas No Identificadas</th><th colspan="2">Todos los nodos</th>
+        <th colspan="2">Urbanos</th><th colspan="2">Rurales</th>
+      </tr>
+      <tr>
+        <th>Nodos (cant.)</th><th>Usuarios (cant.)</th>
+        <th>Nodos (cant.)</th><th>Usuarios (cant.)</th>
+        <th>Nodos (cant.)</th><th>Usuarios (cant.)</th>
+      </tr>
+    </thead>
     <tbody>
       <tr style="background:${rojo}30">
         <td style="font-weight:700;color:${rojo}">Sin Macromedida</td>
         <td>${ni.nodos.toLocaleString('es-CO')}</td>
         <td>${Math.round(ni.usuarios).toLocaleString('es-CO')}</td>
         <td>${ni.urbano.nodos.toLocaleString('es-CO')}</td>
-        <td>${Math.round(ni.urbano.usuarios).toLocaleString('es-CO')} us.</td>
+        <td>${Math.round(ni.urbano.usuarios).toLocaleString('es-CO')}</td>
         <td>${ni.rural.nodos.toLocaleString('es-CO')}</td>
-        <td>${Math.round(ni.rural.usuarios).toLocaleString('es-CO')} us.</td>
-      </tr>
-      <tr style="font-weight:700;border-top:2px solid var(--border)">
-        <td>TOTAL</td>
-        <td>${ni.nodos.toLocaleString('es-CO')}</td>
-        <td>${Math.round(ni.usuarios).toLocaleString('es-CO')}</td>
-        <td>${ni.urbano.nodos.toLocaleString('es-CO')}</td>
-        <td></td>
-        <td>${ni.rural.nodos.toLocaleString('es-CO')}</td>
-        <td></td>
+        <td>${Math.round(ni.rural.usuarios).toLocaleString('es-CO')}</td>
       </tr>
     </tbody>`;
 }
