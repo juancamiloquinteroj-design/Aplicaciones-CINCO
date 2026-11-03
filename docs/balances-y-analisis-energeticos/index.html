@@ -5448,7 +5448,17 @@ html,body{overflow-x:hidden;margin:0}
       <label style="margin-left:10px">Municipio</label>
       <select id="catnod-f-municipio" onchange="catnodAplicarFiltros()"><option value="">Todos</option></select>
       <label style="margin-left:10px">Alimentador</label>
-      <select id="catnod-f-alimentador" onchange="catnodAplicarFiltros()" style="max-width:260px"><option value="">Todos</option></select>
+      <span id="catnod-picker-wrap" style="display:inline-flex;align-items:center;gap:6px">
+        <button type="button" class="be-modo-btn be-icon-btn" onclick="catnodSiguienteAlimentador(-1)" title="Alimentador anterior" style="width:22px;height:22px;font-size:10px">◀</button>
+        <div class="msel" style="position:relative">
+          <input type="text" id="catnod-buscar-alim" placeholder="Buscar / elegir..." autocomplete="off"
+            oninput="catnodAbrirListaAlim()" onfocus="this.select();catnodAbrirListaAlim()"
+            style="width:190px;padding:6px 10px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg);box-sizing:border-box">
+          <div id="catnod-lista-alim" class="msel-panel hidden" style="width:300px"></div>
+        </div>
+        <button type="button" class="be-modo-btn be-icon-btn" onclick="catnodSiguienteAlimentador(1)" title="Siguiente alimentador" style="width:22px;height:22px;font-size:10px">▶</button>
+        <button type="button" class="be-modo-btn be-icon-btn hidden" id="catnod-btn-quitar-alim" onclick="catnodQuitarAlimentador()" title="Quitar alimentador elegido" style="width:22px;height:22px;font-size:11px">✕</button>
+      </span>
       <button type="button" class="be-modo-btn be-modo-btn-sm" onclick="catnodLimpiarFiltros()">Limpiar</button>
       <span style="margin-left:auto;display:inline-flex;gap:3px">
         <button type="button" class="be-modo-btn be-icon-btn activo" id="catnod-modo-mensual" onclick="catnodCambiarModo('mensual')" title="Mensual">M</button>
@@ -31187,6 +31197,7 @@ document.addEventListener('click', (ev)=>{
   // / Cómo se están comportando) -- mismo criterio de cierre al hacer
   // click afuera.
   if(!ev.target.closest || !ev.target.closest('#alim-sub-subestacion-wrap')) alimSubCerrarListaSubestacion();
+  if(!ev.target.closest || !ev.target.closest('#catnod-picker-wrap')) catnodCerrarListaAlim();
 });
 
 // Mini-pestañas Gráfica/Tabla -- pedido explícito: "cuando haya una
@@ -37859,6 +37870,7 @@ function catnodPct(v){ return v==null ? '--' : `${(v*100).toFixed(1)}%`; }
 function catnodKwh(v){ return v==null ? '--' : Math.round(v).toLocaleString('es-CO'); }
 
 let CATNOD_MODO = 'mensual';
+let CATNOD_ALIM_SEL = '';
 
 async function catnodCargar(){
   const vacio = document.getElementById('catnod-vacio');
@@ -37878,11 +37890,50 @@ async function catnodCargar(){
     + CATNOD_FILTROS.zonas.map(z => `<option value="${catnodEsc(z)}">${catnodEsc(z)}</option>`).join('');
   document.getElementById('catnod-f-municipio').innerHTML = '<option value="">Todos</option>'
     + CATNOD_FILTROS.municipios.map(m => `<option value="${catnodEsc(m)}">${catnodEsc(m)}</option>`).join('');
-  document.getElementById('catnod-f-alimentador').innerHTML = '<option value="">Todos</option>'
-    + CATNOD_FILTROS.alimentadores.map(a => `<option value="${catnodEsc(a)}">${catnodEsc(a)}</option>`).join('');
   vacio.classList.add('hidden');
   contenido.classList.remove('hidden');
   await catnodAplicarFiltros();
+}
+
+// Buscador de Alimentador (desplegable con texto libre + flechas ◀▶) --
+// mismo patrón/clases (.msel-panel/.msel-opt) que usa Alimentadores >
+// Detalle por Alimentador (ver alim3AbrirLista/alim3ElegirAlimentador) --
+// pedido explícito ("tiene botón flechas... y puedo escribir en ese filtro").
+function catnodAbrirListaAlim(){
+  document.getElementById('catnod-lista-alim')?.classList.remove('hidden');
+  catnodRenderListaAlim();
+}
+function catnodCerrarListaAlim(){
+  document.getElementById('catnod-lista-alim')?.classList.add('hidden');
+}
+function catnodRenderListaAlim(){
+  const cont = document.getElementById('catnod-lista-alim');
+  if(!cont || !CATNOD_FILTROS) return;
+  const texto = (document.getElementById('catnod-buscar-alim').value || '').trim().toUpperCase();
+  let opciones = CATNOD_FILTROS.alimentadores;
+  if(texto) opciones = opciones.filter(a => a.toUpperCase().includes(texto));
+  if(!opciones.length){ cont.innerHTML = '<div class="msel-empty">Sin resultados.</div>'; return; }
+  cont.innerHTML = opciones.map(a => {
+    const activo = a === CATNOD_ALIM_SEL;
+    return `<div class="msel-opt" onclick="catnodElegirAlimentador('${catnodEsc(a).replace(/'/g,"\\'")}')" style="${activo?'background:var(--bg);font-weight:700;color:var(--accent)':''}">${catnodEsc(a)}</div>`;
+  }).join('');
+}
+function catnodElegirAlimentador(nombre){
+  CATNOD_ALIM_SEL = nombre;
+  const buscador = document.getElementById('catnod-buscar-alim');
+  if(buscador) buscador.value = nombre;
+  document.getElementById('catnod-btn-quitar-alim').classList.toggle('hidden', !nombre);
+  catnodCerrarListaAlim();
+  catnodAplicarFiltros();
+}
+function catnodQuitarAlimentador(){ catnodElegirAlimentador(''); }
+function catnodSiguienteAlimentador(delta){
+  if(!CATNOD_FILTROS || !CATNOD_FILTROS.alimentadores.length) return;
+  const lista = CATNOD_FILTROS.alimentadores;
+  let idx = lista.indexOf(CATNOD_ALIM_SEL);
+  if(idx === -1) idx = delta > 0 ? -1 : lista.length;
+  const nuevo = (idx + delta + lista.length) % lista.length;
+  catnodElegirAlimentador(lista[nuevo]);
 }
 
 function catnodPoblarSelectorPeriodo(){
@@ -37908,7 +37959,9 @@ function catnodCambiarModo(modo){
 function catnodLimpiarFiltros(){
   document.getElementById('catnod-f-zona').value = '';
   document.getElementById('catnod-f-municipio').value = '';
-  document.getElementById('catnod-f-alimentador').value = '';
+  CATNOD_ALIM_SEL = '';
+  document.getElementById('catnod-buscar-alim').value = '';
+  document.getElementById('catnod-btn-quitar-alim').classList.add('hidden');
   catnodAplicarFiltros();
 }
 
@@ -37920,7 +37973,7 @@ function catnodLeerFiltros(){
     anio, mes, anual: CATNOD_MODO === 'anual',
     zona: document.getElementById('catnod-f-zona').value,
     municipio: document.getElementById('catnod-f-municipio').value,
-    alimentador: document.getElementById('catnod-f-alimentador').value,
+    alimentador: CATNOD_ALIM_SEL,
   };
 }
 
@@ -37962,32 +38015,59 @@ async function catnodAplicarFiltros(){
 function catnodRenderKpis(resumen, f){
   const sufijoPeriodo = f.anual ? '(año)' : '(mes)';
   const ga = resumen.gestionable_alimentador;
-  const filasGrid = [
-    ['Total Nodos', resumen.total_nodos.toLocaleString('es-CO')],
-    ['Con Macromedida', resumen.con_macromedida.toLocaleString('es-CO')],
-    ['Sin Macromedida', resumen.sin_macromedida.toLocaleString('es-CO')],
-    [`kWh Pérdida ${sufijoPeriodo}`, catnodKwh(resumen.kwh_perdida_mes)],
-  ];
-  if(ga && ga.encontrado){
-    const notaMes = (ga.anio===f.anio && ga.mes===f.mes) ? '' : ` (${catnodMesLabel(ga.anio, ga.mes)})`;
-    filasGrid.push([`Gestionable -- alimentador${notaMes}`, catnodKwh(ga.gestionable_kwh)]);
-  }else if(ga && !ga.encontrado){
-    filasGrid.push(['Gestionable -- alimentador', 'sin cruce']);
-  }
+  const tituloPeriodo = f.anual ? f.anio : catnodMesLabel(f.anio,f.mes);
 
-  document.getElementById('catnod-kpis').innerHTML = `
-    <div class="alim-resumen-compacta" style="margin:0 0 16px 0">
-      <div class="alim-resumen-compacta-titulo">Resumen ${f.anual ? f.anio : catnodMesLabel(f.anio,f.mes)}</div>
-      <div class="alim-resumen-compacta-fila">
-        <div class="alim-resumen-compacta-pct">
-          <div class="valor">${catnodPct(resumen.pct_perdida_mes)}</div>
-          <div class="etiqueta">% Pérdida ${sufijoPeriodo}</div>
+  if(ga && ga.encontrado){
+    // Con alimentador elegido: la tarjeta pasa a ser SOBRE ese alimentador
+    // (igual que la tarjeta real de Alimentadores) -- pedido explícito
+    // ("el primer número debe ser pérdida total alimentador, entrada
+    // salida, pérdida técnica, pérdida gestionable" + "total de nodos,
+    // total de nodos con macros y sin macros" en la cuadrícula).
+    const notaMes = (ga.anio===f.anio && ga.mes===f.mes) ? '' : ` (dato de ${catnodMesLabel(ga.anio, ga.mes)})`;
+    const filasGrid = [
+      ['Entrada', catnodKwh(ga.entrada_total)],
+      ['Salida', catnodKwh(ga.salida_total)],
+      ['Pérdida Técnica', catnodKwh(ga.perdida_tecnica_kwh)],
+      ['Pérdida Gestionable', catnodKwh(ga.gestionable_kwh)],
+      ['Total Nodos', resumen.total_nodos.toLocaleString('es-CO')],
+      ['Con Macromedida', resumen.con_macromedida.toLocaleString('es-CO')],
+      ['Sin Macromedida', resumen.sin_macromedida.toLocaleString('es-CO')],
+    ];
+    document.getElementById('catnod-kpis').innerHTML = `
+      <div class="alim-resumen-compacta" style="margin:0 0 16px 0">
+        <div class="alim-resumen-compacta-titulo">${catnodEsc(f.alimentador)} (${ga.nemonico}) -- ${tituloPeriodo}${notaMes}</div>
+        <div class="alim-resumen-compacta-fila">
+          <div class="alim-resumen-compacta-pct">
+            <div class="valor">${catnodKwh(ga.perdida_kwh)}</div>
+            <div class="etiqueta">Pérdida Total kWh -- Alimentador</div>
+          </div>
+          <div class="alim-resumen-compacta-grid" style="grid-template-columns:repeat(2,1fr)">
+            ${filasGrid.map(([et,v]) => `<div><span class="etiqueta">${et}:</span> <span class="valor">${v}</span></div>`).join('')}
+          </div>
         </div>
-        <div class="alim-resumen-compacta-grid" style="grid-template-columns:repeat(2,1fr)">
-          ${filasGrid.map(([et,v]) => `<div><span class="etiqueta">${et}:</span> <span class="valor">${v}</span></div>`).join('')}
+      </div>`;
+  }else{
+    const filasGrid = [
+      ['Total Nodos', resumen.total_nodos.toLocaleString('es-CO')],
+      ['Con Macromedida', resumen.con_macromedida.toLocaleString('es-CO')],
+      ['Sin Macromedida', resumen.sin_macromedida.toLocaleString('es-CO')],
+      [`kWh Pérdida ${sufijoPeriodo}`, catnodKwh(resumen.kwh_perdida_mes)],
+    ];
+    if(ga && !ga.encontrado) filasGrid.push([`Gestionable -- ${catnodEsc(f.alimentador)}`, 'sin cruce con Resumen de Alimentadores']);
+    document.getElementById('catnod-kpis').innerHTML = `
+      <div class="alim-resumen-compacta" style="margin:0 0 16px 0">
+        <div class="alim-resumen-compacta-titulo">Resumen ${tituloPeriodo}</div>
+        <div class="alim-resumen-compacta-fila">
+          <div class="alim-resumen-compacta-pct">
+            <div class="valor">${catnodPct(resumen.pct_perdida_mes)}</div>
+            <div class="etiqueta">% Pérdida ${sufijoPeriodo}</div>
+          </div>
+          <div class="alim-resumen-compacta-grid" style="grid-template-columns:repeat(2,1fr)">
+            ${filasGrid.map(([et,v]) => `<div><span class="etiqueta">${et}:</span> <span class="valor">${v}</span></div>`).join('')}
+          </div>
         </div>
-      </div>
-    </div>`;
+      </div>`;
+  }
 
   const aviso = document.getElementById('catnod-ciclo-aviso');
   if(resumen.ciclo_no_mensual){
@@ -38028,18 +38108,45 @@ async function catnodCargarHistorialAlimentador(alimentador){
   const labels = datos.historial.map(h => catnodMesLabel(h.anio, h.mes));
   const ctx = document.getElementById('catnod-ch-hist-alim');
   if(catnodChHistAlim) catnodChHistAlim.destroy();
+  // Mismo estilo que la gráfica real de "Alimentadores -- Detalle por
+  // Alimentador" (área Entrada/Salida + línea Pérdida Total + línea
+  // punteada Pérdida % en eje derecho) -- pedido explícito ("lo quiero
+  // tal cual como sale en pérdida de alimentador").
   catnodChHistAlim = new Chart(ctx, {
-    type: 'bar',
     data: {
       labels,
       datasets: [
-        {label: 'Pérdida Técnica', data: datos.historial.map(h => h.perdida_tecnica_kwh), backgroundColor: '#2a6fdb', stack: 'p'},
-        {label: 'Gestionable', data: datos.historial.map(h => h.gestionable_kwh), backgroundColor: '#d9534f', stack: 'p'},
+        {type:'line', label:'Entrada Total kWh', yAxisID:'y', order:3, fill:'origin',
+          data: datos.historial.map(h => h.entrada_total), borderColor:'#00B050', backgroundColor:'rgba(0,176,80,.20)',
+          borderWidth:2, pointRadius:1.5, tension:0, datalabels:{display:false}},
+        {type:'line', label:'Salida Total kWh', yAxisID:'y', order:2, fill:'origin',
+          data: datos.historial.map(h => h.salida_total), borderColor:'#C00000', backgroundColor:'rgba(192,0,0,.20)',
+          borderWidth:2, pointRadius:1.5, tension:0, datalabels:{display:false}},
+        {type:'line', label:'Pérdida Total kWh', yAxisID:'y', order:4,
+          data: datos.historial.map(h => h.perdida_kwh), borderColor:'#4472C4', backgroundColor:'transparent',
+          borderWidth:2, pointRadius:1.5, tension:0, datalabels:{display:false}},
+        {type:'line', label:'Pérdida Técnica kWh', yAxisID:'y', order:5, hidden:true,
+          data: datos.historial.map(h => h.perdida_tecnica_kwh), borderColor:'#ED7D31', backgroundColor:'transparent',
+          borderWidth:2, pointRadius:1.5, tension:0, datalabels:{display:false}},
+        {type:'line', label:'Pérdida Gestionable kWh', yAxisID:'y', order:6, hidden:true,
+          data: datos.historial.map(h => h.gestionable_kwh), borderColor:'#d9534f', backgroundColor:'transparent',
+          borderWidth:2, pointRadius:1.5, tension:0, datalabels:{display:false}},
+        {type:'line', label:'Pérdida %', yAxisID:'yPct', order:1, borderDash:[4,3],
+          data: datos.historial.map(h => h.perdida_pct==null?null:h.perdida_pct*100), borderColor:'#FFC000', backgroundColor:'transparent',
+          borderWidth:2, pointRadius:2, spanGaps:true, tension:0,
+          datalabels:{display:true, anchor:'end', align:'top', offset:8, formatter:v=>v==null?'':v.toFixed(2)+'%', font:{size:11,weight:'800'}, color:'#FFC000'}},
       ],
     },
     options: {
       responsive: true, maintainAspectRatio: false,
-      scales: { x: {stacked: true}, y: {stacked: true, title: {display: true, text: 'kWh'}} },
+      layout:{padding:{top:22}},
+      interaction:{mode:'index', intersect:false},
+      plugins:{ legend:{display:true, position:'bottom', labels:{boxWidth:10, font:{size:11}}} },
+      scales: {
+        x:{grid:{display:false}},
+        y:{position:'left', title:{display:true, text:'Energía (kWh)', font:{size:10}}},
+        yPct:{type:'linear', position:'right', grid:{drawOnChartArea:false}, ticks:{callback:v=>v.toFixed(0)+'%'}, title:{display:true, text:'Pérdida (%)', font:{size:10}}},
+      },
     },
   });
 }
