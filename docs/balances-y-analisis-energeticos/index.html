@@ -5467,28 +5467,32 @@ html,body{overflow-x:hidden;margin:0}
     </div>
 
     <div id="catnod-kpis"></div>
-    <div id="catnod-ciclo-aviso" class="hidden" style="background:#e0a82622;border:1px solid #e0a82655;border-radius:8px;padding:10px 14px;font-size:12.5px;color:var(--text2);margin-bottom:16px"></div>
+    <div id="catnod-ciclo-aviso" class="hidden"></div>
 
-    <div class="card" id="catnod-hist-alim-card" style="margin-bottom:16px;display:none">
-      <div style="font-weight:700;font-size:13px;margin-bottom:10px;color:var(--text)" id="catnod-hist-alim-titulo">Histórico del Alimentador</div>
+    <div class="card" id="catnod-hist-alim-card" style="margin-bottom:10px;display:none">
+      <div style="font-weight:700;font-size:13px;margin-bottom:8px;color:var(--text)" id="catnod-hist-alim-titulo">Histórico del Alimentador</div>
       <div class="chart-wrap" style="height:280px"><canvas id="catnod-ch-hist-alim"></canvas></div>
     </div>
-    <div class="card" id="catnod-hist-alim-vacio" style="margin-bottom:16px">
+    <div class="card" id="catnod-hist-alim-vacio" style="margin-bottom:10px">
       <div style="color:var(--text3);font-size:12.5px">Elige un Alimentador en los filtros de arriba para ver su histórico de Pérdida Total/Técnica/Gestionable.</div>
     </div>
 
-    <div class="card" style="margin-bottom:16px">
-      <div style="font-weight:700;font-size:13px;margin-bottom:10px;color:var(--text)">Rango de Pérdidas</div>
-      <div class="tbl-wrap tbl-compacta" style="overflow-x:auto"><table id="catnod-tbl-rangos"></table></div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+      <div class="card" style="flex:2 1 520px;min-width:420px">
+        <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:8px">
+          <div style="font-weight:700;font-size:13px;color:var(--text)">Rango de Pérdidas</div>
+          <div id="catnod-rangos-mes" style="font-size:11px;color:var(--text3)"></div>
+        </div>
+        <div class="tbl-wrap tbl-compacta" style="overflow-x:auto"><table id="catnod-tbl-rangos"></table></div>
+      </div>
+      <div class="card" style="flex:1 1 320px;min-width:300px">
+        <div style="font-weight:700;font-size:13px;margin-bottom:8px;color:var(--text)">Pérdidas No Identificadas</div>
+        <div class="tbl-wrap tbl-compacta" style="overflow-x:auto"><table id="catnod-tbl-noident"></table></div>
+      </div>
     </div>
 
-    <div class="card" style="margin-bottom:16px">
-      <div style="font-weight:700;font-size:13px;margin-bottom:10px;color:var(--text)">Pérdidas No Identificadas (Sin Macromedida)</div>
-      <div class="tbl-wrap tbl-compacta" style="overflow-x:auto"><table id="catnod-tbl-noident"></table></div>
-    </div>
-
-    <div class="card" style="margin-bottom:16px">
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+    <div class="card" style="margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px">
         <div style="font-weight:700;font-size:13px;color:var(--text)">Listado de Nodos <span style="font-weight:400;color:var(--text3);font-size:11.5px">(clic en un nodo para ver su histórico)</span></div>
         <input type="text" id="catnod-nodos-buscar" placeholder="Buscar nodo…" oninput="catnodFiltrarListaNodos()" style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:12.5px;color:var(--text);background:var(--bg)">
       </div>
@@ -5496,8 +5500,8 @@ html,body{overflow-x:hidden;margin:0}
       <div class="tbl-wrap tbl-compacta" style="max-height:420px;overflow:auto"><table id="catnod-tbl-nodos"></table></div>
     </div>
 
-    <div class="card" id="catnod-historial-card" style="margin-bottom:16px;display:none">
-      <div style="font-weight:700;font-size:13px;margin-bottom:10px;color:var(--text)" id="catnod-historial-titulo"></div>
+    <div class="card" id="catnod-historial-card" style="margin-bottom:10px;display:none">
+      <div style="font-weight:700;font-size:13px;margin-bottom:8px;color:var(--text)" id="catnod-historial-titulo"></div>
       <div class="chart-wrap" style="height:320px"><canvas id="catnod-ch-historial"></canvas></div>
     </div>
 
@@ -38017,6 +38021,7 @@ async function catnodAplicarFiltros(autoReintento){
   if(!autoReintento) CATNOD_AUTO_CAMBIO_MES = null;
 
   catnodRenderKpis(resumen, f);
+  document.getElementById('catnod-rangos-mes').textContent = `Datos de ${f.anual ? f.anio : catnodMesLabel(f.anio, f.mes)}`;
   catnodRenderTablaRangos(resumen.rango_perdidas);
   await catnodCargarHistorialAlimentador(f.alimentador);
   catnodRenderTablaNoIdent(resumen.no_identificadas);
@@ -38036,74 +38041,74 @@ async function catnodAplicarFiltros(autoReintento){
 }
 
 function catnodRenderKpis(resumen, f){
-  const sufijoPeriodo = f.anual ? '(año)' : '(mes)';
   const ga = resumen.gestionable_alimentador;
   const tituloPeriodo = f.anual ? f.anio : catnodMesLabel(f.anio,f.mes);
 
   if(ga && ga.encontrado){
-    // Con alimentador elegido: la tarjeta pasa a ser SOBRE ese alimentador
-    // (igual que la tarjeta real de Alimentadores) -- pedido explícito
-    // ("el primer número debe ser pérdida total alimentador, entrada
-    // salida, pérdida técnica, pérdida gestionable" + "total de nodos,
-    // total de nodos con macros y sin macros" en la cuadrícula).
+    // Pedido explícito, con el orden exacto dado:
+    //   Entrada | Pérdida Total | Total Nodos
+    //   Salida  | Pérdida Técnica | Total Nodos con Macromedida
+    // + caja aparte de Pérdida Gestionable (mismo patrón que el cuadro de
+    // "Venta Proyectada" de Alimentadores, ver _ventaProyectadaBox) y el
+    // número grande es el % (no el kWh), con el kWh chiquito debajo --
+    // "la primera que es más grande debe mostrar la pérdida en %".
     const notaMes = (ga.anio===f.anio && ga.mes===f.mes) ? '' : ` (dato de ${catnodMesLabel(ga.anio, ga.mes)})`;
+    const titulo = ga.nemonico ? `${catnodEsc(f.alimentador)} (${ga.nemonico})` : 'Total -- Todos los Alimentadores';
+    const subTitulo = [ga.zona, ga.subestacion].filter(Boolean).map(catnodEsc).join(' -- ');
+    const anualizadoTxt = ga.perdida_pct_anualizado!=null ? `<br>Anualizado: ${catnodPct(ga.perdida_pct_anualizado)}` : '';
     const filasGrid = [
       ['Entrada', catnodKwh(ga.entrada_total)],
+      ['Pérdida Total', catnodKwh(ga.perdida_kwh)],
+      ['Total Nodos', resumen.total_nodos.toLocaleString('es-CO')],
       ['Salida', catnodKwh(ga.salida_total)],
       ['Pérdida Técnica', catnodKwh(ga.perdida_tecnica_kwh)],
-      ['Pérdida Gestionable', catnodKwh(ga.gestionable_kwh)],
-      ['Total Nodos', resumen.total_nodos.toLocaleString('es-CO')],
-      ['Con Macromedida', resumen.con_macromedida.toLocaleString('es-CO')],
-      ['Sin Macromedida', resumen.sin_macromedida.toLocaleString('es-CO')],
+      ['Nodos con Macromedida', resumen.con_macromedida.toLocaleString('es-CO')],
     ];
     document.getElementById('catnod-kpis').innerHTML = `
-      <div class="alim-resumen-compacta" style="margin:0 0 16px 0">
-        <div class="alim-resumen-compacta-titulo">${catnodEsc(f.alimentador)} (${ga.nemonico}) -- ${tituloPeriodo}${notaMes}</div>
+      <div class="alim-resumen-compacta" style="margin:0 0 10px 0">
+        <div class="alim-resumen-compacta-titulo">${titulo} -- ${tituloPeriodo}${notaMes}${subTitulo ? ` <span style="font-weight:400;opacity:.8">(${subTitulo})</span>` : ''}</div>
         <div class="alim-resumen-compacta-fila">
           <div class="alim-resumen-compacta-pct">
-            <div class="valor">${catnodKwh(ga.perdida_kwh)}</div>
-            <div class="etiqueta">Pérdida Total kWh -- Alimentador</div>
+            <div class="valor">${catnodPct(ga.perdida_pct)}</div>
+            <div class="etiqueta">Pérdida Total<br>${catnodKwh(ga.perdida_kwh)} kWh/mes${anualizadoTxt}</div>
           </div>
-          <div class="alim-resumen-compacta-grid" style="grid-template-columns:repeat(2,1fr)">
+          <div class="alim-resumen-compacta-grid" style="grid-template-columns:repeat(3,1fr)">
             ${filasGrid.map(([et,v]) => `<div><span class="etiqueta">${et}:</span> <span class="valor">${v}</span></div>`).join('')}
+          </div>
+          <div class="alim-resumen-compacta-pct">
+            <div class="valor">${catnodKwh(ga.gestionable_kwh)}</div>
+            <div class="etiqueta">PÉRDIDA GESTIONABLE<br>kWh/mes</div>
           </div>
         </div>
       </div>`;
   }else{
+    // Alimentador elegido pero sin cruce con Resumen de Alimentadores.csv
+    // (~19% de los casos, ver docstring del router) -- no hay Entrada/
+    // Salida/Técnica/Gestionable disponibles, solo los conteos de nodos.
     const filasGrid = [
       ['Total Nodos', resumen.total_nodos.toLocaleString('es-CO')],
       ['Con Macromedida', resumen.con_macromedida.toLocaleString('es-CO')],
       ['Sin Macromedida', resumen.sin_macromedida.toLocaleString('es-CO')],
-      [`kWh Pérdida ${sufijoPeriodo}`, catnodKwh(resumen.kwh_perdida_mes)],
     ];
-    if(ga && !ga.encontrado) filasGrid.push([`Gestionable -- ${catnodEsc(f.alimentador)}`, 'sin cruce con Resumen de Alimentadores']);
     document.getElementById('catnod-kpis').innerHTML = `
-      <div class="alim-resumen-compacta" style="margin:0 0 16px 0">
-        <div class="alim-resumen-compacta-titulo">Resumen ${tituloPeriodo}</div>
+      <div class="alim-resumen-compacta" style="margin:0 0 10px 0">
+        <div class="alim-resumen-compacta-titulo">${catnodEsc(f.alimentador)} -- ${tituloPeriodo}</div>
         <div class="alim-resumen-compacta-fila">
           <div class="alim-resumen-compacta-pct">
             <div class="valor">${catnodPct(resumen.pct_perdida_mes)}</div>
-            <div class="etiqueta">% Pérdida ${sufijoPeriodo}</div>
+            <div class="etiqueta">% Pérdida (nodos)</div>
           </div>
-          <div class="alim-resumen-compacta-grid" style="grid-template-columns:repeat(2,1fr)">
+          <div class="alim-resumen-compacta-grid" style="grid-template-columns:repeat(3,1fr)">
             ${filasGrid.map(([et,v]) => `<div><span class="etiqueta">${et}:</span> <span class="valor">${v}</span></div>`).join('')}
           </div>
         </div>
+        <div style="font-size:11px;color:var(--text3);margin-top:6px">Sin cruce con "Resumen de Alimentadores.csv" todavía -- no hay Entrada/Salida/Técnica/Gestionable disponibles para este alimentador.</div>
       </div>`;
   }
 
-  const aviso = document.getElementById('catnod-ciclo-aviso');
-  if(CATNOD_AUTO_CAMBIO_MES){
-    const {desde, hasta} = CATNOD_AUTO_CAMBIO_MES;
-    aviso.textContent = `${catnodMesLabel(desde.anio, desde.mes)} no tenía lecturas de macromedida para este filtro (ciclo no mensual, ej. bimestral) -- se cambió automáticamente a ${catnodMesLabel(hasta.anio, hasta.mes)}, el mes más reciente que sí tiene dato.`;
-    aviso.classList.remove('hidden');
-  }else if(resumen.ciclo_no_mensual){
-    const meses = resumen.ciclo_no_mensual.meses_con_dato.map(p => catnodMesLabel(p.anio, p.mes)).join(', ');
-    aviso.textContent = `Este filtro no tiene lecturas de macromedida en ${catnodMesLabel(f.anio,f.mes)} -- no es un error de cruce, es que ese grupo de nodos se lee en otros meses (ciclo no mensual). Últimos meses con dato: ${meses}.`;
-    aviso.classList.remove('hidden');
-  }else{
-    aviso.classList.add('hidden');
-  }
+  // El cambio automático de mes (ver catnodAplicarFiltros) queda SILENCIOSO
+  // -- pedido explícito ("quita este letrero"), ya no se muestra el aviso.
+  document.getElementById('catnod-ciclo-aviso').classList.add('hidden');
 }
 
 let catnodChHistAlim = null;
@@ -38117,7 +38122,7 @@ async function catnodCargarHistorialAlimentador(alimentador){
   }
   vacio.style.display = 'none';
   card.style.display = '';
-  document.getElementById('catnod-hist-alim-titulo').textContent = `Histórico del Alimentador -- ${alimentador} (cargando…)`;
+  document.getElementById('catnod-hist-alim-titulo').textContent = `${alimentador} (cargando…)`;
   let datos;
   try{
     datos = await apiGet(`/api/categorizacion-nodos/historial-alimentador?alimentador=${encodeURIComponent(alimentador)}`);
@@ -38131,7 +38136,7 @@ async function catnodCargarHistorialAlimentador(alimentador){
     vacio.querySelector('div').textContent = `"${alimentador}" no tiene cruce con "Resumen de Alimentadores.csv" todavía -- sin histórico disponible.`;
     return;
   }
-  document.getElementById('catnod-hist-alim-titulo').textContent = `Histórico del Alimentador -- ${alimentador} (${datos.nemonico})`;
+  document.getElementById('catnod-hist-alim-titulo').textContent = `${alimentador} (${datos.nemonico})`;
   // Desde enero/2026 -- pedido explícito ("la gráfica que muestre desde
   // enero del 2026"): el histórico completo (desde 2020) saturaba el eje X.
   const CATNOD_HIST_ANIO_DESDE = 2026;
@@ -38175,39 +38180,80 @@ async function catnodCargarHistorialAlimentador(alimentador){
       plugins:{ legend:{display:true, position:'bottom', labels:{boxWidth:10, font:{size:11}}} },
       scales: {
         x:{grid:{display:false}},
-        y:{position:'left', title:{display:true, text:'Energía (kWh)', font:{size:10}}},
-        yPct:{type:'linear', position:'right', grid:{drawOnChartArea:false}, ticks:{callback:v=>v.toFixed(0)+'%'}, title:{display:true, text:'Pérdida (%)', font:{size:10}}},
+        y:{type:'linear', position:'left', grace:'15%', title:{display:true, text:'Energía (kWh)', font:{size:10}}},
+        yPct:{type:'linear', position:'right', grace:'20%', grid:{drawOnChartArea:false}, ticks:{callback:v=>v.toFixed(0)+'%'}, title:{display:true, text:'Pérdida (%)', font:{size:10}}},
       },
     },
   });
 }
 
+function catnodKwhOD(v){ return (v==null || Math.round(v)===0) ? '-' : catnodKwh(v); }
+function catnodNumOD(v){ return (v==null || v===0) ? '0' : v.toLocaleString('es-CO'); }
+
+// Mismas columnas y colores que la hoja "INFORME" del Excel de referencia
+// (pedido explícito, con captura de la tabla real): Rango | Nodos |
+// Usuarios | kWh/mes-Pérdida | Urbanos (Nodos+kWh) | Rurales (Nodos+kWh),
+// con fila TOTAL MACROMEDIDOS al final.
 function catnodRenderTablaRangos(rangos){
   const filas = rangos.map(r => `
-    <tr style="background:${catnodColorHex(r.color)}22">
-      <td style="font-weight:600;color:${catnodColorHex(r.color)}">${r.rango}</td>
+    <tr style="background:${catnodColorHex(r.color)}30">
+      <td style="font-weight:700;color:${catnodColorHex(r.color)}">${r.rango}</td>
       <td>${r.nodos.toLocaleString('es-CO')}</td>
       <td>${Math.round(r.usuarios).toLocaleString('es-CO')}</td>
-      <td>${catnodKwh(r.kwh_perdida)}</td>
-      <td>${r.urbano.nodos.toLocaleString('es-CO')} (${catnodKwh(r.urbano.kwh_perdida)} kWh)</td>
-      <td>${r.rural.nodos.toLocaleString('es-CO')} (${catnodKwh(r.rural.kwh_perdida)} kWh)</td>
+      <td>${catnodKwhOD(r.kwh_perdida)}</td>
+      <td>${r.urbano.nodos.toLocaleString('es-CO')}</td>
+      <td>${catnodKwhOD(r.urbano.kwh_perdida)}</td>
+      <td>${r.rural.nodos.toLocaleString('es-CO')}</td>
+      <td>${catnodKwhOD(r.rural.kwh_perdida)}</td>
     </tr>`).join('');
+  const total = rangos.reduce((a,r) => ({
+    nodos: a.nodos+r.nodos, usuarios: a.usuarios+r.usuarios, kwh: a.kwh+r.kwh_perdida,
+    uN: a.uN+r.urbano.nodos, uK: a.uK+r.urbano.kwh_perdida, rN: a.rN+r.rural.nodos, rK: a.rK+r.rural.kwh_perdida,
+  }), {nodos:0,usuarios:0,kwh:0,uN:0,uK:0,rN:0,rK:0});
   document.getElementById('catnod-tbl-rangos').innerHTML = `
-    <thead><tr><th>Rango de Pérdidas</th><th>Nodos</th><th>Usuarios</th><th>kWh/mes Pérdida</th><th>Urbanos</th><th>Rurales</th></tr></thead>
-    <tbody>${filas}</tbody>`;
+    <thead><tr>
+      <th>Rango de Pérdidas</th><th>Nodos</th><th>Usuarios</th><th>kWh/mes-Pérdida</th>
+      <th colspan="2">Urbanos</th><th colspan="2">Rurales</th>
+    </tr></thead>
+    <tbody>${filas}
+      <tr style="font-weight:700;border-top:2px solid var(--border)">
+        <td>TOTAL MACROMEDIDOS</td>
+        <td>${total.nodos.toLocaleString('es-CO')}</td>
+        <td>${Math.round(total.usuarios).toLocaleString('es-CO')}</td>
+        <td>${catnodKwhOD(total.kwh)}</td>
+        <td>${total.uN.toLocaleString('es-CO')}</td>
+        <td>${catnodKwhOD(total.uK)}</td>
+        <td>${total.rN.toLocaleString('es-CO')}</td>
+        <td>${catnodKwhOD(total.rK)}</td>
+      </tr>
+    </tbody>`;
 }
 
 function catnodRenderTablaNoIdent(ni){
   const rojo = catnodColorHex('rojo');
   document.getElementById('catnod-tbl-noident').innerHTML = `
-    <thead><tr><th>Sin Macromedida</th><th>Nodos</th><th>Usuarios</th><th>Urbanos</th><th>Rurales</th></tr></thead>
+    <thead><tr>
+      <th>Pérdidas No Identificadas</th><th>Nodos</th><th>Usuarios</th>
+      <th colspan="2">Urbanos</th><th colspan="2">Rurales</th>
+    </tr></thead>
     <tbody>
-      <tr style="background:${rojo}22">
-        <td style="font-weight:600;color:${rojo}">Sin Macromedida</td>
+      <tr style="background:${rojo}30">
+        <td style="font-weight:700;color:${rojo}">Sin Macromedida</td>
         <td>${ni.nodos.toLocaleString('es-CO')}</td>
         <td>${Math.round(ni.usuarios).toLocaleString('es-CO')}</td>
         <td>${ni.urbano.nodos.toLocaleString('es-CO')}</td>
+        <td>${Math.round(ni.urbano.usuarios).toLocaleString('es-CO')} us.</td>
         <td>${ni.rural.nodos.toLocaleString('es-CO')}</td>
+        <td>${Math.round(ni.rural.usuarios).toLocaleString('es-CO')} us.</td>
+      </tr>
+      <tr style="font-weight:700;border-top:2px solid var(--border)">
+        <td>TOTAL</td>
+        <td>${ni.nodos.toLocaleString('es-CO')}</td>
+        <td>${Math.round(ni.usuarios).toLocaleString('es-CO')}</td>
+        <td>${ni.urbano.nodos.toLocaleString('es-CO')}</td>
+        <td></td>
+        <td>${ni.rural.nodos.toLocaleString('es-CO')}</td>
+        <td></td>
       </tr>
     </tbody>`;
 }
