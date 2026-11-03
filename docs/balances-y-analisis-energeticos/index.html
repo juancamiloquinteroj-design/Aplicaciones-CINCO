@@ -5441,9 +5441,7 @@ html,body{overflow-x:hidden;margin:0}
 
   <div id="catnod-contenido" class="hidden">
     <div id="catnod-filtro" class="fbar">
-      <label>Periodo</label>
-      <select id="catnod-f-periodo" onchange="catnodAplicarFiltros()"></select>
-      <label style="margin-left:10px">Zona</label>
+      <label>Zona</label>
       <select id="catnod-f-zona" onchange="catnodAplicarFiltros()"><option value="">Todas</option></select>
       <label style="margin-left:10px">Municipio</label>
       <select id="catnod-f-municipio" onchange="catnodAplicarFiltros()"><option value="">Todos</option></select>
@@ -5460,7 +5458,11 @@ html,body{overflow-x:hidden;margin:0}
         <button type="button" class="be-modo-btn be-icon-btn hidden" id="catnod-btn-quitar-alim" onclick="catnodQuitarAlimentador()" title="Quitar alimentador elegido" style="width:22px;height:22px;font-size:11px">✕</button>
       </span>
       <button type="button" class="be-modo-btn be-modo-btn-sm" onclick="catnodLimpiarFiltros()">Limpiar</button>
-      <span style="margin-left:auto;display:inline-flex;gap:3px">
+      <span style="margin-left:auto;display:inline-flex;align-items:center;gap:6px">
+        <label>AñoMes</label>
+        <select id="catnod-f-periodo" onchange="catnodAplicarFiltros()"></select>
+      </span>
+      <span style="display:inline-flex;gap:3px">
         <button type="button" class="be-modo-btn be-icon-btn activo" id="catnod-modo-mensual" onclick="catnodCambiarModo('mensual')" title="Mensual">M</button>
         <button type="button" class="be-modo-btn be-icon-btn" id="catnod-modo-anual" onclick="catnodCambiarModo('anual')" title="Anual">A</button>
       </span>
@@ -37887,6 +37889,21 @@ function catnodColorHex(color){ return {verde:'#2a9d5c', amarillo:'#e0a826', nar
 function catnodPct(v){ return v==null ? '--' : `${(v*100).toFixed(1)}%`; }
 function catnodKwh(v){ return v==null ? '--' : Math.round(v).toLocaleString('es-CO'); }
 
+// "▲ +1.912.708 (+2%)" -- mismo patrón de variación chiquita que la tarjeta
+// real de Alimentadores (dTxt), pedido explícito ("tampoco muestra así
+// pequeño la variación"). esPct=true compara en puntos porcentuales.
+function catnodDeltaTxt(actual, anterior, esPct){
+  if(actual==null || anterior==null) return '';
+  const d = actual - anterior;
+  const icono = d>=0 ? '▲' : '▼';
+  if(esPct){
+    return ` <span style="font-size:9.5px;color:var(--text3)">(${icono} ${d>=0?'+':'-'}${Math.abs(d*100).toFixed(2)} pp)</span>`;
+  }
+  const pct = anterior ? (d/anterior*100) : null;
+  const pctTxt = pct==null ? '' : ` (${pct>=0?'+':'-'}${Math.round(Math.abs(pct))}%)`;
+  return ` <span style="font-size:9.5px;color:var(--text3)">(${icono} ${Math.round(Math.abs(d)).toLocaleString('es-CO')}${pctTxt})</span>`;
+}
+
 let CATNOD_MODO = 'mensual';
 let CATNOD_ALIM_SEL = '';
 
@@ -38070,12 +38087,13 @@ function catnodRenderKpis(resumen, f){
     const titulo = ga.nemonico ? `${catnodEsc(f.alimentador)} (${ga.nemonico})` : 'Total -- Todos los Alimentadores';
     const subTitulo = [ga.zona, ga.subestacion].filter(Boolean).map(catnodEsc).join(' -- ');
     const anualizadoTxt = ga.perdida_pct_anualizado!=null ? `<br>Anualizado: ${catnodPct(ga.perdida_pct_anualizado)}` : '';
+    const ant = ga.anterior;
     const filasGrid = [
-      ['Entrada', catnodKwh(ga.entrada_total)],
-      ['Pérdida Total', catnodKwh(ga.perdida_kwh)],
+      ['Entrada', catnodKwh(ga.entrada_total) + (ant?catnodDeltaTxt(ga.entrada_total, ant.entrada_total):'')],
+      ['Pérdida Total', catnodKwh(ga.perdida_kwh) + (ant?catnodDeltaTxt(ga.perdida_kwh, ant.perdida_kwh):'')],
       ['Total Nodos', resumen.total_nodos.toLocaleString('es-CO')],
-      ['Salida', catnodKwh(ga.salida_total)],
-      ['Pérdida Técnica', catnodKwh(ga.perdida_tecnica_kwh)],
+      ['Salida', catnodKwh(ga.salida_total) + (ant?catnodDeltaTxt(ga.salida_total, ant.salida_total):'')],
+      ['Pérdida Técnica', catnodKwh(ga.perdida_tecnica_kwh) + (ant?catnodDeltaTxt(ga.perdida_tecnica_kwh, ant.perdida_tecnica_kwh):'')],
       ['Nodos con Macromedida', resumen.con_macromedida.toLocaleString('es-CO')],
     ];
     document.getElementById('catnod-kpis').innerHTML = `
@@ -38083,14 +38101,14 @@ function catnodRenderKpis(resumen, f){
         <div class="alim-resumen-compacta-titulo" style="text-align:center">${titulo} -- ${tituloPeriodo}${notaMes}${subTitulo ? ` <span style="font-weight:400;opacity:.8">(${subTitulo})</span>` : ''}</div>
         <div class="alim-resumen-compacta-fila">
           <div class="alim-resumen-compacta-pct">
-            <div class="valor">${catnodPct(ga.perdida_pct)}</div>
+            <div class="valor">${catnodPct(ga.perdida_pct)}${ant?catnodDeltaTxt(ga.perdida_pct, ant.perdida_pct, true):''}</div>
             <div class="etiqueta">Pérdida Total<br>${catnodKwh(ga.perdida_kwh)} kWh/mes${anualizadoTxt}</div>
           </div>
           <div class="alim-resumen-compacta-grid" style="grid-template-columns:repeat(3,1fr)">
             ${filasGrid.map(([et,v]) => `<div><span class="etiqueta">${et}:</span> <span class="valor">${v}</span></div>`).join('')}
           </div>
           <div class="alim-resumen-compacta-pct">
-            <div class="valor">${catnodPct(ga.entrada_total ? ga.gestionable_kwh/ga.entrada_total : null)}</div>
+            <div class="valor">${catnodPct(ga.entrada_total ? ga.gestionable_kwh/ga.entrada_total : null)}${ant?catnodDeltaTxt(ga.gestionable_kwh, ant.gestionable_kwh):''}</div>
             <div class="etiqueta">PÉRDIDA GESTIONABLE<br>${catnodKwh(ga.gestionable_kwh)} kWh/mes</div>
           </div>
         </div>
