@@ -5441,31 +5441,38 @@ html,body{overflow-x:hidden;margin:0}
 
   <div id="catnod-contenido" class="hidden">
     <div class="card" style="margin-bottom:16px">
-      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
-        <div>
-          <label style="font-size:11.5px;color:var(--text3);display:block;margin-bottom:3px">Periodo</label>
-          <select id="catnod-f-periodo" onchange="catnodAplicarFiltros()" style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:12.5px;color:var(--text);background:var(--bg)"></select>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;justify-content:space-between">
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+          <div>
+            <label style="font-size:11.5px;color:var(--text3);display:block;margin-bottom:3px">Periodo</label>
+            <select id="catnod-f-periodo" onchange="catnodAplicarFiltros()" style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:12.5px;color:var(--text);background:var(--bg)"></select>
+          </div>
+          <div>
+            <label style="font-size:11.5px;color:var(--text3);display:block;margin-bottom:3px">Zona</label>
+            <select id="catnod-f-zona" onchange="catnodAplicarFiltros()" style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:12.5px;color:var(--text);background:var(--bg)"><option value="">Todas</option></select>
+          </div>
+          <div>
+            <label style="font-size:11.5px;color:var(--text3);display:block;margin-bottom:3px">Municipio</label>
+            <select id="catnod-f-municipio" onchange="catnodAplicarFiltros()" style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:12.5px;color:var(--text);background:var(--bg)"><option value="">Todos</option></select>
+          </div>
+          <div>
+            <label style="font-size:11.5px;color:var(--text3);display:block;margin-bottom:3px">Alimentador</label>
+            <select id="catnod-f-alimentador" onchange="catnodAplicarFiltros()" style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:12.5px;color:var(--text);background:var(--bg);max-width:280px"><option value="">Todos</option></select>
+          </div>
+          <button type="button" class="be-modo-btn be-modo-btn-sm" onclick="catnodLimpiarFiltros()">Limpiar filtros</button>
         </div>
-        <div>
-          <label style="font-size:11.5px;color:var(--text3);display:block;margin-bottom:3px">Zona</label>
-          <select id="catnod-f-zona" onchange="catnodAplicarFiltros()" style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:12.5px;color:var(--text);background:var(--bg)"><option value="">Todas</option></select>
+        <div style="display:flex;gap:6px">
+          <button type="button" class="be-modo-btn be-modo-btn-sm activo" id="catnod-modo-mensual" onclick="catnodCambiarModo('mensual')">Mensual</button>
+          <button type="button" class="be-modo-btn be-modo-btn-sm" id="catnod-modo-anual" onclick="catnodCambiarModo('anual')">Anual</button>
         </div>
-        <div>
-          <label style="font-size:11.5px;color:var(--text3);display:block;margin-bottom:3px">Municipio</label>
-          <select id="catnod-f-municipio" onchange="catnodAplicarFiltros()" style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:12.5px;color:var(--text);background:var(--bg)"><option value="">Todos</option></select>
-        </div>
-        <div>
-          <label style="font-size:11.5px;color:var(--text3);display:block;margin-bottom:3px">Alimentador</label>
-          <select id="catnod-f-alimentador" onchange="catnodAplicarFiltros()" style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:12.5px;color:var(--text);background:var(--bg);max-width:280px"><option value="">Todos</option></select>
-        </div>
-        <button type="button" class="be-modo-btn be-modo-btn-sm" onclick="catnodLimpiarFiltros()">Limpiar filtros</button>
       </div>
     </div>
 
-    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px" id="catnod-kpis"></div>
+    <div class="tarjetas-fila-unica" id="catnod-kpis"></div>
 
     <div class="card" style="margin-bottom:16px">
       <div style="font-weight:700;font-size:13px;margin-bottom:10px;color:var(--text)">Rango de Pérdidas</div>
+      <div class="chart-wrap" style="height:220px;margin-bottom:16px"><canvas id="catnod-ch-rangos"></canvas></div>
       <div class="tbl-wrap tbl-compacta" style="overflow-x:auto"><table id="catnod-tbl-rangos"></table></div>
     </div>
 
@@ -37851,6 +37858,8 @@ function catnodColorHex(color){ return {verde:'#2a9d5c', amarillo:'#e0a826', nar
 function catnodPct(v){ return v==null ? '--' : `${(v*100).toFixed(1)}%`; }
 function catnodKwh(v){ return v==null ? '--' : Math.round(v).toLocaleString('es-CO'); }
 
+let CATNOD_MODO = 'mensual';
+
 async function catnodCargar(){
   const vacio = document.getElementById('catnod-vacio');
   const contenido = document.getElementById('catnod-contenido');
@@ -37864,8 +37873,7 @@ async function catnodCargar(){
     vacio.innerHTML = `<div style="color:var(--text3)">Todavía no hay datos cargados de "Balances nodos.csv" / "total Transformadores.csv" para este operador.</div>`;
     return;
   }
-  document.getElementById('catnod-f-periodo').innerHTML = CATNOD_FILTROS.periodos
-    .map(p => `<option value="${p.anio}-${p.mes}">${catnodMesLabel(p.anio, p.mes)}</option>`).join('');
+  catnodPoblarSelectorPeriodo();
   document.getElementById('catnod-f-zona').innerHTML = '<option value="">Todas</option>'
     + CATNOD_FILTROS.zonas.map(z => `<option value="${catnodEsc(z)}">${catnodEsc(z)}</option>`).join('');
   document.getElementById('catnod-f-municipio').innerHTML = '<option value="">Todos</option>'
@@ -37877,6 +37885,26 @@ async function catnodCargar(){
   await catnodAplicarFiltros();
 }
 
+function catnodPoblarSelectorPeriodo(){
+  const sel = document.getElementById('catnod-f-periodo');
+  if(CATNOD_MODO === 'anual'){
+    const anios = [...new Set(CATNOD_FILTROS.periodos.map(p => p.anio))].sort((a,b)=>b-a);
+    sel.innerHTML = anios.map(a => `<option value="${a}">${a}</option>`).join('');
+  }else{
+    sel.innerHTML = CATNOD_FILTROS.periodos
+      .map(p => `<option value="${p.anio}-${p.mes}">${catnodMesLabel(p.anio, p.mes)}</option>`).join('');
+  }
+}
+
+function catnodCambiarModo(modo){
+  if(modo === CATNOD_MODO) return;
+  CATNOD_MODO = modo;
+  document.getElementById('catnod-modo-mensual').classList.toggle('activo', modo==='mensual');
+  document.getElementById('catnod-modo-anual').classList.toggle('activo', modo==='anual');
+  catnodPoblarSelectorPeriodo();
+  catnodAplicarFiltros();
+}
+
 function catnodLimpiarFiltros(){
   document.getElementById('catnod-f-zona').value = '';
   document.getElementById('catnod-f-municipio').value = '';
@@ -37885,9 +37913,11 @@ function catnodLimpiarFiltros(){
 }
 
 function catnodLeerFiltros(){
-  const [anio, mes] = document.getElementById('catnod-f-periodo').value.split('-').map(Number);
+  const valorPeriodo = document.getElementById('catnod-f-periodo').value;
+  const anio = CATNOD_MODO === 'anual' ? Number(valorPeriodo) : Number(valorPeriodo.split('-')[0]);
+  const mes = CATNOD_MODO === 'anual' ? 0 : Number(valorPeriodo.split('-')[1]);
   return {
-    anio, mes,
+    anio, mes, anual: CATNOD_MODO === 'anual',
     zona: document.getElementById('catnod-f-zona').value,
     municipio: document.getElementById('catnod-f-municipio').value,
     alimentador: document.getElementById('catnod-f-alimentador').value,
@@ -37896,7 +37926,7 @@ function catnodLeerFiltros(){
 
 async function catnodAplicarFiltros(){
   const f = catnodLeerFiltros();
-  const qs = new URLSearchParams({anio: f.anio, mes: f.mes});
+  const qs = new URLSearchParams({anio: f.anio, mes: f.mes, anual: f.anual});
   if(f.zona) qs.set('zona', f.zona);
   if(f.municipio) qs.set('municipio', f.municipio);
   if(f.alimentador) qs.set('alimentador', f.alimentador);
@@ -37912,39 +37942,76 @@ async function catnodAplicarFiltros(){
   }
   catnodRenderKpis(resumen, f);
   catnodRenderTablaRangos(resumen.rango_perdidas);
+  catnodRenderChartRangos(resumen.rango_perdidas);
   catnodRenderTablaNoIdent(resumen.no_identificadas);
-  await catnodCargarNodos(f, qs);
-  await catnodRenderComparativa(f.anio, f.mes);
+  if(f.anual){
+    CATNOD_NODOS_CACHE = [];
+    document.getElementById('catnod-tbl-nodos').innerHTML = '';
+    document.getElementById('catnod-nodos-aviso').textContent = 'El listado de nodos funciona en modo Mensual -- cambia el modo arriba a la derecha para verlo.';
+  }else{
+    await catnodCargarNodos(f, qs);
+  }
+  if(f.anual){
+    const masReciente = CATNOD_FILTROS.periodos[0]; // ya viene ordenado anio/mes DESC
+    await catnodRenderComparativa(masReciente.anio, masReciente.mes);
+  }else{
+    await catnodRenderComparativa(f.anio, f.mes);
+  }
 }
 
 function catnodRenderKpis(resumen, f){
+  const sufijoPeriodo = f.anual ? '(año)' : '(mes)';
   const tarjetas = [
     ['Total Nodos', resumen.total_nodos.toLocaleString('es-CO')],
     ['Con Macromedida', resumen.con_macromedida.toLocaleString('es-CO')],
     ['Sin Macromedida', resumen.sin_macromedida.toLocaleString('es-CO')],
-    ['kWh Pérdida (mes)', catnodKwh(resumen.kwh_perdida_mes)],
+    [`kWh Pérdida ${sufijoPeriodo}`, catnodKwh(resumen.kwh_perdida_mes)],
   ];
   let extra = '';
   const ga = resumen.gestionable_alimentador;
   if(ga){
     if(ga.encontrado){
-      const notaMes = (ga.anio===f.anio && ga.mes===f.mes) ? '' : ` <span style="font-weight:400;color:var(--text3)">(${catnodMesLabel(ga.anio, ga.mes)})</span>`;
-      extra = `<div class="card" style="flex:1 1 160px;min-width:150px;padding:14px 16px;border-color:#d9534f55">
-        <div style="font-size:11px;color:var(--text3);margin-bottom:4px">Gestionable (este alimentador)${notaMes}</div>
-        <div style="font-size:20px;font-weight:700;color:#d9534f">${catnodKwh(ga.gestionable_kwh)}</div>
+      const notaMes = (ga.anio===f.anio && ga.mes===f.mes) ? '' : ` (${catnodMesLabel(ga.anio, ga.mes)})`;
+      extra = `<div class="be-resumen-tile" style="border-color:#d9534f55">
+        <div class="etiqueta">Gestionable -- este alimentador</div>
+        <div class="valor" style="color:#d9534f">${catnodKwh(ga.gestionable_kwh)}</div>
+        <div class="sub">${notaMes || 'kWh'}</div>
       </div>`;
     }else{
-      extra = `<div class="card" style="flex:1 1 220px;min-width:200px;padding:14px 16px">
-        <div style="font-size:11px;color:var(--text3);margin-bottom:4px">Gestionable (este alimentador)</div>
-        <div style="font-size:12.5px;color:var(--text3)">Sin cruce con "Resumen de Alimentadores.csv" todavía.</div>
+      extra = `<div class="be-resumen-tile">
+        <div class="etiqueta">Gestionable -- este alimentador</div>
+        <div class="sub">Sin cruce con "Resumen de Alimentadores.csv" todavía.</div>
       </div>`;
     }
   }
   document.getElementById('catnod-kpis').innerHTML = tarjetas.map(([t,v]) => `
-    <div class="card" style="flex:1 1 160px;min-width:150px;padding:14px 16px">
-      <div style="font-size:11px;color:var(--text3);margin-bottom:4px">${t}</div>
-      <div style="font-size:20px;font-weight:700;color:var(--text)">${v}</div>
+    <div class="be-resumen-tile">
+      <div class="etiqueta">${t}</div>
+      <div class="valor">${v}</div>
     </div>`).join('') + extra;
+}
+
+let catnodChRangos = null;
+function catnodRenderChartRangos(rangos){
+  const ctx = document.getElementById('catnod-ch-rangos');
+  if(!ctx) return;
+  if(catnodChRangos) catnodChRangos.destroy();
+  catnodChRangos = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: rangos.map(r => r.rango),
+      datasets: [{
+        label: 'kWh Pérdida',
+        data: rangos.map(r => r.kwh_perdida),
+        backgroundColor: rangos.map(r => catnodColorHex(r.color)),
+      }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: { y: { title: { display: true, text: 'kWh Pérdida' } } },
+    },
+  });
 }
 
 function catnodRenderTablaRangos(rangos){
