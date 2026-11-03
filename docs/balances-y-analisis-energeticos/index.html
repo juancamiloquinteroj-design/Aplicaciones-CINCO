@@ -1684,7 +1684,6 @@ html,body{overflow-x:hidden;margin:0}
     <button class="sidebar-sublink" data-vista="aenc-cgm" data-modulo="aenc-cgm" onclick="mostrarVista('aenc-cgm')">AENC vs CGM</button>
     <button class="sidebar-sublink" data-vista="temp-entrada" data-modulo="temp-entrada" onclick="mostrarVista('temp-entrada')">Temperatura</button>
     <button class="sidebar-sublink" data-vista="indicadores-gestion" data-modulo="indicadores-gestion" onclick="mostrarVista('indicadores-gestion')">Indicadores Gestión</button>
-    <button class="sidebar-sublink" data-vista="categorizacion-nodos" data-modulo="categorizacion-nodos" onclick="mostrarVista('categorizacion-nodos')">Categorización Nodos</button>
   </div>
   <button class="sidebar-link sidebar-link-padre" id="sidebar-config-padre" onclick="toggleSubmenuConfig()">
     <span>Configuración</span>
@@ -4643,6 +4642,7 @@ html,body{overflow-x:hidden;margin:0}
       <button type="button" class="pt-tab-btn" id="alim3-tab-btn-top" onclick="alim3IrATab('top')">Top Alimentadores</button>
       <button type="button" class="pt-tab-btn" id="alim3-tab-btn-variacion" onclick="alim3IrATab('variacion')">Variación de Pérdida</button>
       <button type="button" class="pt-tab-btn" id="alim3-tab-btn-ciclos" onclick="alim3IrATab('ciclos')">Ciclos</button>
+      <button type="button" class="pt-tab-btn" id="alim3-tab-btn-categorizacion" onclick="alim3IrATab('categorizacion')">Categorización Nodos</button>
     </div>
 
     <!-- Filtro Rango + Zona (chips) -- ÚNICO nodo, alim3IrATab() lo mueve
@@ -5033,6 +5033,130 @@ html,body{overflow-x:hidden;margin:0}
     </div>
     </div><!-- /#ac-tab-tabla -->
     </div><!-- /#alim3-tab-ciclos -->
+
+    <!-- ===== Categorización Nodos -- pedido explícito ("quiero que sea una
+         nueva pestaña en la parte de Alimentadores, al lado de Ciclos"),
+         antes módulo propio del sidebar bajo "Otros Análisis". Mismo
+         criterio que Ciclos: contenido sin tocar, solo cambia el disparador
+         (mostrarVista -> alim3IrATab) y el wrapper exterior. Tiene su
+         PROPIO filtro (#catnod-filtro) -- no comparte #alim3-filtro. ===== -->
+    <div id="alim3-tab-categorizacion" class="hidden">
+    <div id="catnod-vacio" class="card"><div style="color:var(--text3)">Cargando…</div></div>
+
+    <div id="catnod-contenido" class="hidden">
+      <div id="catnod-filtro" class="fbar">
+        <label>Zona</label>
+        <select id="catnod-f-zona" onchange="catnodAplicarFiltros()"><option value="">Todas</option></select>
+        <label style="margin-left:10px">Municipio</label>
+        <select id="catnod-f-municipio" onchange="catnodAplicarFiltros()"><option value="">Todos</option></select>
+        <label style="margin-left:10px">Alimentador</label>
+        <span id="catnod-picker-wrap" style="display:inline-flex;align-items:center;gap:6px">
+          <button type="button" class="be-modo-btn be-icon-btn" onclick="catnodSiguienteAlimentador(-1)" title="Alimentador anterior" style="width:22px;height:22px;font-size:10px">◀</button>
+          <div class="msel" style="position:relative">
+            <input type="text" id="catnod-buscar-alim" placeholder="Buscar / elegir..." autocomplete="off"
+              oninput="catnodAbrirListaAlim()" onfocus="this.select();catnodAbrirListaAlim()"
+              style="width:190px;padding:6px 10px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg);box-sizing:border-box">
+            <div id="catnod-lista-alim" class="msel-panel hidden" style="width:300px"></div>
+          </div>
+          <button type="button" class="be-modo-btn be-icon-btn" onclick="catnodSiguienteAlimentador(1)" title="Siguiente alimentador" style="width:22px;height:22px;font-size:10px">▶</button>
+          <button type="button" class="be-modo-btn be-icon-btn hidden" id="catnod-btn-quitar-alim" onclick="catnodQuitarAlimentador()" title="Quitar alimentador elegido" style="width:22px;height:22px;font-size:11px">✕</button>
+        </span>
+        <button type="button" class="be-modo-btn be-modo-btn-sm" onclick="catnodLimpiarFiltros()">Limpiar</button>
+        <span style="margin-left:auto;display:inline-flex;align-items:center;gap:6px">
+          <label>AñoMes</label>
+          <select id="catnod-f-periodo" onchange="catnodAplicarFiltros()"></select>
+        </span>
+        <span style="display:inline-flex;gap:3px">
+          <button type="button" class="be-modo-btn be-icon-btn activo" id="catnod-modo-mensual" onclick="catnodCambiarModo('mensual')" title="Mensual">M</button>
+          <button type="button" class="be-modo-btn be-icon-btn" id="catnod-modo-anual" onclick="catnodCambiarModo('anual')" title="Anual">A</button>
+        </span>
+      </div>
+
+      <!-- Pedido explícito, 2 veces ("quiero todo junto", "esa separación no
+           la quiero"): KPI + gráfica + las 3 tablas van TODOS dentro de UNA
+           sola .card (sin cajas ni márgenes propios entre ellos), separados
+           solo por una línea fina (border-top), no por espacio en blanco. -->
+      <div class="card">
+        <div id="catnod-kpis"></div>
+        <div id="catnod-ciclo-aviso" class="hidden"></div>
+
+        <div id="catnod-hist-alim-card" style="border-top:1px solid var(--border);margin-top:14px;padding-top:14px">
+          <div style="font-weight:700;font-size:13px;margin-bottom:8px;color:var(--text);text-align:center" id="catnod-hist-alim-titulo">Histórico del Alimentador</div>
+          <div class="chart-wrap" style="height:280px"><canvas id="catnod-ch-hist-alim"></canvas></div>
+        </div>
+
+        <!-- flex:0 1 auto (no flex:3/flex:1 con min-width grande) -- pedido
+             explícito ("corre la tabla más a la izquierda, queda espacio
+             disponible"): con flex:N las columnas reservaban un % del ancho
+             aunque su tabla (width:auto) fuera más angosta, dejando un hueco
+             en blanco antes de la siguiente columna. Así cada columna solo
+             ocupa el ancho real de su contenido, pegadas una a la otra. -->
+        <div style="display:flex;gap:18px;flex-wrap:wrap;border-top:1px solid var(--border);margin-top:14px;padding-top:14px">
+          <div style="flex:0 1 auto">
+            <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:8px">
+              <div style="font-weight:700;font-size:13px;color:var(--text)">Rango de Pérdidas</div>
+              <div id="catnod-rangos-mes" style="font-size:11px;color:var(--text3)"></div>
+            </div>
+            <div class="tbl-wrap tbl-compacta tbl-sin-exportar" style="overflow-x:auto"><table id="catnod-tbl-rangos"></table></div>
+          </div>
+          <div style="flex:0 1 auto;border-left:1px solid var(--border);padding-left:18px">
+            <div class="tbl-wrap tbl-compacta tbl-sin-exportar" style="margin-bottom:14px"><table id="catnod-tbl-resumen-nodos"></table></div>
+            <div style="font-weight:700;font-size:13px;margin-bottom:8px;color:var(--text)">Sin Macromedida</div>
+            <div class="tbl-wrap tbl-compacta tbl-sin-exportar" style="overflow-x:auto"><table id="catnod-tbl-noident"></table></div>
+          </div>
+          <div style="flex:0 1 auto;border-left:1px solid var(--border);padding-left:18px" id="catnod-ficha-card">
+            <div style="font-weight:700;font-size:13px;margin-bottom:8px;color:var(--text)">Ficha del Alimentador</div>
+            <div class="tbl-wrap tbl-compacta tbl-sin-exportar"><table id="catnod-tbl-ficha"></table></div>
+          </div>
+          <div style="flex:0 1 auto;border-left:1px solid var(--border);padding-left:18px">
+            <div style="font-weight:700;font-size:13px;margin-bottom:8px;color:var(--text)">Propietario</div>
+            <div class="tbl-wrap tbl-compacta tbl-sin-exportar" style="margin-bottom:14px"><table id="catnod-tbl-propietario"></table></div>
+            <div style="font-weight:700;font-size:13px;margin-bottom:8px;color:var(--text)">Tipo de Activo</div>
+            <div style="font-size:10px;color:var(--text3);margin-bottom:6px">Uso: &gt;1 usuario -- Conexión: 1 usuario</div>
+            <div class="tbl-wrap tbl-compacta tbl-sin-exportar"><table id="catnod-tbl-tipoactivo"></table></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px">
+          <div style="font-weight:700;font-size:13px;color:var(--text)">Listado de Nodos <span style="font-weight:400;color:var(--text3);font-size:11.5px">(clic en un nodo para ver su histórico)</span></div>
+          <input type="text" id="catnod-nodos-buscar" placeholder="Buscar nodo…" oninput="catnodFiltrarListaNodos()" style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:12.5px;color:var(--text);background:var(--bg)">
+        </div>
+        <div id="catnod-nodos-aviso" style="color:var(--text3);font-size:12.5px;padding:8px 0"></div>
+        <div class="tbl-wrap tbl-compacta tbl-sin-exportar" style="max-height:420px;overflow:auto"><table id="catnod-tbl-nodos"></table></div>
+      </div>
+
+      <div class="card" id="catnod-historial-card" style="margin-bottom:10px;display:none">
+        <div style="font-weight:700;font-size:13px;margin-bottom:8px;color:var(--text)" id="catnod-historial-titulo"></div>
+        <div class="chart-wrap" style="height:320px"><canvas id="catnod-ch-historial"></canvas></div>
+      </div>
+
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:4px">
+          <div style="font-weight:700;font-size:13px;color:var(--text)">Comparativa de Alimentadores -- Pérdida Total / Técnica / Gestionable</div>
+          <span style="font-size:11px;color:var(--text3)">Top 15 por Pérdida Total</span>
+        </div>
+        <div id="catnod-comp-mes" style="font-size:11.5px;color:var(--text3);margin-bottom:10px"></div>
+        <div class="chart-wrap" style="height:340px;margin-bottom:16px"><canvas id="catnod-ch-comparativa"></canvas></div>
+        <div class="tbl-wrap tbl-compacta tbl-sin-exportar" style="max-height:420px;overflow:auto"><table id="catnod-tbl-comparativa"></table></div>
+      </div>
+    </div>
+    </div><!-- /#alim3-tab-categorizacion -->
+  </div>
+</div>
+<!-- Modal: listado de nodos de un rango de pérdida (clic en una fila de
+     "Rango de Pérdidas") -- pedido explícito ("que se despliegue una
+     nueva ventana y me diga el listado de nodos... así como en la
+     pestaña nodos del Excel"). -->
+<div id="catnod-modal-rango" class="tm-modal-overlay hidden" onclick="if(event.target===this) catnodCerrarModalRango()">
+  <div class="tm-modal" style="width:min(720px,94vw);max-height:80vh;display:flex;flex-direction:column">
+    <div class="tm-modal-title" id="catnod-modal-rango-titulo">Nodos en el rango</div>
+    <div class="tm-modal-sub" id="catnod-modal-rango-sub"></div>
+    <div class="tbl-wrap tbl-compacta tbl-sin-exportar" style="overflow:auto;margin-top:10px;flex:1"><table id="catnod-modal-rango-tbl"></table></div>
+    <div class="tm-modal-botones">
+      <button class="btn-theme" style="width:auto;padding:8px 16px" onclick="catnodCerrarModalRango()">Cerrar</button>
+    </div>
   </div>
 </div>
 <!-- fin vista-alim-alimentadores -->
@@ -5431,129 +5555,9 @@ html,body{overflow-x:hidden;margin:0}
 </div>
 <!-- fin vista-indicadores-gestion -->
 
-<div id="vista-categorizacion-nodos" class="vista-modulo hidden">
-  <div class="sec-hdr">
-    <div class="sec-title">Categorización Nodos</div>
-    <div class="sec-sub">Rango de pérdidas por nodo, estado de macromedida y energía gestionable por alimentador -- calcado de "Caracterización Alimentadores".</div>
-  </div>
-
-  <div id="catnod-vacio" class="card"><div style="color:var(--text3)">Cargando…</div></div>
-
-  <div id="catnod-contenido" class="hidden">
-    <div id="catnod-filtro" class="fbar">
-      <label>Zona</label>
-      <select id="catnod-f-zona" onchange="catnodAplicarFiltros()"><option value="">Todas</option></select>
-      <label style="margin-left:10px">Municipio</label>
-      <select id="catnod-f-municipio" onchange="catnodAplicarFiltros()"><option value="">Todos</option></select>
-      <label style="margin-left:10px">Alimentador</label>
-      <span id="catnod-picker-wrap" style="display:inline-flex;align-items:center;gap:6px">
-        <button type="button" class="be-modo-btn be-icon-btn" onclick="catnodSiguienteAlimentador(-1)" title="Alimentador anterior" style="width:22px;height:22px;font-size:10px">◀</button>
-        <div class="msel" style="position:relative">
-          <input type="text" id="catnod-buscar-alim" placeholder="Buscar / elegir..." autocomplete="off"
-            oninput="catnodAbrirListaAlim()" onfocus="this.select();catnodAbrirListaAlim()"
-            style="width:190px;padding:6px 10px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg);box-sizing:border-box">
-          <div id="catnod-lista-alim" class="msel-panel hidden" style="width:300px"></div>
-        </div>
-        <button type="button" class="be-modo-btn be-icon-btn" onclick="catnodSiguienteAlimentador(1)" title="Siguiente alimentador" style="width:22px;height:22px;font-size:10px">▶</button>
-        <button type="button" class="be-modo-btn be-icon-btn hidden" id="catnod-btn-quitar-alim" onclick="catnodQuitarAlimentador()" title="Quitar alimentador elegido" style="width:22px;height:22px;font-size:11px">✕</button>
-      </span>
-      <button type="button" class="be-modo-btn be-modo-btn-sm" onclick="catnodLimpiarFiltros()">Limpiar</button>
-      <span style="margin-left:auto;display:inline-flex;align-items:center;gap:6px">
-        <label>AñoMes</label>
-        <select id="catnod-f-periodo" onchange="catnodAplicarFiltros()"></select>
-      </span>
-      <span style="display:inline-flex;gap:3px">
-        <button type="button" class="be-modo-btn be-icon-btn activo" id="catnod-modo-mensual" onclick="catnodCambiarModo('mensual')" title="Mensual">M</button>
-        <button type="button" class="be-modo-btn be-icon-btn" id="catnod-modo-anual" onclick="catnodCambiarModo('anual')" title="Anual">A</button>
-      </span>
-    </div>
-
-    <!-- Pedido explícito, 2 veces ("quiero todo junto", "esa separación no
-         la quiero"): KPI + gráfica + las 3 tablas van TODOS dentro de UNA
-         sola .card (sin cajas ni márgenes propios entre ellos), separados
-         solo por una línea fina (border-top), no por espacio en blanco. -->
-    <div class="card">
-      <div id="catnod-kpis"></div>
-      <div id="catnod-ciclo-aviso" class="hidden"></div>
-
-      <div id="catnod-hist-alim-card" style="border-top:1px solid var(--border);margin-top:14px;padding-top:14px">
-        <div style="font-weight:700;font-size:13px;margin-bottom:8px;color:var(--text);text-align:center" id="catnod-hist-alim-titulo">Histórico del Alimentador</div>
-        <div class="chart-wrap" style="height:280px"><canvas id="catnod-ch-hist-alim"></canvas></div>
-      </div>
-
-      <!-- flex:0 1 auto (no flex:3/flex:1 con min-width grande) -- pedido
-           explícito ("corre la tabla más a la izquierda, queda espacio
-           disponible"): con flex:N las columnas reservaban un % del ancho
-           aunque su tabla (width:auto) fuera más angosta, dejando un hueco
-           en blanco antes de la siguiente columna. Así cada columna solo
-           ocupa el ancho real de su contenido, pegadas una a la otra. -->
-      <div style="display:flex;gap:18px;flex-wrap:wrap;border-top:1px solid var(--border);margin-top:14px;padding-top:14px">
-        <div style="flex:0 1 auto">
-          <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:8px">
-            <div style="font-weight:700;font-size:13px;color:var(--text)">Rango de Pérdidas</div>
-            <div id="catnod-rangos-mes" style="font-size:11px;color:var(--text3)"></div>
-          </div>
-          <div class="tbl-wrap tbl-compacta tbl-sin-exportar" style="overflow-x:auto"><table id="catnod-tbl-rangos"></table></div>
-        </div>
-        <div style="flex:0 1 auto;border-left:1px solid var(--border);padding-left:18px">
-          <div class="tbl-wrap tbl-compacta tbl-sin-exportar" style="margin-bottom:14px"><table id="catnod-tbl-resumen-nodos"></table></div>
-          <div style="font-weight:700;font-size:13px;margin-bottom:8px;color:var(--text)">Sin Macromedida</div>
-          <div class="tbl-wrap tbl-compacta tbl-sin-exportar" style="overflow-x:auto"><table id="catnod-tbl-noident"></table></div>
-        </div>
-        <div style="flex:0 1 auto;border-left:1px solid var(--border);padding-left:18px" id="catnod-ficha-card">
-          <div style="font-weight:700;font-size:13px;margin-bottom:8px;color:var(--text)">Ficha del Alimentador</div>
-          <div class="tbl-wrap tbl-compacta tbl-sin-exportar"><table id="catnod-tbl-ficha"></table></div>
-        </div>
-        <div style="flex:0 1 auto;border-left:1px solid var(--border);padding-left:18px">
-          <div style="font-weight:700;font-size:13px;margin-bottom:8px;color:var(--text)">Propietario</div>
-          <div class="tbl-wrap tbl-compacta tbl-sin-exportar" style="margin-bottom:14px"><table id="catnod-tbl-propietario"></table></div>
-          <div style="font-weight:700;font-size:13px;margin-bottom:8px;color:var(--text)">Tipo de Activo</div>
-          <div style="font-size:10px;color:var(--text3);margin-bottom:6px">Uso: &gt;1 usuario -- Conexión: 1 usuario</div>
-          <div class="tbl-wrap tbl-compacta tbl-sin-exportar"><table id="catnod-tbl-tipoactivo"></table></div>
-        </div>
-      </div>
-    </div>
-
-    <div class="card" style="margin-bottom:10px">
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px">
-        <div style="font-weight:700;font-size:13px;color:var(--text)">Listado de Nodos <span style="font-weight:400;color:var(--text3);font-size:11.5px">(clic en un nodo para ver su histórico)</span></div>
-        <input type="text" id="catnod-nodos-buscar" placeholder="Buscar nodo…" oninput="catnodFiltrarListaNodos()" style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:12.5px;color:var(--text);background:var(--bg)">
-      </div>
-      <div id="catnod-nodos-aviso" style="color:var(--text3);font-size:12.5px;padding:8px 0"></div>
-      <div class="tbl-wrap tbl-compacta tbl-sin-exportar" style="max-height:420px;overflow:auto"><table id="catnod-tbl-nodos"></table></div>
-    </div>
-
-    <div class="card" id="catnod-historial-card" style="margin-bottom:10px;display:none">
-      <div style="font-weight:700;font-size:13px;margin-bottom:8px;color:var(--text)" id="catnod-historial-titulo"></div>
-      <div class="chart-wrap" style="height:320px"><canvas id="catnod-ch-historial"></canvas></div>
-    </div>
-
-    <div class="card">
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:4px">
-        <div style="font-weight:700;font-size:13px;color:var(--text)">Comparativa de Alimentadores -- Pérdida Total / Técnica / Gestionable</div>
-        <span style="font-size:11px;color:var(--text3)">Top 15 por Pérdida Total</span>
-      </div>
-      <div id="catnod-comp-mes" style="font-size:11.5px;color:var(--text3);margin-bottom:10px"></div>
-      <div class="chart-wrap" style="height:340px;margin-bottom:16px"><canvas id="catnod-ch-comparativa"></canvas></div>
-      <div class="tbl-wrap tbl-compacta tbl-sin-exportar" style="max-height:420px;overflow:auto"><table id="catnod-tbl-comparativa"></table></div>
-    </div>
-  </div>
-</div>
-<!-- Modal: listado de nodos de un rango de pérdida (clic en una fila de
-     "Rango de Pérdidas") -- pedido explícito ("que se despliegue una
-     nueva ventana y me diga el listado de nodos... así como en la
-     pestaña nodos del Excel"). -->
-<div id="catnod-modal-rango" class="tm-modal-overlay hidden" onclick="if(event.target===this) catnodCerrarModalRango()">
-  <div class="tm-modal" style="width:min(720px,94vw);max-height:80vh;display:flex;flex-direction:column">
-    <div class="tm-modal-title" id="catnod-modal-rango-titulo">Nodos en el rango</div>
-    <div class="tm-modal-sub" id="catnod-modal-rango-sub"></div>
-    <div class="tbl-wrap tbl-compacta tbl-sin-exportar" style="overflow:auto;margin-top:10px;flex:1"><table id="catnod-modal-rango-tbl"></table></div>
-    <div class="tm-modal-botones">
-      <button class="btn-theme" style="width:auto;padding:8px 16px" onclick="catnodCerrarModalRango()">Cerrar</button>
-    </div>
-  </div>
-</div>
-<!-- fin vista-categorizacion-nodos -->
+<!-- Categorización Nodos se movió a #alim3-tab-categorizacion, pestaña de
+     vista-alim-alimentadores (pedido explícito, "que sea una pestaña al
+     lado de Ciclos") -- ver ese bloque más abajo. -->
 
 <!-- ---------------- INFORMES (.docx descargable) ---------------- -->
 <div id="vista-informes" class="vista-modulo hidden">
@@ -8809,7 +8813,7 @@ function toggleSubmenuConfig(){
   }
 }
 
-let vistaCargada = {perdidas:false, parametrizacion:false, telemedidos:false, balancesEstructura:false, ipReg:false, ipComercial:false, ipInstitucional:false, reportesSspd:false, tridevanados:false, alimResumen:false, alimNivel4:false, alimNivel3:false, alimN21:false, alimSubestaciones:false, alimAlimentadores:false, alimAnalisisCiclo:false, tempEntrada:false, informes:false, programaFacturacion:false, aencCgm:false, indicadoresGestion:false, categorizacionNodos:false};
+let vistaCargada = {perdidas:false, parametrizacion:false, telemedidos:false, balancesEstructura:false, ipReg:false, ipComercial:false, ipInstitucional:false, reportesSspd:false, tridevanados:false, alimResumen:false, alimNivel4:false, alimNivel3:false, alimN21:false, alimSubestaciones:false, alimAlimentadores:false, alimAnalisisCiclo:false, tempEntrada:false, informes:false, programaFacturacion:false, aencCgm:false, indicadoresGestion:false};
 
 async function mostrarVista(nombre){
   document.querySelectorAll('.vista-modulo').forEach(v=>v.classList.add('hidden'));
@@ -8950,10 +8954,6 @@ async function mostrarVista(nombre){
   if(nombre==='indicadores-gestion' && !vistaCargada.indicadoresGestion){
     vistaCargada.indicadoresGestion = true;
     await igCargar();
-  }
-  if(nombre==='categorizacion-nodos' && !vistaCargada.categorizacionNodos){
-    vistaCargada.categorizacionNodos = true;
-    await catnodCargar();
   }
   // Pedido explícito -- las alertas ya NO se cargan solas al entrar a esta
   // vista (quedaban como listas largas siempre abiertas); solo se pobla el
@@ -24732,17 +24732,18 @@ async function alim3Cargar(){
 // pestaña activa.
 let ALIM3_TAB_ACTUAL = 'detalle';
 let _alim3CiclosCargado = false;
+let _alim3CategorizacionCargado = false;
 function alim3IrATab(nombre){
   ALIM3_TAB_ACTUAL = nombre;
-  ['detalle','top','variacion','ciclos'].forEach(t=>{
+  ['detalle','top','variacion','ciclos','categorizacion'].forEach(t=>{
     document.getElementById('alim3-tab-'+t)?.classList.toggle('hidden', t!==nombre);
     document.getElementById('alim3-tab-btn-'+t)?.classList.toggle('activo', t===nombre);
   });
-  // "Ciclos" tiene su PROPIO filtro independiente (#ac-filtro, nunca fue
-  // el mismo dato/rango que las otras 3 pestañas) -- #alim3-filtro no
-  // tiene nada que hacer ahí, así que ni se mueve (se queda oculto junto
-  // con la pestaña anterior que lo tenía).
-  if(nombre !== 'ciclos'){
+  // "Ciclos" y "Categorización Nodos" tienen su PROPIO filtro independiente
+  // (#ac-filtro / #catnod-filtro, nunca fueron el mismo dato/rango que las
+  // otras pestañas) -- #alim3-filtro no tiene nada que hacer ahí, así que
+  // ni se mueve (se queda oculto junto con la pestaña anterior que lo tenía).
+  if(nombre !== 'ciclos' && nombre !== 'categorizacion'){
     const card = document.querySelector('#alim3-tab-'+nombre+' > .card');
     const filtro = document.getElementById('alim3-filtro');
     if(card && filtro && filtro.parentElement !== card) card.prepend(filtro);
@@ -24767,7 +24768,14 @@ function alim3IrATab(nombre){
     _alim3CiclosCargado = true;
     cargarAnalisisCiclos();
   }
-  if(nombre === 'ciclos') return;
+  // "Categorización Nodos" -- mismo criterio que Ciclos arriba: antes
+  // módulo propio del sidebar (mostrarVista('categorizacion-nodos')),
+  // ahora pestaña, carga pesada disparada una sola vez.
+  if(nombre === 'categorizacion' && !_alim3CategorizacionCargado){
+    _alim3CategorizacionCargado = true;
+    catnodCargar();
+  }
+  if(nombre === 'ciclos' || nombre === 'categorizacion') return;
   alim3RenderTodo();
 }
 
