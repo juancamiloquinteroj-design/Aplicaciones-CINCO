@@ -5440,40 +5440,35 @@ html,body{overflow-x:hidden;margin:0}
   <div id="catnod-vacio" class="card"><div style="color:var(--text3)">Cargando…</div></div>
 
   <div id="catnod-contenido" class="hidden">
-    <div class="card" style="margin-bottom:16px">
-      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;justify-content:space-between">
-        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
-          <div>
-            <label style="font-size:11.5px;color:var(--text3);display:block;margin-bottom:3px">Periodo</label>
-            <select id="catnod-f-periodo" onchange="catnodAplicarFiltros()" style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:12.5px;color:var(--text);background:var(--bg)"></select>
-          </div>
-          <div>
-            <label style="font-size:11.5px;color:var(--text3);display:block;margin-bottom:3px">Zona</label>
-            <select id="catnod-f-zona" onchange="catnodAplicarFiltros()" style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:12.5px;color:var(--text);background:var(--bg)"><option value="">Todas</option></select>
-          </div>
-          <div>
-            <label style="font-size:11.5px;color:var(--text3);display:block;margin-bottom:3px">Municipio</label>
-            <select id="catnod-f-municipio" onchange="catnodAplicarFiltros()" style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:12.5px;color:var(--text);background:var(--bg)"><option value="">Todos</option></select>
-          </div>
-          <div>
-            <label style="font-size:11.5px;color:var(--text3);display:block;margin-bottom:3px">Alimentador</label>
-            <select id="catnod-f-alimentador" onchange="catnodAplicarFiltros()" style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:12.5px;color:var(--text);background:var(--bg);max-width:280px"><option value="">Todos</option></select>
-          </div>
-          <button type="button" class="be-modo-btn be-modo-btn-sm" onclick="catnodLimpiarFiltros()">Limpiar filtros</button>
-        </div>
-        <div style="display:flex;gap:6px">
-          <button type="button" class="be-modo-btn be-modo-btn-sm activo" id="catnod-modo-mensual" onclick="catnodCambiarModo('mensual')">Mensual</button>
-          <button type="button" class="be-modo-btn be-modo-btn-sm" id="catnod-modo-anual" onclick="catnodCambiarModo('anual')">Anual</button>
-        </div>
-      </div>
+    <div id="catnod-filtro" class="fbar">
+      <label>Periodo</label>
+      <select id="catnod-f-periodo" onchange="catnodAplicarFiltros()"></select>
+      <label style="margin-left:10px">Zona</label>
+      <select id="catnod-f-zona" onchange="catnodAplicarFiltros()"><option value="">Todas</option></select>
+      <label style="margin-left:10px">Municipio</label>
+      <select id="catnod-f-municipio" onchange="catnodAplicarFiltros()"><option value="">Todos</option></select>
+      <label style="margin-left:10px">Alimentador</label>
+      <select id="catnod-f-alimentador" onchange="catnodAplicarFiltros()" style="max-width:260px"><option value="">Todos</option></select>
+      <button type="button" class="be-modo-btn be-modo-btn-sm" onclick="catnodLimpiarFiltros()">Limpiar</button>
+      <span style="margin-left:auto;display:inline-flex;gap:3px">
+        <button type="button" class="be-modo-btn be-icon-btn activo" id="catnod-modo-mensual" onclick="catnodCambiarModo('mensual')" title="Mensual">M</button>
+        <button type="button" class="be-modo-btn be-icon-btn" id="catnod-modo-anual" onclick="catnodCambiarModo('anual')" title="Anual">A</button>
+      </span>
     </div>
 
     <div id="catnod-kpis"></div>
     <div id="catnod-ciclo-aviso" class="hidden" style="background:#e0a82622;border:1px solid #e0a82655;border-radius:8px;padding:10px 14px;font-size:12.5px;color:var(--text2);margin-bottom:16px"></div>
 
+    <div class="card" id="catnod-hist-alim-card" style="margin-bottom:16px;display:none">
+      <div style="font-weight:700;font-size:13px;margin-bottom:10px;color:var(--text)" id="catnod-hist-alim-titulo">Histórico del Alimentador</div>
+      <div class="chart-wrap" style="height:280px"><canvas id="catnod-ch-hist-alim"></canvas></div>
+    </div>
+    <div class="card" id="catnod-hist-alim-vacio" style="margin-bottom:16px">
+      <div style="color:var(--text3);font-size:12.5px">Elige un Alimentador en los filtros de arriba para ver su histórico de Pérdida Total/Técnica/Gestionable.</div>
+    </div>
+
     <div class="card" style="margin-bottom:16px">
       <div style="font-weight:700;font-size:13px;margin-bottom:10px;color:var(--text)">Rango de Pérdidas</div>
-      <div class="chart-wrap" style="height:220px;margin-bottom:16px"><canvas id="catnod-ch-rangos"></canvas></div>
       <div class="tbl-wrap tbl-compacta" style="overflow-x:auto"><table id="catnod-tbl-rangos"></table></div>
     </div>
 
@@ -37947,7 +37942,7 @@ async function catnodAplicarFiltros(){
   }
   catnodRenderKpis(resumen, f);
   catnodRenderTablaRangos(resumen.rango_perdidas);
-  catnodRenderChartRangos(resumen.rango_perdidas);
+  await catnodCargarHistorialAlimentador(f.alimentador);
   catnodRenderTablaNoIdent(resumen.no_identificadas);
   if(f.anual){
     CATNOD_NODOS_CACHE = [];
@@ -38004,25 +37999,47 @@ function catnodRenderKpis(resumen, f){
   }
 }
 
-let catnodChRangos = null;
-function catnodRenderChartRangos(rangos){
-  const ctx = document.getElementById('catnod-ch-rangos');
-  if(!ctx) return;
-  if(catnodChRangos) catnodChRangos.destroy();
-  catnodChRangos = new Chart(ctx, {
+let catnodChHistAlim = null;
+async function catnodCargarHistorialAlimentador(alimentador){
+  const card = document.getElementById('catnod-hist-alim-card');
+  const vacio = document.getElementById('catnod-hist-alim-vacio');
+  if(!alimentador){
+    card.style.display = 'none';
+    vacio.style.display = '';
+    return;
+  }
+  vacio.style.display = 'none';
+  card.style.display = '';
+  document.getElementById('catnod-hist-alim-titulo').textContent = `Histórico del Alimentador -- ${alimentador} (cargando…)`;
+  let datos;
+  try{
+    datos = await apiGet(`/api/categorizacion-nodos/historial-alimentador?alimentador=${encodeURIComponent(alimentador)}`);
+  }catch(e){
+    document.getElementById('catnod-hist-alim-titulo').textContent = `No se pudo cargar el histórico: ${e.message}`;
+    return;
+  }
+  if(!datos.encontrado){
+    card.style.display = 'none';
+    vacio.style.display = '';
+    vacio.querySelector('div').textContent = `"${alimentador}" no tiene cruce con "Resumen de Alimentadores.csv" todavía -- sin histórico disponible.`;
+    return;
+  }
+  document.getElementById('catnod-hist-alim-titulo').textContent = `Histórico del Alimentador -- ${alimentador} (${datos.nemonico})`;
+  const labels = datos.historial.map(h => catnodMesLabel(h.anio, h.mes));
+  const ctx = document.getElementById('catnod-ch-hist-alim');
+  if(catnodChHistAlim) catnodChHistAlim.destroy();
+  catnodChHistAlim = new Chart(ctx, {
     type: 'bar',
     data: {
-      labels: rangos.map(r => r.rango),
-      datasets: [{
-        label: 'kWh Pérdida',
-        data: rangos.map(r => r.kwh_perdida),
-        backgroundColor: rangos.map(r => catnodColorHex(r.color)),
-      }],
+      labels,
+      datasets: [
+        {label: 'Pérdida Técnica', data: datos.historial.map(h => h.perdida_tecnica_kwh), backgroundColor: '#2a6fdb', stack: 'p'},
+        {label: 'Gestionable', data: datos.historial.map(h => h.gestionable_kwh), backgroundColor: '#d9534f', stack: 'p'},
+      ],
     },
     options: {
       responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { display: false } },
-      scales: { y: { title: { display: true, text: 'kWh Pérdida' } } },
+      scales: { x: {stacked: true}, y: {stacked: true, title: {display: true, text: 'kWh'}} },
     },
   });
 }
