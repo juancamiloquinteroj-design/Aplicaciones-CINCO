@@ -8200,7 +8200,7 @@ function _expEscXml(s){
 // oculto (c:delete val="1"), comparte las mismas categorías/orden que el
 // primero, solo existe porque el eje de valor secundario lo necesita
 // para cruzar contra algo.
-function _expConstruirChartXmlNativo({titulo, nombreHoja, categorias, grupos, filaEncabezado, filaPrimerDato, filaUltimoDato}){
+function _expConstruirChartXmlNativo({titulo, nombreHoja, categorias, grupos, filaEncabezado, filaPrimerDato, filaUltimoDato, colInicio=2}){
   const nHoja = nombreHoja.replace(/'/g, "''");
   const catRef = `'${nHoja}'!$A$${filaPrimerDato}:$A$${filaUltimoDato}`;
   const catCache = categorias.map((c,i) => `<c:pt idx="${i}"><c:v>${_expEscXml(c)}</c:v></c:pt>`).join('');
@@ -8214,7 +8214,7 @@ function _expConstruirChartXmlNativo({titulo, nombreHoja, categorias, grupos, fi
   let colOffset = 0;  // cada grupo sigue tomando columnas B, C, D... de forma consecutiva
   const bloques = grupos.map((g, gi) => {
     const serXml = g.series.map((s, si) => {
-      const col = _expColLetraExcel(colOffset + si + 2);
+      const col = _expColLetraExcel(colOffset + si + colInicio);
       const valRef = `'${nHoja}'!$${col}$${filaPrimerDato}:$${col}$${filaUltimoDato}`;
       const nameRef = `'${nHoja}'!$${col}$${filaEncabezado}`;
       const valCache = s.data.map((v,i) => v==null ? '' : `<c:pt idx="${i}"><c:v>${v}</c:v></c:pt>`).join('');
@@ -8317,6 +8317,79 @@ async function _expInyectarChartNativo(zipBuffer, chartXml, filaAncla, colAncla,
     `<Override PartName="/xl/charts/chart1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawingml.chart+xml"/>`,
     `<Override PartName="/xl/drawings/drawing1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>`,
   ].forEach(o => { if(!contentTypesXml.includes(o)) contentTypesXml = contentTypesXml.replace('</Types>', o+'</Types>'); });
+  zip.file('[Content_Types].xml', contentTypesXml);
+
+  return zip.generateAsync({type:'uint8array'});
+}
+
+// Como _expInyectarChartNativo, pero para VARIAS gráficas repartidas en
+// VARIAS hojas en un solo pase -- pedido explícito ("quiero las gráficas
+// hechas desde Excel", no imágenes, en un workbook de varias hojas donde
+// cada una necesita su propio gráfico). `porHoja` es
+// [{sheetIndex (1-based, el orden en que se agregó esa hoja al workbook
+// -- así nombra ExcelJS sheetN.xml), charts: [{chartXml, filaAncla,
+// colAncla, colHasta, filaHasta}, ...]}, ...]. Cada HOJA recibe UN solo
+// drawingN.xml (según exige OOXML), con un <xdr:twoCellAnchor> por
+// gráfica de esa hoja -- no un drawing por gráfica.
+async function _expInyectarChartsNativo(zipBuffer, porHoja){
+  const zip = await JSZip.loadAsync(zipBuffer);
+  let contadorChart = 0;
+  const contentTypeAdds = [];
+
+  for(const {sheetIndex, charts} of porHoja){
+    if(!charts || !charts.length) continue;
+    const numDrawing = sheetIndex;
+    let anchorsXml = '';
+    let relsXml = '';
+    charts.forEach((c, idx) => {
+      contadorChart++;
+      const numChart = contadorChart;
+      const relId = `rId${idx + 1}`;
+      zip.file(`xl/charts/chart${numChart}.xml`, c.chartXml);
+      contentTypeAdds.push(`<Override PartName="/xl/charts/chart${numChart}.xml" ContentType="application/vnd.openxmlformats-officedocument.drawingml.chart+xml"/>`);
+      relsXml += `<Relationship Id="${relId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart" Target="../charts/chart${numChart}.xml"/>`;
+      anchorsXml += `
+  <xdr:twoCellAnchor>
+    <xdr:from><xdr:col>${c.colAncla}</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>${c.filaAncla}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>
+    <xdr:to><xdr:col>${c.colHasta}</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>${c.filaHasta}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to>
+    <xdr:graphicFrame macro="">
+      <xdr:nvGraphicFramePr><xdr:cNvPr id="${numChart + 1}" name="Gráfica ${numChart}"/><xdr:cNvGraphicFramePr/></xdr:nvGraphicFramePr>
+      <xdr:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/></xdr:xfrm>
+      <a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart">
+        <c:chart xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:id="${relId}"/>
+      </a:graphicData></a:graphic>
+    </xdr:graphicFrame>
+    <xdr:clientData/>
+  </xdr:twoCellAnchor>`;
+    });
+
+    const drawingXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">${anchorsXml}
+</xdr:wsDr>`;
+    const drawingRelsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${relsXml}</Relationships>`;
+
+    zip.file(`xl/drawings/drawing${numDrawing}.xml`, drawingXml);
+    zip.file(`xl/drawings/_rels/drawing${numDrawing}.xml.rels`, drawingRelsXml);
+    contentTypeAdds.push(`<Override PartName="/xl/drawings/drawing${numDrawing}.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>`);
+
+    const sheetPath = `xl/worksheets/sheet${sheetIndex}.xml`;
+    const sheetRelsPath = `xl/worksheets/_rels/sheet${sheetIndex}.xml.rels`;
+    const relsFile = zip.file(sheetRelsPath);
+    let sheetRelsXml = relsFile
+      ? await relsFile.async('string')
+      : `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>`;
+    const relIdDrawing = `rIdDrawing${numDrawing}`;
+    sheetRelsXml = sheetRelsXml.replace('</Relationships>', `<Relationship Id="${relIdDrawing}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawing${numDrawing}.xml"/></Relationships>`);
+    zip.file(sheetRelsPath, sheetRelsXml);
+
+    let sheetXml = await zip.file(sheetPath).async('string');
+    if(!sheetXml.includes('<drawing ')) sheetXml = sheetXml.replace('</worksheet>', `<drawing r:id="${relIdDrawing}"/></worksheet>`);
+    zip.file(sheetPath, sheetXml);
+  }
+
+  let contentTypesXml = await zip.file('[Content_Types].xml').async('string');
+  contentTypeAdds.forEach(o => { if(!contentTypesXml.includes(o)) contentTypesXml = contentTypesXml.replace('</Types>', o + '</Types>'); });
   zip.file('[Content_Types].xml', contentTypesXml);
 
   return zip.generateAsync({type:'uint8array'});
@@ -38333,30 +38406,6 @@ function _catnodEstiloEncabezado(fila){
   fila.eachCell(c => { c.fill = {type:'pattern', pattern:'solid', fgColor:{argb:'FF4472C4'}}; });
 }
 
-// Rasteriza una gráfica Chart.js a PNG en un <canvas> fuera de pantalla
-// (adjunto brevemente a document.body -- Chart.js necesita estar en el
-// DOM para medir tamaños correctamente, aunque quede fuera de la vista)
-// y la destruye apenas termina. Hereda gratis el estilo "Excel" (fondo
-// degradado, colores de tema) que ya aplican los plugins globales
-// registrados sobre TODA gráfica de la app (ver tmPluginFondoExcel).
-function _catnodChartImagen(config, ancho, alto){
-  return new Promise(resolve => {
-    const canvas = document.createElement('canvas');
-    canvas.width = ancho; canvas.height = alto;
-    canvas.style.cssText = `position:fixed;left:-9999px;top:0;width:${ancho}px;height:${alto}px`;
-    document.body.appendChild(canvas);
-    const chart = new Chart(canvas, Object.assign({}, config, {
-      options: Object.assign({}, config.options, {responsive:false, animation:false}),
-    }));
-    requestAnimationFrame(() => {
-      const base64 = canvas.toDataURL('image/png').split(',')[1];
-      chart.destroy();
-      canvas.remove();
-      resolve(base64);
-    });
-  });
-}
-
 async function _catnodExcelHojaResumen(workbook, resumen, f, ga){
   const hoja = workbook.addWorksheet('Resumen');
   hoja.getColumn(1).width = 26; hoja.getColumn(2).width = 18;
@@ -38494,6 +38543,7 @@ function _catnodObservacionAlimentador(nombre, zona, actual, anterior, nivelActu
 async function _catnodExcelHojaPerdidaAlimentador(workbook, ga, f, historialCompleto, nivelesAlim){
   const hoja = workbook.addWorksheet('Pérdida Alimentador');
   for(let c=1;c<=7;c++) hoja.getColumn(c).width = 18;
+  const charts = [];  // {chartXml, filaAncla, colAncla, colHasta, filaHasta} -- se inyectan nativos al final
 
   const nombre = f.alimentador || (ga && ga.nombre_spard) || 'Alimentador';
   hoja.mergeCells('A1:G1');
@@ -38508,65 +38558,83 @@ async function _catnodExcelHojaPerdidaAlimentador(workbook, ga, f, historialComp
   const historial = historialCompleto.slice(-12);
   const anualCompleto = _catnodAnualizarSerie(historialCompleto);
   const anual = anualCompleto.slice(-12);
+  const labels11 = historial.map(h => catnodMesLabelCorto(h.anio, h.mes));
 
   // ---- 1.1 Pérdida Total N2-1 -- mensual ----
   hoja.getCell(`A${fila}`).value = '1.1 Pérdida Total N2-1 -- Mensual';
   hoja.getCell(`A${fila}`).font = {bold:true, size:12};
   fila++;
+  const encFila1 = fila;
   const enc11 = hoja.getRow(fila);
   enc11.values = ['Mes', 'Entrada Total kWh', 'Salida Total kWh', 'Pérdida %'];
   _catnodEstiloEncabezado(enc11);
   fila++;
+  const datoIni1 = fila;
   historial.forEach(h => {
     hoja.getRow(fila).values = [catnodMesLabel(h.anio, h.mes), h.entrada_total, h.salida_total, h.perdida_pct];
     hoja.getCell(`D${fila}`).numFmt = '0.00%';
     fila++;
   });
+  const datoFin1 = fila - 1;
   fila++;
-
-  const labels11 = historial.map(h => catnodMesLabelCorto(h.anio, h.mes));
-  const b64_1 = await _catnodChartImagen({
-    data:{labels: labels11, datasets:[
-      {type:'line', label:'Entrada Total kWh', yAxisID:'y', data: historial.map(h=>h.entrada_total), borderColor:'#00B050', backgroundColor:'rgba(0,176,80,.15)', fill:true, tension:0, pointRadius:2},
-      {type:'line', label:'Salida Total kWh', yAxisID:'y', data: historial.map(h=>h.salida_total), borderColor:'#C00000', backgroundColor:'rgba(192,0,0,.15)', fill:true, tension:0, pointRadius:2},
-      {type:'line', label:'Pérdida %', yAxisID:'yPct', data: historial.map(h=>h.perdida_pct==null?null:h.perdida_pct*100), borderColor:'#FFC000', borderDash:[4,3], tension:0, pointRadius:2},
-    ]},
-    options:{plugins:{title:{display:true, text:'Datos Mensuales'}, legend:{position:'bottom'}},
-      scales:{y:{position:'left', title:{display:true, text:'Energía (kWh)'}}, yPct:{position:'right', grid:{drawOnChartArea:false}, title:{display:true, text:'Pérdida %'}, ticks:{callback:v=>v+'%'}}}},
-  }, 680, 320);
-  const img1 = workbook.addImage({base64:b64_1, extension:'png'});
-  hoja.addImage(img1, {tl:{col:0, row:fila-1}, ext:{width:680, height:320}});
+  const anclaChart1 = fila - 1;
+  charts.push({
+    chartXml: _expConstruirChartXmlNativo({
+      titulo: 'Datos Mensuales', nombreHoja: 'Pérdida Alimentador', categorias: labels11,
+      grupos: [
+        {tipo:'line', esHorizontal:false, esApilada:false, tituloEje:'Energía (kWh)', series:[
+          {label:'Entrada Total kWh', color:'00B050', data: historial.map(h=>h.entrada_total)},
+          {label:'Salida Total kWh', color:'C00000', data: historial.map(h=>h.salida_total)},
+        ]},
+        {tipo:'line', esHorizontal:false, esApilada:false, tituloEje:'Pérdida %', series:[
+          {label:'Pérdida %', color:'FFC000', data: historial.map(h=>h.perdida_pct==null?null:h.perdida_pct*100)},
+        ]},
+      ],
+      filaEncabezado: encFila1, filaPrimerDato: datoIni1, filaUltimoDato: datoFin1,
+    }),
+    filaAncla: anclaChart1, colAncla: 0, colHasta: 7, filaHasta: anclaChart1 + 16,
+  });
   fila += 17;
 
   // ---- 1.1 Pérdida Total N2-1 -- anualizado (12M) ----
   hoja.getCell(`A${fila}`).value = '1.1 Pérdida Total N2-1 -- Anualizado (12M)';
   hoja.getCell(`A${fila}`).font = {bold:true, size:12};
   fila++;
+  const encFila1b = fila;
   const enc11b = hoja.getRow(fila);
   enc11b.values = ['Mes', 'Entrada kWh/12M', 'Salida kWh/12M', 'Pérdida %/12M'];
   _catnodEstiloEncabezado(enc11b);
   fila++;
+  const datoIni1b = fila;
   historial.forEach((h,i) => {
     const a = anual[i];
     hoja.getRow(fila).values = [catnodMesLabel(h.anio, h.mes), a?a.entrada:null, a?a.salida:null, a?a.pct:null];
     if(a) hoja.getCell(`D${fila}`).numFmt = '0.00%';
     fila++;
   });
+  const datoFin1b = fila - 1;
   fila++;
 
-  const conAnual = historial.map((h,i) => ({h, a:anual[i]})).filter(x => x.a);
-  if(conAnual.length){
-    const b64_2 = await _catnodChartImagen({
-      data:{labels: conAnual.map(x=>catnodMesLabelCorto(x.h.anio,x.h.mes)), datasets:[
-        {type:'line', label:'Entrada kWh/12M', yAxisID:'y', data: conAnual.map(x=>x.a.entrada), borderColor:'#00B050', backgroundColor:'rgba(0,176,80,.15)', fill:true, tension:0, pointRadius:2},
-        {type:'line', label:'Salida kWh/12M', yAxisID:'y', data: conAnual.map(x=>x.a.salida), borderColor:'#C00000', backgroundColor:'rgba(192,0,0,.15)', fill:true, tension:0, pointRadius:2},
-        {type:'line', label:'Pérdida %/12M', yAxisID:'yPct', data: conAnual.map(x=>x.a.pct==null?null:x.a.pct*100), borderColor:'#FFC000', borderDash:[4,3], tension:0, pointRadius:2},
-      ]},
-      options:{plugins:{title:{display:true, text:'Datos Anualizados (12M)'}, legend:{position:'bottom'}},
-        scales:{y:{position:'left', title:{display:true, text:'Energía (kWh)'}}, yPct:{position:'right', grid:{drawOnChartArea:false}, title:{display:true, text:'Pérdida %'}, ticks:{callback:v=>v+'%'}}}},
-    }, 680, 320);
-    const img2 = workbook.addImage({base64:b64_2, extension:'png'});
-    hoja.addImage(img2, {tl:{col:0, row:fila-1}, ext:{width:680, height:320}});
+  // El gráfico anualizado solo tiene sentido si YA hay al menos 1 mes con
+  // los 12 atrás completos -- si no, graficar puros null no aporta nada.
+  if(anual.some(a => a)){
+    const anclaChart2 = fila - 1;
+    charts.push({
+      chartXml: _expConstruirChartXmlNativo({
+        titulo: 'Datos Anualizados (12M)', nombreHoja: 'Pérdida Alimentador', categorias: labels11,
+        grupos: [
+          {tipo:'line', esHorizontal:false, esApilada:false, tituloEje:'Energía (kWh)', series:[
+            {label:'Entrada kWh/12M', color:'00B050', data: anual.map(a=>a?a.entrada:null)},
+            {label:'Salida kWh/12M', color:'C00000', data: anual.map(a=>a?a.salida:null)},
+          ]},
+          {tipo:'line', esHorizontal:false, esApilada:false, tituloEje:'Pérdida %/12M', series:[
+            {label:'Pérdida %/12M', color:'FFC000', data: anual.map(a=>a&&a.pct!=null?a.pct*100:null)},
+          ]},
+        ],
+        filaEncabezado: encFila1b, filaPrimerDato: datoIni1b, filaUltimoDato: datoFin1b,
+      }),
+      filaAncla: anclaChart2, colAncla: 0, colHasta: 7, filaHasta: anclaChart2 + 16,
+    });
     fila += 17;
   }
 
@@ -38575,50 +38643,70 @@ async function _catnodExcelHojaPerdidaAlimentador(workbook, ga, f, historialComp
   hoja.getCell(`A${fila}`).font = {bold:true, size:12};
   fila++;
   if(nivelesAlim && nivelesAlim.historial.length){
+    const encFilaN = fila;
     const encN = hoja.getRow(fila);
     encN.values = ['Mes', 'Entrada Nivel 2', 'Pérdida Técnica N2', '% N2', 'Entrada Nivel 1', 'Pérdida Técnica N1', '% N1'];
     _catnodEstiloEncabezado(encN);
     fila++;
+    const datoIniN = fila;
     nivelesAlim.historial.forEach(n => {
       hoja.getRow(fila).values = [catnodMesLabel(n.anio, n.mes), n.nivel2.entrada, n.nivel2.perdida_tecnica, n.nivel2.perdida_tecnica_pct,
         n.nivel1.entrada, n.nivel1.perdida_tecnica, n.nivel1.perdida_tecnica_pct];
       hoja.getCell(`D${fila}`).numFmt = '0.00%'; hoja.getCell(`G${fila}`).numFmt = '0.00%';
       fila++;
     });
+    const datoFinN = fila - 1;
     fila++;
 
     const labelsN = nivelesAlim.historial.map(n => catnodMesLabelCorto(n.anio, n.mes));
-    const b64_3 = await _catnodChartImagen({
-      data:{labels: labelsN, datasets:[
-        {type:'bar', label:'Pérdida Técnica N2 (kWh)', yAxisID:'y', data: nivelesAlim.historial.map(n=>n.nivel2.perdida_tecnica), backgroundColor:'#C00000'},
-        {type:'line', label:'Pérdida Técnica % N2', yAxisID:'yPct', data: nivelesAlim.historial.map(n=>n.nivel2.perdida_tecnica_pct==null?null:n.nivel2.perdida_tecnica_pct*100), borderColor:'#FFC000', tension:0, pointRadius:3},
-      ]},
-      options:{plugins:{title:{display:true, text:'Pérdida Técnica Mensual Nivel 2'}, legend:{position:'bottom'}},
-        scales:{y:{position:'left', beginAtZero:true}, yPct:{position:'right', grid:{drawOnChartArea:false}, ticks:{callback:v=>v+'%'}}}},
-    }, 680, 300);
-    const img3 = workbook.addImage({base64:b64_3, extension:'png'});
-    hoja.addImage(img3, {tl:{col:0, row:fila-1}, ext:{width:680, height:300}});
+    const anclaChart3 = fila - 1;
+    // Columna C/D (Pérdida Técnica N2/% N2) -- colInicio=3 porque B (Entrada
+    // Nivel 2) queda ANTES, sin usarse en este gráfico puntual.
+    charts.push({
+      chartXml: _expConstruirChartXmlNativo({
+        titulo: 'Pérdida Técnica Mensual Nivel 2', nombreHoja: 'Pérdida Alimentador', categorias: labelsN,
+        grupos: [
+          {tipo:'bar', esHorizontal:false, esApilada:false, tituloEje:'kWh', series:[
+            {label:'Pérdida Técnica N2 (kWh)', color:'C00000', data: nivelesAlim.historial.map(n=>n.nivel2.perdida_tecnica)},
+          ]},
+          {tipo:'line', esHorizontal:false, esApilada:false, tituloEje:'%', series:[
+            {label:'Pérdida Técnica % N2', color:'FFC000', data: nivelesAlim.historial.map(n=>n.nivel2.perdida_tecnica_pct==null?null:n.nivel2.perdida_tecnica_pct*100)},
+          ]},
+        ],
+        filaEncabezado: encFilaN, filaPrimerDato: datoIniN, filaUltimoDato: datoFinN, colInicio: 3,
+      }),
+      filaAncla: anclaChart3, colAncla: 0, colHasta: 7, filaHasta: anclaChart3 + 15,
+    });
     fila += 16;
 
-    const b64_4 = await _catnodChartImagen({
-      data:{labels: labelsN, datasets:[
-        {type:'bar', label:'Pérdida Técnica N1 (kWh)', yAxisID:'y', data: nivelesAlim.historial.map(n=>n.nivel1.perdida_tecnica), backgroundColor:'#ED7D31'},
-        {type:'line', label:'Pérdida Técnica % N1', yAxisID:'yPct', data: nivelesAlim.historial.map(n=>n.nivel1.perdida_tecnica_pct==null?null:n.nivel1.perdida_tecnica_pct*100), borderColor:'#FFC000', tension:0, pointRadius:3},
-      ]},
-      options:{plugins:{title:{display:true, text:'Pérdida Técnica Mensual Nivel 1'}, legend:{position:'bottom'}},
-        scales:{y:{position:'left', beginAtZero:true}, yPct:{position:'right', grid:{drawOnChartArea:false}, ticks:{callback:v=>v+'%'}}}},
-    }, 680, 300);
-    const img4 = workbook.addImage({base64:b64_4, extension:'png'});
-    hoja.addImage(img4, {tl:{col:0, row:fila-1}, ext:{width:680, height:300}});
+    const anclaChart4 = fila - 1;
+    // Columna F/G (Pérdida Técnica N1/% N1) -- colInicio=6.
+    charts.push({
+      chartXml: _expConstruirChartXmlNativo({
+        titulo: 'Pérdida Técnica Mensual Nivel 1', nombreHoja: 'Pérdida Alimentador', categorias: labelsN,
+        grupos: [
+          {tipo:'bar', esHorizontal:false, esApilada:false, tituloEje:'kWh', series:[
+            {label:'Pérdida Técnica N1 (kWh)', color:'ED7D31', data: nivelesAlim.historial.map(n=>n.nivel1.perdida_tecnica)},
+          ]},
+          {tipo:'line', esHorizontal:false, esApilada:false, tituloEje:'%', series:[
+            {label:'Pérdida Técnica % N1', color:'FFC000', data: nivelesAlim.historial.map(n=>n.nivel1.perdida_tecnica_pct==null?null:n.nivel1.perdida_tecnica_pct*100)},
+          ]},
+        ],
+        filaEncabezado: encFilaN, filaPrimerDato: datoIniN, filaUltimoDato: datoFinN, colInicio: 6,
+      }),
+      filaAncla: anclaChart4, colAncla: 0, colHasta: 7, filaHasta: anclaChart4 + 15,
+    });
     fila += 16;
 
     hoja.getCell(`A${fila}`).value = 'Pérdida Técnica Total (Nivel 1 + Nivel 2)';
     hoja.getCell(`A${fila}`).font = {bold:true, size:11};
     fila++;
+    const encFilaComb = fila;
     const encComb = hoja.getRow(fila);
     encComb.values = ['Mes', 'Entrada Total', 'Pérdida Técnica Total', '% Técnica'];
     _catnodEstiloEncabezado(encComb);
     fila++;
+    const datoIniComb = fila;
     const comb = nivelesAlim.historial.map(n => {
       const entrada = n.nivel1.entrada + n.nivel2.entrada;
       const perdida = n.nivel1.perdida_tecnica + n.nivel2.perdida_tecnica;
@@ -38629,18 +38717,25 @@ async function _catnodExcelHojaPerdidaAlimentador(workbook, ga, f, historialComp
       hoja.getCell(`D${fila}`).numFmt = '0.00%';
       fila++;
     });
+    const datoFinComb = fila - 1;
     fila++;
 
-    const b64_5 = await _catnodChartImagen({
-      data:{labels: comb.map(c=>catnodMesLabelCorto(c.anio,c.mes)), datasets:[
-        {type:'bar', label:'Pérdida Técnica Total (kWh)', yAxisID:'y', data: comb.map(c=>c.perdida), backgroundColor:'#4472C4'},
-        {type:'line', label:'% Técnica', yAxisID:'yPct', data: comb.map(c=>c.pct==null?null:c.pct*100), borderColor:'#FFC000', tension:0, pointRadius:3},
-      ]},
-      options:{plugins:{title:{display:true, text:`Pérdida Técnica Total Alimentador ${nombre}`}, legend:{position:'bottom'}},
-        scales:{y:{position:'left', beginAtZero:true}, yPct:{position:'right', grid:{drawOnChartArea:false}, ticks:{callback:v=>v+'%'}}}},
-    }, 680, 300);
-    const img5 = workbook.addImage({base64:b64_5, extension:'png'});
-    hoja.addImage(img5, {tl:{col:0, row:fila-1}, ext:{width:680, height:300}});
+    const anclaChart5 = fila - 1;
+    charts.push({
+      chartXml: _expConstruirChartXmlNativo({
+        titulo: `Pérdida Técnica Total Alimentador ${nombre}`, nombreHoja: 'Pérdida Alimentador', categorias: comb.map(c=>catnodMesLabelCorto(c.anio,c.mes)),
+        grupos: [
+          {tipo:'bar', esHorizontal:false, esApilada:false, tituloEje:'kWh', series:[
+            {label:'Pérdida Técnica Total (kWh)', color:'4472C4', data: comb.map(c=>c.perdida)},
+          ]},
+          {tipo:'line', esHorizontal:false, esApilada:false, tituloEje:'%', series:[
+            {label:'% Técnica', color:'FFC000', data: comb.map(c=>c.pct==null?null:c.pct*100)},
+          ]},
+        ],
+        filaEncabezado: encFilaComb, filaPrimerDato: datoIniComb, filaUltimoDato: datoFinComb, colInicio: 3,
+      }),
+      filaAncla: anclaChart5, colAncla: 0, colHasta: 7, filaHasta: anclaChart5 + 15,
+    });
     fila += 16;
   }else{
     hoja.getCell(`A${fila}`).value = 'Sin datos de "Resumen Perdida Tecnica.csv" para este alimentador -- no se puede separar la pérdida técnica por Nivel.';
@@ -38652,28 +38747,39 @@ async function _catnodExcelHojaPerdidaAlimentador(workbook, ga, f, historialComp
   hoja.getCell(`A${fila}`).value = `1.3 Pérdida Gestionable -- ${nombre}`;
   hoja.getCell(`A${fila}`).font = {bold:true, size:12};
   fila++;
+  const encFila13 = fila;
   const enc13 = hoja.getRow(fila);
-  enc13.values = ['Mes', 'Entrada Total kWh', 'Salida Total kWh', 'Pérdida Técnica Total', '% Gestionable', 'Pérdida Gestionable'];
+  // Pérdida Gestionable ANTES de % Gestionable -- para que queden
+  // contiguas en el orden bar(kWh)+line(%) que espera el gráfico nativo.
+  enc13.values = ['Mes', 'Entrada Total kWh', 'Salida Total kWh', 'Pérdida Técnica Total', 'Pérdida Gestionable', '% Gestionable'];
   _catnodEstiloEncabezado(enc13);
   fila++;
+  const datoIni13 = fila;
   historial.forEach(h => {
     const pctGest = h.entrada_total ? h.gestionable_kwh / h.entrada_total : null;
-    hoja.getRow(fila).values = [catnodMesLabel(h.anio, h.mes), h.entrada_total, h.salida_total, h.perdida_tecnica_kwh, pctGest, h.gestionable_kwh];
-    hoja.getCell(`E${fila}`).numFmt = '0.00%';
+    hoja.getRow(fila).values = [catnodMesLabel(h.anio, h.mes), h.entrada_total, h.salida_total, h.perdida_tecnica_kwh, h.gestionable_kwh, pctGest];
+    hoja.getCell(`F${fila}`).numFmt = '0.00%';
     fila++;
   });
+  const datoFin13 = fila - 1;
   fila++;
 
-  const b64_6 = await _catnodChartImagen({
-    data:{labels: labels11, datasets:[
-      {type:'bar', label:'Pérdida Gestionable (kWh)', yAxisID:'y', data: historial.map(h=>h.gestionable_kwh), backgroundColor:'#d9534f'},
-      {type:'line', label:'% Gestionable', yAxisID:'yPct', data: historial.map(h=>h.entrada_total?(h.gestionable_kwh/h.entrada_total*100):null), borderColor:'#FFC000', tension:0, pointRadius:3},
-    ]},
-    options:{plugins:{title:{display:true, text:`Pérdida Gestionable ${nombre}`}, legend:{position:'bottom'}},
-      scales:{y:{position:'left', beginAtZero:true}, yPct:{position:'right', grid:{drawOnChartArea:false}, ticks:{callback:v=>v+'%'}}}},
-  }, 680, 320);
-  const img6 = workbook.addImage({base64:b64_6, extension:'png'});
-  hoja.addImage(img6, {tl:{col:0, row:fila-1}, ext:{width:680, height:320}});
+  const anclaChart6 = fila - 1;
+  charts.push({
+    chartXml: _expConstruirChartXmlNativo({
+      titulo: `Pérdida Gestionable ${nombre}`, nombreHoja: 'Pérdida Alimentador', categorias: labels11,
+      grupos: [
+        {tipo:'bar', esHorizontal:false, esApilada:false, tituloEje:'kWh', series:[
+          {label:'Pérdida Gestionable (kWh)', color:'D9534F', data: historial.map(h=>h.gestionable_kwh)},
+        ]},
+        {tipo:'line', esHorizontal:false, esApilada:false, tituloEje:'%', series:[
+          {label:'% Gestionable', color:'FFC000', data: historial.map(h=>h.entrada_total?(h.gestionable_kwh/h.entrada_total*100):null)},
+        ]},
+      ],
+      filaEncabezado: encFila13, filaPrimerDato: datoIni13, filaUltimoDato: datoFin13, colInicio: 5,
+    }),
+    filaAncla: anclaChart6, colAncla: 0, colHasta: 7, filaHasta: anclaChart6 + 16,
+  });
   fila += 17;
 
   // ---- Observación ----
@@ -38691,6 +38797,8 @@ async function _catnodExcelHojaPerdidaAlimentador(workbook, ga, f, historialComp
     cObs.alignment = {wrapText:true, vertical:'top'};
     cObs.font = {italic:true, size:10};
   }
+
+  return charts;
 }
 
 async function _catnodExcelHojaNiveles(workbook, niveles, anio, mes){
@@ -38706,17 +38814,20 @@ async function _catnodExcelHojaNiveles(workbook, niveles, anio, mes){
 
   if(!niveles){
     hoja.getCell('A4').value = 'No se pudo cargar esta información.';
-    return;
+    return [];
   }
-  const enc = hoja.getRow(4);
+  const filaEnc = 4;
+  const enc = hoja.getRow(filaEnc);
   enc.values = ['Nivel de Tensión', 'Alimentadores', 'Entrada (kWh)', 'Pérdida Técnica (kWh)', '% Pérdida Técnica'];
   _catnodEstiloEncabezado(enc);
   let fila = 5;
+  const datoIni = fila;
   niveles.niveles.forEach(n => {
     hoja.getRow(fila).values = [`Nivel ${n.nivel}`, n.alimentadores, n.entrada_total, n.perdida_tecnica_kwh, n.perdida_tecnica_pct];
     hoja.getCell(`E${fila}`).numFmt = '0.00%';
     fila++;
   });
+  const datoFin = fila - 1;
   fila++;
   if(niveles.alimentadores_sin_cruce || niveles.alimentadores_sin_dato_tecnica){
     hoja.mergeCells(`A${fila}:E${fila}`);
@@ -38726,16 +38837,19 @@ async function _catnodExcelHojaNiveles(workbook, niveles, anio, mes){
   }
   fila++;
 
-  const base64 = await _catnodChartImagen({
-    type:'bar',
-    data:{labels: niveles.niveles.map(n=>`Nivel ${n.nivel}`), datasets:[
-      {label:'Entrada (kWh)', data: niveles.niveles.map(n=>n.entrada_total), backgroundColor:'#4472C4'},
-      {label:'Pérdida Técnica (kWh)', data: niveles.niveles.map(n=>n.perdida_tecnica_kwh), backgroundColor:'#C00000'},
-    ]},
-    options:{plugins:{legend:{position:'bottom'}}, scales:{y:{beginAtZero:true}}},
-  }, 640, 340);
-  const imgId = workbook.addImage({base64, extension:'png'});
-  hoja.addImage(imgId, {tl:{col:0, row:fila-1}, ext:{width:640, height:340}});
+  // Entrada(C)+Pérdida Técnica(D) -- colInicio=3, se salta B (Alimentadores).
+  const anclaChart = fila - 1;
+  return [{
+    chartXml: _expConstruirChartXmlNativo({
+      titulo: null, nombreHoja: 'Niveles de Tensión', categorias: niveles.niveles.map(n=>`Nivel ${n.nivel}`),
+      grupos: [{tipo:'bar', esHorizontal:false, esApilada:false, tituloEje:'kWh', series:[
+        {label:'Entrada (kWh)', color:'4472C4', data: niveles.niveles.map(n=>n.entrada_total)},
+        {label:'Pérdida Técnica (kWh)', color:'C00000', data: niveles.niveles.map(n=>n.perdida_tecnica_kwh)},
+      ]}],
+      filaEncabezado: filaEnc, filaPrimerDato: datoIni, filaUltimoDato: datoFin, colInicio: 3,
+    }),
+    filaAncla: anclaChart, colAncla: 0, colHasta: 7, filaHasta: anclaChart + 16,
+  }];
 }
 
 async function _catnodExcelHojaNodos(workbook, resumen, f){
@@ -38749,19 +38863,31 @@ async function _catnodExcelHojaNodos(workbook, resumen, f){
   if(!lista.length){
     hoja.getCell('A3').value = 'Elige una Zona, Municipio o Alimentador (y modo Mensual) en la página antes de descargar, para incluir aquí el listado completo de nodos.';
     hoja.getCell('A3').font = {italic:true};
-    return;
+    return [];
   }
 
+  // Mini-tabla de apoyo (Rango/Nodos) SOLO para alimentar el gráfico --
+  // no tiene el mismo shape que la tabla grande de abajo (1 fila por
+  // nodo), así que necesita sus propias celdas con categorías+valor.
   const rangos = resumen.rango_perdidas || [];
-  const base64 = await _catnodChartImagen({
-    type:'bar',
-    data:{labels: rangos.map(r=>r.rango), datasets:[
-      {label:'Nodos', data: rangos.map(r=>r.nodos), backgroundColor: rangos.map(r=>catnodColorHex(r.color))},
-    ]},
-    options:{plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true}}},
-  }, 640, 300);
-  const imgId = workbook.addImage({base64, extension:'png'});
-  hoja.addImage(imgId, {tl:{col:0, row:2}, ext:{width:640, height:300}});
+  const filaEncR = 3;
+  hoja.getRow(filaEncR).values = ['Rango de Pérdida', 'Nodos'];
+  _catnodEstiloEncabezado(hoja.getRow(filaEncR));
+  let filaR = filaEncR + 1;
+  const datoIniR = filaR;
+  rangos.forEach(r => { hoja.getRow(filaR).values = [r.rango, r.nodos]; filaR++; });
+  const datoFinR = filaR - 1;
+
+  const charts = [{
+    chartXml: _expConstruirChartXmlNativo({
+      titulo: 'Nodos por Rango de Pérdida', nombreHoja: 'Nodos', categorias: rangos.map(r=>r.rango),
+      grupos: [{tipo:'bar', esHorizontal:false, esApilada:false, tituloEje:'Nodos', series:[
+        {label:'Nodos', color:'4472C4', data: rangos.map(r=>r.nodos)},
+      ]}],
+      filaEncabezado: filaEncR, filaPrimerDato: datoIniR, filaUltimoDato: datoFinR,
+    }),
+    filaAncla: 1, colAncla: 3, colHasta: 10, filaHasta: 17,
+  }];
 
   let fila = 20;
   const filaEnc = fila;
@@ -38785,6 +38911,7 @@ async function _catnodExcelHojaNodos(workbook, resumen, f){
   });
   hoja.autoFilter = {from:{row:filaEnc, column:1}, to:{row:fila-1, column:11}};
   hoja.views = [{state:'frozen', ySplit: filaEnc}];
+  return charts;
 }
 
 async function _catnodExcelHojaCapacidad(workbook, resumen){
@@ -38797,15 +38924,20 @@ async function _catnodExcelHojaCapacidad(workbook, resumen){
   const cap = resumen.capacidades || [];
   const sinDato = resumen.capacidades_sin_dato || 0;
   const total = cap.reduce((a,c)=>a+c.cantidad, 0) + sinDato;
-  const enc = hoja.getRow(3);
+  const filaEnc = 3;
+  const enc = hoja.getRow(filaEnc);
   enc.values = ['Capacidad (kVA)', 'Cantidad de Transformadores', '% del Total'];
   _catnodEstiloEncabezado(enc);
   let fila = 4;
+  const datoIni = fila;
   cap.forEach(c => {
     hoja.getRow(fila).values = [c.capacidad_kva, c.cantidad, total ? c.cantidad/total : null];
     hoja.getCell(`C${fila}`).numFmt = '0.0%';
     fila++;
   });
+  // El rango del gráfico termina ACÁ -- "Sin dato"/"TOTAL" (filas de
+  // resumen, no categorías de capacidad) quedan afuera a propósito.
+  const datoFin = fila - 1;
   if(sinDato){
     hoja.getRow(fila).values = ['Sin dato', sinDato, total ? sinDato/total : null];
     hoja.getCell(`C${fila}`).numFmt = '0.0%';
@@ -38818,17 +38950,18 @@ async function _catnodExcelHojaCapacidad(workbook, resumen){
   frTot.eachCell(c => { c.border = {top:{style:'medium'}}; });
   fila += 2;
 
-  if(cap.length){
-    const base64 = await _catnodChartImagen({
-      type:'bar',
-      data:{labels: cap.map(c=>`${c.capacidad_kva} kVA`), datasets:[
-        {label:'Transformadores', data: cap.map(c=>c.cantidad), backgroundColor:'#4472C4'},
-      ]},
-      options:{plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true}, x:{ticks:{maxRotation:90, minRotation:45, font:{size:9}}}}},
-    }, 720, 340);
-    const imgId = workbook.addImage({base64, extension:'png'});
-    hoja.addImage(imgId, {tl:{col:0, row:fila-1}, ext:{width:720, height:340}});
-  }
+  if(!cap.length) return [];
+  const anclaChart = fila - 1;
+  return [{
+    chartXml: _expConstruirChartXmlNativo({
+      titulo: null, nombreHoja: 'Capacidad Transformadores', categorias: cap.map(c=>`${c.capacidad_kva} kVA`),
+      grupos: [{tipo:'bar', esHorizontal:false, esApilada:false, tituloEje:'Transformadores', series:[
+        {label:'Transformadores', color:'4472C4', data: cap.map(c=>c.cantidad)},
+      ]}],
+      filaEncabezado: filaEnc, filaPrimerDato: datoIni, filaUltimoDato: datoFin,
+    }),
+    filaAncla: anclaChart, colAncla: 0, colHasta: 9, filaHasta: anclaChart + 17,
+  }];
 }
 
 async function _catnodExcelHojaPropietario(workbook, resumen){
@@ -38840,15 +38973,18 @@ async function _catnodExcelHojaPropietario(workbook, resumen){
 
   const props = resumen.propietarios || [];
   const total = props.reduce((a,p)=>a+p.nodos, 0);
-  const enc = hoja.getRow(3);
+  const filaEnc = 3;
+  const enc = hoja.getRow(filaEnc);
   enc.values = ['Propietario', 'Nodos', '% del Total'];
   _catnodEstiloEncabezado(enc);
   let fila = 4;
+  const datoIni = fila;
   props.forEach(p => {
     hoja.getRow(fila).values = [p.propietario, p.nodos, total ? p.nodos/total : null];
     hoja.getCell(`C${fila}`).numFmt = '0.0%';
     fila++;
   });
+  const datoFin = fila - 1;
   const frTot = hoja.getRow(fila);
   frTot.values = ['TOTAL', total, 1];
   frTot.font = {bold:true};
@@ -38856,18 +38992,20 @@ async function _catnodExcelHojaPropietario(workbook, resumen){
   frTot.eachCell(c => { c.border = {top:{style:'medium'}}; });
   fila += 2;
 
-  if(props.length){
-    const paleta = ['#4472C4','#ED7D31','#A5A5A5','#FFC000','#5B9BD5','#70AD47','#C00000','#7030A0'];
-    const base64 = await _catnodChartImagen({
-      type:'pie',
-      data:{labels: props.map(p=>p.propietario), datasets:[
-        {data: props.map(p=>p.nodos), backgroundColor: props.map((_,i)=>paleta[i % paleta.length])},
-      ]},
-      options:{plugins:{legend:{position:'right'}}},
-    }, 640, 340);
-    const imgId = workbook.addImage({base64, extension:'png'});
-    hoja.addImage(imgId, {tl:{col:0, row:fila-1}, ext:{width:640, height:340}});
-  }
+  if(!props.length) return [];
+  // Barra en vez de torta -- el inyector de gráficos nativos (compartido
+  // con el resto de la app) solo construye line/bar, no pie.
+  const anclaChart = fila - 1;
+  return [{
+    chartXml: _expConstruirChartXmlNativo({
+      titulo: null, nombreHoja: 'Propietario', categorias: props.map(p=>p.propietario),
+      grupos: [{tipo:'bar', esHorizontal:true, esApilada:false, tituloEje:'Nodos', series:[
+        {label:'Nodos', color:'4472C4', data: props.map(p=>p.nodos)},
+      ]}],
+      filaEncabezado: filaEnc, filaPrimerDato: datoIni, filaUltimoDato: datoFin,
+    }),
+    filaAncla: anclaChart, colAncla: 0, colHasta: 7, filaHasta: anclaChart + 16,
+  }];
 }
 
 async function catnodDescargarExcel(){
@@ -38906,16 +39044,45 @@ async function catnodDescargarExcel(){
     workbook.creator = 'CINCO S.A.S.';
     workbook.created = new Date();
 
-    await _catnodExcelHojaResumen(workbook, resumen, f, ga);
-    if(historialCompleto && historialCompleto.length){
-      await _catnodExcelHojaPerdidaAlimentador(workbook, ga, f, historialCompleto, nivelesAlim);
-    }
-    await _catnodExcelHojaNiveles(workbook, niveles, anioNiv, mesNiv);
-    await _catnodExcelHojaNodos(workbook, resumen, f);
-    await _catnodExcelHojaCapacidad(workbook, resumen);
-    await _catnodExcelHojaPropietario(workbook, resumen);
+    // Gráficas NATIVAS de Excel (fórmulas de verdad, no imágenes) --
+    // pedido explícito ("quiero las gráficas hechas desde Excel"). Cada
+    // hoja-builder devuelve sus specs de gráfico (chartXml + dónde
+    // anclarlo); se inyectan TODAS de una sola pasada al final, indexadas
+    // por el orden real en que cada hoja se agregó al workbook (ExcelJS
+    // nombra sheet1.xml/sheet2.xml/... en ese mismo orden).
+    const chartsPorHoja = [];
+    let sheetIdx = 0;
 
-    const buffer = await workbook.xlsx.writeBuffer();
+    sheetIdx++;
+    await _catnodExcelHojaResumen(workbook, resumen, f, ga);
+
+    if(historialCompleto && historialCompleto.length){
+      sheetIdx++;
+      const chPA = await _catnodExcelHojaPerdidaAlimentador(workbook, ga, f, historialCompleto, nivelesAlim);
+      if(chPA && chPA.length) chartsPorHoja.push({sheetIndex: sheetIdx, charts: chPA});
+    }
+
+    sheetIdx++;
+    const chNiv = await _catnodExcelHojaNiveles(workbook, niveles, anioNiv, mesNiv);
+    if(chNiv && chNiv.length) chartsPorHoja.push({sheetIndex: sheetIdx, charts: chNiv});
+
+    sheetIdx++;
+    const chNodos = await _catnodExcelHojaNodos(workbook, resumen, f);
+    if(chNodos && chNodos.length) chartsPorHoja.push({sheetIndex: sheetIdx, charts: chNodos});
+
+    sheetIdx++;
+    const chCap = await _catnodExcelHojaCapacidad(workbook, resumen);
+    if(chCap && chCap.length) chartsPorHoja.push({sheetIndex: sheetIdx, charts: chCap});
+
+    sheetIdx++;
+    const chProp = await _catnodExcelHojaPropietario(workbook, resumen);
+    if(chProp && chProp.length) chartsPorHoja.push({sheetIndex: sheetIdx, charts: chProp});
+
+    let buffer = await workbook.xlsx.writeBuffer();
+    if(chartsPorHoja.length){
+      try{ buffer = await _expInyectarChartsNativo(buffer, chartsPorHoja); }
+      catch(e){ console.error('Gráficas nativas de Excel fallaron, se descarga solo con los datos:', e); }
+    }
     const blob = new Blob([buffer], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
     const nombreBase = (ga && ga.nemonico) ? `Categorizacion_${ga.nemonico}` : 'Categorizacion_Nodos';
     _expDescargarBlob(blob, `${_expNombreArchivo(nombreBase)}.xlsx`);
