@@ -5062,6 +5062,7 @@ html,body{overflow-x:hidden;margin:0}
           <button type="button" class="be-modo-btn be-icon-btn hidden" id="catnod-btn-quitar-alim" onclick="catnodQuitarAlimentador()" title="Quitar alimentador elegido" style="width:22px;height:22px;font-size:11px">✕</button>
         </span>
         <button type="button" class="be-modo-btn be-modo-btn-sm" onclick="catnodLimpiarFiltros()">Limpiar</button>
+        <button type="button" class="be-modo-btn be-modo-btn-sm" id="catnod-btn-descargar" onclick="catnodDescargarExcel()" title="Descarga en un solo Excel los datos y la gráfica de este alimentador/periodo">⬇ Descargar Excel</button>
         <span style="margin-left:auto;display:inline-flex;align-items:center;gap:6px">
           <label>AñoMes</label>
           <select id="catnod-f-periodo" onchange="catnodAplicarFiltros()"></select>
@@ -5118,7 +5119,14 @@ html,body{overflow-x:hidden;margin:0}
         </div>
       </div>
 
-      <div class="card" style="margin-bottom:10px">
+      <!-- "Listado de Nodos" y "Comparativa de Alimentadores" -- ocultos,
+           pedido explícito ("quita eso por ahora, no interesa"). El
+           listado sigue existiendo en el DOM (catnodCargarNodos lo sigue
+           llenando, lo usa el modal de "nodos del rango") pero no se
+           muestra aparte. #catnod-historial-card SÍ se queda visible --
+           lo usa catnodVerHistorial() al hacer clic en un nodo (desde el
+           modal o desde el listado oculto). -->
+      <div class="card hidden" style="margin-bottom:10px">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px">
           <div style="font-weight:700;font-size:13px;color:var(--text)">Listado de Nodos <span style="font-weight:400;color:var(--text3);font-size:11.5px">(clic en un nodo para ver su histórico)</span></div>
           <input type="text" id="catnod-nodos-buscar" placeholder="Buscar nodo…" oninput="catnodFiltrarListaNodos()" style="padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:12.5px;color:var(--text);background:var(--bg)">
@@ -5132,7 +5140,7 @@ html,body{overflow-x:hidden;margin:0}
         <div class="chart-wrap" style="height:320px"><canvas id="catnod-ch-historial"></canvas></div>
       </div>
 
-      <div class="card">
+      <div class="card hidden">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:4px">
           <div style="font-weight:700;font-size:13px;color:var(--text)">Comparativa de Alimentadores -- Pérdida Total / Técnica / Gestionable</div>
           <span style="font-size:11px;color:var(--text3)">Top 15 por Pérdida Total</span>
@@ -38118,8 +38126,11 @@ async function catnodAplicarFiltros(autoReintento){
   }
 }
 
+let CATNOD_ULTIMO_RESUMEN = null, CATNOD_ULTIMO_F = null, CATNOD_ULTIMO_GA = null, CATNOD_ULTIMO_HIST = null;
+
 function catnodRenderKpis(resumen, f){
   const ga = resumen.gestionable_alimentador;
+  CATNOD_ULTIMO_RESUMEN = resumen; CATNOD_ULTIMO_F = f; CATNOD_ULTIMO_GA = ga;
   const tituloPeriodo = f.anual ? f.anio : catnodMesLabel(f.anio,f.mes);
 
   if(ga && ga.encontrado){
@@ -38248,6 +38259,7 @@ async function catnodCargarHistorialAlimentador(alimentador){
       ? `"${alimentador}" no tiene cruce con "Resumen de Alimentadores.csv" todavía -- sin histórico disponible.`
       : 'Sin datos de "Resumen de Alimentadores.csv" todavía.';
     if(catnodChHistAlim){ catnodChHistAlim.destroy(); catnodChHistAlim = null; }
+    CATNOD_ULTIMO_HIST = null;
     return;
   }
   document.getElementById('catnod-hist-alim-titulo').textContent = alimentador ? `${alimentador} (${datos.nemonico})` : 'Total -- Todos los Alimentadores';
@@ -38256,6 +38268,7 @@ async function catnodCargarHistorialAlimentador(alimentador){
   const CATNOD_HIST_ANIO_DESDE = 2026;
   const historial = datos.historial.filter(h => h.anio >= CATNOD_HIST_ANIO_DESDE);
   const labels = historial.map(h => catnodMesLabelCorto(h.anio, h.mes));
+  CATNOD_ULTIMO_HIST = {titulo: alimentador ? `${alimentador} (${datos.nemonico})` : 'Total -- Todos los Alimentadores', historial};
   const ctx = document.getElementById('catnod-ch-hist-alim');
   if(catnodChHistAlim) catnodChHistAlim.destroy();
   // Mismo estilo que la gráfica real de "Alimentadores -- Detalle por
@@ -38303,6 +38316,186 @@ async function catnodCargarHistorialAlimentador(alimentador){
 
 function catnodKwhOD(v){ return (v==null || Math.round(v)===0) ? '-' : catnodKwh(v); }
 function catnodNumOD(v){ return (v==null || v===0) ? '0' : v.toLocaleString('es-CO'); }
+
+// ===== Descarga consolidada a Excel -- pedido explícito ("un botón para
+// descargar los datos en Excel y las gráficas en Excel, algo bien hecho
+// bien ordenado para poder ser enviado"), UN solo archivo con varias
+// hojas, en vez de los botones sueltos por tabla que se quitaron
+// (tbl-sin-exportar). Reusa _expConstruirChartXmlNativo/
+// _expInyectarChartNativo (las mismas funciones del botón "⬇ Exportar"
+// de gráficas de toda la app) para que la gráfica quede NATIVA de Excel
+// (editable/clickeable), no una imagen pegada.
+//
+// _expInyectarChartNativo inyecta SIEMPRE en xl/worksheets/sheet1.xml (no
+// recibe el nombre/índice de hoja como parámetro) -- por eso la hoja
+// "Histórico" se agrega PRIMERA al workbook, para que sea sheet1.xml.
+const CATNOD_FILL = {verde:'FFD9EAD3', amarillo:'FFFFF2CC', naranja:'FFFCE5CD', rojo:'FFF4CCCC'};
+function _catnodEstiloEncabezado(fila){
+  fila.font = {bold:true, color:{argb:'FFFFFFFF'}};
+  fila.eachCell(c => { c.fill = {type:'pattern', pattern:'solid', fgColor:{argb:'FF4472C4'}}; });
+}
+function _catnodHojaValores(workbook, nombre, titulo, pares){
+  const hoja = workbook.addWorksheet(nombre);
+  hoja.getCell('A1').value = titulo;
+  hoja.getCell('A1').font = {bold:true, size:13};
+  let fila = 3;
+  pares.forEach(([et, v]) => {
+    hoja.getCell(`A${fila}`).value = et;
+    hoja.getCell(`A${fila}`).font = {bold:true};
+    hoja.getCell(`B${fila}`).value = v;
+    fila++;
+  });
+  hoja.getColumn(1).width = 28;
+  hoja.getColumn(2).width = 22;
+  return hoja;
+}
+
+async function catnodDescargarExcel(){
+  if(typeof ExcelJS === 'undefined' || typeof JSZip === 'undefined'){ alert('No se pudo cargar el generador de Excel -- revisa tu conexión y recarga la página.'); return; }
+  if(!CATNOD_ULTIMO_RESUMEN || !CATNOD_ULTIMO_F){ alert('Espera a que termine de cargar la página antes de descargar.'); return; }
+  const resumen = CATNOD_ULTIMO_RESUMEN, f = CATNOD_ULTIMO_F, ga = CATNOD_ULTIMO_GA;
+  const btn = document.getElementById('catnod-btn-descargar');
+  if(btn){ btn.disabled = true; btn.textContent = '⏳ Generando…'; }
+  try{
+
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = 'CINCO S.A.S.';
+  workbook.created = new Date();
+
+  // ---- Hoja 1: Histórico (gráfica nativa + datos) -- DEBE ser la primera hoja ----
+  const hist = CATNOD_ULTIMO_HIST;
+  const hHist = workbook.addWorksheet('Histórico');
+  let fila = 1;
+  hHist.getCell(`A${fila}`).value = (hist && hist.titulo) || 'Histórico del Alimentador';
+  hHist.getCell(`A${fila}`).font = {bold:true, size:13};
+  fila += 2;
+  const filaAnclaGrafico = fila - 1;
+  let chartXml = null, filaEncabezado = null;
+  if(hist && hist.historial.length){
+    fila += 20;  // espacio reservado para el gráfico, mismo criterio que _expChartExcel
+    filaEncabezado = fila;
+    const filaEnc = hHist.getRow(fila);
+    filaEnc.values = ['Mes', 'Entrada Total kWh', 'Salida Total kWh', 'Pérdida Total kWh', 'Pérdida Técnica kWh', 'Pérdida Gestionable kWh', 'Pérdida %'];
+    _catnodEstiloEncabezado(filaEnc);
+    fila++;
+    const filaPrimerDato = fila;
+    hist.historial.forEach(h => {
+      hHist.getRow(fila).values = [catnodMesLabel(h.anio, h.mes), h.entrada_total, h.salida_total, h.perdida_kwh, h.perdida_tecnica_kwh, h.gestionable_kwh, h.perdida_pct==null?null:h.perdida_pct*100];
+      fila++;
+    });
+    const filaUltimoDato = fila - 1;
+    hHist.getColumn(1).width = 16;
+    for(let c=2;c<=7;c++) hHist.getColumn(c).width = 19;
+    const categorias = hist.historial.map(h => catnodMesLabel(h.anio, h.mes));
+    const grupos = [
+      {tipo:'line', esHorizontal:false, esApilada:false, tituloEje:'Energía (kWh)', series:[
+        {label:'Entrada Total kWh', color:'00B050', data: hist.historial.map(h=>h.entrada_total)},
+        {label:'Salida Total kWh', color:'C00000', data: hist.historial.map(h=>h.salida_total)},
+        {label:'Pérdida Total kWh', color:'4472C4', data: hist.historial.map(h=>h.perdida_kwh)},
+        {label:'Pérdida Técnica kWh', color:'ED7D31', data: hist.historial.map(h=>h.perdida_tecnica_kwh)},
+        {label:'Pérdida Gestionable kWh', color:'D9534F', data: hist.historial.map(h=>h.gestionable_kwh)},
+      ]},
+      {tipo:'line', esHorizontal:false, esApilada:false, tituloEje:'Pérdida (%)', series:[
+        {label:'Pérdida %', color:'FFC000', data: hist.historial.map(h=>h.perdida_pct==null?null:h.perdida_pct*100)},
+      ]},
+    ];
+    chartXml = _expConstruirChartXmlNativo({
+      titulo: (hist && hist.titulo) || null, nombreHoja: 'Histórico',
+      categorias, grupos, filaEncabezado, filaPrimerDato, filaUltimoDato,
+    });
+  }else{
+    hHist.getCell(`A${fila}`).value = 'Sin datos de histórico disponibles para este filtro.';
+  }
+
+  // ---- Hoja 2: Resumen (Ficha del Alimentador + Totales de nodos) ----
+  const filasResumen = [];
+  if(ga && ga.encontrado){
+    filasResumen.push(
+      ['Referente', catnodPct(CATNOD_REFERENTE_PCT)],
+      ['Zona', ga.zona || '--'], ['Subestación', ga.subestacion || '--'],
+      ['Alimentador', ga.nemonico ? `${f.alimentador} (${ga.nemonico})` : 'Todos'],
+      ['Mes', catnodMesLabel(ga.anio, ga.mes)],
+      ['% Pérdida Mes', catnodPct(ga.perdida_pct)], ['kWh Pérdida Mes', catnodKwh(ga.perdida_kwh)],
+      ['% Pérdida Anualizado', ga.perdida_pct_anualizado!=null ? catnodPct(ga.perdida_pct_anualizado) : '--'],
+      ['Entrada kWh', catnodKwh(ga.entrada_total)], ['Salida kWh', catnodKwh(ga.salida_total)],
+      ['Pérdida Técnica kWh', catnodKwh(ga.perdida_tecnica_kwh)],
+      ['Energía Gestionable kWh/mes', catnodKwh(ga.gestionable_kwh)],
+    );
+  }
+  filasResumen.push(
+    ['Total Nodos', resumen.total_nodos], ['Con Macromedida', resumen.con_macromedida], ['Sin Macromedida', resumen.sin_macromedida],
+  );
+  const titRes = (ga && ga.nemonico) ? `${f.alimentador} (${ga.nemonico})` : (f.alimentador || 'Total -- Todos los Alimentadores');
+  _catnodHojaValores(workbook, 'Resumen', `${titRes} -- ${f.anual ? f.anio : catnodMesLabel(f.anio, f.mes)}`, filasResumen);
+
+  // ---- Hoja 3: Rango de Pérdidas ----
+  const hRango = workbook.addWorksheet('Rango de Pérdidas');
+  hRango.getCell('A1').value = `Rango de Pérdidas -- ${document.getElementById('catnod-rangos-mes')?.textContent || ''}`;
+  hRango.getCell('A1').font = {bold:true, size:13};
+  const encRango = hRango.getRow(3);
+  encRango.values = ['Rango', 'Nodos', 'Usuarios', 'kWh/mes Pérdida', 'Urbanos (Nodos)', 'Urbanos (kWh)', 'Rurales (Nodos)', 'Rurales (kWh)'];
+  _catnodEstiloEncabezado(encRango);
+  let filaR = 4;
+  let totR = {nodos:0, usuarios:0, kwh:0, uN:0, uK:0, rN:0, rK:0};
+  (resumen.rango_perdidas || []).forEach(r => {
+    const fr = hRango.getRow(filaR);
+    fr.values = [r.rango, r.nodos, Math.round(r.usuarios), r.kwh_perdida, r.urbano.nodos, r.urbano.kwh_perdida, r.rural.nodos, r.rural.kwh_perdida];
+    const argb = CATNOD_FILL[r.color];
+    if(argb) fr.eachCell(c => { c.fill = {type:'pattern', pattern:'solid', fgColor:{argb}}; });
+    totR.nodos += r.nodos; totR.usuarios += r.usuarios;
+    if(r.rango !== 'Negativos'){ totR.kwh += r.kwh_perdida; totR.uK += r.urbano.kwh_perdida; totR.rK += r.rural.kwh_perdida; }
+    totR.uN += r.urbano.nodos; totR.rN += r.rural.nodos;
+    filaR++;
+  });
+  const frTot = hRango.getRow(filaR);
+  frTot.values = ['TOTAL MACROMEDIDOS', totR.nodos, Math.round(totR.usuarios), totR.kwh, totR.uN, totR.uK, totR.rN, totR.rK];
+  frTot.font = {bold:true};
+  hRango.getColumn(1).width = 16;
+  for(let c=2;c<=8;c++) hRango.getColumn(c).width = 15;
+
+  // ---- Hoja 4: Sin Macromedida / Propietario / Tipo de Activo ----
+  const hOtras = workbook.addWorksheet('Sin Macromedida');
+  const ni = resumen.no_identificadas || {nodos:0, usuarios:0, urbano:{nodos:0,usuarios:0}, rural:{nodos:0,usuarios:0}};
+  const encNi = hOtras.getRow(1);
+  encNi.values = ['Sin Macromedida', 'Nodos', 'Usuarios', 'Urbanos (Nodos)', 'Urbanos (Usuarios)', 'Rurales (Nodos)', 'Rurales (Usuarios)'];
+  _catnodEstiloEncabezado(encNi);
+  hOtras.getRow(2).values = ['Sin Macromedida', ni.nodos, Math.round(ni.usuarios), ni.urbano.nodos, Math.round(ni.urbano.usuarios), ni.rural.nodos, Math.round(ni.rural.usuarios)];
+  for(let c=1;c<=7;c++) hOtras.getColumn(c).width = 16;
+
+  let filaO = 5;
+  hOtras.getCell(`A${filaO}`).value = 'Propietario';
+  hOtras.getCell(`A${filaO}`).font = {bold:true, size:12};
+  filaO++;
+  const encProp = hOtras.getRow(filaO); encProp.values = ['Propietario', 'Nodos']; _catnodEstiloEncabezado(encProp); filaO++;
+  (resumen.propietarios || []).forEach(p => { hOtras.getRow(filaO).values = [p.propietario, p.nodos]; filaO++; });
+
+  filaO += 2;
+  hOtras.getCell(`A${filaO}`).value = 'Tipo de Activo (Uso: >1 usuario -- Conexión: 1 usuario)';
+  hOtras.getCell(`A${filaO}`).font = {bold:true, size:12};
+  filaO++;
+  const encTipo = hOtras.getRow(filaO); encTipo.values = ['Tipo', 'Nodos']; _catnodEstiloEncabezado(encTipo); filaO++;
+  const t = resumen.tipo_activo || {uso:0, conexion:0, sin_usuarios:0};
+  [['Activo de Uso', t.uso], ['Activo de Conexión', t.conexion], ['Sin Usuarios', t.sin_usuarios]].forEach(([et,v]) => {
+    hOtras.getRow(filaO).values = [et, v]; filaO++;
+  });
+
+  // ---- Armar el archivo (+ gráfica nativa si hay datos de histórico) ----
+  let buffer = await workbook.xlsx.writeBuffer();
+  if(chartXml){
+    try{
+      buffer = await _expInyectarChartNativo(buffer, chartXml, filaAnclaGrafico, 0, 8, filaEncabezado - 2);
+    }catch(e){
+      console.error('Gráfica nativa de Excel falló, se descarga solo con los datos:', e);
+    }
+  }
+  const blob = new Blob([buffer], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  const nombreBase = (ga && ga.nemonico) ? `Categorizacion_${ga.nemonico}` : 'Categorizacion_Nodos';
+  _expDescargarBlob(blob, `${_expNombreArchivo(nombreBase)}.xlsx`);
+
+  }finally{
+    if(btn){ btn.disabled = false; btn.textContent = '⬇ Descargar Excel'; }
+  }
+}
 
 // Mismas columnas y colores que la hoja "INFORME" del Excel de referencia
 // (pedido explícito, con captura de la tabla real): Rango | Nodos |
