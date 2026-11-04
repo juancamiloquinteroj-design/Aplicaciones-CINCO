@@ -12,7 +12,9 @@ import {
   deleteDoc, 
   getDoc,
   writeBatch,
-  onSnapshot
+  onSnapshot,
+  query,
+  where
 } from "firebase/firestore";
 import { PM, Estructura, PMBase, RelacionTransformacion } from "../types";
 
@@ -123,11 +125,20 @@ export async function getPMs(): Promise<PM[]> {
       const querySnapshot = await getDocs(collection(db, "pms"));
       const pms: PM[] = [];
       querySnapshot.forEach((docSnap) => {
-        if (deletedIds.has(docSnap.id)) {
+        const data = docSnap.data() as Partial<PM>;
+        const pmId = docSnap.id;
+        const dataId = data.id;
+        const codigo = data.codigoPM;
+
+        const isDeleted = deletedIds.has(pmId) || 
+                          (dataId ? deletedIds.has(dataId) : false) || 
+                          (codigo ? deletedIds.has(codigo) : false);
+
+        if (isDeleted) {
           // Permanently enforce deletion in Firestore if a deleted ID is encountered
           deleteDoc(doc(db, "pms", docSnap.id)).catch(() => {});
         } else {
-          pms.push({ id: docSnap.id, ...docSnap.data() } as PM);
+          pms.push({ ...data, id: pmId } as PM);
         }
       });
       firebaseStatus.connected = true;
@@ -140,7 +151,9 @@ export async function getPMs(): Promise<PM[]> {
       handleFirebaseError(e);
     }
   }
-  const localPMs = getLocal<PM[]>("pm_registrations", []).filter(p => !deletedIds.has(p.id));
+  const localPMs = getLocal<PM[]>("pm_registrations", []).filter(
+    (p) => !deletedIds.has(p.id) && (!p.codigoPM || !deletedIds.has(p.codigoPM))
+  );
   return localPMs.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
 }
 
@@ -157,10 +170,19 @@ export function subscribePMs(callback: (pms: PM[]) => void): () => void {
       const pms: PM[] = [];
       
       querySnapshot.forEach((docSnap) => {
-        if (deletedIds.has(docSnap.id)) {
+        const data = docSnap.data() as Partial<PM>;
+        const pmId = docSnap.id;
+        const dataId = data.id;
+        const codigo = data.codigoPM;
+
+        const isDeleted = deletedIds.has(pmId) || 
+                          (dataId ? deletedIds.has(dataId) : false) || 
+                          (codigo ? deletedIds.has(codigo) : false);
+
+        if (isDeleted) {
           deleteDoc(doc(db, "pms", docSnap.id)).catch(() => {});
         } else {
-          pms.push({ id: docSnap.id, ...docSnap.data() } as PM);
+          pms.push({ ...data, id: pmId } as PM);
         }
       });
 
@@ -185,8 +207,9 @@ export async function savePM(pm: PM): Promise<void> {
   
   // Clear from deletion log if previously deleted
   const deletedIds = getLocal<string[]>("pm_deleted_ids", []);
-  if (deletedIds.includes(pm.id)) {
-    setLocal("pm_deleted_ids", deletedIds.filter(id => id !== pm.id));
+  const toClean = new Set([pm.id, pm.codigoPM].filter(Boolean));
+  if (deletedIds.some(id => toClean.has(id))) {
+    setLocal("pm_deleted_ids", deletedIds.filter(id => !toClean.has(id)));
   }
 
   // Mark as unsynced creation/edit until confirmed by Firestore write
@@ -198,7 +221,7 @@ export async function savePM(pm: PM): Promise<void> {
 
   // Save to local cache
   const current = getLocal<PM[]>("pm_registrations", []);
-  const existsIdx = current.findIndex(p => p.id === pm.id);
+  const existsIdx = current.findIndex(p => p.id === pm.id || p.codigoPM === pm.codigoPM);
   if (existsIdx > -1) {
     current[existsIdx] = pm;
   } else {
@@ -224,31 +247,51 @@ export async function savePM(pm: PM): Promise<void> {
   }
 }
 
-export async function deletePM(id: string): Promise<void> {
-  // 1. Filter local cache
+export async function deletePM(id: string, codigoPM?: string): Promise<void> {
+  // 1. Filter local cache immediately
   const current = getLocal<PM[]>("pm_registrations", []);
-  const filtered = current.filter(p => p.id !== id);
+  const filtered = current.filter(p => p.id !== id && (!codigoPM || p.codigoPM !== codigoPM));
   setLocal("pm_registrations", filtered);
 
-  // Remove from unsynced list if it was never pushed
+  // Remove from unsynced list
   const unsyncedIds = getLocal<string[]>("pm_unsynced_ids", []);
-  setLocal("pm_unsynced_ids", unsyncedIds.filter(i => i !== id));
+  setLocal("pm_unsynced_ids", unsyncedIds.filter(i => i !== id && (!codigoPM || i !== codigoPM)));
 
-  // 2. Track deletion persistently
+  // 2. Track deletion permanently in tombstone log to prevent snapshot resurrection
   const deletedIds = getLocal<string[]>("pm_deleted_ids", []);
+  let changed = false;
   if (!deletedIds.includes(id)) {
     deletedIds.push(id);
+    changed = true;
+  }
+  if (codigoPM && !deletedIds.includes(codigoPM)) {
+    deletedIds.push(codigoPM);
+    changed = true;
+  }
+  if (changed) {
     setLocal("pm_deleted_ids", deletedIds);
   }
 
-  // 3. Delete from Firestore
+  // 3. Delete from Firestore permanently
   if (isFirebaseConfigured && db) {
     try {
       await deleteDoc(doc(db, "pms", id));
 
-      // Clear from deleted tracking once Firestore execution completes
-      const curDeleted = getLocal<string[]>("pm_deleted_ids", []);
-      setLocal("pm_deleted_ids", curDeleted.filter(i => i !== id));
+      if (codigoPM && codigoPM !== id) {
+        await deleteDoc(doc(db, "pms", codigoPM)).catch(() => {});
+      }
+
+      // Query any remaining docs in Firestore that might have this codigoPM
+      if (codigoPM) {
+        try {
+          const qSnap = await getDocs(query(collection(db, "pms"), where("codigoPM", "==", codigoPM)));
+          for (const d of qSnap.docs) {
+            await deleteDoc(doc(db, "pms", d.id)).catch(() => {});
+          }
+        } catch {
+          // ignore query fallback errors
+        }
+      }
 
       firebaseStatus.connected = true;
       firebaseStatus.lastError = null;
@@ -336,7 +379,6 @@ export async function syncLocalDataToFirestoreIfAny(): Promise<void> {
 
   try {
     const deletedIds = getLocal<string[]>("pm_deleted_ids", []);
-    const remainingDeleted: string[] = [];
 
     // 1. Process pending deletions in Firestore first
     if (deletedIds.length > 0) {
@@ -345,10 +387,8 @@ export async function syncLocalDataToFirestoreIfAny(): Promise<void> {
           await deleteDoc(doc(db, "pms", id));
         } catch (e) {
           console.error(`Error deleting doc ${id} during sync:`, e);
-          remainingDeleted.push(id);
         }
       }
-      setLocal("pm_deleted_ids", remainingDeleted);
     }
 
     // 2. Fetch current remote PMs snapshot
@@ -368,7 +408,7 @@ export async function syncLocalDataToFirestoreIfAny(): Promise<void> {
 
     // 3. Selective sync
     for (const localPM of localPMs) {
-      if (deletedIds.includes(localPM.id)) continue;
+      if (deletedIds.includes(localPM.id) || (localPM.codigoPM && deletedIds.includes(localPM.codigoPM))) continue;
 
       const remotePM = remotePMs.get(localPM.id);
 
@@ -404,7 +444,8 @@ export async function syncLocalDataToFirestoreIfAny(): Promise<void> {
 
     // Include any remote PMs not present locally
     for (const [id, remotePM] of Array.from(remotePMs.entries())) {
-      if (!deletedIds.includes(id) && !updatedLocalPMs.some(p => p.id === id)) {
+      const isDeleted = deletedIds.includes(id) || (remotePM.codigoPM && deletedIds.includes(remotePM.codigoPM));
+      if (!isDeleted && !updatedLocalPMs.some(p => p.id === id || (remotePM.codigoPM && p.codigoPM === remotePM.codigoPM))) {
         updatedLocalPMs.push(remotePM);
       }
     }

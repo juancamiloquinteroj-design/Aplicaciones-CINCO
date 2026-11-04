@@ -12,7 +12,8 @@ import {
   MapPin, 
   Activity,
   Pencil,
-  X
+  X,
+  Clock
 } from "lucide-react";
 import { Estructura, PMBase, PM, ActiveFailure } from "../types";
 
@@ -31,6 +32,7 @@ const diccFallas = {
   "Medidor": ["Quemado", "Mal parametrizado", "Calibrado", "Conexión"],
   "Cableado": ["Quemado"],
   "Telemedida": ["Sin señal", "Modem (quemado)", "Modem (mal parametrizado)", "Pendiente diagnóstico"],
+  "Compacto": ["Medidor", "Telemedida", "señales", "conexión", "CTs-PTs", "Reubicar"],
   "Para Revisión": ["Monitoreo especial", "Pendiente diagnóstico"]
 };
 
@@ -46,8 +48,8 @@ export default function PMForm({
 }: PMFormProps) {
   // Main form states
   const [codigoPM, setCodigoPM] = useState("");
-  const [estadoGral, setEstadoGral] = useState<"En falla" | "Instalación" | "Ok">("En falla");
-  const [revisado, setRevisado] = useState(false);
+  const [estadoGral, setEstadoGral] = useState<"En falla" | "Seguimiento" | "Instalación" | "Ok">("En falla");
+  const [loQueQuedoPendiente, setLoQueQuedoPendiente] = useState("");
   
   // States for matching from uploaded Base Database
   const [nombrePM, setNombrePM] = useState("Sin Nombre");
@@ -61,8 +63,6 @@ export default function PMForm({
   const [selDetalle, setSelDetalle] = useState("");
   const [fechaReporte, setFechaReporte] = useState(new Date().toISOString().split("T")[0]);
   const [observacionesFalla, setObservacionesFalla] = useState("");
-  const [fechaReparacion, setFechaReparacion] = useState("");
-  const [chkSinDefinir, setChkSinDefinir] = useState(false);
   const [prioridadFalla, setPrioridadFalla] = useState<"Normal" | "Alta">("Normal");
 
   // States for generic action (Instalación)
@@ -92,11 +92,24 @@ export default function PMForm({
       return;
     }
 
-    // Check if PM code is in loaded networks dictionary
-    const networkPM = pmsDict[pmClean];
+    // Check if PM code is in loaded networks dictionary (case-insensitive & trimmed)
+    const matchedKey = Object.keys(pmsDict).find(k => k.trim().toLowerCase() === pmClean.toLowerCase());
+    const networkPM = matchedKey ? pmsDict[matchedKey] : undefined;
+
     if (networkPM) {
       setNombrePM(networkPM.nombre);
-      setEstructurasAfectadas(networkPM.estructuras);
+      // Ensure any structures with combined characters are flattened and unique
+      const flattenedEstructuras: string[] = [];
+      (networkPM.estructuras || []).forEach(est => {
+        if (typeof est === "string") {
+          est.split(/[,;\n\r+/]/).map(s => s.trim().replace(/^["']|["']$/g, "")).filter(Boolean).forEach(singleEst => {
+            if (!flattenedEstructuras.includes(singleEst)) {
+              flattenedEstructuras.push(singleEst);
+            }
+          });
+        }
+      });
+      setEstructurasAfectadas(flattenedEstructuras);
       setEsPMReconocido(true);
     } else {
       setNombrePM("Sin Nombre");
@@ -104,11 +117,14 @@ export default function PMForm({
       setEsPMReconocido(false);
     }
 
-    // Auto-detect if this PM is already logged in active PMs
-    const activePM = existingPMs.find(p => p.codigoPM === pmClean);
+    // Auto-detect if this PM is already logged in active PMs (case-insensitive)
+    const activePM = existingPMs.find(p => p.codigoPM.trim().toLowerCase() === pmClean.toLowerCase());
     if (activePM) {
-      setRevisado(!!activePM.revisado || activePM.estadoGral === "Revisado");
-      if (activePM.estadoGral === "Instalación" || activePM.activeFailures?.[0]?.componente === "Instalación") {
+      setLoQueQuedoPendiente(activePM.loQueQuedoPendiente || "");
+      if (activePM.estadoGral === "Seguimiento") {
+        setEstadoGral("Seguimiento");
+        setTempFallas(activePM.activeFailures || []);
+      } else if (activePM.estadoGral === "Instalación" || activePM.activeFailures?.[0]?.componente === "Instalación") {
         setEstadoGral("Instalación");
         const act = activePM.activeFailures?.[0];
         if (act) {
@@ -127,7 +143,7 @@ export default function PMForm({
       // Reset only if not matching initial code logic
       if (!initialPMCode || pmClean !== initialPMCode) {
         setEstadoGral("En falla");
-        setRevisado(false);
+        setLoQueQuedoPendiente("");
         setTempFallas([]);
         setAccionFecha("");
         setAccionSinDefinir(false);
@@ -156,10 +172,6 @@ export default function PMForm({
       setErrorBanner("Seleccione el detalle específico de la falla.");
       return;
     }
-    if (!chkSinDefinir && !fechaReparacion) {
-      setErrorBanner("Defina una fecha programada de reparación o marque 'Sin definir'.");
-      return;
-    }
 
     if (editingFallaId) {
       // Update existing staged failure
@@ -171,7 +183,7 @@ export default function PMForm({
             detalle: selDetalle,
             fechaReporte: fechaReporte || new Date().toISOString().split("T")[0],
             observaciones: observacionesFalla.trim(),
-            fechaReparacion: chkSinDefinir ? "Sin definir" : fechaReparacion,
+            fechaReparacion: "Sin definir",
             prioridad: prioridadFalla
           };
         }
@@ -186,7 +198,7 @@ export default function PMForm({
         detalle: selDetalle,
         fechaReporte: fechaReporte || new Date().toISOString().split("T")[0],
         observaciones: observacionesFalla.trim(),
-        fechaReparacion: chkSinDefinir ? "Sin definir" : fechaReparacion,
+        fechaReparacion: "Sin definir",
         vecesReprogramada: 0,
         prioridad: prioridadFalla
       };
@@ -197,8 +209,6 @@ export default function PMForm({
     setSelComponente("");
     setSelDetalle("");
     setObservacionesFalla("");
-    setFechaReparacion("");
-    setChkSinDefinir(false);
     setPrioridadFalla("Normal");
   };
 
@@ -210,13 +220,6 @@ export default function PMForm({
     setFechaReporte(f.fechaReporte || new Date().toISOString().split("T")[0]);
     setObservacionesFalla(f.observaciones || "");
     setPrioridadFalla(f.prioridad || "Normal");
-    if (f.fechaReparacion === "Sin definir") {
-      setChkSinDefinir(true);
-      setFechaReparacion("");
-    } else {
-      setChkSinDefinir(false);
-      setFechaReparacion(f.fechaReparacion || "");
-    }
   };
 
   // Cancel editing staged failure
@@ -225,8 +228,6 @@ export default function PMForm({
     setSelComponente("");
     setSelDetalle("");
     setObservacionesFalla("");
-    setFechaReparacion("");
-    setChkSinDefinir(false);
     setPrioridadFalla("Normal");
   };
 
@@ -242,14 +243,11 @@ export default function PMForm({
   const handleResetForm = () => {
     setCodigoPM("");
     setEstadoGral("En falla");
-    setRevisado(false);
     setTempFallas([]);
     setEditingFallaId(null);
     setSelComponente("");
     setSelDetalle("");
     setObservacionesFalla("");
-    setFechaReparacion("");
-    setChkSinDefinir(false);
     setAccionObservaciones("");
     setAccionFecha("");
     setAccionSinDefinir(false);
@@ -276,12 +274,29 @@ export default function PMForm({
 
     let activeFailuresToSave: ActiveFailure[] = [];
 
-    if (estadoGral === "En falla") {
+    if (estadoGral === "En falla" || estadoGral === "Seguimiento") {
       if (tempFallas.length === 0) {
-        setErrorBanner("Debe registrar al menos una falla en la lista para cambiar el estado a 'En falla'.");
-        return;
+        if (estadoGral === "Seguimiento") {
+          // If in Seguimiento without granular failures, create a tracking failure
+          activeFailuresToSave = [
+            {
+              id: existing?.activeFailures?.[0]?.id || `fail_seg_${Date.now()}`,
+              componente: "Para Revisión",
+              detalle: "Seguimiento en campo",
+              fechaReporte: new Date().toISOString().split("T")[0],
+              observaciones: loQueQuedoPendiente.trim() || "Punto de medida en seguimiento continuo",
+              fechaReparacion: "Sin definir",
+              vecesReprogramada: 0,
+              prioridad: "Normal"
+            }
+          ];
+        } else {
+          setErrorBanner("Debe registrar al menos una falla en la lista para cambiar el estado a 'En falla'.");
+          return;
+        }
+      } else {
+        activeFailuresToSave = [...tempFallas];
       }
-      activeFailuresToSave = [...tempFallas];
     } else if (estadoGral === "Instalación") {
       if (!accionSinDefinir && !accionFecha) {
         setErrorBanner("Defina una fecha programada para la Instalación o marque 'Sin definir'.");
@@ -311,7 +326,8 @@ export default function PMForm({
       codigoPM: pmCodeClean,
       nombrePM: nombrePM || "Sin Nombre",
       estadoGral,
-      revisado,
+      loQueQuedoPendiente: estadoGral === "Seguimiento" ? loQueQuedoPendiente.trim() : "",
+      revisado: false,
       prioridad: topPrioridad,
       estructuras: estructurasAfectadas,
       activeFailures: activeFailuresToSave,
@@ -326,13 +342,11 @@ export default function PMForm({
     // Clear state
     setCodigoPM("");
     setEstadoGral("En falla");
-    setRevisado(false);
+    setLoQueQuedoPendiente("");
     setTempFallas([]);
     setSelComponente("");
     setSelDetalle("");
     setObservacionesFalla("");
-    setFechaReparacion("");
-    setChkSinDefinir(false);
     setPrioridadFalla("Normal");
     setAccionObservaciones("");
     setAccionFecha("");
@@ -368,7 +382,7 @@ export default function PMForm({
                   type="text"
                   list="listaPMsForm"
                   value={codigoPM}
-                  onChange={(e) => setCodigoPM(e.target.value.toUpperCase())}
+                  onChange={(e) => setCodigoPM(e.target.value)}
                   placeholder="Escriba el código del PM..."
                   className="w-full pl-10 pr-4 py-2.5 text-sm bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:border-amber-500 text-slate-900 dark:text-zinc-100 placeholder:text-slate-500 dark:placeholder:text-zinc-500 font-mono font-bold"
                   required
@@ -389,32 +403,40 @@ export default function PMForm({
               <select
                 value={estadoGral}
                 onChange={(e) => {
-                  const val = e.target.value as "En falla" | "Instalación" | "Ok";
+                  const val = e.target.value as "En falla" | "Seguimiento" | "Instalación" | "Ok";
                   setEstadoGral(val);
                 }}
                 className="w-full px-3 py-2.5 text-sm bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-lg text-slate-900 dark:text-zinc-100 focus:outline-none focus:border-amber-500 font-semibold"
               >
                 <option value="En falla" className="text-zinc-900 bg-white font-medium">En falla</option>
+                <option value="Seguimiento" className="text-zinc-900 bg-white font-bold">En Seguimiento (Sigue en falla)</option>
                 <option value="Instalación" className="text-zinc-900 bg-white font-medium">Instalación</option>
               </select>
 
-              {/* SEGUNDO ESTADO SIMULTÁNEO: REVISADO */}
-              <div className="flex items-center gap-2.5 p-2.5 bg-purple-500/10 border border-purple-500/20 rounded-lg cursor-pointer">
-                <input
-                  type="checkbox"
-                  id="chkRevisadoForm"
-                  checked={revisado}
-                  onChange={(e) => setRevisado(e.target.checked)}
-                  className="rounded border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-purple-500 focus:ring-0 cursor-pointer w-4 h-4"
-                />
-                <label htmlFor="chkRevisadoForm" className="text-xs font-bold text-purple-700 dark:text-purple-300 cursor-pointer select-none">
-                  Estado Secundario: Marcar como &ldquo;Revisado&rdquo;
-                </label>
-              </div>
+              {/* CAMPO ESPECÍFICO DE SEGUIMIENTO */}
+              {estadoGral === "Seguimiento" && (
+                <div className="p-3.5 bg-amber-500/10 border border-amber-500/30 rounded-xl space-y-1.5 animate-fade-in">
+                  <label className="block text-xs font-bold text-amber-700 dark:text-amber-300 uppercase tracking-wider flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                    ¿Qué quedó pendiente? / Motivo del Seguimiento
+                  </label>
+                  <p className="text-[11px] text-slate-500 dark:text-zinc-400 leading-tight">
+                    Describa el motivo por el cual no se ha podido normalizar y qué se necesita para la próxima visita.
+                  </p>
+                  <textarea
+                    rows={2}
+                    value={loQueQuedoPendiente}
+                    onChange={(e) => setLoQueQuedoPendiente(e.target.value)}
+                    placeholder="Ej: Faltan repuestos, se requiere canasta, pendiente autorización de corte..."
+                    className="w-full p-2.5 text-xs bg-white dark:bg-zinc-950 border border-amber-500/40 rounded-lg text-slate-900 dark:text-zinc-100 placeholder:text-slate-600 dark:placeholder:text-zinc-600 focus:outline-none focus:border-amber-400 font-medium"
+                  />
+                </div>
+              )}
+
             </div>
 
             {/* SECCIÓN DINÁMICA A: MULTI-FALLAS SIMULTÁNEAS */}
-            {estadoGral === "En falla" && (
+            {(estadoGral === "En falla" || estadoGral === "Seguimiento") && (
               <div className="p-4 bg-amber-500/5 border border-amber-500/10 rounded-xl space-y-4">
                 <h4 className="text-xs font-extrabold text-amber-600 dark:text-amber-400 uppercase tracking-wider border-b border-slate-200 dark:border-zinc-800/80 pb-2 flex items-center gap-1.5">
                   <AlertTriangle className="w-4 h-4 text-amber-500" />
@@ -435,6 +457,7 @@ export default function PMForm({
                       <option value="Medidor" className="text-zinc-900 bg-white font-medium">Medidor</option>
                       <option value="Cableado" className="text-zinc-900 bg-white font-medium">Cableado</option>
                       <option value="Telemedida" className="text-zinc-900 bg-white font-medium">Telemedida</option>
+                      <option value="Compacto" className="text-zinc-900 bg-white font-medium">Compacto</option>
                       <option value="Para Revisión" className="text-zinc-900 bg-white font-medium">Para Revisión</option>
                     </select>
                   </div>
@@ -455,7 +478,7 @@ export default function PMForm({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-[11px] font-extrabold text-slate-500 dark:text-zinc-400 mb-1.5 uppercase">Fecha Reporte</label>
                     <input
@@ -464,28 +487,6 @@ export default function PMForm({
                       onChange={(e) => setFechaReporte(e.target.value)}
                       className="w-full px-2.5 py-2 text-xs bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-lg text-slate-900 dark:text-zinc-100 focus:outline-none focus:border-amber-500 font-mono"
                     />
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] font-extrabold text-slate-500 dark:text-zinc-400 mb-1.5 uppercase">Programación Reparación</label>
-                    <div className="flex gap-2 items-center">
-                      <input
-                        type="date"
-                        value={fechaReparacion}
-                        onChange={(e) => setFechaReparacion(e.target.value)}
-                        disabled={chkSinDefinir}
-                        className="flex-1 px-2.5 py-2 text-xs bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-lg text-slate-900 dark:text-zinc-100 focus:outline-none focus:border-amber-500 disabled:bg-slate-50 dark:disabled:bg-zinc-900/40 disabled:text-slate-600 dark:disabled:text-zinc-600 disabled:cursor-not-allowed font-mono"
-                      />
-                      <label className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-zinc-400 select-none whitespace-nowrap cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={chkSinDefinir}
-                          onChange={(e) => setChkSinDefinir(e.target.checked)}
-                          className="rounded border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-amber-500 focus:ring-0"
-                        />
-                        Sin definir
-                      </label>
-                    </div>
                   </div>
 
                   <div>
@@ -694,9 +695,11 @@ export default function PMForm({
                               </span>
                             )}
                           </p>
-                          <p className="text-[10px] text-slate-500 dark:text-zinc-400">
-                            <strong>Reparación:</strong> {f.fechaReparacion}
-                          </p>
+                          {f.fechaReporte && (
+                            <p className="text-[10px] text-slate-500 dark:text-zinc-400">
+                              <strong>Reportado:</strong> {f.fechaReporte}
+                            </p>
+                          )}
                           {f.observaciones && (
                             <p className="text-[10px] text-slate-500 dark:text-zinc-500 italic font-medium leading-tight">
                               &ldquo;{f.observaciones}&rdquo;

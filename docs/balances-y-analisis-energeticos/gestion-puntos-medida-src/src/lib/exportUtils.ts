@@ -2,13 +2,135 @@ import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { PM, Estructura, PMBase, RelacionTransformacion } from "../types";
+import { getStructureType, VALID_STRUCTURE_TYPES, ValidStructureType, STRUCTURE_TYPE_LABELS } from "./structureUtils";
+
+/**
+ * EXPORT UNIFIED PMS DIRECTORY TO A SINGLE EXCEL (.xlsx) WITH TWO SHEETS:
+ * 1. "Puntos Pendientes" (Puntos activos en falla, instalación o revisión, excluyendo seguimiento)
+ * 2. "En Seguimiento" (Puntos con intervenciones o revisiones en seguimiento continuo)
+ */
+export function exportUnifiedPMsToExcel(
+  pms: PM[],
+  relacionesDict: Record<string, RelacionTransformacion> = {}
+) {
+  const workbook = XLSX.utils.book_new();
+
+  // 1. HOJA DE PUNTOS PENDIENTES (INCLUYE PUNTOS EN FALLA, EN SEGUIMIENTO E INSTALACIÓN)
+  const pendingPMs = pms.filter(pm => {
+    if (pm.estadoGral === "Ok" && (!pm.activeFailures || pm.activeFailures.length === 0)) return false;
+    return true;
+  });
+
+  const pendingRows = pendingPMs.map((pm, index) => {
+    const activeFails = pm.activeFailures || [];
+    const failDetails = activeFails.map(f => `${f.componente}: ${f.detalle}`).join(" | ");
+    const failObs = activeFails.map(f => f.observaciones || "").filter(Boolean).join(" | ");
+    const failDates = activeFails.map(f => f.fechaReparacion || "Sin definir").join(" | ");
+    const failReprogrammed = activeFails.map(f => f.vecesReprogramada ? `${f.vecesReprogramada}x` : "0").join(" | ");
+    const isPMAlta = pm.prioridad === "Alta" || activeFails.some(f => f.prioridad === "Alta");
+    const tech = relacionesDict[pm.codigoPM];
+    const isSeguimiento = pm.estadoGral === "Seguimiento";
+    const numRevisiones = isSeguimiento ? (pm.intervenciones ? pm.intervenciones.length : 1) : 0;
+
+    return {
+      "Nº": index + 1,
+      "Código PM": pm.codigoPM,
+      "Nombre del PM": pm.nombrePM,
+      "Estado General": isSeguimiento ? "En Seguimiento" : pm.estadoGral,
+      "Prioridad": isPMAlta ? "Alta" : "Normal",
+      "Revisiones": numRevisiones,
+      "Estructuras Afectadas": pm.estructuras ? pm.estructuras.join(", ") : "",
+      "Cantidad Estructuras": pm.estructuras ? pm.estructuras.length : 0,
+      "Fallas Activas (Componente: Detalle)": failDetails || "Sin fallas activas registradas",
+      "Fechas Programadas Intervención": failDates || "N/A",
+      "Veces Reprogramada": failReprogrammed,
+      "Observaciones de Falla": failObs || "N/A",
+      "Intervenciones Previas": pm.intervenciones ? pm.intervenciones.length : 0,
+      "Medidor": tech?.medidor || "N/A",
+      "Marca / Tipo Medidor": tech ? `${tech.marcaMedidor || ""} ${tech.tipoMedidor || ""}`.trim() || "N/A" : "N/A",
+      "Relación CT / PT": tech ? `CT: ${tech.ct || "N/A"} (F:${tech.fCt || "-"}) | PT: ${tech.pt || "N/A"} (F:${tech.fPt || "-"})` : "N/A",
+      "Factor Sistema": tech?.factorSistema || "N/A",
+      "IP / Comunicación": tech ? `${tech.dirIp || ""} (${tech.comunicacion || ""})`.trim() || "N/A" : "N/A"
+    };
+  });
+
+  const pendingWorksheet = XLSX.utils.json_to_sheet(
+    pendingRows.length > 0 ? pendingRows : [{ "Mensaje": "Sin registros de puntos de medida pendientes" }]
+  );
+  if (pendingRows.length > 0) {
+    const keys = Object.keys(pendingRows[0]);
+    pendingWorksheet["!cols"] = keys.map(k => ({
+      wch: Math.max(k.length + 3, 14)
+    }));
+  }
+  XLSX.utils.book_append_sheet(workbook, pendingWorksheet, "Puntos Pendientes");
+
+  // 2. HOJA DE EN SEGUIMIENTO
+  const seguimientoPMs = pms.filter(pm => pm.estadoGral === "Seguimiento");
+
+  const seguimientoRows = seguimientoPMs.map((pm, index) => {
+    const activeFails = pm.activeFailures || [];
+    const failDetails = activeFails.map(f => `${f.componente}: ${f.detalle}`).join(" | ");
+    const failDates = activeFails.map(f => f.fechaReparacion || "Sin definir").join(" | ");
+    const isPMAlta = pm.prioridad === "Alta" || activeFails.some(f => f.prioridad === "Alta");
+    const tech = relacionesDict[pm.codigoPM];
+    const lastIntervention = pm.intervenciones && pm.intervenciones.length > 0 
+      ? pm.intervenciones[pm.intervenciones.length - 1] 
+      : undefined;
+
+    const ultimoTecnico = pm.ultimoReporteTecnico?.tecnico || lastIntervention?.tecnico || "N/A";
+    const ultimaFecha = pm.ultimoReporteTecnico?.fecha || lastIntervention?.fecha || "N/A";
+    const ultimaDescripcion = pm.ultimoReporteTecnico?.descripcion || lastIntervention?.descripcion || "N/A";
+    const pendiente = pm.loQueQuedoPendiente || pm.ultimoReporteTecnico?.loQueQuedoPendiente || lastIntervention?.loQueQuedoPendiente || "N/A";
+    const proximaRevision = lastIntervention?.proximaRevision || "Sin definir";
+
+    return {
+      "Nº": index + 1,
+      "Código PM": pm.codigoPM,
+      "Nombre del PM": pm.nombrePM,
+      "Estado General": "Seguimiento",
+      "Prioridad": isPMAlta ? "Alta" : "Normal",
+      "Estructuras Afectadas": pm.estructuras ? pm.estructuras.join(", ") : "",
+      "Cantidad Estructuras": pm.estructuras ? pm.estructuras.length : 0,
+      "Lo que quedó Pendiente": pendiente,
+      "Próxima Fecha de Revisión": proximaRevision,
+      "Última Fecha de Revisión": ultimaFecha,
+      "Último Técnico Responsable": ultimoTecnico,
+      "Descripción Última Actividad": ultimaDescripcion,
+      "Revisiones Realizadas": pm.intervenciones ? pm.intervenciones.length : 0,
+      "Fallas Pendientes / Activas": failDetails || "Sin fallas pendientes",
+      "Fechas Programadas": failDates || "N/A",
+      "Medidor": tech?.medidor || "N/A",
+      "Marca / Tipo Medidor": tech ? `${tech.marcaMedidor || ""} ${tech.tipoMedidor || ""}`.trim() || "N/A" : "N/A",
+      "Relación CT / PT": tech ? `CT: ${tech.ct || "N/A"} (F:${tech.fCt || "-"}) | PT: ${tech.pt || "N/A"} (F:${tech.fPt || "-"})` : "N/A",
+      "Factor Sistema": tech?.factorSistema || "N/A",
+      "IP / Comunicación": tech ? `${tech.dirIp || ""} (${tech.comunicacion || ""})`.trim() || "N/A" : "N/A"
+    };
+  });
+
+  const seguimientoWorksheet = XLSX.utils.json_to_sheet(
+    seguimientoRows.length > 0 ? seguimientoRows : [{ "Mensaje": "Sin registros de puntos de medida en seguimiento" }]
+  );
+  if (seguimientoRows.length > 0) {
+    const keys = Object.keys(seguimientoRows[0]);
+    seguimientoWorksheet["!cols"] = keys.map(k => ({
+      wch: Math.max(k.length + 3, 14)
+    }));
+  }
+  XLSX.utils.book_append_sheet(workbook, seguimientoWorksheet, "En Seguimiento");
+
+  // Descarga el archivo Excel unificado
+  const todayStr = new Date().toISOString().slice(0, 10);
+  XLSX.writeFile(workbook, `Reporte_Puntos_de_Medida_General_${todayStr}.xlsx`);
+}
 
 /**
  * EXPORT PENDING PMS DIRECTORY TO EXCEL (.xlsx)
  */
 export function exportPMsToExcel(
   pms: PM[],
-  relacionesDict: Record<string, RelacionTransformacion> = {}
+  relacionesDict: Record<string, RelacionTransformacion> = {},
+  titleSuffix?: string
 ) {
   // Export active/pending PMs (state != "Ok")
   const activePMs = pms.filter(pm => pm.estadoGral !== "Ok");
@@ -31,6 +153,7 @@ export function exportPMsToExcel(
       "Prioridad": isPMAlta ? "Alta" : "Normal",
       "Estructuras Afectadas": pm.estructuras ? pm.estructuras.join(", ") : "",
       "Cantidad Estructuras": pm.estructuras ? pm.estructuras.length : 0,
+      "Lo que quedó Pendiente (Seguimiento)": pm.loQueQuedoPendiente || "N/A",
       "Fallas Activas (Componente: Detalle)": failDetails || "Sin fallas activas registradas",
       "Fechas Programadas de Intervención": failDates || "N/A",
       "Veces Reprogramada": failReprogrammed,
@@ -39,7 +162,8 @@ export function exportPMsToExcel(
     };
   });
 
-  const worksheet = XLSX.utils.json_to_sheet(rows.length > 0 ? rows : [{ "Mensaje": "Sin puntos de medida pendientes" }]);
+  const sheetName = titleSuffix ? titleSuffix.slice(0, 31) : "Puntos Pendientes";
+  const worksheet = XLSX.utils.json_to_sheet(rows.length > 0 ? rows : [{ "Mensaje": `Sin registros en ${sheetName}` }]);
   
   if (rows.length > 0) {
     const keys = Object.keys(rows[0]);
@@ -49,10 +173,11 @@ export function exportPMsToExcel(
   }
 
   const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, "Puntos Pendientes");
+  XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
 
   const todayStr = new Date().toISOString().slice(0, 10);
-  XLSX.writeFile(workbook, `Reporte_Puntos_de_Medida_Pendientes_${todayStr}.xlsx`);
+  const cleanTitle = titleSuffix ? titleSuffix.replace(/\s+/g, "_") : "Pendientes";
+  XLSX.writeFile(workbook, `Reporte_Puntos_de_Medida_${cleanTitle}_${todayStr}.xlsx`);
 }
 
 /**
@@ -64,13 +189,7 @@ export function generateExecutivePDFReport(
     estructuras: Record<string, Estructura>;
     pms: Record<string, PMBase>;
   },
-  combinedChartData: any[] = [],
-  scheduleStats?: {
-    thisWeekList: any[];
-    overdueList: any[];
-    notScheduledList: any[];
-    reprogrammedList: any[];
-  }
+  combinedChartData: any[] = []
 ) {
   const doc = new jsPDF({
     orientation: "portrait",
@@ -88,32 +207,42 @@ export function generateExecutivePDFReport(
   const timeFormatted = now.toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" });
 
   // Core metrics
+  const pmsInSeguimiento = pms.filter(pm => pm.estadoGral === "Seguimiento").length;
   const pmsInFailure = pms.filter(pm => pm.estadoGral === "En falla" || (pm.estadoGral as string) === "Para Revisión").length;
   const pmsInInstallation = pms.filter(pm => pm.estadoGral === "Instalación").length;
 
   const affectedStructures = new Set<string>();
   pms.forEach(pm => {
     if (pm.estadoGral !== "Ok") {
-      pm.estructuras?.forEach(est => affectedStructures.add(est));
+      pm.estructuras?.forEach(est => {
+        if (!est || !est.trim()) return;
+        const type = getStructureType(est, baseData?.estructuras?.[est]);
+        if (type) {
+          affectedStructures.add(est);
+        }
+      });
     }
   });
   const totalAffectedStructures = affectedStructures.size;
 
-  const typeCounts: Record<string, number> = {};
+  const typeCounts: Record<ValidStructureType, number> = {
+    PB: 0,
+    L: 0,
+    CTO: 0,
+    PT: 0
+  };
   affectedStructures.forEach(estCode => {
-    let type = "OTROS";
     const estObj = baseData?.estructuras?.[estCode];
-    if (estObj?.tipo) {
-      type = estObj.tipo.toUpperCase().trim();
-    } else if (estCode.toUpperCase().startsWith("PB")) type = "PB";
-    else if (estCode.toUpperCase().startsWith("L")) type = "L";
-    else if (estCode.toUpperCase().startsWith("PT")) type = "PT";
-    typeCounts[type] = (typeCounts[type] || 0) + 1;
+    const type = getStructureType(estCode, estObj);
+    if (type) {
+      typeCounts[type] = (typeCounts[type] || 0) + 1;
+    }
   });
 
   const totalPendingPMs = pms.filter(pm => pm.estadoGral !== "Ok").length;
   const baseCount = baseData?.pms ? Object.keys(baseData.pms).length : 0;
   const totalPMs = baseCount > 0 ? baseCount : pms.length;
+  const failurePercentage = totalPMs > 0 ? ((pmsInFailure / totalPMs) * 100).toFixed(1) : "0.0";
   const affectedPercentage = totalPMs > 0 ? ((totalPendingPMs / totalPMs) * 100).toFixed(1) : "0.0";
 
   const totalEstructurasCount = baseData?.estructuras ? Object.keys(baseData.estructuras).length : 0;
@@ -162,7 +291,8 @@ export function generateExecutivePDFReport(
   const summaryParagraph = 
     `El presente informe consolida el monitoreo en tiempo real de la infraestructura de medición de la red eléctrica. ` +
     `Actualmente se registran ${totalPendingPMs} puntos de medida con requerimientos de atención u operaciones pendientes (${affectedPercentage}% ` +
-    `del parque total de ${totalPMs} PMs). De éstos, ${pmsInFailure} presentan fallas operativas activas y ${pmsInInstallation} corresponden a puntos para instalación. ` +
+    `del parque total de ${totalPMs} PMs). De éstos, ${pmsInFailure} presentan fallas operativas activas (${failurePercentage}%), ` +
+    `${pmsInSeguimiento} se encuentran en estado de seguimiento continuo y ${pmsInInstallation} corresponden a puntos para instalación. ` +
     `La afectación compromete directamente a ${totalAffectedStructures} estructuras de distribución (${structuresPercentage}% del total registrado de ${totalEstructurasCount}).`;
 
   const splitSummary = doc.splitTextToSize(summaryParagraph, 174);
@@ -182,10 +312,11 @@ export function generateExecutivePDFReport(
     startY: currentY,
     head: [["Indicador Operativo", "Cantidad", "% Afectación / Total Base", "Estado Operativo"]],
     body: [
-      ["Puntos de Medida en Falla", `${pmsInFailure}`, `${affectedPercentage}% (${pmsInFailure} / ${totalPMs})`, pmsInFailure > 0 ? "Atención Prioritaria" : "Normal"],
-      ["Puntos para Instalación", `${pmsInInstallation}`, `N/A (${pmsInInstallation})`, "En Proceso"],
+      ["Puntos de Medida en Falla", `${pmsInFailure}`, `${failurePercentage}% (${pmsInFailure} / ${totalPMs})`, pmsInFailure > 0 ? "Atención Prioritaria" : "Normal"],
+      ["Puntos en Seguimiento", `${pmsInSeguimiento}`, `${totalPMs > 0 ? ((pmsInSeguimiento / totalPMs) * 100).toFixed(1) : "0.0"}% (${pmsInSeguimiento} / ${totalPMs})`, pmsInSeguimiento > 0 ? "Monitoreo Activo" : "Al Día"],
+      ["Puntos para Instalación", `${pmsInInstallation}`, `${totalPMs > 0 ? ((pmsInInstallation / totalPMs) * 100).toFixed(1) : "0.0"}% (${pmsInInstallation} / ${totalPMs})`, "En Proceso"],
       ["Estructuras de Red Afectadas", `${totalAffectedStructures}`, `${structuresPercentage}% (${totalAffectedStructures} / ${totalEstructurasCount})`, totalAffectedStructures > 0 ? "Impacto en Infraestructura" : "Sin Afectación"],
-      ["Total Acciones Pendientes", `${totalPendingPMs}`, `${affectedPercentage}% del Total`, "Monitoreo Activo"]
+      ["Total Acciones Pendientes", `${totalPendingPMs}`, `${affectedPercentage}% del Total`, "Monitoreo General"]
     ],
     theme: "grid",
     headStyles: {
@@ -211,12 +342,10 @@ export function generateExecutivePDFReport(
 
   currentY += 4;
 
-  const structRows = Object.entries(typeCounts).map(([typeKey, count]) => {
+  const structRows = VALID_STRUCTURE_TYPES.filter(t => typeCounts[t] > 0).map((typeKey) => {
+    const count = typeCounts[typeKey];
     const pct = totalAffectedStructures > 0 ? ((count / totalAffectedStructures) * 100).toFixed(1) : "0.0";
-    let desc = "Estructura de distribución";
-    if (typeKey === "PB") desc = "Poste Baja Tensión (PB)";
-    else if (typeKey === "L") desc = "Línea / Red de Distribución (L)";
-    else if (typeKey === "PT") desc = "Poste de Transformación (PT)";
+    const desc = STRUCTURE_TYPE_LABELS[typeKey] || "Estructura de distribución";
     return [typeKey, desc, `${count}`, `${pct}%`];
   });
 
@@ -244,42 +373,7 @@ export function generateExecutivePDFReport(
 
   currentY = (doc as any).lastAutoTable.finalY + 10;
 
-  // TABLA 3: ESTADO DE PROGRAMACIÓN
-  if (scheduleStats) {
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(10.5);
-    doc.setTextColor(15, 23, 42);
-    doc.text("3. Estado de Programación de Intervenciones", 14, currentY);
-
-    currentY += 4;
-
-    autoTable(doc, {
-      startY: currentY,
-      head: [["Categoría de Programación", "Cantidad", "Estatus de Alerta", "Recomendación Operativa"]],
-      body: [
-        ["Programadas para Esta Semana", `${scheduleStats.thisWeekList.length}`, "Programada", "Ejecutar cuadrillas según cronograma"],
-        ["Acciones VENCIDAS (Fuera de fecha)", `${scheduleStats.overdueList.length}`, "ALERTA VENCIDA", "Atención e intervención inmediata"],
-        ["Pendientes Sin Fecha Asignada", `${scheduleStats.notScheduledList.length}`, "Sin Fecha", "Asignar fecha de reparación"],
-        ["Intervenciones Reprogramadas", `${scheduleStats.reprogrammedList.length}`, "Reprogramado", "Revisar causas de aplazamiento"]
-      ],
-      theme: "grid",
-      headStyles: {
-        fillColor: [24, 24, 27],
-        textColor: [255, 255, 255],
-        fontStyle: "bold",
-        fontSize: 8.5
-      },
-      bodyStyles: {
-        fontSize: 8,
-        textColor: [30, 41, 59]
-      },
-      margin: { left: 14, right: 14 }
-    });
-
-    currentY = (doc as any).lastAutoTable.finalY + 10;
-  }
-
-  // TABLA 4: TRAZABILIDAD Y EVOLUCIÓN MENSUAL
+  // TABLA 3: TRAZABILIDAD Y EVOLUCIÓN MENSUAL
   if (combinedChartData && combinedChartData.length > 0) {
     if (currentY > 230) {
       doc.addPage();
@@ -289,7 +383,7 @@ export function generateExecutivePDFReport(
     doc.setFont("helvetica", "bold");
     doc.setFontSize(10.5);
     doc.setTextColor(15, 23, 42);
-    doc.text("4. Trazabilidad y Evolución Mensual de Incidencias", 14, currentY);
+    doc.text("3. Trazabilidad y Evolución Mensual de Incidencias", 14, currentY);
 
     currentY += 4;
 

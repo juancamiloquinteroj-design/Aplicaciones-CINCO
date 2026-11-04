@@ -18,11 +18,13 @@ import {
   ArrowUp,
   ArrowUpDown,
   Cpu,
-  FileSpreadsheet,
-  Download
+  History,
+  FileText,
+  Notebook,
+  X,
+  User
 } from "lucide-react";
 import { PM, Estructura, RelacionTransformacion } from "../types";
-import { exportPMsToExcel } from "../lib/exportUtils";
 
 interface ActivePMsTableProps {
   pms: PM[];
@@ -30,7 +32,8 @@ interface ActivePMsTableProps {
   relacionesDict?: Record<string, RelacionTransformacion>;
   onTriggerIntervention: (pm: PM) => void;
   onEditPM: (codigoPM: string) => void;
-  onDeletePM: (id: string) => void;
+  onDeletePM: (id: string, codigoPM?: string) => void;
+  mode?: "pendientes" | "seguimiento";
 }
 
 export default function ActivePMsTable({
@@ -39,7 +42,8 @@ export default function ActivePMsTable({
   relacionesDict = {},
   onTriggerIntervention,
   onEditPM,
-  onDeletePM
+  onDeletePM,
+  mode = "pendientes"
 }: ActivePMsTableProps) {
   // Search & Filter state
   const [searchTerm, setSearchTerm] = useState("");
@@ -63,6 +67,44 @@ export default function ActivePMsTable({
 
   // Custom non-blocking delete confirm state
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+
+  // Modal for detailed observations (Inicial, Revisión, Pendiente)
+  const [observationModal, setObservationModal] = useState<{
+    pm: PM;
+    activeTab: "inicial" | "revision" | "pendiente";
+    selectedRevisionIdx?: number;
+  } | null>(null);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && observationModal) {
+        setObservationModal(null);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [observationModal]);
+
+  const getRevisoresList = (pm: PM) => {
+    if (pm.intervenciones && pm.intervenciones.length > 0) {
+      return pm.intervenciones;
+    }
+    if (pm.ultimoReporteTecnico?.descripcion) {
+      return [
+        {
+          id: "ultimo_reporte",
+          fecha: pm.ultimoReporteTecnico.fecha || "Sin fecha",
+          tecnico: pm.ultimoReporteTecnico.tecnico || "Técnico",
+          descripcion: pm.ultimoReporteTecnico.descripcion,
+          loQueQuedoPendiente: pm.ultimoReporteTecnico.loQueQuedoPendiente,
+          fallasCorregidas: [],
+          fallasPendientes: [],
+          resultado: "Seguimiento" as const,
+        }
+      ];
+    }
+    return [];
+  };
 
   useEffect(() => {
     const activeZonas = new Set<string>();
@@ -134,20 +176,22 @@ export default function ActivePMsTable({
 
   // Filter PMs based on search and selected filters
   const filteredPMs = pms.filter((pm) => {
-    // Only show active PMs (non-Ok or PMs with at least one active failure)
-    if (pm.estadoGral === "Ok" && pm.activeFailures.length === 0) return false;
+    // In Directorio de Pendientes, include active PMs in failure, installation, and en seguimiento
+    if (pm.estadoGral === "Ok" && (!pm.activeFailures || pm.activeFailures.length === 0)) return false;
 
     // Search query match
     const matchesSearch = 
       pm.codigoPM.toLowerCase().includes(searchTerm.toLowerCase()) ||
       pm.nombrePM.toLowerCase().includes(searchTerm.toLowerCase());
 
-    // State filter (treat legacy 'Para Revisión' as 'En falla')
-    const matchesEstado = selectedEstado 
-      ? (selectedEstado === "Revisado"
-          ? (pm.revisado || pm.estadoGral === "Revisado")
-          : (pm.estadoGral === selectedEstado || (selectedEstado === "En falla" && (pm.estadoGral as string) === "Para Revisión"))) 
-      : true;
+    // State filter (En falla, Seguimiento, Instalación)
+    const matchesEstado = !selectedEstado
+      ? true
+      : (selectedEstado === "En falla"
+          ? (pm.estadoGral === "En falla" || (pm.estadoGral as string) === "Para Revisión")
+          : (selectedEstado === "Seguimiento"
+              ? pm.estadoGral === "Seguimiento"
+              : pm.estadoGral === selectedEstado));
 
     // Priority filter
     const isPMAlta = pm.prioridad === "Alta" || pm.activeFailures?.some(f => f.prioridad === "Alta");
@@ -200,6 +244,8 @@ export default function ActivePMsTable({
       case "En falla":
       case "Para Revisión":
         return "bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20";
+      case "Seguimiento":
+        return "bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/40";
       case "Instalación":
         return "bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20";
       case "Revisado":
@@ -235,8 +281,8 @@ export default function ActivePMsTable({
             >
               <option value="" className="text-zinc-900 bg-white font-medium">Todos los Estados</option>
               <option value="En falla" className="text-zinc-900 bg-white font-medium">En Falla</option>
+              <option value="Seguimiento" className="text-zinc-900 bg-white font-medium">En Seguimiento</option>
               <option value="Instalación" className="text-zinc-900 bg-white font-medium">Instalación</option>
-              <option value="Revisado" className="text-zinc-900 bg-white font-medium">Revisado</option>
             </select>
 
             <select
@@ -258,15 +304,6 @@ export default function ActivePMsTable({
               <option value="desc" className="text-zinc-900 bg-white font-medium">Tiempo en Falla: Mayor a Menor (↓)</option>
               <option value="asc" className="text-zinc-900 bg-white font-medium">Tiempo en Falla: Menor a Mayor (↑)</option>
             </select>
-
-            <button
-              onClick={() => exportPMsToExcel(pms, relacionesDict)}
-              className="p-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition-all flex items-center gap-1.5 shadow-md shadow-emerald-950/40 active:scale-95 cursor-pointer shrink-0 ml-auto"
-              title="Descargar reporte de Puntos de Medida Pendientes en formato Excel (.xlsx)"
-            >
-              <FileSpreadsheet className="w-4 h-4 text-white" />
-              <Download className="w-4 h-4 text-white" />
-            </button>
           </div>
 
         </div>
@@ -334,9 +371,13 @@ export default function ActivePMsTable({
       <div className="overflow-x-auto overflow-y-auto max-h-[650px] relative rounded-b-xl border-t border-slate-200 dark:border-zinc-800">
         {sortedPMs.length === 0 ? (
           <div className="text-center py-12 px-4 animate-pulse">
-            <Clock className="w-10 h-10 text-zinc-700 mx-auto mb-3" />
-            <p className="text-sm text-slate-500 dark:text-zinc-400 font-medium">No se encontraron puntos de medida con acciones pendientes.</p>
-            <p className="text-xs text-slate-500 dark:text-zinc-500 mt-1">Configure o registre un nuevo PM en la pestaña de registro.</p>
+            <Clock className="w-10 h-10 mx-auto mb-3 text-zinc-700" />
+            <p className="text-sm text-slate-700 dark:text-zinc-300 font-bold">
+              No se encontraron puntos de medida con fallas o tareas pendientes.
+            </p>
+            <p className="text-xs text-slate-500 dark:text-zinc-500 mt-1 max-w-md mx-auto">
+              Todos los puntos de medida activos se encuentran en estado normal o no coinciden con los filtros aplicados.
+            </p>
           </div>
         ) : (
           <table className="w-full border-collapse text-left">
@@ -345,6 +386,8 @@ export default function ActivePMsTable({
                 <th className="py-4.5 px-5 bg-white dark:bg-zinc-950">Punto de Medida</th>
                 <th className="py-4.5 px-5 bg-white dark:bg-zinc-950">Estructuras / Impacto</th>
                 <th className="py-4.5 px-5 bg-white dark:bg-zinc-950">Estado</th>
+                <th className="py-4.5 px-5 bg-white dark:bg-zinc-950">Prioridad</th>
+                <th className="py-4.5 px-5 bg-white dark:bg-zinc-950 text-center">Revisiones</th>
                 <th 
                   onClick={() => {
                     if (sortTiempoFalla === "none") setSortTiempoFalla("desc");
@@ -362,7 +405,6 @@ export default function ActivePMsTable({
                   </div>
                 </th>
                 <th className="py-4.5 px-5 bg-white dark:bg-zinc-950 w-1/4">Observaciones</th>
-                <th className="py-4.5 px-5 bg-white dark:bg-zinc-950">Fechas Programadas</th>
                 <th className="py-4.5 px-5 bg-white dark:bg-zinc-950 text-right">Acciones</th>
               </tr>
             </thead>
@@ -404,40 +446,74 @@ export default function ActivePMsTable({
                         </button>
                       </td>
 
-                      {/* STATE BADGE */}
+                      {/* ESTADO GENERAL */}
                       <td className="py-4 px-5">
                         <div className="flex flex-wrap gap-1.5 items-center">
-                          <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold ${getStateBadge(pm.estadoGral)}`}>
-                            {(pm.estadoGral as string) === "Para Revisión" ? "En falla" : pm.estadoGral}
+                          <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold ${getStateBadge(pm.estadoGral)}`}>
+                            {pm.estadoGral === "Seguimiento" 
+                              ? "En Seguimiento" 
+                              : (pm.estadoGral as string) === "Para Revisión" 
+                                ? "En falla" 
+                                : pm.estadoGral}
                           </span>
-                          {(pm.revisado || pm.estadoGral === "Revisado") && (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-purple-500/15 text-purple-700 dark:text-purple-300 border border-purple-500/30">
-                              <CheckCircle className="w-3 h-3 text-purple-600 dark:text-purple-400" />
-                              Revisado
-                            </span>
-                          )}
+                        </div>
+                      </td>
+
+                      {/* PRIORIDAD (NORMAL O ALTA) */}
+                      <td className="py-4 px-5">
+                        <div className="flex items-center gap-1.5">
                           {pm.prioridad === "Alta" || pm.activeFailures?.some(f => f.prioridad === "Alta") ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-red-500/20 text-red-600 dark:text-red-400 border border-red-500/30">
-                              <AlertTriangle className="w-3 h-3 text-red-600 dark:text-red-400" />
-                              Prioridad Alta
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-extrabold bg-red-500/20 text-red-600 dark:text-red-400 border border-red-500/30 shadow-sm shadow-red-950/40">
+                              <AlertTriangle className="w-3.5 h-3.5 text-red-600 dark:text-red-400 shrink-0" />
+                              Alta
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 dark:bg-zinc-800/80 text-slate-500 dark:text-zinc-400 border border-slate-300 dark:border-zinc-700/60">
-                              Prioridad Normal
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300 border border-slate-300 dark:border-zinc-700/60">
+                              Normal
                             </span>
                           )}
                         </div>
                       </td>
 
+                      {/* REVISIONES COLUMN */}
+                      <td className="py-4 px-5 text-center">
+                        {(() => {
+                          const isSeguimiento = pm.estadoGral === "Seguimiento";
+                          if (!isSeguimiento) {
+                            return (
+                              <span className="font-bold text-slate-500 dark:text-zinc-500 font-mono text-xs">
+                                0
+                              </span>
+                            );
+                          }
+                          const revisoresList = getRevisoresList(pm);
+                          const count = revisoresList.length;
+                          const lastRevDate = count > 0 ? revisoresList[count - 1]?.fecha : null;
+
+                          return (
+                            <div className="flex flex-col items-center justify-center gap-0.5">
+                              <span className="font-bold text-amber-600 dark:text-amber-400 font-mono text-xs">
+                                {count}
+                              </span>
+                              {lastRevDate && (
+                                <span className="text-[10px] text-slate-500 dark:text-zinc-400 font-mono whitespace-nowrap">
+                                  {lastRevDate}
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })()}
+                      </td>
+
                       {/* TIME IN FAILURE */}
                       <td className="py-4 px-5">
                         <div className="space-y-1">
-                          <span className={`font-mono text-xs font-bold block ${pm.estadoGral === "En falla" ? "text-amber-600 dark:text-amber-400" : "text-slate-500 dark:text-zinc-500"}`}>
+                          <span className={`font-mono text-xs font-bold block ${pm.estadoGral === "En falla" || pm.estadoGral === "Seguimiento" ? "text-amber-600 dark:text-amber-400" : "text-slate-500 dark:text-zinc-500"}`}>
                             {getDaysInFailure(pm)}
                           </span>
                           {pm.activeFailures && pm.activeFailures.length > 0 && (
                             <div className="text-[10px] text-slate-500 dark:text-zinc-400 font-mono flex items-center gap-1">
-                              <Calendar className="w-3 h-3 text-slate-500 dark:text-zinc-500 flex-shrink-0" />
+                              <Calendar className="w-3.5 h-3.5 text-slate-500 dark:text-zinc-500 flex-shrink-0" />
                               <span>
                                 {Array.from(new Set(pm.activeFailures.map(f => f.fechaReporte).filter(Boolean))).join(", ") || "Sin fecha"}
                               </span>
@@ -446,61 +522,24 @@ export default function ActivePMsTable({
                         </div>
                       </td>
 
-                      {/* FAILURES LIST */}
+                      {/* OBSERVACIONES: SOLO 1 ÍCONO DE LA LIBRETA */}
                       <td className="py-4 px-5">
-                        <div className="space-y-1.5 max-h-36 overflow-y-auto">
-                          {pm.activeFailures.length === 0 ? (
-                            <span className="text-xs text-slate-500 dark:text-zinc-500 italic">Ninguna falla reportada</span>
-                          ) : (
-                            pm.activeFailures.map((f) => {
-                              const isInstalacion = f.componente === "Instalación" || (f.componente === "Medidor" && f.detalle === "Instalación");
-                              const displayComponente = isInstalacion ? "Instalación" : f.componente;
-                              const showDetalle = f.detalle && f.detalle !== displayComponente && !isInstalacion;
-
-                              return (
-                                <div key={f.id} className="text-xs">
-                                  <div className="flex items-center gap-1 flex-wrap">
-                                    <span className="font-bold text-slate-700 dark:text-zinc-300">{displayComponente}</span>
-                                    {showDetalle && (
-                                      <span className="text-[10px] bg-slate-100 dark:bg-zinc-800 border border-slate-300 dark:border-zinc-700 text-slate-700 dark:text-zinc-300 px-1.5 py-0.25 rounded font-medium">
-                                        {f.detalle}
-                                      </span>
-                                    )}
-                                    {f.prioridad === "Alta" && (
-                                      <span className="text-[10px] bg-red-500/20 text-red-600 dark:text-red-400 border border-red-500/30 px-1.5 py-0.25 rounded font-extrabold uppercase">
-                                        Alta
-                                      </span>
-                                    )}
-                                  </div>
-                                  {f.observaciones && (
-                                    <p className="text-[10px] text-slate-500 dark:text-zinc-500 italic pl-1 leading-normal">
-                                      &ldquo;{f.observaciones}&rdquo;
-                                    </p>
-                                  )}
-                                </div>
-                              );
-                            })
-                          )}
-                        </div>
-                      </td>
-
-                      {/* PROGRAMMED DATES */}
-                      <td className="py-4 px-5">
-                        <div className="space-y-1.5">
-                          {pm.activeFailures.map((f) => (
-                            <div key={f.id} className="text-[11px] border-b border-slate-200 dark:border-zinc-800/40 pb-1 last:border-0 last:pb-0">
-                              <div className="font-semibold text-slate-700 dark:text-zinc-300 flex items-center gap-1 font-mono">
-                                <Calendar className="w-3 h-3 text-slate-500 dark:text-zinc-500" />
-                                {f.fechaReparacion}
-                              </div>
-                              {f.vecesReprogramada > 0 && (
-                                <span className="inline-block bg-amber-500 text-zinc-950 text-[9px] px-1.5 py-0.25 rounded-md font-bold mt-0.5">
-                                  Reprog. x{f.vecesReprogramada}
-                                </span>
-                              )}
-                            </div>
-                          ))}
-                        </div>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const revs = getRevisoresList(pm);
+                            setObservationModal({ 
+                              pm, 
+                              activeTab: "inicial", 
+                              selectedRevisionIdx: revs.length > 0 ? revs.length - 1 : 0 
+                            });
+                          }}
+                          className="inline-flex items-center justify-center p-2 rounded-lg bg-slate-100 dark:bg-zinc-800/80 hover:bg-slate-200 dark:hover:bg-zinc-700 text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 border border-slate-300 dark:border-zinc-700/80 hover:border-amber-500/50 shadow-sm transition-all cursor-pointer group"
+                          title="Ver observaciones en la libreta"
+                        >
+                          <Notebook className="w-4 h-4 text-amber-600 dark:text-amber-400 group-hover:scale-110 transition-transform" />
+                        </button>
                       </td>
 
                       {/* ROW ACTION BUTTONS */}
@@ -509,8 +548,12 @@ export default function ActivePMsTable({
                           
                           <button
                             onClick={() => onTriggerIntervention(pm)}
-                            className="p-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition-colors cursor-pointer"
-                            title="Intervenir"
+                            className={`p-2 rounded-lg transition-colors cursor-pointer flex items-center gap-1 ${
+                              pm.estadoGral === "Seguimiento"
+                                ? "bg-amber-500 hover:bg-amber-400 text-zinc-950 font-black shadow-md shadow-amber-500/20"
+                                : "bg-emerald-600 hover:bg-emerald-500 text-white"
+                            }`}
+                            title={pm.estadoGral === "Seguimiento" ? "Nueva Revisión / Registrar Intervención" : "Intervenir"}
                           >
                             <Wrench className="w-4 h-4" />
                           </button>
@@ -527,7 +570,7 @@ export default function ActivePMsTable({
                           {isConfirmingDelete ? (
                             <button
                               onClick={() => {
-                                onDeletePM(pm.id);
+                                onDeletePM(pm.id, pm.codigoPM);
                                 setDeleteConfirmId(null);
                               }}
                               className="bg-red-600 hover:bg-red-500 text-white font-extrabold text-[10px] px-2 py-1.5 rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1 uppercase tracking-tight animate-pulse"
@@ -696,6 +739,407 @@ export default function ActivePMsTable({
           </table>
         )}
       </div>
+
+      {/* MODAL DETALLE DE OBSERVACIONES Y PENDIENTES */}
+      {observationModal && (() => {
+        const { pm, activeTab, selectedRevisionIdx = 0 } = observationModal;
+        const revisoresList = getRevisoresList(pm);
+        const hasRevisions = revisoresList.length > 0;
+        const hasPending = Boolean(pm.loQueQuedoPendiente || revisoresList.some(r => r.loQueQuedoPendiente));
+        const showAllThree = hasRevisions || hasPending;
+
+        const effectiveRevIdx = Math.min(Math.max(0, selectedRevisionIdx), Math.max(0, revisoresList.length - 1));
+        const currentRev = revisoresList[effectiveRevIdx] || null;
+
+        const currentPendingText = pm.loQueQuedoPendiente || (currentRev?.loQueQuedoPendiente) || "";
+
+        return (
+          <div 
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150"
+            onClick={() => setObservationModal(null)}
+          >
+            <div 
+              className="bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl shadow-black overflow-hidden animate-in zoom-in-95 duration-150"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* MODAL HEADER */}
+              <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-zinc-800 flex items-center justify-between gap-3 bg-slate-50 dark:bg-zinc-900/60">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className={`p-2 rounded-xl shrink-0 ${
+                    activeTab === "pendiente"
+                      ? "bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400"
+                      : activeTab === "revision"
+                        ? "bg-blue-500/10 border border-blue-500/20 text-blue-600 dark:text-blue-400"
+                        : "bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400"
+                  }`}>
+                    {activeTab === "pendiente" ? (
+                      <AlertTriangle className="w-5 h-5" />
+                    ) : activeTab === "revision" ? (
+                      <Wrench className="w-5 h-5" />
+                    ) : (
+                      <Notebook className="w-5 h-5" />
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="text-base font-extrabold text-slate-900 dark:text-zinc-100 truncate">
+                      {activeTab === "pendiente"
+                        ? "Detalle de Motivo y Tareas Pendientes"
+                        : activeTab === "revision"
+                          ? `Detalle de Revisión Técnica${revisoresList.length > 1 ? ` (${effectiveRevIdx + 1} de ${revisoresList.length})` : ""}`
+                          : "Detalle de Reporte Inicial de Falla"}
+                    </h3>
+                    <p className="text-xs text-slate-500 dark:text-zinc-400 truncate">
+                      <span className="font-mono font-bold text-amber-600 dark:text-amber-400">{pm.codigoPM}</span> &bull; {pm.nombrePM}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setObservationModal(null)}
+                  className="p-2 rounded-xl text-slate-500 dark:text-zinc-400 hover:text-slate-800 dark:hover:text-zinc-200 hover:bg-slate-100 dark:hover:bg-zinc-800/80 transition-colors shrink-0 cursor-pointer"
+                  title="Cerrar modal (Esc)"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* TABS DE NAVEGACIÓN: 3 ITEMS (Inicial, Revisión, Pendiente) O SOLO 1 ITEM (Inicial) */}
+              <div className="px-4 sm:px-5 pt-3 pb-2 border-b border-slate-200 dark:border-zinc-800/80 bg-slate-50 dark:bg-zinc-900/30 flex items-center gap-2 overflow-x-auto">
+                <button
+                  type="button"
+                  onClick={() => setObservationModal(prev => prev ? { ...prev, activeTab: "inicial" } : null)}
+                  className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
+                    activeTab === "inicial"
+                      ? "bg-amber-500 text-zinc-950 shadow-md shadow-amber-500/20 font-extrabold"
+                      : "bg-slate-50 dark:bg-zinc-900 text-slate-500 dark:text-zinc-400 hover:text-slate-800 dark:hover:text-zinc-200 hover:bg-slate-100 dark:hover:bg-zinc-800 border border-slate-200 dark:border-zinc-800"
+                  }`}
+                  title="Reporte inicial y fallas registradas"
+                >
+                  <Notebook className="w-3.5 h-3.5" />
+                  <span>Inicial</span>
+                </button>
+
+                {showAllThree && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setObservationModal(prev => prev ? { ...prev, activeTab: "revision" } : null)}
+                      className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
+                        activeTab === "revision"
+                          ? "bg-blue-600 text-white shadow-md shadow-blue-600/30 font-extrabold"
+                          : "bg-slate-50 dark:bg-zinc-900 text-slate-500 dark:text-zinc-400 hover:text-slate-800 dark:hover:text-zinc-200 hover:bg-slate-100 dark:hover:bg-zinc-800 border border-slate-200 dark:border-zinc-800"
+                      }`}
+                      title="Intervenciones y revisiones técnicas realizadas"
+                    >
+                      <Wrench className="w-3.5 h-3.5" />
+                      <span>Revisión</span>
+                      {revisoresList.length > 0 && (
+                        <span className="text-[10px] ml-0.5 px-1.5 py-0.2 rounded-full bg-blue-900/60 text-blue-200 font-mono">
+                          {revisoresList.length}
+                        </span>
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setObservationModal(prev => prev ? { ...prev, activeTab: "pendiente" } : null)}
+                      className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
+                        activeTab === "pendiente"
+                          ? "bg-amber-500 text-zinc-950 shadow-md shadow-amber-500/30 font-extrabold"
+                          : "bg-slate-50 dark:bg-zinc-900 text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 hover:bg-slate-100 dark:hover:bg-zinc-800 border border-amber-500/30"
+                      }`}
+                      title="Lo que quedó pendiente y motivo del seguimiento"
+                    >
+                      <AlertTriangle className="w-3.5 h-3.5" />
+                      <span>Pendiente</span>
+                    </button>
+                  </>
+                )}
+              </div>
+
+              {/* MODAL BODY (SCROLLABLE) */}
+              <div className="p-4 sm:p-5 overflow-y-auto space-y-4 max-h-[calc(90vh-140px)]">
+                {activeTab === "inicial" && (
+                  /* VISTA 1: REPORTE INICIAL */
+                  <div className="space-y-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2 p-3 bg-slate-50 dark:bg-zinc-900/70 border border-slate-200 dark:border-zinc-800 rounded-xl">
+                      <div className="flex items-center gap-2 text-xs">
+                        <span className="text-slate-500 dark:text-zinc-500">Estado general:</span>
+                        <span className="font-bold text-slate-800 dark:text-zinc-200">{pm.estadoGral}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-xs">
+                        <span className="text-slate-500 dark:text-zinc-500">Prioridad:</span>
+                        <span className={`font-bold ${pm.prioridad === "Alta" ? "text-red-600 dark:text-red-400" : "text-slate-700 dark:text-zinc-300"}`}>
+                          {pm.prioridad || "Normal"}
+                        </span>
+                      </div>
+                      {pm.activeFailures && pm.activeFailures.length > 0 && (
+                        <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-zinc-400 font-mono">
+                          <Calendar className="w-3.5 h-3.5 text-slate-500 dark:text-zinc-500" />
+                          <span>
+                            {Array.from(new Set(pm.activeFailures.map(f => f.fechaReporte).filter(Boolean))).join(", ") || "Sin fecha registrada"}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="space-y-3">
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
+                        <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                        Fallas y Comentarios Iniciales ({pm.activeFailures?.length || 0})
+                      </h4>
+
+                      {!pm.activeFailures || pm.activeFailures.length === 0 ? (
+                        <div className="p-4 bg-slate-50 dark:bg-zinc-900/50 border border-slate-200 dark:border-zinc-800 rounded-xl text-center text-xs text-slate-500 dark:text-zinc-500 italic">
+                          No hay fallas reportadas activas para este punto de medida.
+                        </div>
+                      ) : (
+                        pm.activeFailures.map((f, idx) => {
+                          const isInstalacion = f.componente === "Instalación" || (f.componente === "Medidor" && f.detalle === "Instalación");
+                          const displayComponente = isInstalacion ? "Instalación" : f.componente;
+                          const showDetalle = f.detalle && f.detalle !== displayComponente && !isInstalacion;
+
+                          return (
+                            <div key={f.id || idx} className="p-4 bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800/90 rounded-xl space-y-2.5 shadow-sm">
+                              <div className="flex items-center justify-between gap-2 flex-wrap">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-bold text-slate-900 dark:text-zinc-100 text-sm">{displayComponente}</span>
+                                  {showDetalle && (
+                                    <span className="text-xs bg-slate-100 dark:bg-zinc-800 border border-slate-300 dark:border-zinc-700 text-slate-700 dark:text-zinc-300 px-2 py-0.5 rounded font-medium">
+                                      {f.detalle}
+                                    </span>
+                                  )}
+                                </div>
+                                {f.fechaReporte && (
+                                  <span className="text-xs text-slate-500 dark:text-zinc-400 font-mono flex items-center gap-1">
+                                    <Calendar className="w-3.5 h-3.5 text-slate-500 dark:text-zinc-500" />
+                                    {f.fechaReporte}
+                                  </span>
+                                )}
+                              </div>
+
+                              <div className="pt-2 border-t border-slate-200 dark:border-zinc-800">
+                                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-zinc-400 block mb-1">
+                                  Observaciones iniciales de la falla:
+                                </span>
+                                {f.observaciones && !f.observaciones.startsWith("Devuelta a pendientes desde intervención") ? (
+                                  <p className="text-xs text-slate-800 dark:text-zinc-200 leading-relaxed whitespace-pre-wrap bg-white dark:bg-zinc-950/80 p-3 rounded-lg border border-slate-200 dark:border-zinc-800/80">
+                                    &ldquo;{f.observaciones}&rdquo;
+                                  </p>
+                                ) : (
+                                  <p className="text-xs text-slate-500 dark:text-zinc-500 italic">
+                                    Sin observaciones adicionales reportadas al registrar la falla.
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {activeTab === "revision" && (
+                  /* VISTA 2: REVISIÓN (INTERVENCIONES Y OBSERVACIONES DEL TÉCNICO) */
+                  <div className="space-y-4">
+                    {revisoresList.length === 0 ? (
+                      <div className="p-6 bg-slate-50 dark:bg-zinc-900/50 border border-slate-200 dark:border-zinc-800 rounded-xl text-center space-y-2">
+                        <Wrench className="w-8 h-8 text-slate-600 dark:text-zinc-600 mx-auto" />
+                        <p className="text-xs text-slate-500 dark:text-zinc-400 font-semibold">No se han registrado revisiones o intervenciones técnicas para este punto.</p>
+                        <p className="text-[11px] text-slate-500 dark:text-zinc-500">Haga clic en el botón de la llave inglesa en la tabla para registrar una nueva revisión técnica.</p>
+                      </div>
+                    ) : (
+                      <>
+                        {/* SELECTOR ENTRE MÚLTIPLES REVISIONES SI EXISTE MÁS DE 1 */}
+                        {revisoresList.length > 1 && (
+                          <div className="flex items-center gap-2 p-2 bg-slate-50 dark:bg-zinc-900/80 rounded-xl border border-slate-200 dark:border-zinc-800 overflow-x-auto">
+                            <span className="text-[11px] font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider pl-1 shrink-0">
+                              Revisiones Realizadas ({revisoresList.length}):
+                            </span>
+                            <div className="flex gap-1.5 shrink-0">
+                              {revisoresList.map((r, idx) => (
+                                <button
+                                  key={r.id || idx}
+                                  type="button"
+                                  onClick={() => setObservationModal(prev => prev ? { ...prev, selectedRevisionIdx: idx } : null)}
+                                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                                    effectiveRevIdx === idx
+                                      ? "bg-blue-600 text-white font-extrabold shadow-sm"
+                                      : "bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400 hover:text-slate-800 dark:hover:text-zinc-200"
+                                  }`}
+                                >
+                                  Revisión {idx + 1}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {currentRev && (
+                          <div className="space-y-4 animate-in fade-in duration-150">
+                            {/* METADATOS DE LA REVISIÓN */}
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 p-3.5 bg-slate-50 dark:bg-zinc-900/70 border border-slate-200 dark:border-zinc-800 rounded-xl">
+                              <div className="space-y-0.5">
+                                <span className="text-[11px] text-slate-500 dark:text-zinc-500 block uppercase font-bold tracking-wider">Fecha de Revisión</span>
+                                <span className="text-xs font-mono font-bold text-slate-800 dark:text-zinc-200 flex items-center gap-1">
+                                  <Calendar className="w-3.5 h-3.5 text-slate-500 dark:text-zinc-400" />
+                                  {currentRev.fecha || "Sin fecha"}
+                                </span>
+                              </div>
+                              <div className="space-y-0.5">
+                                <span className="text-[11px] text-slate-500 dark:text-zinc-500 block uppercase font-bold tracking-wider">Técnico / Cuadrilla</span>
+                                <span className="text-xs font-bold text-slate-800 dark:text-zinc-200 flex items-center gap-1">
+                                  <User className="w-3.5 h-3.5 text-slate-500 dark:text-zinc-400" />
+                                  {currentRev.tecnico || "No especificado"}
+                                </span>
+                              </div>
+                              <div className="space-y-0.5">
+                                <span className="text-[11px] text-slate-500 dark:text-zinc-500 block uppercase font-bold tracking-wider">Resultado</span>
+                                <span className={`text-xs font-bold flex items-center gap-1 ${
+                                  currentRev.resultado === "Seguimiento" ? "text-amber-600 dark:text-amber-400" : "text-emerald-600 dark:text-emerald-400"
+                                }`}>
+                                  {currentRev.resultado === "Seguimiento" ? (
+                                    <Clock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                                  ) : (
+                                    <CheckCircle className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                                  )}
+                                  {currentRev.resultado || "En seguimiento"}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* OBSERVACIONES Y DESCRIPCIÓN DE LA REVISIÓN */}
+                            <div className="space-y-2">
+                              <h4 className="text-xs font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400 flex items-center gap-1.5">
+                                <Wrench className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                                Observaciones del Revisor / Trabajos Realizados
+                              </h4>
+                              <div className="p-4 bg-slate-50 dark:bg-zinc-900/90 border border-slate-200 dark:border-zinc-800 rounded-xl text-xs sm:text-sm text-slate-800 dark:text-zinc-200 leading-relaxed whitespace-pre-wrap font-normal shadow-inner shadow-black/40">
+                                {currentRev.descripcion || "Sin descripción de trabajos registrada para esta revisión."}
+                              </div>
+                            </div>
+
+                            {/* FALLAS CORREGIDAS EN ESTA REVISIÓN */}
+                            {currentRev.fallasCorregidas && currentRev.fallasCorregidas.length > 0 && (
+                              <div className="space-y-2">
+                                <h4 className="text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                                  <CheckCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                                  Fallas corregidas en esta revisión ({currentRev.fallasCorregidas.length}):
+                                </h4>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                  {currentRev.fallasCorregidas.map((fc, idx) => (
+                                    <div key={fc.id || idx} className="p-2.5 bg-emerald-500/10 border border-emerald-500/20 rounded-lg text-xs flex items-center justify-between">
+                                      <span className="font-bold text-emerald-300">{fc.componente}</span>
+                                      <span className="text-[11px] text-slate-500 dark:text-zinc-400">{fc.detalle || "Corregido"}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* FALLAS PENDIENTES TRAS ESTA REVISIÓN */}
+                            {currentRev.fallasPendientes && currentRev.fallasPendientes.length > 0 && (
+                              <div className="space-y-2">
+                                <h4 className="text-xs font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
+                                  <Clock className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                                  Fallas que continuaron pendientes ({currentRev.fallasPendientes.length}):
+                                </h4>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                  {currentRev.fallasPendientes.map((fp, idx) => (
+                                    <div key={fp.id || idx} className="p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-lg text-xs flex items-center justify-between">
+                                      <span className="font-bold text-amber-700 dark:text-amber-300">{fp.componente}</span>
+                                      <span className="text-[11px] text-slate-500 dark:text-zinc-400">{fp.detalle}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {activeTab === "pendiente" && (
+                  /* VISTA 3: PENDIENTE (LO QUE QUEDÓ PENDIENTE / MOTIVO DEL SEGUIMIENTO) */
+                  <div className="space-y-4">
+                    {/* BLOQUE PRINCIPAL: LO QUE QUEDÓ PENDIENTE */}
+                    <div className="p-4 sm:p-5 bg-amber-500/10 border border-amber-500/35 rounded-xl space-y-3 shadow-lg shadow-amber-950/20">
+                      <div className="flex items-center justify-between gap-2 border-b border-amber-500/20 pb-2.5">
+                        <h4 className="text-sm font-extrabold text-amber-700 dark:text-amber-300 flex items-center gap-2">
+                          <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0" />
+                          Motivo del Seguimiento / ¿Qué quedó pendiente?
+                        </h4>
+                        <span className="text-[10px] font-mono font-bold bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 px-2.5 py-0.5 rounded-full uppercase">
+                          Pendiente
+                        </span>
+                      </div>
+                      <p className="text-sm text-slate-900 dark:text-zinc-100 leading-relaxed whitespace-pre-wrap font-medium bg-white dark:bg-zinc-950/80 p-4 rounded-xl border border-slate-200 dark:border-zinc-800">
+                        {currentPendingText || "No se registró descripción detallada de pendientes."}
+                      </p>
+                    </div>
+
+                    {/* HISTORIAL CRONOLÓGICO DE PENDIENTES SI HUBIERON VARIAS REVISIONES */}
+                    {revisoresList.length > 0 && revisoresList.some(r => r.loQueQuedoPendiente) && (
+                      <div className="space-y-2">
+                        <h5 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-zinc-400 flex items-center gap-1.5">
+                          <Clock className="w-4 h-4 text-slate-500 dark:text-zinc-500" />
+                          Historial de pendientes por revisión:
+                        </h5>
+                        <div className="space-y-2">
+                          {revisoresList.map((rev, idx) => {
+                            if (!rev.loQueQuedoPendiente) return null;
+                            return (
+                              <div key={rev.id || idx} className="p-3 bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-lg text-xs space-y-1">
+                                <div className="flex items-center justify-between text-slate-500 dark:text-zinc-400">
+                                  <span className="font-bold text-amber-600 dark:text-amber-400">Revisión {idx + 1} — {rev.fecha || "Sin fecha"}</span>
+                                  <span className="text-[11px] font-medium text-slate-500 dark:text-zinc-500">{rev.tecnico || "Técnico"}</span>
+                                </div>
+                                <p className="text-slate-800 dark:text-zinc-200">{rev.loQueQuedoPendiente}</p>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* FALLAS ACTIVAS ASOCIADAS */}
+                    {pm.activeFailures && pm.activeFailures.length > 0 && (
+                      <div className="space-y-2">
+                        <h4 className="text-xs font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
+                          <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                          Fallas asociadas aún activas ({pm.activeFailures.length}):
+                        </h4>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {pm.activeFailures.map((af, idx) => (
+                            <div key={af.id || idx} className="p-2.5 bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-lg text-xs flex items-center justify-between">
+                              <span className="font-bold text-slate-800 dark:text-zinc-200">{af.componente}</span>
+                              <span className="text-[11px] text-amber-600 dark:text-amber-400 font-medium">{af.detalle}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* MODAL FOOTER */}
+              <div className="p-4 border-t border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-900/60 flex items-center justify-end">
+                <button
+                  type="button"
+                  onClick={() => setObservationModal(null)}
+                  className="px-4 py-2 bg-slate-100 dark:bg-zinc-800 hover:bg-slate-200 dark:hover:bg-zinc-700 text-slate-800 dark:text-zinc-200 text-xs font-bold rounded-xl transition-colors cursor-pointer"
+                >
+                  Cerrar
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
     </div>
   );

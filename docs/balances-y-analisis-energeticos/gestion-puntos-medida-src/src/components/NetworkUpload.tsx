@@ -35,9 +35,10 @@ export default function NetworkUpload({
   const [relacionesFile, setRelacionesFile] = useState<File | null>(null);
 
   const detectDelimiter = (firstLine: string): string => {
-    if (firstLine.includes(";")) return ";";
-    if (firstLine.includes("\t")) return "\t";
-    if (firstLine.includes(",")) return ",";
+    const clean = firstLine.replace(/^\uFEFF/, "");
+    if (clean.includes(";")) return ";";
+    if (clean.includes("\t")) return "\t";
+    if (clean.includes(",")) return ",";
     return ";";
   };
 
@@ -137,19 +138,13 @@ export default function NetworkUpload({
       return;
     }
 
-    // If uploading Estructuras or PMs, require both
-    if ((estructurasFile || pmsFile) && (!estructurasFile || !pmsFile)) {
-      setErrorMsg("Para actualizar el mapa de red básico debe seleccionar tanto 'Estructuras.csv' como 'Puntos de Medida.csv'.");
-      return;
-    }
-
     setLoading(true);
     setErrorMsg(null);
     setSuccessMsg(null);
 
-    let parsedEstructuras: Record<string, Estructura> = currentBaseData?.estructuras || {};
-    let parsedPMs: Record<string, PMBase> = currentBaseData?.pms || {};
-    let parsedRelaciones: Record<string, RelacionTransformacion> = currentBaseData?.relaciones || {};
+    let parsedEstructuras: Record<string, Estructura> = { ...(currentBaseData?.estructuras || {}) };
+    let parsedPMs: Record<string, PMBase> = { ...(currentBaseData?.pms || {}) };
+    let parsedRelaciones: Record<string, RelacionTransformacion> = { ...(currentBaseData?.relaciones || {}) };
 
     try {
       // 1. Process Estructuras if provided
@@ -159,27 +154,28 @@ export default function NetworkUpload({
 
         const lineas = text.split(/\r?\n/);
         const delim = detectDelimiter(lineas[0]);
-        const headers = lineas[0].split(delim).map(h => h.trim().toUpperCase());
+        const cleanHeaderLine = lineas[0].replace(/^\uFEFF/, "");
+        const headers = cleanHeaderLine.split(delim).map(h => h.trim().toUpperCase().replace(/["']/g, ""));
 
-        const idxE = headers.indexOf("ESTRUCTURA");
-        const idxT = headers.indexOf("TIPO");
-        const idxZ = headers.indexOf("ZONA");
-        const idxN = headers.indexOf("NIVEL");
+        const idxE = headers.findIndex(h => h === "ESTRUCTURA" || h === "ESTRUCTURAS" || h === "CODIGO" || h.includes("ESTRUCTURA"));
+        const idxT = headers.findIndex(h => h === "TIPO" || h.includes("TIPO"));
+        const idxZ = headers.findIndex(h => h === "ZONA" || h.includes("ZONA"));
+        const idxN = headers.findIndex(h => h === "NIVEL" || h.includes("NIVEL") || h.includes("TENSION") || h.includes("TENSIÓN"));
 
         if (idxE === -1) {
           throw new Error("El archivo de Estructuras no contiene la columna 'ESTRUCTURA'.");
         }
 
-        const newEst: Record<string, Estructura> = {};
+        const newEst: Record<string, Estructura> = { ...parsedEstructuras };
         for (let i = 1; i < lineas.length; i++) {
           if (!lineas[i].trim()) continue;
           const vals = lineas[i].split(delim);
-          const estName = vals[idxE]?.trim();
+          const estName = vals[idxE]?.trim().replace(/^["']|["']$/g, "");
           if (estName) {
             newEst[estName] = {
-              tipo: idxT !== -1 && vals[idxT] ? vals[idxT].trim() : "N/A",
-              zona: idxZ !== -1 && vals[idxZ] ? vals[idxZ].trim() : "N/A",
-              nivel: idxN !== -1 && vals[idxN] ? vals[idxN].trim() : "N/A",
+              tipo: idxT !== -1 && vals[idxT] ? vals[idxT].trim().replace(/^["']|["']$/g, "") : "N/A",
+              zona: idxZ !== -1 && vals[idxZ] ? vals[idxZ].trim().replace(/^["']|["']$/g, "") : "N/A",
+              nivel: idxN !== -1 && vals[idxN] ? vals[idxN].trim().replace(/^["']|["']$/g, "") : "N/A",
             };
           }
         }
@@ -192,35 +188,57 @@ export default function NetworkUpload({
         if (!pmText.trim()) throw new Error("El archivo de Puntos de Medida está vacío.");
 
         const pmLineas = pmText.split(/\r?\n/);
-        const delim = detectDelimiter(pmLineas[0]);
-        const pmHeaders = pmLineas[0].split(delim).map(h => h.trim().toUpperCase());
+        const cleanFirstLine = pmLineas[0].replace(/^\uFEFF/, "");
+        const delim = detectDelimiter(cleanFirstLine);
+        const pmHeaders = cleanFirstLine.split(delim).map(h => h.trim().toUpperCase().replace(/["']/g, ""));
 
-        const idxPM = pmHeaders.indexOf("PM");
-        const idxEst = pmHeaders.indexOf("ESTRUCTURA");
-        const idxNom = pmHeaders.indexOf("NOMBRE");
+        const idxPM = pmHeaders.findIndex(h => 
+          h === "PM" || h === "PUNTO DE MEDIDA" || h === "PUNTO_MEDIDA" || h === "CODIGO PM" || h === "CODIGOPM" || h === "NEMONICO" || h === "P.M." || h.startsWith("PM")
+        );
+        const idxEst = pmHeaders.findIndex(h => 
+          h === "ESTRUCTURA" || h === "ESTRUCTURAS" || h === "LINEA" || h === "LINEAS" || h === "CIRCUITO" || h === "CIRCUITOS" || h.includes("ESTRUCTURA")
+        );
+        const idxNom = pmHeaders.findIndex(h => 
+          h === "NOMBRE" || h === "DESCRIPCION" || h === "CLIENTE" || h === "NOMBRE PM" || h.includes("NOMBRE")
+        );
 
         if (idxPM === -1 || idxEst === -1) {
           throw new Error("El archivo de Puntos de Medida debe contener las columnas 'PM' y 'ESTRUCTURA'.");
         }
 
-        const newPMs: Record<string, PMBase> = {};
+        const newPMs: Record<string, PMBase> = { ...parsedPMs };
         for (let i = 1; i < pmLineas.length; i++) {
           if (!pmLineas[i].trim()) continue;
           const vals = pmLineas[i].split(delim);
-          const pmCode = vals[idxPM]?.trim();
-          const estName = vals[idxEst]?.trim();
-          const name = idxNom !== -1 && vals[idxNom] ? vals[idxNom].trim() : "Sin Nombre";
+          const pmCode = vals[idxPM]?.trim().replace(/^["']|["']$/g, "");
+          const estRaw = vals[idxEst]?.trim().replace(/^["']|["']$/g, "");
+          const name = idxNom !== -1 && vals[idxNom] ? vals[idxNom].trim().replace(/^["']|["']$/g, "") : "Sin Nombre";
 
-          if (pmCode && estName) {
+          if (pmCode && estRaw) {
             if (!newPMs[pmCode]) {
               newPMs[pmCode] = { nombre: name, estructuras: [] };
-            }
-            if (!newPMs[pmCode].estructuras.includes(estName)) {
-              newPMs[pmCode].estructuras.push(estName);
             }
             if (name && name !== "Sin Nombre") {
               newPMs[pmCode].nombre = name;
             }
+
+            // Support both multiple rows for same PM and/or comma/semicolon/slash separated structures in one cell
+            const splitEsts = estRaw.split(/[,;\n\r+/]/).map(s => s.trim().replace(/^["']|["']$/g, "")).filter(Boolean);
+            splitEsts.forEach(singleEst => {
+              if (!newPMs[pmCode].estructuras.includes(singleEst)) {
+                newPMs[pmCode].estructuras.push(singleEst);
+              }
+              // Auto-register structure in parsedEstructuras if not already present
+              if (!parsedEstructuras[singleEst]) {
+                const autoTipo = singleEst.startsWith("PB ") ? "PB" : singleEst.startsWith("CTO ") ? "CTO" : singleEst.startsWith("PT ") ? "PT" : "L";
+                const autoNivel = singleEst.includes("34.5") ? "34.5 kV" : singleEst.includes("13.8") ? "13.8 kV" : "34.5 kV";
+                parsedEstructuras[singleEst] = {
+                  tipo: autoTipo,
+                  zona: "Auto",
+                  nivel: autoNivel
+                };
+              }
+            });
           }
         }
         parsedPMs = newPMs;

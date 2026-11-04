@@ -25,7 +25,7 @@ import {
   syncLocalDataToFirestoreIfAny,
   ensureFirebaseInitialized
 } from "./lib/firebase";
-import { PM, Estructura, PMBase, ActiveFailure, RelacionTransformacion } from "./types";
+import { PM, Estructura, PMBase, ActiveFailure, RelacionTransformacion, Intervencion } from "./types";
 
 import SettingsPanel from "./components/SettingsPanel";
 import PMForm from "./components/PMForm";
@@ -126,13 +126,13 @@ export default function App() {
     }
   };
 
-  const handleDeletePM = async (id: string) => {
+  const handleDeletePM = async (id: string, codigoPM?: string) => {
     // 1. Update local state immediately (optimistic UI) so it disappears from the screen instantly
-    setPMs((prev) => prev.filter((p) => p.id !== id));
+    setPMs((prev) => prev.filter((p) => p.id !== id && (!codigoPM || p.codigoPM !== codigoPM)));
 
     // 2. Perform deletion in the background
     try {
-      await deletePM(id);
+      await deletePM(id, codigoPM);
     } catch (err) {
       console.error("Error deleting PM from database:", err);
     }
@@ -173,9 +173,44 @@ export default function App() {
     const targetPM = pms.find((p) => p.id === pmId);
     if (!targetPM) return;
 
+    const targetIntervention = targetPM.intervenciones.find((i) => i.id === interventionId);
     const updatedIntervenciones = targetPM.intervenciones.filter((int) => int.id !== interventionId);
-    const newPM = {
+    
+    // If deleting this intervention leaves an "Ok" PM with no active failures, restore original failures from snapshot
+    let activeFailures = targetPM.activeFailures || [];
+    let estadoGral = targetPM.estadoGral;
+    let loQueQuedoPendiente = targetPM.loQueQuedoPendiente;
+
+    if (activeFailures.length === 0 && targetIntervention) {
+      if (targetIntervention.snapshotPrevio?.activeFailures?.length) {
+        activeFailures = JSON.parse(JSON.stringify(targetIntervention.snapshotPrevio.activeFailures));
+        estadoGral = targetIntervention.snapshotPrevio.estadoGral === "Ok" ? "En falla" : targetIntervention.snapshotPrevio.estadoGral;
+        loQueQuedoPendiente = targetIntervention.snapshotPrevio.loQueQuedoPendiente || "";
+      } else if (targetIntervention.fallasCorregidas?.length) {
+        activeFailures = targetIntervention.fallasCorregidas.map((f) => {
+          let obs = f.observaciones || "";
+          if (obs.startsWith("Devuelta a pendientes desde intervención")) obs = "";
+          return {
+            id: f.id || `fail_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+            componente: (f.componente as any) || "Telemedida",
+            detalle: f.detalle || "Pendiente de atención",
+            fechaReporte: f.fechaReporte || targetIntervention.fecha || new Date().toISOString().split("T")[0],
+            observaciones: obs,
+            fechaReparacion: f.fechaReparacion || "Sin definir",
+            vecesReprogramada: f.vecesReprogramada || 0,
+            prioridad: f.prioridad || "Normal"
+          };
+        });
+        const hasInstallation = activeFailures.some((f) => f.componente === "Instalación");
+        estadoGral = hasInstallation ? "Instalación" : "En falla";
+      }
+    }
+
+    const newPM: PM = {
       ...targetPM,
+      estadoGral,
+      loQueQuedoPendiente,
+      activeFailures,
       intervenciones: updatedIntervenciones,
       updatedAt: new Date().toISOString()
     };
@@ -189,6 +224,281 @@ export default function App() {
     } catch (err) {
       console.error("Error saving PM after deleting intervention:", err);
     }
+  };
+
+  const handleRestoreSingleFailure = async (pmId: string, interventionId: string, failureId: string) => {
+    const targetPM = pms.find((p) => p.id === pmId);
+    if (!targetPM) return;
+
+    const targetIntervention = targetPM.intervenciones.find((i) => i.id === interventionId);
+    if (!targetIntervention) return;
+
+    const failureToRestore = targetIntervention.fallasCorregidas?.find((f) => f.id === failureId);
+    if (!failureToRestore) return;
+
+    // Check if intervention has original snapshot of failure
+    const originalFromSnapshot = targetIntervention.snapshotPrevio?.activeFailures?.find(f => f.id === failureId);
+    let cleanObs = failureToRestore.observaciones || originalFromSnapshot?.observaciones || "";
+    if (cleanObs.startsWith("Devuelta a pendientes desde intervención")) {
+      cleanObs = originalFromSnapshot?.observaciones || "";
+    }
+
+    // Build the restored ActiveFailure with untouched initial comments
+    const restoredFailure: ActiveFailure = {
+      id: failureToRestore.id || originalFromSnapshot?.id || `fail_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      componente: (failureToRestore.componente as any) || originalFromSnapshot?.componente || "Telemedida",
+      detalle: failureToRestore.detalle || originalFromSnapshot?.detalle || "Pendiente de atención",
+      fechaReporte: failureToRestore.fechaReporte || originalFromSnapshot?.fechaReporte || new Date().toISOString().split("T")[0],
+      observaciones: cleanObs,
+      fechaReparacion: failureToRestore.fechaReparacion || originalFromSnapshot?.fechaReparacion || "Sin definir",
+      vecesReprogramada: failureToRestore.vecesReprogramada ?? originalFromSnapshot?.vecesReprogramada ?? 0,
+      prioridad: failureToRestore.prioridad || originalFromSnapshot?.prioridad || "Normal"
+    };
+
+    // Add or update in activeFailures so comments are preserved
+    const existingActive = targetPM.activeFailures || [];
+    const existingIdx = existingActive.findIndex((f) => f.id === restoredFailure.id);
+    let updatedActive: ActiveFailure[];
+    if (existingIdx > -1) {
+      updatedActive = [...existingActive];
+      updatedActive[existingIdx] = restoredFailure;
+    } else {
+      updatedActive = [...existingActive, restoredFailure];
+    }
+
+    // Remove from fallasCorregidas, add to fallasPendientes in the intervention
+    const updatedFallasCorregidas = targetIntervention.fallasCorregidas.filter((f) => f.id !== failureId);
+    const updatedFallasPendientes = [
+      ...(targetIntervention.fallasPendientes || []),
+      failureToRestore
+    ];
+
+    // Preserve technician comments so they are never lost
+    const ultimoReporteTecnico = {
+      fecha: targetIntervention.fecha,
+      tecnico: targetIntervention.tecnico,
+      descripcion: targetIntervention.descripcion,
+      loQueQuedoPendiente: targetIntervention.loQueQuedoPendiente || ""
+    };
+
+    const updatedIntervenciones = targetPM.intervenciones.map((i) => {
+      if (i.id === interventionId) {
+        return {
+          ...i,
+          resultado: "Seguimiento" as const,
+          fallasCorregidas: updatedFallasCorregidas,
+          fallasPendientes: updatedFallasPendientes
+        };
+      }
+      return i;
+    });
+
+    const isInstallation = updatedActive.some((f) => f.componente === "Instalación");
+    const newEstado = isInstallation ? "Instalación" : "Seguimiento";
+    const newPrioridad = updatedActive.some((f) => f.prioridad === "Alta") ? "Alta" : "Normal";
+
+    const updatedPM: PM = {
+      ...targetPM,
+      estadoGral: newEstado,
+      prioridad: newPrioridad,
+      loQueQuedoPendiente: targetIntervention.loQueQuedoPendiente || `Falla pendiente: ${restoredFailure.componente} - ${restoredFailure.detalle}`,
+      ultimoReporteTecnico,
+      activeFailures: updatedActive,
+      intervenciones: updatedIntervenciones,
+      updatedAt: new Date().toISOString()
+    };
+
+    await handleSavePM(updatedPM);
+  };
+
+  const handleRestoreAllFailures = async (pmId: string, interventionId: string) => {
+    const targetPM = pms.find((p) => p.id === pmId);
+    if (!targetPM) return;
+
+    const targetIntervention = targetPM.intervenciones.find((i) => i.id === interventionId);
+    if (!targetIntervention) return;
+
+    let restoredActiveFailures: ActiveFailure[] = [];
+    let restoredEstado: PM["estadoGral"] = "Seguimiento";
+    let restoredRevisado = targetPM.revisado ?? false;
+    let restoredPrioridad: "Normal" | "Alta" = targetPM.prioridad || "Normal";
+    let restoredLoQueQuedoPendiente = targetPM.loQueQuedoPendiente || "";
+
+    if (targetIntervention.snapshotPrevio && targetIntervention.snapshotPrevio.activeFailures) {
+      // 100% exact pre-intervention state:
+      // Restores all initial failures, their dates, and all initial comments intact
+      restoredActiveFailures = JSON.parse(JSON.stringify(targetIntervention.snapshotPrevio.activeFailures));
+      restoredEstado = targetIntervention.snapshotPrevio.estadoGral === "Ok" 
+        ? "Seguimiento" 
+        : targetIntervention.snapshotPrevio.estadoGral;
+      restoredRevisado = targetIntervention.snapshotPrevio.revisado ?? false;
+      restoredPrioridad = targetIntervention.snapshotPrevio.prioridad || "Normal";
+      restoredLoQueQuedoPendiente = targetIntervention.snapshotPrevio.loQueQuedoPendiente || targetIntervention.loQueQuedoPendiente || "";
+    } else {
+      // Fallback for legacy interventions without snapshotPrevio:
+      const allInterventionFailures = [
+        ...(targetIntervention.fallasCorregidas || []),
+        ...(targetIntervention.fallasPendientes || [])
+      ];
+
+      // Clean any previously generated placeholder text and restore clean observations
+      const cleanFailures: ActiveFailure[] = allInterventionFailures.map((f) => {
+        let obs = f.observaciones || "";
+        if (obs.startsWith("Devuelta a pendientes desde intervención")) {
+          obs = "";
+        }
+        return {
+          id: f.id || `fail_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+          componente: (f.componente as any) || "Telemedida",
+          detalle: f.detalle || "Pendiente de atención",
+          fechaReporte: f.fechaReporte || targetIntervention.fecha || new Date().toISOString().split("T")[0],
+          observaciones: obs,
+          fechaReparacion: f.fechaReparacion || "Sin definir",
+          vecesReprogramada: f.vecesReprogramada || 0,
+          prioridad: f.prioridad || "Normal"
+        };
+      });
+
+      // Merge with existing active failures without duplicates
+      const currentActive = targetPM.activeFailures || [];
+      const currentMap = new Map<string, ActiveFailure>(currentActive.map(f => [f.id, f]));
+
+      cleanFailures.forEach(f => {
+        if (!currentMap.has(f.id)) {
+          currentMap.set(f.id, f);
+        } else {
+          const existing = currentMap.get(f.id)!;
+          if (!existing.observaciones && f.observaciones) {
+            existing.observaciones = f.observaciones;
+          }
+        }
+      });
+
+      restoredActiveFailures = Array.from(currentMap.values());
+      const hasInstallation = restoredActiveFailures.some((f) => f.componente === "Instalación");
+      restoredEstado = hasInstallation 
+        ? "Instalación" 
+        : "Seguimiento";
+      restoredPrioridad = restoredActiveFailures.some((f) => f.prioridad === "Alta") ? "Alta" : "Normal";
+      restoredLoQueQuedoPendiente = targetIntervention.loQueQuedoPendiente || targetPM.loQueQuedoPendiente || "";
+    }
+
+    // Preserve technician comments so they remain 100% intact and visible
+    const ultimoReporteTecnico = {
+      fecha: targetIntervention.fecha,
+      tecnico: targetIntervention.tecnico,
+      descripcion: targetIntervention.descripcion,
+      loQueQuedoPendiente: targetIntervention.loQueQuedoPendiente || restoredLoQueQuedoPendiente || ""
+    };
+
+    // Keep the intervention in the PM's log marked as Seguimiento/devuelta so it's removed
+    // from "Historial de Intervenciones" (which only shows 100% solved PMs) without deleting the technician's record!
+    const updatedIntervenciones = targetPM.intervenciones.map((i) => {
+      if (i.id === interventionId) {
+        return {
+          ...i,
+          resultado: "Seguimiento" as const,
+          devueltaAPendientes: true,
+          fallasCorregidas: [],
+          fallasPendientes: i.fallasCorregidas?.length ? i.fallasCorregidas : (i.fallasPendientes || [])
+        };
+      }
+      return i;
+    });
+
+    const updatedPM: PM = {
+      ...targetPM,
+      estadoGral: restoredEstado,
+      revisado: restoredRevisado,
+      prioridad: restoredPrioridad,
+      loQueQuedoPendiente: restoredLoQueQuedoPendiente || targetIntervention.loQueQuedoPendiente || "Devuelto a pendientes para seguimiento técnico.",
+      ultimoReporteTecnico,
+      activeFailures: restoredActiveFailures,
+      intervenciones: updatedIntervenciones,
+      updatedAt: new Date().toISOString()
+    };
+
+    await handleSavePM(updatedPM);
+  };
+
+  const handleUpdateIntervention = async (
+    pmId: string, 
+    updatedIntervention: Intervencion, 
+    restoredFailures: ActiveFailure[]
+  ) => {
+    const targetPM = pms.find((p) => p.id === pmId);
+    if (!targetPM) return;
+
+    const updatedIntervenciones = targetPM.intervenciones.map((i) =>
+      i.id === updatedIntervention.id ? updatedIntervention : i
+    );
+
+    // Merge any restored failures into activeFailures preserving initial observations
+    const existingActive = targetPM.activeFailures || [];
+    const activeMap = new Map<string, ActiveFailure>(existingActive.map(f => [f.id, f]));
+
+    restoredFailures.forEach((rf) => {
+      if (activeMap.has(rf.id)) {
+        const current = activeMap.get(rf.id)!;
+        activeMap.set(rf.id, {
+          ...current,
+          observaciones: rf.observaciones || current.observaciones
+        });
+      } else {
+        activeMap.set(rf.id, rf);
+      }
+    });
+
+    let updatedActive = Array.from(activeMap.values());
+
+    const isInstallation = updatedActive.some((f) => f.componente === "Instalación");
+    let newEstado = updatedActive.length === 0 ? "Ok" : (isInstallation ? "Instalación" : "En falla");
+
+    // If edited to "Seguimiento", ensure the point goes to Seguimiento and restore failures if active list was empty
+    if (updatedIntervention.resultado === "Seguimiento") {
+      newEstado = "Seguimiento";
+      if (updatedActive.length === 0) {
+        const toRestore = updatedIntervention.snapshotPrevio?.activeFailures?.length
+          ? JSON.parse(JSON.stringify(updatedIntervention.snapshotPrevio.activeFailures))
+          : (updatedIntervention.fallasCorregidas?.length 
+              ? updatedIntervention.fallasCorregidas.map(f => ({
+                  id: f.id || `fail_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+                  componente: (f.componente as any) || "Telemedida",
+                  detalle: f.detalle || "Pendiente de atención",
+                  fechaReporte: f.fechaReporte || updatedIntervention.fecha || new Date().toISOString().split("T")[0],
+                  observaciones: f.observaciones || "",
+                  fechaReparacion: f.fechaReparacion || "Sin definir",
+                  vecesReprogramada: f.vecesReprogramada || 0,
+                  prioridad: f.prioridad || "Normal"
+                }))
+              : []);
+        updatedActive = toRestore;
+      }
+    }
+
+    const newPrioridad = updatedActive.some((f) => f.prioridad === "Alta") ? "Alta" : "Normal";
+
+    const ultimoReporteTecnico = {
+      fecha: updatedIntervention.fecha,
+      tecnico: updatedIntervention.tecnico,
+      descripcion: updatedIntervention.descripcion,
+      loQueQuedoPendiente: updatedIntervention.loQueQuedoPendiente || ""
+    };
+
+    const updatedPM: PM = {
+      ...targetPM,
+      estadoGral: newEstado,
+      loQueQuedoPendiente: updatedIntervention.resultado === "Seguimiento"
+        ? (updatedIntervention.loQueQuedoPendiente || targetPM.loQueQuedoPendiente || "En seguimiento técnico")
+        : (newEstado === "Ok" ? "" : targetPM.loQueQuedoPendiente),
+      ultimoReporteTecnico,
+      prioridad: newPrioridad,
+      activeFailures: updatedActive,
+      intervenciones: updatedIntervenciones,
+      updatedAt: new Date().toISOString()
+    };
+
+    await handleSavePM(updatedPM);
   };
 
   const handleTriggerEdit = (codigoPM: string) => {
@@ -269,6 +579,7 @@ export default function App() {
   };
 
   const overdueList = getOverdueFailures();
+  const pendingPMsCount = pms.filter((pm) => pm.estadoGral !== "Ok").length;
 
   return (
     <div className="min-h-screen bg-white dark:bg-zinc-950 text-slate-700 dark:text-zinc-300 font-sans antialiased selection:bg-amber-500/30 selection:text-amber-200">
@@ -459,12 +770,24 @@ export default function App() {
 
               {activeTab === "directorio" && (
                 <div className="space-y-4">
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <h2 className="text-lg font-extrabold text-slate-900 dark:text-zinc-100 tracking-tight">
-                        Directorio de Puntos de Medida Pendientes
-                      </h2>
-                      <p className="text-xs text-slate-500 dark:text-zinc-400 font-medium">Puntos de medida activos en falla, instalación o revisión</p>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50 dark:bg-zinc-900/40 p-4 rounded-xl border border-slate-200 dark:border-zinc-800">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-red-500/15 border border-red-500/25 flex items-center justify-center text-red-600 dark:text-red-400 shrink-0">
+                        <Clock className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h2 className="text-lg font-extrabold text-slate-900 dark:text-zinc-100 tracking-tight">
+                            Directorio de Puntos de Medida Pendientes
+                          </h2>
+                          <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-full bg-red-500/20 text-red-700 dark:text-red-300 border border-red-500/30">
+                            {pendingPMsCount} {pendingPMsCount === 1 ? "punto" : "puntos"}
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-500 dark:text-zinc-400 font-medium mt-0.5">
+                          Puntos de medida activos en falla, en seguimiento o pendientes de instalación
+                        </p>
+                      </div>
                     </div>
                   </div>
                   
@@ -491,7 +814,12 @@ export default function App() {
               )}
 
               {activeTab === "historial" && (
-                <InterventionsHistory pms={pms} onDeleteIntervention={handleDeleteIntervention} />
+                <InterventionsHistory
+                  pms={pms}
+                  onDeleteIntervention={handleDeleteIntervention}
+                  onUpdateIntervention={handleUpdateIntervention}
+                  onNavigateToDirectorio={() => setActiveTab("directorio")}
+                />
               )}
 
               {activeTab === "configuracion" && (
