@@ -19383,6 +19383,21 @@ function acEtiquetaCiclos(){
   if(AC_CICLOS_SEL.size===1) return `Ciclo ${[...AC_CICLOS_SEL][0]}`;
   return `Ciclos ${[...AC_CICLOS_SEL].sort((a,b)=>a-b).join(', ')}`;
 }
+// Con pointRadius:0 (línea sin puntos, pedido explícito para que se vea
+// limpia con muchos meses) un ciclo con UN SOLO mes de facturación no
+// dibuja nada -- no hay segundo punto para trazar una línea, y sin punto
+// propio tampoco se ve el dato ("porque cuando hay un solo mes no sale
+// asi sea un punto"). Dibuja un punto SOLO cuando el valor está aislado
+// (sin vecino inmediato a izquierda ni derecha) -- una serie con varios
+// meses sigue viéndose como línea limpia, sin puntos de más.
+function acRadioPuntoAislado(ctx){
+  const datos = ctx.dataset.data;
+  const i = ctx.dataIndex;
+  if(datos[i]==null) return 0;
+  const vecinoAntes = i>0 ? datos[i-1] : null;
+  const vecinoDespues = i<datos.length-1 ? datos[i+1] : null;
+  return (vecinoAntes==null && vecinoDespues==null) ? 3 : 0;
+}
 let AC_MODO = 'mensual';   // 'mensual' | 'anual' (ventana móvil de 12 meses -- "consumo/venta anual móvil")
 let AC_MOSTRAR_N21 = false;   // 📉 Pérdida N2-1 sobrepuesta (solo con 1 alimentador elegido)
 let AC_DESGLOSAR_CICLO = false;   // con "Todos" elegido: true = una línea por ciclo, false = el total combinado (por defecto)
@@ -19857,7 +19872,7 @@ function acRenderChart(){
       datasets.push({
         type:'line', label:`${c}`, data: clavesVisibles.map(v=>porClaveVisible.has(v) ? porClaveVisible.get(v) : null),
         fill: !mostrarN21, spanGaps:true, yAxisID: mostrarN21 ? 'y' : undefined,
-        borderColor:color, backgroundColor:color.replace('hsl','hsla').replace(')', ',.25)'), borderWidth:1.5, pointRadius:0, tension:0,
+        borderColor:color, backgroundColor:color.replace('hsl','hsla').replace(')', ',.25)'), borderWidth:1.5, pointRadius:acRadioPuntoAislado, tension:0,
         datalabels:{display:false},
       });
     });
@@ -19874,7 +19889,7 @@ function acRenderChart(){
     datasets.push({
       type:'line', label:`${acEtiquetaCiclos()} -- ${etiquetaModo}`, data: visible.map(f=>f.valor), fill:!mostrarN21, spanGaps:true,
       yAxisID: mostrarN21 ? 'y' : undefined,
-      borderColor:'#00b4d8', backgroundColor:'rgba(0,180,216,.35)', borderWidth:2.5, pointRadius:0, tension:0,
+      borderColor:'#00b4d8', backgroundColor:'rgba(0,180,216,.35)', borderWidth:2.5, pointRadius:acRadioPuntoAislado, tension:0,
       datalabels:{display:false},
     });
   }
