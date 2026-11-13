@@ -9942,10 +9942,13 @@ async function cgcCargarRanking(){
     cont.innerHTML = `<tr><td style="padding:10px;color:var(--text3);font-size:12px">Sin datos todavía.</td></tr>`;
     return;
   }
-  const encab = ['Cuenta','Usuario','Municipio','Alimentador','% Pérdida Alimentador','Macromedida'];
+  const encab = ['Cuenta','Usuario','Municipio','Pérdida Estimada del Cliente','Alimentador','% Pérdida Alimentador','Macromedida'];
   const thead = `<thead><tr>${encab.map(h=>`<th style="text-align:left;padding:6px 8px;font-size:10.5px;text-transform:uppercase;color:var(--text3);border-bottom:1px solid var(--border)">${h}</th>`).join('')}</tr></thead>`;
   const tbody = filas.map(f => {
     const pctTxt = f.alim_perdida_pct!=null ? `${(f.alim_perdida_pct*100).toFixed(1)}%` : '#N/D';
+    const estTxt = f.perdida_estimada_cliente_kwh!=null
+      ? `${f.perdida_estimada_cliente_kwh.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh/mes`
+      : '#N/D';
     const macroTxt = f.tiene_macro
       ? `${f.macro_pct!=null ? (f.macro_pct*100).toFixed(1)+'%' : (f.macro_estado||'OK')}`
       : '<span style="color:#ef476f">Sin Macromedida</span>';
@@ -9953,8 +9956,9 @@ async function cgcCargarRanking(){
       <td style="padding:6px 8px;font-weight:700;white-space:nowrap">${f.cuenta}</td>
       <td style="padding:6px 8px">${_mselEsc(f.nombre_usuario||'--')}</td>
       <td style="padding:6px 8px;white-space:nowrap">${_mselEsc(f.nombre_muni||'--')}</td>
+      <td style="padding:6px 8px;font-weight:800;color:${_cgcColorPct(f.alim_perdida_pct)}">${estTxt}</td>
       <td style="padding:6px 8px">${_mselEsc(f.alimentador||'#N/D')}</td>
-      <td style="padding:6px 8px;font-weight:800;color:${_cgcColorPct(f.alim_perdida_pct)}">${pctTxt}</td>
+      <td style="padding:6px 8px">${pctTxt}</td>
       <td style="padding:6px 8px">${macroTxt}</td>
     </tr>`;
   }).join('');
@@ -10081,8 +10085,11 @@ function cgcRenderPerdidas(alim, macro){
   const celdaMacro = macro.tiene_macro
     ? `${fmt(macro.kwh)}${macro.pct!=null ? ` (${(macro.pct*100).toFixed(1)}%)` : ''}`
     : 'Sin Macromedida';
+  const estimadaTxt = alim.perdida_estimada_cliente_kwh!=null ? fmt(alim.perdida_estimada_cliente_kwh) : nd;
   document.getElementById('cgc-perdidas-tarjetas').innerHTML = [
+    tarjeta('Pérdida Estimada de este Cliente', estimadaTxt, _cgcColorPct(alim.perdida_pct)),
     tarjeta('Alimentador', alim.encontrado ? _mselEsc(alim.alimentador) : nd),
+    tarjeta('% Pérdida del Alimentador', alim.perdida_pct!=null ? `${(alim.perdida_pct*100).toFixed(1)}%` : nd),
     tarjeta('Pérdida Circuito (Mensual)', fmt(alim.perdida_mensual_kwh)),
     tarjeta('Pérdida Circuito (Anual)', fmt(alim.perdida_anual_kwh)),
     tarjeta('Pérdida Por Nodo', celdaMacro, macro.tiene_macro ? null : '#ef476f'),
