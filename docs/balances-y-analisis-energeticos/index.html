@@ -1625,7 +1625,7 @@ html,body{overflow-x:hidden;margin:0}
   <div id="cgc-ranking" class="card">
     <div style="display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px">
       <div style="font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:.4px">🔎 Clientes con posible pérdida</div>
-      <div style="font-size:11px;color:var(--text3)">Ordenados por % de pérdida del alimentador al que pertenecen</div>
+      <div style="font-size:11px;color:var(--text3)">Ordenados por caída de consumo respecto a su propio histórico (mayor caída en kWh primero)</div>
     </div>
     <div style="overflow-x:auto">
       <table style="width:100%;border-collapse:collapse;font-size:12px" id="cgc-ranking-tabla"></table>
@@ -1646,6 +1646,12 @@ html,body{overflow-x:hidden;margin:0}
     </div>
 
     <div class="card">
+      <div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;margin-bottom:8px">⚠️ Caída de consumo (vs. su propio histórico)</div>
+      <div class="tarjetas-fila-unica" id="cgc-desviacion-tarjetas"></div>
+    </div>
+
+    <div class="card">
+      <div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;color:var(--text3);margin-bottom:8px">Contexto: alimentador y macromedida del circuito</div>
       <div class="tarjetas-fila-unica" id="cgc-perdidas-tarjetas"></div>
     </div>
 
@@ -9942,24 +9948,18 @@ async function cgcCargarRanking(){
     cont.innerHTML = `<tr><td style="padding:10px;color:var(--text3);font-size:12px">Sin datos todavía.</td></tr>`;
     return;
   }
-  const encab = ['Cuenta','Usuario','Municipio','Pérdida Estimada del Cliente','Alimentador','% Pérdida Alimentador','Macromedida'];
+  const encab = ['Cuenta','Usuario','Municipio','Consumo Base (histórico)','Consumo Reciente','Caída','% Caída'];
   const thead = `<thead><tr>${encab.map(h=>`<th style="text-align:left;padding:6px 8px;font-size:10.5px;text-transform:uppercase;color:var(--text3);border-bottom:1px solid var(--border)">${h}</th>`).join('')}</tr></thead>`;
+  const fk = v => v==null ? '--' : `${v.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`;
   const tbody = filas.map(f => {
-    const pctTxt = f.alim_perdida_pct!=null ? `${(f.alim_perdida_pct*100).toFixed(1)}%` : '#N/D';
-    const estTxt = f.perdida_estimada_cliente_kwh!=null
-      ? `${f.perdida_estimada_cliente_kwh.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh/mes`
-      : '#N/D';
-    const macroTxt = f.tiene_macro
-      ? `${f.macro_pct!=null ? (f.macro_pct*100).toFixed(1)+'%' : (f.macro_estado||'OK')}`
-      : '<span style="color:#ef476f">Sin Macromedida</span>';
     return `<tr class="cgc-resultado-fila" onclick="cgcAbrirCuenta('${f.cuenta}')" style="cursor:pointer;border-bottom:1px solid var(--border)">
       <td style="padding:6px 8px;font-weight:700;white-space:nowrap">${f.cuenta}</td>
       <td style="padding:6px 8px">${_mselEsc(f.nombre_usuario||'--')}</td>
       <td style="padding:6px 8px;white-space:nowrap">${_mselEsc(f.nombre_muni||'--')}</td>
-      <td style="padding:6px 8px;font-weight:800;color:${_cgcColorPct(f.alim_perdida_pct)}">${estTxt}</td>
-      <td style="padding:6px 8px">${_mselEsc(f.alimentador||'#N/D')}</td>
-      <td style="padding:6px 8px">${pctTxt}</td>
-      <td style="padding:6px 8px">${macroTxt}</td>
+      <td style="padding:6px 8px">${fk(f.consumo_base_kwh)}/mes</td>
+      <td style="padding:6px 8px">${fk(f.consumo_reciente_kwh)}/mes</td>
+      <td style="padding:6px 8px;font-weight:800;color:#ef476f">${fk(f.caida_kwh_mensual)}/mes</td>
+      <td style="padding:6px 8px;font-weight:700">${f.caida_pct!=null?f.caida_pct.toFixed(1)+'%':'--'}</td>
     </tr>`;
   }).join('');
   cont.innerHTML = thead + `<tbody>${tbody}</tbody>`;
@@ -10020,6 +10020,7 @@ async function cgcAbrirCuenta(cuenta){
   document.getElementById('cgc-detalle-titulo').textContent = `${datos.ficha.cuenta} -- ${datos.ficha.nombre_usuario||''}`;
   cgcRenderFicha(datos.ficha);
   cgcRenderChart(datos.historial);
+  cgcRenderDesviacion(datos.desviacion_consumo);
   cgcRenderPerdidas(datos.alimentador, datos.macromedida);
   const taObs = document.getElementById('cgc-observacion');
   const inFecha = document.getElementById('cgc-fecha-visita');
@@ -10075,6 +10076,32 @@ function cgcRenderChart(historial){
   });
 }
 
+// Tarjetas PRINCIPALES -- la caída de consumo de ESTE cliente contra su
+// propio histórico (ver _desviacion_consumo en el backend), lo que de
+// verdad responde "cuál es la pérdida del usuario" (pedido explícito,
+// corrigiendo el primer intento que repartía la pérdida del circuito).
+function cgcRenderDesviacion(d){
+  const nd = '#N/D';
+  const fmt = v => v==null ? nd : `${v.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`;
+  const tarjeta = (etiqueta, valor, color) => `<div class="be-resumen-tile">
+    <div class="etiqueta">${etiqueta}</div>
+    <div class="valor"${color ? ` style="color:${color}"` : ''}>${valor}</div>
+  </div>`;
+  if(!d.suficiente){
+    document.getElementById('cgc-desviacion-tarjetas').innerHTML = tarjeta('Caída de Consumo', 'No hay suficiente historial todavía (mínimo 6 meses)');
+    return;
+  }
+  document.getElementById('cgc-desviacion-tarjetas').innerHTML = [
+    tarjeta('Caída de Consumo (kWh/mes)', fmt(d.caida_kwh_mensual), '#ef476f'),
+    tarjeta('% de Caída', `${d.caida_pct.toFixed(1)}%`, '#ef476f'),
+    tarjeta('Consumo Base (histórico normal)', fmt(d.consumo_base_kwh)),
+    tarjeta('Consumo Reciente (últimos 3 meses)', fmt(d.consumo_reciente_kwh)),
+  ].join('');
+}
+
+// Tarjetas de CONTEXTO -- datos del circuito/transformador (compartidos
+// por cientos de clientes), ya no se usan para "estimar" nada del
+// cliente puntual, solo para ubicarlo en la red.
 function cgcRenderPerdidas(alim, macro){
   const nd = '#N/D';
   const fmt = v => v==null ? nd : `${v.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`;
@@ -10085,14 +10112,12 @@ function cgcRenderPerdidas(alim, macro){
   const celdaMacro = macro.tiene_macro
     ? `${fmt(macro.kwh)}${macro.pct!=null ? ` (${(macro.pct*100).toFixed(1)}%)` : ''}`
     : 'Sin Macromedida';
-  const estimadaTxt = alim.perdida_estimada_cliente_kwh!=null ? fmt(alim.perdida_estimada_cliente_kwh) : nd;
   document.getElementById('cgc-perdidas-tarjetas').innerHTML = [
-    tarjeta('Pérdida Estimada de este Cliente', estimadaTxt, _cgcColorPct(alim.perdida_pct)),
     tarjeta('Alimentador', alim.encontrado ? _mselEsc(alim.alimentador) : nd),
-    tarjeta('% Pérdida del Alimentador', alim.perdida_pct!=null ? `${(alim.perdida_pct*100).toFixed(1)}%` : nd),
+    tarjeta('% Pérdida del Alimentador (circuito)', alim.perdida_pct!=null ? `${(alim.perdida_pct*100).toFixed(1)}%` : nd),
     tarjeta('Pérdida Circuito (Mensual)', fmt(alim.perdida_mensual_kwh)),
     tarjeta('Pérdida Circuito (Anual)', fmt(alim.perdida_anual_kwh)),
-    tarjeta('Pérdida Por Nodo', celdaMacro, macro.tiene_macro ? null : '#ef476f'),
+    tarjeta('Pérdida Por Nodo (macromedida)', celdaMacro, macro.tiene_macro ? null : '#ef476f'),
   ].join('');
 }
 
