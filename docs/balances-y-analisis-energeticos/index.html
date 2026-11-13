@@ -1625,7 +1625,7 @@ html,body{overflow-x:hidden;margin:0}
   <div id="cgc-ranking" class="card">
     <div style="display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px">
       <div style="font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:.4px">🔎 Clientes con posible pérdida</div>
-      <div style="font-size:11px;color:var(--text3)">Ordenados por caída de consumo respecto a su propio histórico (mayor caída en kWh primero)</div>
+      <div style="font-size:11px;color:var(--text3)">Ordenados por caída de consumo -- interanual cuando hay dato de hace un año (controla estacionalidad), si no contra su histórico general</div>
     </div>
     <div style="overflow-x:auto">
       <table style="width:100%;border-collapse:collapse;font-size:12px" id="cgc-ranking-tabla"></table>
@@ -9948,14 +9948,18 @@ async function cgcCargarRanking(){
     cont.innerHTML = `<tr><td style="padding:10px;color:var(--text3);font-size:12px">Sin datos todavía.</td></tr>`;
     return;
   }
-  const encab = ['Cuenta','Usuario','Municipio','Consumo Base (histórico)','Consumo Reciente','Caída','% Caída'];
+  const encab = ['Cuenta','Usuario','Municipio','Comparación','Consumo Base','Consumo Reciente','Caída','% Caída'];
   const thead = `<thead><tr>${encab.map(h=>`<th style="text-align:left;padding:6px 8px;font-size:10.5px;text-transform:uppercase;color:var(--text3);border-bottom:1px solid var(--border)">${h}</th>`).join('')}</tr></thead>`;
   const fk = v => v==null ? '--' : `${v.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`;
+  const metodoTxt = m => m==='interanual'
+    ? '<span title="Mismo mes, un año antes -- controla estacionalidad">Interanual</span>'
+    : '<span style="color:var(--text3)" title="No hay dato de hace un año -- comparado contra la mediana del resto de su histórico">Histórico general</span>';
   const tbody = filas.map(f => {
     return `<tr class="cgc-resultado-fila" onclick="cgcAbrirCuenta('${f.cuenta}')" style="cursor:pointer;border-bottom:1px solid var(--border)">
       <td style="padding:6px 8px;font-weight:700;white-space:nowrap">${f.cuenta}</td>
       <td style="padding:6px 8px">${_mselEsc(f.nombre_usuario||'--')}</td>
       <td style="padding:6px 8px;white-space:nowrap">${_mselEsc(f.nombre_muni||'--')}</td>
+      <td style="padding:6px 8px;font-size:11px">${metodoTxt(f.metodo)}</td>
       <td style="padding:6px 8px">${fk(f.consumo_base_kwh)}/mes</td>
       <td style="padding:6px 8px">${fk(f.consumo_reciente_kwh)}/mes</td>
       <td style="padding:6px 8px;font-weight:800;color:#ef476f">${fk(f.caida_kwh_mensual)}/mes</td>
@@ -10091,11 +10095,13 @@ function cgcRenderDesviacion(d){
     document.getElementById('cgc-desviacion-tarjetas').innerHTML = tarjeta('Caída de Consumo', 'No hay suficiente historial todavía (mínimo 6 meses)');
     return;
   }
+  const metodoTxt = d.metodo==='interanual' ? 'Interanual (mismo mes, año anterior)' : 'Histórico general (sin dato de hace un año)';
   document.getElementById('cgc-desviacion-tarjetas').innerHTML = [
     tarjeta('Caída de Consumo (kWh/mes)', fmt(d.caida_kwh_mensual), '#ef476f'),
     tarjeta('% de Caída', `${d.caida_pct.toFixed(1)}%`, '#ef476f'),
-    tarjeta('Consumo Base (histórico normal)', fmt(d.consumo_base_kwh)),
+    tarjeta('Consumo Base', fmt(d.consumo_base_kwh)),
     tarjeta('Consumo Reciente (últimos 3 meses)', fmt(d.consumo_reciente_kwh)),
+    tarjeta('Comparación usada', metodoTxt),
   ].join('');
 }
 
