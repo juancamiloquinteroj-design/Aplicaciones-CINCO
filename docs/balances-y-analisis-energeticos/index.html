@@ -4797,6 +4797,18 @@ html,body{overflow-x:hidden;margin:0}
           <label style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:700">Comentarios</label>
           <div id="alim3-comentarios" class="ip-comentario-caja" style="margin-top:6px;font-size:11.5px;padding:10px 12px"></div>
         </div>
+        <!-- Análisis por mes del alimentador elegido -- lo escribe el
+             usuario y aparece en el tooltip de la gráfica de arriba al
+             pasar el mouse por ese mes (pedido explícito, mismo patrón
+             que Pérdida Técnica Nivel 3/Nivel 4). -->
+        <div id="alim3-analisis-wrap" style="flex:1 1 320px;min-width:280px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+            <label style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:700">Análisis del mes</label>
+            <select id="alim3-analisis-sel" onchange="alim3AnalisisSelCambio()" style="font-size:12px;padding:3px 6px"></select>
+          </div>
+          <textarea id="alim3-analisis-texto" rows="4" oninput="alim3GuardarAnalisis()" placeholder="Escribe acá el análisis de este mes para este alimentador. Aparecerá en la gráfica al pasar el mouse por el dato de ese mes."
+            style="width:100%;box-sizing:border-box;font-size:11.5px;line-height:1.5;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);resize:vertical"></textarea>
+        </div>
       </div>
     </div>
 
@@ -24680,6 +24692,71 @@ function alim3TipoNormalizado(tipo){
 }
 let ALIM3_NEMONICO_SEL = null;
 let ALIM3_MES_TOP = null;
+// Análisis por mes del alimentador elegido (pedido explícito: "debe
+// poder escribir el análisis... y sale en la gráfica cuando coloco el
+// mouse, así como funciona en nivel 3 y nivel 4") -- mismo patrón que
+// ALIM_NIVEL4_ANALISIS/ALIM_NIVEL3_ANALISIS, pero acá la clave de
+// configGet/Set también lleva el nemonico del alimentador (cada uno
+// tiene su propio análisis por mes, a diferencia de Nivel 3/4 que son
+// un total único).
+let ALIM3_ANALISIS = {};
+let ALIM3_ANALISIS_MES = null;
+function _analisisKeyAlim3(nemonico, mes){
+  const slug = (OPERADOR && OPERADOR.slug) ? OPERADOR.slug : 'default';
+  return `pt_analisis_alim3_${slug}_${nemonico}_${mes}`;
+}
+function _cargarAnalisisAlim3(nemonico, claves){
+  ALIM3_ANALISIS = {};
+  if(!nemonico) return;
+  (claves||[]).forEach(c => {
+    const v = configGet(_analisisKeyAlim3(nemonico, c)); if(v) ALIM3_ANALISIS[c] = v;
+  });
+}
+function alim3GuardarAnalisis(){
+  const mes = ALIM3_ANALISIS_MES;
+  const ta = document.getElementById('alim3-analisis-texto');
+  if(!mes || !ta || !ALIM3_NEMONICO_SEL) return;
+  if(!EDITOR || OFFLINE_MODO) return;  // chequeo silencioso -- esto corre en cada tecla, no en un botón
+  const txt = ta.value.trim();
+  if(txt) ALIM3_ANALISIS[mes] = txt; else delete ALIM3_ANALISIS[mes];
+  configSetDebounced(_analisisKeyAlim3(ALIM3_NEMONICO_SEL, mes), txt || null);
+  // El tooltip de la gráfica lee ALIM3_ANALISIS en vivo -- basta un
+  // update sin animación para que tome el texto nuevo.
+  if(chAlim3Esp) chAlim3Esp.update('none');
+}
+function alim3AnalisisSelCambio(){
+  const sel = document.getElementById('alim3-analisis-sel');
+  const ta = document.getElementById('alim3-analisis-texto');
+  if(!sel || !ta) return;
+  ALIM3_ANALISIS_MES = sel.value;
+  ta.value = ALIM3_ANALISIS[sel.value] || '';
+  // Visualizador: solo lectura -- mismo criterio que Nivel 3/4.
+  ta.disabled = !EDITOR || OFFLINE_MODO;
+}
+// Llena el selector de mes de la caja de análisis + carga lo ya guardado
+// para el alimentador elegido. Sin alimentador puntual (vista "Total") no
+// hay un nemonico al cual atar el análisis -- se deja vacío/deshabilitado.
+function _alim3PoblarSelectorAnalisis(nemonico, claves){
+  const sel = document.getElementById('alim3-analisis-sel');
+  const ta = document.getElementById('alim3-analisis-texto');
+  if(!sel || !ta) return;
+  _cargarAnalisisAlim3(nemonico, claves);
+  if(!nemonico || !claves.length){
+    sel.innerHTML = ''; sel.disabled = true;
+    ta.value = ''; ta.disabled = true;
+    ta.placeholder = 'Elige un alimentador puntual para escribir su análisis.';
+    ALIM3_ANALISIS_MES = null;
+    return;
+  }
+  sel.disabled = false;
+  const prev = sel.value;
+  sel.innerHTML = claves.map(c => `<option value="${c}">${labelMesLargo(c)}</option>`).join('');
+  sel.value = claves.includes(prev) ? prev : claves[claves.length-1];
+  ALIM3_ANALISIS_MES = sel.value;
+  ta.value = ALIM3_ANALISIS[ALIM3_ANALISIS_MES] || '';
+  ta.disabled = !EDITOR || OFFLINE_MODO;
+  ta.placeholder = 'Escribe acá el análisis de este mes para este alimentador. Aparecerá en la gráfica al pasar el mouse por el dato de ese mes.';
+}
 let ALIM3_ESP_MODO = 'mensual';  // 'mensual' | 'anual' -- gráfico Entradas/Salidas/Pérdida
 let ALIM3_ESP_VAR = false;       // Δ Variación en la etiqueta de Pérdida %
 // AñoMes que muestra la tarjeta "Indicador Mensual/Anual" -- null = el
@@ -25312,6 +25389,7 @@ function alim3RenderSeleccion(){
     // puntual, ver alim3RenderIndicador más abajo).
     document.getElementById('alim3-indicador').innerHTML = '';
     document.getElementById('alim3-comentarios').innerHTML = '<p style="margin:0;color:var(--text3)">Elige un alimentador puntual para ver sus comentarios.</p>';
+    _alim3PoblarSelectorAnalisis(null, []);
 
     const conClave = alim3AgregarZonaMensual(ALIM3_ZONAS_SEL);
     ALIM3_CONCLAVE_ACTUAL = conClave;
@@ -25331,6 +25409,7 @@ function alim3RenderSeleccion(){
   alim3RenderIndicador(ultima);
   alim3RenderComentarios(filas);
   const conClave = filas.map(f => ({...f, clave: alimN21Clave(f.anio, f.mes)}));
+  _alim3PoblarSelectorAnalisis(ALIM3_NEMONICO_SEL, conClave.map(f => f.clave));
   ALIM3_CONCLAVE_ACTUAL = conClave;
   alim3RenderTarjetas(conClave, [etiqueta]);
   alim3RenderChartEsp(conClave);
@@ -25552,6 +25631,7 @@ function alim3RenderChartEsp(filasConClave){
   const tickC = dark ? '#ffffff' : '#000000';
   const tickXFuerte = dark ? '#ffffff' : '#000000';
   const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
+  const clavesVis = filas.map(f => f.clave);
   const etiquetas = filas.map(f => labelMes(f.clave));
   const entradaDatos = filas.map(f => esAnual ? f.entrada12 : f.entrada);
   const salidaDatos = filas.map(f => esAnual ? f.salida12 : f.salida);
@@ -25682,16 +25762,26 @@ function alim3RenderChartEsp(filasConClave){
           afterBody:(items)=>{
             if(!items.length) return;
             const idx = items[0].dataIndex;
+            const out = [];
             const p = perdidaDatos[idx];
-            if(p==null) return;
-            const ant = perdidaDatos[idx-1];
-            let extra = '';
-            if(ant!=null){
-              const delta = p - ant;
-              const icono = delta>=0 ? '▲' : '▼';
-              extra = ` (${icono} ${Math.abs(delta).toLocaleString('es-CO',{maximumFractionDigits:0})} kWh)`;
+            if(p!=null){
+              const ant = perdidaDatos[idx-1];
+              let extra = '';
+              if(ant!=null){
+                const delta = p - ant;
+                const icono = delta>=0 ? '▲' : '▼';
+                extra = ` (${icono} ${Math.abs(delta).toLocaleString('es-CO',{maximumFractionDigits:0})} kWh)`;
+              }
+              out.push(`Pérdida: ${p.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh${esAnual?'/12M':'/mes'}${extra}`);
             }
-            return [`Pérdida: ${p.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh${esAnual?'/12M':'/mes'}${extra}`];
+            // Análisis del mes escrito a mano para este alimentador --
+            // pedido explícito, mismo patrón que Nivel 3/Nivel 4.
+            const nota = ALIM3_ANALISIS[clavesVis[idx]];
+            if(nota){
+              const wrap = nota.replace(/(.{1,58})(\s+|$)/g, '$1\n').trim().split('\n');
+              out.push('', '📝 Análisis:', ...wrap);
+            }
+            return out.length ? out : undefined;
           },
         }},
         zoom:{pan:{enabled:true, mode:'x'}, zoom:{wheel:{enabled:true}, pinch:{enabled:true}, mode:'x'}, limits:{x:{minRange:3}}},
