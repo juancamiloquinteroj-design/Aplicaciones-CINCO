@@ -1615,7 +1615,40 @@ html,body{overflow-x:hidden;margin:0}
     <div class="sec-sub">Seguimiento y análisis de clientes de grandes consumos</div>
   </div>
   <div class="card">
-    <div style="font-size:12px;color:var(--text3);padding:10px 0">Módulo en construcción -- se irá desarrollando próximamente.</div>
+    <div style="position:relative;max-width:460px">
+      <input type="text" id="cgc-buscador" placeholder="Busca por Cuenta o por nombre de Usuario..." oninput="cgcBuscarInput()" autocomplete="off"
+        style="width:100%;box-sizing:border-box;padding:9px 12px;font-size:13px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text)">
+      <div id="cgc-buscador-resultados" class="hidden" style="position:absolute;z-index:20;top:100%;left:0;right:0;margin-top:4px;max-height:280px;overflow:auto;background:var(--bg);border:1px solid var(--border);border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.18)"></div>
+    </div>
+  </div>
+
+  <div id="cgc-vacio" class="card">
+    <div style="font-size:12px;color:var(--text3);padding:10px 0">Busca un cliente por Cuenta o por nombre de Usuario para ver su ficha.</div>
+  </div>
+
+  <div id="cgc-detalle" class="hidden">
+    <div class="card">
+      <table style="width:100%;border-collapse:collapse" id="cgc-ficha-tabla"></table>
+    </div>
+
+    <div class="card">
+      <div class="chart-wrap" style="height:320px"><canvas id="ch-cgc-consumo"></canvas></div>
+    </div>
+
+    <div style="display:flex;gap:18px;flex-wrap:wrap">
+      <div class="card" style="flex:1 1 320px;min-width:280px">
+        <label style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:700">Observación</label>
+        <textarea id="cgc-observacion" rows="5" oninput="cgcGuardarNota()" placeholder="Escribe acá cualquier observación sobre este cliente."
+          style="width:100%;box-sizing:border-box;margin-top:6px;font-size:12px;line-height:1.5;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);resize:vertical"></textarea>
+        <div style="margin-top:10px;display:flex;align-items:center;gap:8px">
+          <label style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:700">Fecha última visita</label>
+          <input type="date" id="cgc-fecha-visita" onchange="cgcGuardarNota()" style="font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text)">
+        </div>
+      </div>
+      <div class="card" style="flex:1 1 320px;min-width:280px">
+        <table style="width:100%;border-collapse:collapse" id="cgc-perdidas-tabla"></table>
+      </div>
+    </div>
   </div>
 </div>
 </div>
@@ -9858,6 +9891,148 @@ async function entrarClientesGrandesConsumos(){
     document.getElementById('cgc-sidebar').classList.remove('hidden');
   }
 }
+
+// ===== Clientes Grandes Consumos -- primera entrega =====
+// Buscador por Cuenta/Usuario -> ficha + gráfica de consumo + Observación/
+// Fecha última visita (editables) + cruce de pérdida de Alimentador/
+// Macromedida -- "amarrar todo con todo" vía el Nodo del cliente (pedido
+// explícito, ver app/routers/clientes_fm.py para el cruce completo).
+let CGC_CUENTA_ACTUAL = null;
+let CGC_BUSCAR_TIMER = null;
+let CGC_NOTA_TIMER = null;
+let chCgcConsumo = null;
+
+function cgcBuscarInput(){
+  const q = document.getElementById('cgc-buscador').value.trim();
+  clearTimeout(CGC_BUSCAR_TIMER);
+  const cont = document.getElementById('cgc-buscador-resultados');
+  if(q.length < 2){ cont.classList.add('hidden'); cont.innerHTML=''; return; }
+  CGC_BUSCAR_TIMER = setTimeout(() => cgcBuscar(q), 300);
+}
+
+async function cgcBuscar(q){
+  const cont = document.getElementById('cgc-buscador-resultados');
+  let datos;
+  try{
+    datos = await apiGet(`/api/clientes-fm/buscar?q=${encodeURIComponent(q)}`, AUTH_TIMEOUT_MS);
+  }catch(e){
+    cont.innerHTML = `<div style="padding:10px;color:#ef476f;font-size:12px">${e.message||'No se pudo buscar.'}</div>`;
+    cont.classList.remove('hidden');
+    return;
+  }
+  const filas = datos.resultados || [];
+  if(!filas.length){
+    cont.innerHTML = `<div style="padding:10px;color:var(--text3);font-size:12px">Sin resultados.</div>`;
+    cont.classList.remove('hidden');
+    return;
+  }
+  cont.innerHTML = filas.map(f => `
+    <div class="cgc-resultado-fila" onclick="cgcAbrirCuenta('${f.cuenta}')" style="padding:8px 12px;cursor:pointer;font-size:12.5px;border-bottom:1px solid var(--border)">
+      <div style="font-weight:700">${f.cuenta} -- ${_mselEsc(f.nombre_usuario||'')}</div>
+      <div style="color:var(--text3);font-size:11px">${_mselEsc(f.direccion||'')} -- ${_mselEsc(f.nombre_muni||'')}</div>
+    </div>`).join('');
+  cont.classList.remove('hidden');
+}
+
+async function cgcAbrirCuenta(cuenta){
+  document.getElementById('cgc-buscador-resultados').classList.add('hidden');
+  document.getElementById('cgc-buscador').value = cuenta;
+  CGC_CUENTA_ACTUAL = cuenta;
+  let datos;
+  try{
+    datos = await apiGet(`/api/clientes-fm/${encodeURIComponent(cuenta)}`, AUTH_TIMEOUT_MS);
+  }catch(e){
+    alert(e.message || 'No se pudo cargar esa cuenta.');
+    return;
+  }
+  document.getElementById('cgc-vacio').classList.add('hidden');
+  document.getElementById('cgc-detalle').classList.remove('hidden');
+  cgcRenderFicha(datos.ficha);
+  cgcRenderChart(datos.historial);
+  cgcRenderPerdidas(datos.alimentador, datos.macromedida);
+  const taObs = document.getElementById('cgc-observacion');
+  const inFecha = document.getElementById('cgc-fecha-visita');
+  taObs.value = datos.nota.observacion || '';
+  inFecha.value = datos.nota.fecha_ultima_visita || '';
+  taObs.disabled = !EDITOR || OFFLINE_MODO;
+  inFecha.disabled = !EDITOR || OFFLINE_MODO;
+}
+
+function cgcRenderFicha(f){
+  const filas = [
+    ['Cuenta', f.cuenta], ['Usuario', f.nombre_usuario||'--'], ['Dirección', f.direccion||'--'],
+    ['Municipio', f.municipio||'--'], ['Clase de servicio', f.clase_servicio||'--'], ['Ciclo', f.ciclo||'--'],
+    ['F.M', f.fm!=null ? f.fm.toLocaleString('es-CO') : '--'],
+    ['Contador', [f.contador, f.marca_contador].filter(Boolean).join(' -- ') || '--'],
+  ];
+  document.getElementById('cgc-ficha-tabla').innerHTML = filas.map(([k,v]) =>
+    `<tr><td style="text-align:left;color:var(--text3);padding:5px 8px;font-size:11px;white-space:nowrap">${k}</td><td style="text-align:left;padding:5px 8px;font-weight:700;font-size:13px">${_mselEsc(String(v))}</td></tr>`
+  ).join('');
+}
+
+function cgcRenderChart(historial){
+  const cv = document.getElementById('ch-cgc-consumo');
+  const dark = document.documentElement.getAttribute('data-theme')==='dark';
+  const tickC = dark ? '#ffffff' : '#000000';
+  const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
+  const claves = historial.map(f => `${f.anio}-${String(f.mes).padStart(2,'0')}`);
+  const etiquetas = claves.map(labelMes);
+  const datos = historial.map(f => f.consumo);
+  if(chCgcConsumo) chCgcConsumo.destroy();
+  chCgcConsumo = new Chart(cv, {
+    data:{labels: etiquetas, datasets:[{
+      type:'line', label:'Consumo kWh/mes', data: datos, fill:true,
+      borderColor:'#00b4d8', backgroundColor:'rgba(0,180,216,.25)', borderWidth:2, tension:0, spanGaps:true,
+      pointRadius: acRadioPuntoAislado, datalabels:{display:false},
+    }]},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      layout:{padding:{top:16, right:16, left:8, bottom:4}},
+      plugins:{
+        legend:{display:false},
+        tooltip:{callbacks:{label:c=>c.raw==null?null:`Consumo: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`}},
+      },
+      scales:{
+        x:{offset:true, grid:{display:false}, ticks:{color:tickC, font:{size:11}}},
+        y:{beginAtZero:true, grid:{color:gridC}, ticks:{color:tickC, font:{size:11}}},
+      },
+    },
+  });
+}
+
+function cgcRenderPerdidas(alim, macro){
+  const nd = '<span style="color:var(--text3)">#N/D</span>';
+  const fmt = v => v==null ? nd : v.toLocaleString('es-CO',{maximumFractionDigits:0});
+  const celdaMacro = macro.tiene_macro
+    ? `${fmt(macro.kwh)} kWh${macro.pct!=null ? ` (${macro.pct.toFixed(2)}%)` : ''}`
+    : '<span style="color:#ef476f">Sin Macromedida</span>';
+  const filas = [
+    ['Alimentador', alim.encontrado ? _mselEsc(alim.alimentador) : nd],
+    ['Pérdida Circuito [kWh/Mensual]', alim.encontrado ? `${fmt(alim.perdida_mensual_kwh)} kWh` : nd],
+    ['Pérdida Circuito [kWh/Anual]', alim.encontrado ? `${fmt(alim.perdida_anual_kwh)} kWh` : nd],
+    ['Pérdida Por nodo [kWh]', celdaMacro],
+  ];
+  document.getElementById('cgc-perdidas-tabla').innerHTML = filas.map(([k,v]) =>
+    `<tr><td style="text-align:left;color:var(--text3);padding:6px 8px;font-size:11px">${k}</td><td style="text-align:right;padding:6px 8px;font-weight:700;font-size:12.5px">${v}</td></tr>`
+  ).join('');
+}
+
+function cgcGuardarNota(){
+  if(!CGC_CUENTA_ACTUAL || !EDITOR || OFFLINE_MODO) return;
+  clearTimeout(CGC_NOTA_TIMER);
+  const observacion = document.getElementById('cgc-observacion').value.trim() || null;
+  const fecha_ultima_visita = document.getElementById('cgc-fecha-visita').value || null;
+  CGC_NOTA_TIMER = setTimeout(() => {
+    apiPut(`/api/clientes-fm/${encodeURIComponent(CGC_CUENTA_ACTUAL)}/nota`, {observacion, fecha_ultima_visita}).catch(()=>{});
+  }, 600);
+}
+
+document.addEventListener('click', (ev) => {
+  const cont = document.getElementById('cgc-buscador-resultados');
+  if(!cont || cont.classList.contains('hidden')) return;
+  if(ev.target.id==='cgc-buscador' || cont.contains(ev.target)) return;
+  cont.classList.add('hidden');
+});
 
 // URL del túnel de Suplencias_App (Flask propio, corre local en el PC del
 // usuario) -- cambia si se reinicia el túnel, igual que API_BASE_URL del
