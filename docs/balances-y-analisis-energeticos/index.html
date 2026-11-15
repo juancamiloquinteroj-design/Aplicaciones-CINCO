@@ -5122,7 +5122,7 @@ html,body{overflow-x:hidden;margin:0}
           <button type="button" class="be-modo-btn be-icon-btn hidden" id="catnod-btn-quitar-alim" onclick="catnodQuitarAlimentador()" title="Quitar alimentador elegido" style="width:22px;height:22px;font-size:11px">✕</button>
         </span>
         <button type="button" class="be-modo-btn be-modo-btn-sm" onclick="catnodLimpiarFiltros()">Limpiar</button>
-        <button type="button" class="be-modo-btn be-modo-btn-sm" id="catnod-btn-descargar" onclick="catnodDescargarExcel()" title="Descarga en un solo Excel los datos y la gráfica de este alimentador/periodo">⬇ Descargar Excel</button>
+        <button type="button" class="be-modo-btn be-modo-btn-sm" id="catnod-btn-descargar" onclick="catnodDescargarExcel()" title="Con un alimentador elegido: descarga su Caracterización (formato oficial, formulado y con celdas combinadas). Sin alimentador: los datos de la zona/municipio filtrados">⬇ Descargar Excel</button>
         <span style="margin-left:auto;display:inline-flex;align-items:center;gap:6px">
           <label>AñoMes</label>
           <select id="catnod-f-periodo" onchange="catnodAplicarFiltros()"></select>
@@ -38816,11 +38816,41 @@ function _catnodExcelHojaCapacidad(workbook, filasTransformadores){
   _catnodHojaRaw(workbook, 'Capacidad Transformadores', CATNOD_COLS_TRANSFORMADOR, filasTransformadores || []);
 }
 
+// Con un alimentador elegido descarga la "Caracterización" formal (misma
+// plantilla que el módulo Informes: RESUMEN / PERDIDA ALIMENTADOR /
+// MACROMEDIDORES / TRANSFORMADORES / Base Nodos, con fórmulas vivas y
+// celdas combinadas tal cual el Excel de referencia del usuario) en vez
+// del export plano de abajo -- pedido explícito ("cuando lo descarga en
+// excel quiero es que se descargue de esta forma... formulado y celdas
+// combinadas"). Las hojas de usuarios no se generan -- las llena él.
+// Sin alimentador (vista por Zona/Municipio) ese formato no aplica (es
+// por alimentador), así que se mantiene el export plano de siempre.
+async function _catnodDescargarCaracterizacion(nemonico){
+  const res = await fetchConTimeout(`${API_BASE_URL}/api/alimentadores/informe/${encodeURIComponent(nemonico)}`, {headers: authHeaders()}, AUTH_TIMEOUT_MS);
+  if(!res.ok){
+    const detalle = await res.json().catch(() => null);
+    throw new Error((detalle && detalle.detail) || 'No se pudo generar la caracterización.');
+  }
+  _expDescargarBlob(await res.blob(), `Caracterizacion ${nemonico}.xlsx`);
+}
+
 async function catnodDescargarExcel(){
-  if(typeof ExcelJS === 'undefined'){ alert('No se pudo cargar el generador de Excel -- revisa tu conexión y recarga la página.'); return; }
   if(!CATNOD_ULTIMO_F){ alert('Espera a que termine de cargar la página antes de descargar.'); return; }
   const f = CATNOD_ULTIMO_F, ga = CATNOD_ULTIMO_GA;
   const btn = document.getElementById('catnod-btn-descargar');
+  if(f.alimentador && ga && ga.encontrado && ga.nemonico){
+    if(DEMO){ alert('No disponible en modo demo.'); return; }
+    if(btn){ btn.disabled = true; btn.textContent = '⏳ Generando…'; }
+    try{
+      await _catnodDescargarCaracterizacion(ga.nemonico);
+    }catch(e){
+      alert(e.message || 'Error al descargar.');
+    }finally{
+      if(btn){ btn.disabled = false; btn.textContent = '⬇ Descargar Excel'; }
+    }
+    return;
+  }
+  if(typeof ExcelJS === 'undefined'){ alert('No se pudo cargar el generador de Excel -- revisa tu conexión y recarga la página.'); return; }
   if(btn){ btn.disabled = true; btn.textContent = '⏳ Generando…'; }
   try{
     const masReciente = (CATNOD_FILTROS && CATNOD_FILTROS.periodos[0]) || {anio: f.anio, mes: f.mes || 1};
