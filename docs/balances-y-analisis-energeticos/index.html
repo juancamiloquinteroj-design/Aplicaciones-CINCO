@@ -10076,10 +10076,21 @@ function cgcAbrirLista(){
 // ↑ ↓ recorren la lista, Enter elige la resaltada (o la primera), Esc cierra.
 function cgcTeclaBuscar(ev){
   const lista = document.getElementById('cgc-lista');
+  const inp = ev.target;
   if(ev.key === 'Escape'){ cgcCerrarLista(); return; }
+  if((ev.key === 'ArrowLeft' || ev.key === 'ArrowRight') && inp.value.length && inp.selectionStart === 0 && inp.selectionEnd === inp.value.length){
+    ev.preventDefault();
+    cgcSiguienteCliente(ev.key === 'ArrowRight' ? 1 : -1);
+    inp.select();
+    return;
+  }
   if(ev.key === 'ArrowDown' || ev.key === 'ArrowUp'){
     ev.preventDefault();
-    if(lista && lista.classList.contains('hidden')){ cgcAbrirLista(); return; }
+    if(lista && lista.classList.contains('hidden')){
+      cgcSiguienteCliente(ev.key === 'ArrowDown' ? 1 : -1);
+      inp.select();
+      return;
+    }
     const n = Math.min(CGC_LISTA_VIS.length, 200);
     if(!n) return;
     CGC_LISTA_IDX = (CGC_LISTA_IDX + (ev.key === 'ArrowDown' ? 1 : -1) + n) % n;
@@ -10291,6 +10302,18 @@ document.addEventListener('click', (ev) => {
 // Atajo de teclado: "/" (o Ctrl derecho, ver abajo) lleva el cursor al buscador de Alimentador (Detalle por
 // Alimentador) o de Cliente (Clientes Grandes Consumos) para volver a escribir,
 // sin usar el mouse. No actúa si ya se está escribiendo en otro campo.
+// ← → con el cursor fuera de cualquier campo: pasan al alimentador/cliente anterior o
+// siguiente (solo si su buscador está visible, o sea en Detalle por Alimentador / Clientes).
+document.addEventListener('keydown', (ev) => {
+  if((ev.key !== 'ArrowLeft' && ev.key !== 'ArrowRight') || ev.ctrlKey || ev.metaKey || ev.altKey || ev.shiftKey) return;
+  const t = ev.target, tag = t && t.tagName;
+  if(tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (t && t.isContentEditable)) return;
+  const d = ev.key === 'ArrowRight' ? 1 : -1;
+  const a = document.getElementById('alim3-buscar'), c = document.getElementById('cgc-buscar');
+  if(a && a.offsetParent !== null){ ev.preventDefault(); alim3SiguienteAlimentador(d); }
+  else if(c && c.offsetParent !== null){ ev.preventDefault(); cgcSiguienteCliente(d); }
+});
+
 // Ctrl DERECHO (solo, sin otra tecla) hace lo mismo -- pedido explícito, es más
 // cómodo que "/". Se dispara al SOLTAR la tecla, y solo si no se combinó con
 // otra (Ctrl+C, Ctrl+F, etc. no lo activan).
@@ -25723,10 +25746,24 @@ function alim3AbrirLista(){
 }
 function alim3TeclaBuscar(ev){
   const lista = document.getElementById('alim3-lista');
+  const inp = ev.target;
   if(ev.key === 'Escape'){ alim3CerrarLista(); return; }
+  // ← → pasan al alimentador anterior/siguiente (igual que los botones ◀ ▶) cuando el
+  // texto está TODO seleccionado (no se está editando); si no, mueven el cursor del texto.
+  if((ev.key === 'ArrowLeft' || ev.key === 'ArrowRight') && inp.value.length && inp.selectionStart === 0 && inp.selectionEnd === inp.value.length){
+    ev.preventDefault();
+    alim3SiguienteAlimentador(ev.key === 'ArrowRight' ? 1 : -1);
+    inp.select();
+    return;
+  }
   if(ev.key === 'ArrowDown' || ev.key === 'ArrowUp'){
     ev.preventDefault();
-    if(lista && lista.classList.contains('hidden')){ alim3AbrirLista(); return; }
+    // Lista cerrada (ya se eligió uno): ↑ ↓ también cambian de alimentador.
+    if(lista && lista.classList.contains('hidden')){
+      alim3SiguienteAlimentador(ev.key === 'ArrowDown' ? 1 : -1);
+      inp.select();
+      return;
+    }
     const n = ALIM3_LISTA_VISIBLES.length;
     if(!n) return;
     ALIM3_LISTA_IDX = (ALIM3_LISTA_IDX + (ev.key === 'ArrowDown' ? 1 : -1) + n) % n;
