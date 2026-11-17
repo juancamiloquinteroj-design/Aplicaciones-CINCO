@@ -1636,7 +1636,7 @@ html,body{overflow-x:hidden;margin:0}
         <button type="button" class="be-modo-btn be-icon-btn" onclick="cgcSiguienteCliente(-1)" title="Cliente anterior" style="width:22px;height:22px;font-size:10px">◀</button>
         <div class="msel" style="position:relative">
           <input type="text" id="cgc-buscar" placeholder="Buscar cuenta / usuario..." autocomplete="off"
-            oninput="cgcAbrirLista()" onfocus="this.select();cgcAbrirLista()"
+            oninput="cgcAbrirLista()" onfocus="this.select();cgcAbrirLista()" onkeydown="cgcTeclaBuscar(event)"
             style="width:230px;padding:6px 10px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg);box-sizing:border-box">
           <div id="cgc-lista" class="msel-panel hidden" style="width:380px"></div>
         </div>
@@ -4778,7 +4778,7 @@ html,body{overflow-x:hidden;margin:0}
         <button type="button" class="be-modo-btn be-icon-btn" onclick="alim3SiguienteAlimentador(-1)" title="Alimentador anterior" style="width:22px;height:22px;font-size:10px">◀</button>
         <div class="msel" style="position:relative">
           <input type="text" id="alim3-buscar" placeholder="Buscar / elegir..." autocomplete="off"
-            oninput="alim3AbrirLista()" onfocus="this.select();alim3AbrirLista()"
+            oninput="alim3AbrirLista()" onfocus="this.select();alim3AbrirLista()" onkeydown="alim3TeclaBuscar(event)"
             style="width:190px;padding:6px 10px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg);box-sizing:border-box">
           <div id="alim3-lista" class="msel-panel hidden" style="width:300px"></div>
         </div>
@@ -7463,7 +7463,7 @@ function _pmIframeListo(){
 // aunque esté oculto) y les repinta ejes/cuadrícula/leyenda con el color
 // del tema nuevo, sin necesidad de tocar cada función de render una por
 // una (son decenas en toda la app).
-// Color de la línea punteada de "Pérdida %": amarillo sobre fondo OSCURO, azul
+// Color de la línea punteada de "Pérdida %": amarillo sobre fondo OSCURO, negro
 // sobre fondo CLARO (pedido explícito, 2026-11-17 -- el amarillo no se lee sobre
 // blanco). Mira el fondo REAL de la gráfica (Personalización > fondo de gráficas,
 // que puede diferir del tema de la página), igual que _actualizarTemaCharts.
@@ -7474,7 +7474,7 @@ function colorPctPerdida(){
   try{ key = localStorage.getItem('pt_chart_bg') || 'auto'; }catch(e){}
   const f = (key!=='auto' && typeof PT_FONDOS_GRAFICO!=='undefined') ? PT_FONDOS_GRAFICO.find(c=>c.key===key) : null;
   const oscuro = f ? !!f.oscuro : document.documentElement.getAttribute('data-theme')==='dark';
-  return oscuro ? '#FFC000' : '#1F5FBF';
+  return oscuro ? '#FFC000' : '#000000';
 }
 
 function _actualizarTemaCharts(){
@@ -10066,9 +10066,32 @@ function cgcAplicarFiltros(){
   }
 }
 
+let CGC_LISTA_IDX = 0;
+let CGC_LISTA_VIS = [];
 function cgcAbrirLista(){
+  CGC_LISTA_IDX = 0;
   document.getElementById('cgc-lista')?.classList.remove('hidden');
   cgcRenderLista();
+}
+// ↑ ↓ recorren la lista, Enter elige la resaltada (o la primera), Esc cierra.
+function cgcTeclaBuscar(ev){
+  const lista = document.getElementById('cgc-lista');
+  if(ev.key === 'Escape'){ cgcCerrarLista(); return; }
+  if(ev.key === 'ArrowDown' || ev.key === 'ArrowUp'){
+    ev.preventDefault();
+    if(lista && lista.classList.contains('hidden')){ cgcAbrirLista(); return; }
+    const n = Math.min(CGC_LISTA_VIS.length, 200);
+    if(!n) return;
+    CGC_LISTA_IDX = (CGC_LISTA_IDX + (ev.key === 'ArrowDown' ? 1 : -1) + n) % n;
+    cgcRenderLista();
+    lista?.querySelector('.msel-opt.tecla-activa')?.scrollIntoView({block:'nearest'});
+    return;
+  }
+  if(ev.key === 'Enter'){
+    ev.preventDefault();
+    const sel = CGC_LISTA_VIS[CGC_LISTA_IDX] || CGC_LISTA_VIS[0];
+    if(sel){ cgcElegirCliente(sel.cuenta); ev.target.blur(); }
+  }
 }
 function cgcCerrarLista(){ document.getElementById('cgc-lista')?.classList.add('hidden'); }
 
@@ -10081,10 +10104,13 @@ function cgcRenderLista(){
   const elegida = CGC_FILTRADA.find(f => f.cuenta===CGC_CUENTA_ACTUAL);
   const textoElegida = elegida ? `${elegida.cuenta} -- ${elegida.nombre_usuario||''}`.toUpperCase() : null;
   if(q && q!==textoElegida) ops = ops.filter(f => f.cuenta.toUpperCase().startsWith(q) || (f.nombre_usuario||'').toUpperCase().includes(q));
+  CGC_LISTA_VIS = ops;
+  if(CGC_LISTA_IDX >= ops.length) CGC_LISTA_IDX = 0;
   if(!ops.length){ cont.innerHTML = '<div class="msel-empty">Sin resultados.</div>'; return; }
-  cont.innerHTML = ops.slice(0, 200).map(f => {
+  cont.innerHTML = ops.slice(0, 200).map((f, i) => {
     const activo = f.cuenta===CGC_CUENTA_ACTUAL;
-    return `<div class="msel-opt" onclick="cgcElegirCliente('${f.cuenta}')" style="${activo?'background:var(--bg);font-weight:700;color:var(--accent)':''}">${_mselEsc(f.cuenta)} -- ${_mselEsc(f.nombre_usuario||'')}</div>`;
+    const tecla = i === CGC_LISTA_IDX;
+    return `<div class="msel-opt${tecla?' tecla-activa':''}" onclick="cgcElegirCliente('${f.cuenta}')" style="${activo?'background:var(--bg);font-weight:700;color:var(--accent);':''}${tecla?'outline:2px solid var(--accent);outline-offset:-2px;':''}">${_mselEsc(f.cuenta)} -- ${_mselEsc(f.nombre_usuario||'')}</div>`;
   }).join('') + (ops.length>200 ? `<div class="msel-empty">… ${ops.length-200} más, sigue escribiendo para acotar.</div>` : '');
 }
 
@@ -25655,9 +25681,33 @@ function alim3RecalcularListaCache(){
 // ahora es un desplegable (mismo look que .msel-panel) que se abre al
 // escribir/enfocar el buscador y se cierra solo (ver el listener de click
 // global) o al elegir un alimentador.
+// Teclado en el buscador (pedido explícito): ↑ ↓ recorren las opciones de la
+// lista, Enter elige la resaltada (o la primera si no se movió) y Esc cierra.
+let ALIM3_LISTA_IDX = 0;
+let ALIM3_LISTA_VISIBLES = [];
 function alim3AbrirLista(){
+  ALIM3_LISTA_IDX = 0;   // al escribir, la primera coincidencia queda resaltada
   document.getElementById('alim3-lista')?.classList.remove('hidden');
   alim3RenderListaAlimentadores();
+}
+function alim3TeclaBuscar(ev){
+  const lista = document.getElementById('alim3-lista');
+  if(ev.key === 'Escape'){ alim3CerrarLista(); return; }
+  if(ev.key === 'ArrowDown' || ev.key === 'ArrowUp'){
+    ev.preventDefault();
+    if(lista && lista.classList.contains('hidden')){ alim3AbrirLista(); return; }
+    const n = ALIM3_LISTA_VISIBLES.length;
+    if(!n) return;
+    ALIM3_LISTA_IDX = (ALIM3_LISTA_IDX + (ev.key === 'ArrowDown' ? 1 : -1) + n) % n;
+    alim3RenderListaAlimentadores();
+    lista?.querySelector('.msel-opt.tecla-activa')?.scrollIntoView({block:'nearest'});
+    return;
+  }
+  if(ev.key === 'Enter'){
+    ev.preventDefault();
+    const sel = ALIM3_LISTA_VISIBLES[ALIM3_LISTA_IDX] || ALIM3_LISTA_VISIBLES[0];
+    if(sel){ alim3ElegirAlimentador(sel[0]); ev.target.blur(); }
+  }
 }
 function alim3CerrarLista(){
   document.getElementById('alim3-lista')?.classList.add('hidden');
@@ -25668,11 +25718,14 @@ function alim3RenderListaAlimentadores(){
   const texto = (document.getElementById('alim3-buscar').value || '').trim().toUpperCase();
   let opciones = ALIM3_LISTA_CACHE;
   if(texto) opciones = opciones.filter(([nem, nombre]) => nombre.toUpperCase().includes(texto) || nem.toUpperCase().includes(texto));
+  ALIM3_LISTA_VISIBLES = opciones;
+  if(ALIM3_LISTA_IDX >= opciones.length) ALIM3_LISTA_IDX = 0;
   if(!opciones.length){ cont.innerHTML = '<div class="msel-empty">Sin resultados.</div>'; }
   else{
-    cont.innerHTML = opciones.map(([nem, nombre]) => {
+    cont.innerHTML = opciones.map(([nem, nombre], i) => {
       const activo = nem === ALIM3_NEMONICO_SEL;
-      return `<div class="msel-opt" onclick="alim3ElegirAlimentador('${nem}')" style="${activo?'background:var(--bg);font-weight:700;color:var(--accent)':''}">${nombre}</div>`;
+      const tecla = i === ALIM3_LISTA_IDX;
+      return `<div class="msel-opt${tecla?' tecla-activa':''}" onclick="alim3ElegirAlimentador('${nem}')" style="${activo?'background:var(--bg);font-weight:700;color:var(--accent);':''}${tecla?'outline:2px solid var(--accent);outline-offset:-2px;':''}">${nombre}</div>`;
     }).join('');
   }
   alim3RenderConteo();
