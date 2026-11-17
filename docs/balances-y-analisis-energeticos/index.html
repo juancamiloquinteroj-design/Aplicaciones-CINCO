@@ -1607,28 +1607,26 @@ html,body{overflow-x:hidden;margin:0}
 <div id="cgc-sidebar-overlay" class="sidebar-overlay hidden" onclick="toggleSidebarCgc()"></div>
 <aside id="cgc-sidebar" class="sidebar hidden">
   <div class="sidebar-title">Clientes Grandes Consumos</div>
+  <button class="sidebar-link active" id="cgc-nav-usuario" onclick="cgcIrAModulo('usuario')">👤 Análisis por Usuario</button>
+  <button class="sidebar-link" id="cgc-nav-auto" onclick="cgcIrAModulo('auto')">🤖 Análisis Automático de Consumos</button>
 </aside>
 
 <div class="page">
   <div class="sec-hdr">
-    <div class="sec-title">🏭 Clientes Grandes Consumos</div>
-    <div class="sec-sub">Seguimiento y análisis de clientes de grandes consumos</div>
+    <div class="sec-title" id="cgc-sec-title">👤 Análisis por Usuario</div>
+    <div class="sec-sub" id="cgc-sec-sub">Ficha, consumo y cruce con el circuito de cada cliente de grandes consumos</div>
   </div>
 
-  <div id="cgc-contenido">
-    <div class="pt-tabs">
-      <button type="button" class="pt-tab-btn activo" id="cgc-tab-btn-detalle" onclick="cgcIrATab('detalle')">Detalle por Cliente</button>
-      <button type="button" class="pt-tab-btn" id="cgc-tab-btn-ranking" onclick="cgcIrATab('ranking')">Clientes con posible pérdida</button>
-    </div>
-
-    <!-- Filtros: Zona / Alimentador / Nodo filtran la lista de clientes (ambas
-         pestañas); Cliente + flechas recorren la lista ya filtrada -- mismo
+  <!-- ============ MÓDULO 1 · Análisis por Usuario ============ -->
+  <div id="cgc-mod-usuario">
+    <!-- Filtros: Zona / Alimentador (selección múltiple) y Nodo filtran la lista
+         de clientes; Cliente + flechas recorren la lista ya filtrada -- mismo
          patrón que Detalle por Alimentador (◀ buscador ▶ ✕). -->
     <div id="cgc-filtro" class="fbar" style="margin-bottom:12px">
       <label>Zona</label>
-      <select id="cgc-f-zona" onchange="cgcAplicarFiltros()" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:7px;background:var(--bg);color:var(--text)"></select>
+      <div class="msel" id="msel-cgc-zona"></div>
       <label style="margin-left:10px">Alimentador</label>
-      <select id="cgc-f-alim" onchange="cgcAplicarFiltros()" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:7px;background:var(--bg);color:var(--text);max-width:240px"></select>
+      <div class="msel" id="msel-cgc-alim"></div>
       <label style="margin-left:10px">Nodo</label>
       <input type="text" id="cgc-f-nodo" placeholder="Ej. T04114" oninput="cgcAplicarFiltros()" autocomplete="off"
         style="width:92px;padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg)">
@@ -1648,44 +1646,70 @@ html,body{overflow-x:hidden;margin:0}
       <span id="cgc-conteo" style="font-size:11px;color:var(--text3)"></span>
     </div>
 
-    <!-- ===== PESTAÑA 1 · Detalle por Cliente ===== -->
-    <div id="cgc-tab-detalle">
-      <div class="card">
-        <div id="cgc-tarjetas" class="no-exportar" style="margin-bottom:16px"></div>
-        <div id="cgc-titulo" style="text-align:center;font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase;margin-bottom:10px">Elige un cliente</div>
-        <div class="chart-wrap" style="height:400px"><canvas id="ch-cgc-consumo"></canvas></div>
+    <div class="card">
+      <div id="cgc-tarjetas" class="no-exportar" style="margin-bottom:16px"></div>
+      <div id="cgc-titulo" style="text-align:center;font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase;margin-bottom:10px">Elige un cliente</div>
+      <div class="chart-wrap" style="height:400px"><canvas id="ch-cgc-consumo"></canvas></div>
 
-        <div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:18px">
-          <div style="flex:1 1 320px;min-width:280px">
-            <div id="cgc-ficha" style="font-size:12px"></div>
+      <div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:18px">
+        <div style="flex:1 1 320px;min-width:280px">
+          <div id="cgc-ficha" style="font-size:12px"></div>
+        </div>
+        <div style="flex:1 1 320px;min-width:280px">
+          <label style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:700">Observación</label>
+          <textarea id="cgc-observacion" rows="5" oninput="cgcGuardarNota()" placeholder="Escribe acá cualquier observación sobre este cliente."
+            style="width:100%;box-sizing:border-box;margin-top:6px;font-size:11.5px;line-height:1.5;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);resize:vertical"></textarea>
+          <div style="margin-top:10px;display:flex;align-items:center;gap:8px">
+            <label style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:700">Fecha última visita</label>
+            <input type="date" id="cgc-fecha-visita" onchange="cgcGuardarNota()" style="font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text)">
           </div>
-          <div style="flex:1 1 320px;min-width:280px">
-            <label style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:700">Observación</label>
-            <textarea id="cgc-observacion" rows="5" oninput="cgcGuardarNota()" placeholder="Escribe acá cualquier observación sobre este cliente."
-              style="width:100%;box-sizing:border-box;margin-top:6px;font-size:11.5px;line-height:1.5;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);resize:vertical"></textarea>
-            <div style="margin-top:10px;display:flex;align-items:center;gap:8px">
-              <label style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:700">Fecha última visita</label>
-              <input type="date" id="cgc-fecha-visita" onchange="cgcGuardarNota()" style="font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text)">
-            </div>
-          </div>
-          <div style="flex:1 1 320px;min-width:280px">
-            <label style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:700">Contexto del circuito y la macromedida</label>
-            <div id="cgc-contexto" style="font-size:12px;margin-top:6px"></div>
-          </div>
+        </div>
+        <div style="flex:1 1 320px;min-width:280px">
+          <label style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:700">Contexto del circuito y la macromedida</label>
+          <div id="cgc-contexto" style="font-size:12px;margin-top:6px"></div>
         </div>
       </div>
     </div>
+  </div>
 
-    <!-- ===== PESTAÑA 2 · Clientes con posible pérdida ===== -->
-    <div id="cgc-tab-ranking" class="hidden">
-      <div class="card">
-        <div style="display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px">
-          <div style="font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:.4px">🔎 Clientes con posible pérdida</div>
-          <div style="font-size:11px;color:var(--text3)">Ordenados por caída de consumo -- interanual cuando hay dato de hace un año (controla estacionalidad), si no contra su histórico general. Respeta los filtros de arriba.</div>
-        </div>
-        <div style="overflow-x:auto">
-          <table style="width:100%;border-collapse:collapse;font-size:12px" id="cgc-ranking-tabla"></table>
-        </div>
+  <!-- ============ MÓDULO 2 · Análisis Automático de Consumos ============ -->
+  <div id="cgc-mod-auto" class="hidden">
+    <div id="cga-filtro" class="fbar" style="margin-bottom:12px">
+      <label>Zona</label>
+      <div class="msel" id="msel-cga-zona"></div>
+      <label style="margin-left:10px">Alimentador</label>
+      <div class="msel" id="msel-cga-alim"></div>
+      <label style="margin-left:10px">Severidad</label>
+      <select id="cga-sev" onchange="cgaRender()" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:7px;background:var(--bg);color:var(--text)">
+        <option value="Baja">Todas (Baja o más)</option>
+        <option value="Media">Media o más</option>
+        <option value="Alta">Solo Alta</option>
+      </select>
+      <label style="margin-left:10px">Patrón</label>
+      <select id="cga-patron" onchange="cgaRender()" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:7px;background:var(--bg);color:var(--text)">
+        <option value="">Todos</option>
+        <option>Consumo en cero</option>
+        <option>Caída brusca</option>
+        <option>Caída sostenida</option>
+        <option>Caída moderada</option>
+      </select>
+      <label style="margin-left:10px">Nodo</label>
+      <input type="text" id="cga-nodo" placeholder="Ej. T04114" oninput="cgaRender()" autocomplete="off"
+        style="width:92px;padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg)">
+      <button type="button" class="be-modo-btn be-modo-btn-sm" onclick="cgaLimpiar()" title="Quitar todos los filtros">Limpiar</button>
+      <button type="button" class="be-modo-btn be-modo-btn-sm" style="margin-left:auto" onclick="cgaDescargarCsv()" title="Descarga la lista filtrada">&#11015; Descargar CSV</button>
+    </div>
+
+    <div class="card">
+      <div id="cga-tarjetas" class="tarjetas-fila-unica" style="margin-top:0"></div>
+      <div style="font-size:11px;color:var(--text3);margin:4px 0 12px">
+        Cada cliente se compara con su propio histórico: el mismo mes del año anterior (controla la estacionalidad) o, si no hay dato de hace un año, su consumo base.
+        <b>Alta</b>: consumo reciente en cero o caída &ge; 50%. <b>Media</b>: caída &ge; 30%. <b>Baja</b>: caída &ge; 15%.
+        "Energía dejada de registrar" = lo que consumía antes menos lo que consume, sumado en los meses seguidos que lleva por debajo del 80% de su referencia (estimada).
+        Haz clic en un cliente para ver su detalle.
+      </div>
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:12px" id="cga-tabla"></table>
       </div>
     </div>
   </div>
@@ -9940,29 +9964,33 @@ async function entrarClientesGrandesConsumos(){
 }
 
 // ===== Clientes Grandes Consumos =====
-// Misma estructura que "Detalle por Alimentador": pestañas, filtro arriba
-// (Zona / Alimentador / Nodo + Cliente con flechas ◀ ▶ ✕), tarjeta
-// .alim-resumen-compacta, título + gráfica a ancho completo y, debajo,
-// ficha / observación / contexto del circuito. "amarrar todo con todo" vía
-// el Nodo del cliente (ver app/routers/clientes_fm.py para el cruce).
+// Dos módulos en la barra lateral: "Análisis por Usuario" (misma estructura
+// que Detalle por Alimentador: filtro arriba con Zona/Alimentador múltiples +
+// Nodo, ◀ ▶ ✕ para recorrer clientes, tarjeta .alim-resumen-compacta,
+// gráfica a ancho completo y ficha/observación/contexto) y "Análisis
+// Automático de Consumos" (qué usuarios tienen pérdida según su consumo).
+// "amarrar todo con todo" vía el Nodo del cliente (ver app/routers/clientes_fm.py).
 let CGC_CUENTA_ACTUAL = null;
 let CGC_NOTA_TIMER = null;
 let CGC_LISTA = [];       // todos los clientes (GET /api/clientes-fm/lista)
 let CGC_FILTRADA = [];    // los que pasan Zona/Alimentador/Nodo, en orden de caída
-let CGC_TAB = 'detalle';
+let CGC_MODULO = 'usuario';
 let _cgcListaCargada = false;
 let chCgcConsumo = null;
 
 const _cgcFk = v => v==null ? '--' : `${Math.round(v).toLocaleString('es-CO')} kWh`;
 
-function cgcIrATab(nombre){
-  CGC_TAB = nombre;
-  ['detalle','ranking'].forEach(t => {
-    document.getElementById('cgc-tab-'+t)?.classList.toggle('hidden', t!==nombre);
-    document.getElementById('cgc-tab-btn-'+t)?.classList.toggle('activo', t===nombre);
-  });
-  document.getElementById('cgc-picker-wrap')?.classList.toggle('hidden', nombre!=='detalle');
-  if(nombre==='ranking') cgcRenderRanking();
+function cgcIrAModulo(modulo){
+  CGC_MODULO = modulo;
+  document.getElementById('cgc-mod-usuario').classList.toggle('hidden', modulo!=='usuario');
+  document.getElementById('cgc-mod-auto').classList.toggle('hidden', modulo!=='auto');
+  document.getElementById('cgc-nav-usuario').classList.toggle('active', modulo==='usuario');
+  document.getElementById('cgc-nav-auto').classList.toggle('active', modulo==='auto');
+  document.getElementById('cgc-sec-title').textContent = modulo==='usuario' ? '👤 Análisis por Usuario' : '🤖 Análisis Automático de Consumos';
+  document.getElementById('cgc-sec-sub').textContent = modulo==='usuario'
+    ? 'Ficha, consumo y cruce con el circuito de cada cliente de grandes consumos'
+    : 'Qué clientes tienen posible pérdida de energía según el análisis de su propio consumo';
+  if(modulo==='auto') cgaRender();
   else if(chCgcConsumo) chCgcConsumo.resize();
 }
 
@@ -9976,41 +10004,47 @@ async function cgcCargarLista(){
     _cgcListaCargada = false;
     return;
   }
-  const zonas = [...new Set(CGC_LISTA.map(f => f.zona).filter(Boolean))].sort();
-  _cgcPoblarSelect('cgc-f-zona', zonas, 'Todas');
+  const zonas = [...new Set(CGC_LISTA.map(f => f.zona).filter(Boolean))].sort().map(z => ({value:z, label:z}));
+  mselInit('msel-cgc-zona', 'Zona', 'Todas', zonas, () => cgcAplicarFiltros());
+  mselInit('msel-cgc-alim', 'Alimentador', 'Todos', _cgcOpcionesAlim([]), () => cgcAplicarFiltros(), [], 'Buscar alimentador...');
+  mselInit('msel-cga-zona', 'Zona', 'Todas', zonas, () => cgaRender());
+  mselInit('msel-cga-alim', 'Alimentador', 'Todos', _cgcOpcionesAlim([]), () => cgaRender(), [], 'Buscar alimentador...');
   cgcAplicarFiltros();
 }
 
-function _cgcPoblarSelect(id, valores, etiquetaTodos){
-  const sel = document.getElementById(id);
-  if(!sel) return;
-  const previo = sel.value;
-  sel.innerHTML = `<option value="">${etiquetaTodos}</option>` + valores.map(v => `<option value="${_mselEsc(v)}">${_mselEsc(v)}</option>`).join('');
-  sel.value = valores.includes(previo) ? previo : '';
+// Alimentadores disponibles según las Zonas elegidas (ninguna = todos).
+function _cgcOpcionesAlim(zonas){
+  const alims = [...new Set(CGC_LISTA.filter(f => !zonas.length || zonas.includes(f.zona)).map(f => f.alimentador).filter(Boolean))].sort();
+  return alims.map(a => ({value:a, label:a}));
 }
 
 function cgcLimpiarFiltros(){
-  document.getElementById('cgc-f-zona').value = '';
-  document.getElementById('cgc-f-alim').value = '';
+  mselClearSilent('msel-cgc-zona');
+  mselSetOpciones('msel-cgc-alim', _cgcOpcionesAlim([]));
+  mselClearSilent('msel-cgc-alim');
   document.getElementById('cgc-f-nodo').value = '';
   cgcAplicarFiltros();
 }
 
-// El desplegable de Alimentador solo ofrece los de la Zona elegida.
+// Filtra los clientes por Zona(s), Alimentador(es) y Nodo.
+function _cgcFiltrar(idZona, idAlim, nodoTxt){
+  const zonas = mselValores(idZona), alims = mselValores(idAlim);
+  const nodo = (nodoTxt || '').trim().toUpperCase();
+  return CGC_LISTA.filter(f =>
+    (!zonas.length || zonas.includes(f.zona)) && (!alims.length || alims.includes(f.alimentador))
+    && (!nodo || (f.nodo||'').toUpperCase().includes(nodo)));
+}
+
 function cgcAplicarFiltros(){
-  const zona = document.getElementById('cgc-f-zona').value;
-  const alims = [...new Set(CGC_LISTA.filter(f => !zona || f.zona===zona).map(f => f.alimentador).filter(Boolean))].sort();
-  _cgcPoblarSelect('cgc-f-alim', alims, 'Todos');
-  const alim = document.getElementById('cgc-f-alim').value;
-  const nodo = document.getElementById('cgc-f-nodo').value.trim().toUpperCase();
-  CGC_FILTRADA = CGC_LISTA.filter(f =>
-    (!zona || f.zona===zona) && (!alim || f.alimentador===alim) && (!nodo || (f.nodo||'').toUpperCase().includes(nodo)));
+  // El desplegable de Alimentador solo ofrece los de las Zonas elegidas (y
+  // descarta solo los que ya no apliquen).
+  mselSetOpciones('msel-cgc-alim', _cgcOpcionesAlim(mselValores('msel-cgc-zona')));
+  CGC_FILTRADA = _cgcFiltrar('msel-cgc-zona', 'msel-cgc-alim', document.getElementById('cgc-f-nodo').value);
   const n = CGC_FILTRADA.length;
   document.getElementById('cgc-conteo').textContent = `${n} cliente${n===1?'':'s'}${CGC_LISTA.length!==n ? ` de ${CGC_LISTA.length}` : ''}`;
-  if(CGC_TAB==='ranking') cgcRenderRanking();
   // Si el cliente elegido ya no está en el filtro (o aún no hay ninguno),
   // salta al primero de la lista filtrada -- el que más cayó.
-  if(CGC_TAB==='detalle' && (CGC_FILTRADA.length || CGC_CUENTA_ACTUAL)){
+  if(CGC_FILTRADA.length || CGC_CUENTA_ACTUAL){
     const sigue = CGC_FILTRADA.some(f => f.cuenta===CGC_CUENTA_ACTUAL);
     if(!sigue){
       if(CGC_FILTRADA.length) cgcElegirCliente(CGC_FILTRADA[0].cuenta);
@@ -10201,38 +10235,6 @@ function cgcRenderContexto(al, ma){
   ]);
 }
 
-function cgcRenderRanking(){
-  const cont = document.getElementById('cgc-ranking-tabla');
-  const filas = CGC_FILTRADA.filter(f => f.suficiente && f.caida_kwh_mensual>0).slice(0, 300);
-  if(!filas.length){
-    cont.innerHTML = `<tr><td style="padding:10px;color:var(--text3);font-size:12px">${CGC_LISTA.length ? 'Ningún cliente con caída de consumo con estos filtros.' : 'Cargando...'}</td></tr>`;
-    return;
-  }
-  const encab = ['Cuenta','Usuario','Zona','Alimentador','Nodo','Comparación','Consumo Base','Consumo Reciente','Caída','% Caída'];
-  const thead = `<thead><tr>${encab.map(h=>`<th style="text-align:left;padding:6px 8px;font-size:10.5px;text-transform:uppercase;color:var(--text3);border-bottom:1px solid var(--border)">${h}</th>`).join('')}</tr></thead>`;
-  const metodoTxt = m => m==='interanual'
-    ? '<span title="Mismo mes, un año antes -- controla estacionalidad">Interanual</span>'
-    : '<span style="color:var(--text3)" title="No hay dato de hace un año -- comparado contra la mediana del resto de su histórico">Histórico general</span>';
-  const tbody = filas.map(f => `<tr onclick="cgcIrACliente('${f.cuenta}')" style="cursor:pointer;border-bottom:1px solid var(--border)">
-      <td style="padding:6px 8px;font-weight:700;white-space:nowrap">${f.cuenta}</td>
-      <td style="padding:6px 8px">${_mselEsc(f.nombre_usuario||'--')}</td>
-      <td style="padding:6px 8px;white-space:nowrap">${_mselEsc(f.zona||'--')}</td>
-      <td style="padding:6px 8px">${_mselEsc(f.alimentador||'--')}</td>
-      <td style="padding:6px 8px;white-space:nowrap">${_mselEsc(f.nodo||'--')}</td>
-      <td style="padding:6px 8px;font-size:11px">${metodoTxt(f.metodo)}</td>
-      <td style="padding:6px 8px">${_cgcFk(f.consumo_base_kwh)}/mes</td>
-      <td style="padding:6px 8px">${_cgcFk(f.consumo_reciente_kwh)}/mes</td>
-      <td style="padding:6px 8px;font-weight:800;color:#ef476f">${_cgcFk(f.caida_kwh_mensual)}/mes</td>
-      <td style="padding:6px 8px;font-weight:700">${f.caida_pct!=null?f.caida_pct.toFixed(1)+'%':'--'}</td>
-    </tr>`).join('');
-  cont.innerHTML = thead + `<tbody>${tbody}</tbody>`;
-}
-
-function cgcIrACliente(cuenta){
-  cgcIrATab('detalle');
-  cgcElegirCliente(cuenta);
-}
-
 function cgcGuardarNota(){
   if(!CGC_CUENTA_ACTUAL || !EDITOR || OFFLINE_MODO) return;
   clearTimeout(CGC_NOTA_TIMER);
@@ -10246,6 +10248,94 @@ function cgcGuardarNota(){
 document.addEventListener('click', (ev) => {
   if(!ev.target.closest || !ev.target.closest('#cgc-picker-wrap')) cgcCerrarLista();
 });
+
+// ---------- Análisis Automático de Consumos ----------
+const CGA_COLOR_SEV = {Alta:'#ef476f', Media:'#f4a261', Baja:'#f1c40f'};
+const CGA_RANGO_SEV = {Baja:1, Media:2, Alta:3};
+let CGA_FILAS = [];   // las que se ven ahora (para el CSV)
+
+function cgaLimpiar(){
+  mselSetOpciones('msel-cga-alim', _cgcOpcionesAlim([]));
+  mselClearSilent('msel-cga-zona');
+  mselClearSilent('msel-cga-alim');
+  document.getElementById('cga-sev').value = 'Baja';
+  document.getElementById('cga-patron').value = '';
+  document.getElementById('cga-nodo').value = '';
+  cgaRender();
+}
+
+function cgaRender(){
+  const tabla = document.getElementById('cga-tabla');
+  if(!tabla) return;
+  if(!CGC_LISTA.length){
+    tabla.innerHTML = `<tr><td style="padding:10px;color:var(--text3);font-size:12px">Cargando...</td></tr>`;
+    return;
+  }
+  mselSetOpciones('msel-cga-alim', _cgcOpcionesAlim(mselValores('msel-cga-zona')));
+  const base = _cgcFiltrar('msel-cga-zona', 'msel-cga-alim', document.getElementById('cga-nodo').value);
+  const sevMin = CGA_RANGO_SEV[document.getElementById('cga-sev').value] || 1;
+  const patron = document.getElementById('cga-patron').value;
+  const filas = base.filter(f => f.severidad && CGA_RANGO_SEV[f.severidad]>=sevMin && (!patron || f.patron===patron))
+    .sort((a,b) => (CGA_RANGO_SEV[b.severidad]-CGA_RANGO_SEV[a.severidad]) || ((b.energia_no_registrada_kwh||0)-(a.energia_no_registrada_kwh||0)) || ((b.caida_kwh_mensual||0)-(a.caida_kwh_mensual||0)));
+  CGA_FILAS = filas;
+
+  const cuenta = s => base.filter(f => f.severidad===s).length;
+  const kwhMes = filas.reduce((s,f) => s + (f.caida_kwh_mensual||0), 0);
+  const tile = (etq, val, color) => `<div class="be-resumen-tile"><div class="etiqueta">${etq}</div><div class="valor"${color?` style="color:${color}"`:''}>${val}</div></div>`;
+  document.getElementById('cga-tarjetas').innerHTML = [
+    tile('Clientes analizados', base.length.toLocaleString('es-CO')),
+    tile('Con posible pérdida', (cuenta('Alta')+cuenta('Media')+cuenta('Baja')).toLocaleString('es-CO')),
+    tile('Severidad Alta', cuenta('Alta').toLocaleString('es-CO'), CGA_COLOR_SEV.Alta),
+    tile('Severidad Media', cuenta('Media').toLocaleString('es-CO'), CGA_COLOR_SEV.Media),
+    tile('Severidad Baja', cuenta('Baja').toLocaleString('es-CO'), CGA_COLOR_SEV.Baja),
+    tile('Caída en la lista (kWh/mes)', _cgcFk(kwhMes)),
+  ].join('');
+
+  if(!filas.length){
+    tabla.innerHTML = `<tr><td style="padding:10px;color:var(--text3);font-size:12px">Ningún cliente con posible pérdida con estos filtros.</td></tr>`;
+    return;
+  }
+  const encab = ['Severidad','Cuenta','Usuario','Zona','Alimentador','Nodo','Patrón','Meses en caída','Consumo base','Consumo reciente','Caída (kWh/mes)','% Caída','Energía dejada de registrar (est.)'];
+  const thead = `<thead><tr>${encab.map(h=>`<th style="text-align:left;padding:6px 8px;font-size:10.5px;text-transform:uppercase;color:var(--text3);border-bottom:1px solid var(--border)">${h}</th>`).join('')}</tr></thead>`;
+  const tbody = filas.slice(0, 500).map(f => {
+    const c = CGA_COLOR_SEV[f.severidad];
+    return `<tr onclick="cgcIrACliente('${f.cuenta}')" style="cursor:pointer;border-bottom:1px solid var(--border)">
+      <td style="padding:6px 8px"><span class="zb" style="background:${c}33;color:var(--text);font-weight:700">${f.severidad}</span></td>
+      <td style="padding:6px 8px;font-weight:700;white-space:nowrap">${f.cuenta}</td>
+      <td style="padding:6px 8px">${_mselEsc(f.nombre_usuario||'--')}</td>
+      <td style="padding:6px 8px;white-space:nowrap">${_mselEsc(f.zona||'--')}</td>
+      <td style="padding:6px 8px">${_mselEsc(f.alimentador||'--')}</td>
+      <td style="padding:6px 8px;white-space:nowrap">${_mselEsc(f.nodo||'--')}</td>
+      <td style="padding:6px 8px">${_mselEsc(f.patron||'--')}</td>
+      <td style="padding:6px 8px;text-align:center">${f.meses_en_caida||0}</td>
+      <td style="padding:6px 8px">${_cgcFk(f.consumo_base_kwh)}/mes</td>
+      <td style="padding:6px 8px">${_cgcFk(f.consumo_reciente_kwh)}/mes</td>
+      <td style="padding:6px 8px;font-weight:800;color:#ef476f">${_cgcFk(f.caida_kwh_mensual)}</td>
+      <td style="padding:6px 8px;font-weight:700">${f.caida_pct!=null?f.caida_pct.toFixed(1)+'%':'--'}</td>
+      <td style="padding:6px 8px">${_cgcFk(f.energia_no_registrada_kwh)}</td>
+    </tr>`;
+  }).join('');
+  tabla.innerHTML = thead + `<tbody>${tbody}</tbody>` +
+    (filas.length>500 ? `<tfoot><tr><td colspan="13" style="padding:8px;color:var(--text3);font-size:11px">Se muestran los primeros 500 de ${filas.length}; filtra para acotar o descarga el CSV completo.</td></tr></tfoot>` : '');
+}
+
+function cgaDescargarCsv(){
+  if(!CGA_FILAS.length){ alert('No hay clientes en la lista con estos filtros.'); return; }
+  const enc = ['Severidad','Cuenta','Usuario','Zona','Alimentador','Nodo','Municipio','Patron','Meses en caida','Consumo base kWh/mes','Consumo reciente kWh/mes','Caida kWh/mes','% Caida','Energia dejada de registrar kWh (est.)'];
+  const q = v => { const t = v==null ? '' : String(v); return /[;"]/.test(t) ? '"' + t.replace(/"/g,'""') + '"' : t; };
+  const filas = CGA_FILAS.map(f => [f.severidad, f.cuenta, f.nombre_usuario, f.zona, f.alimentador, f.nodo, f.nombre_muni, f.patron, f.meses_en_caida,
+    f.consumo_base_kwh, f.consumo_reciente_kwh, f.caida_kwh_mensual, f.caida_pct, f.energia_no_registrada_kwh].map(q).join(';'));
+  const texto = '﻿' + [enc.join(';'), ...filas].join('\r\n');
+  _expDescargarBlob(new Blob([texto], {type:'text/csv;charset=utf-8'}), 'Analisis_automatico_consumos.csv');
+}
+
+function cgcIrACliente(cuenta){
+  // Para que el cliente aparezca en la lista del módulo de usuario, se
+  // quitan los filtros de ese módulo que lo dejarían afuera.
+  if(!CGC_FILTRADA.some(f => f.cuenta===cuenta)) cgcLimpiarFiltros();
+  cgcIrAModulo('usuario');
+  cgcElegirCliente(cuenta);
+}
 
 // URL del túnel de Suplencias_App (Flask propio, corre local en el PC del
 // usuario) -- cambia si se reinicia el túnel, igual que API_BASE_URL del
