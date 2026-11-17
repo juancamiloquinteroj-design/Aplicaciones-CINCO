@@ -1709,7 +1709,8 @@ html,body{overflow-x:hidden;margin:0}
     <div class="card">
       <div id="cga-tarjetas" class="tarjetas-fila-unica" style="margin-top:0"></div>
       <div style="font-size:11px;color:var(--text3);margin:4px 0 12px">
-        Cada cliente se compara con su propio histórico: el mismo mes del año anterior (controla la estacionalidad) o, si no hay dato de hace un año, su consumo base.
+        <b>Primero</b> van los clientes cuyo <b>nodo tiene pérdida medida</b> (la macromedida del nodo marca &ge; 7%, de mayor a menor kWh): son pérdidas "fijas", no estimadas.
+        Después, los que tienen <b>caída de consumo</b>. Cada cliente se compara con su propio histórico: el mismo mes del año anterior (controla la estacionalidad) o, si no hay dato de hace un año, su consumo base.
         <b>Alta</b>: consumo reciente en cero o caída &ge; 50%. <b>Media</b>: caída &ge; 30%. <b>Baja</b>: caída &ge; 15%.
         "Energía dejada de registrar" = lo que consumía antes menos lo que consume, sumado en los meses seguidos que lleva por debajo del 80% de su referencia (estimada).
         Haz clic en un cliente para ver su detalle.
@@ -10376,8 +10377,14 @@ function cgaRender(){
   const base = _cgcFiltrar('msel-cga-zona', 'msel-cga-alim', document.getElementById('cga-nodo').value);
   const sevMin = CGA_RANGO_SEV[document.getElementById('cga-sev').value] || 1;
   const patron = document.getElementById('cga-patron').value;
-  const filas = base.filter(f => f.severidad && CGA_RANGO_SEV[f.severidad]>=sevMin && (!patron || f.patron===patron))
-    .sort((a,b) => (CGA_RANGO_SEV[b.severidad]-CGA_RANGO_SEV[a.severidad]) || ((b.energia_no_registrada_kwh||0)-(a.energia_no_registrada_kwh||0)) || ((b.caida_kwh_mensual||0)-(a.caida_kwh_mensual||0)));
+  // Entran los que tienen PÉRDIDA EN EL NODO (la macromedida de su nodo marca >= 7%) y los que
+  // tienen caída de consumo de la severidad elegida. Los de pérdida en el nodo van PRIMERO (son
+  // pérdidas medidas, "fijas"), de mayor a menor kWh de pérdida del nodo; después, el resto por
+  // severidad y energía dejada de registrar.
+  const sevDe = f => f.severidad ? CGA_RANGO_SEV[f.severidad] : 0;
+  const filas = base.filter(f => (f.perdida_nodo || (f.severidad && sevDe(f)>=sevMin)) && (!patron || f.patron===patron))
+    .sort((a,b) => ((b.perdida_nodo?1:0)-(a.perdida_nodo?1:0)) || (a.perdida_nodo && b.perdida_nodo ? ((b.macro_kwh||0)-(a.macro_kwh||0)) : 0)
+      || (sevDe(b)-sevDe(a)) || ((b.energia_no_registrada_kwh||0)-(a.energia_no_registrada_kwh||0)) || ((b.caida_kwh_mensual||0)-(a.caida_kwh_mensual||0)));
   CGA_FILAS = filas;
 
   const cuenta = s => base.filter(f => f.severidad===s).length;
@@ -10385,7 +10392,8 @@ function cgaRender(){
   const tile = (etq, val, color) => `<div class="be-resumen-tile"><div class="etiqueta">${etq}</div><div class="valor"${color?` style="color:${color}"`:''}>${val}</div></div>`;
   document.getElementById('cga-tarjetas').innerHTML = [
     tile('Clientes analizados', base.length.toLocaleString('es-CO')),
-    tile('Con posible pérdida', (cuenta('Alta')+cuenta('Media')+cuenta('Baja')).toLocaleString('es-CO')),
+    tile('Pérdida en el nodo (≥ 7%)', base.filter(f => f.perdida_nodo).length.toLocaleString('es-CO'), '#ef476f'),
+    tile('Con caída de consumo', (cuenta('Alta')+cuenta('Media')+cuenta('Baja')).toLocaleString('es-CO')),
     tile('Severidad Alta', cuenta('Alta').toLocaleString('es-CO'), CGA_COLOR_SEV.Alta),
     tile('Severidad Media', cuenta('Media').toLocaleString('es-CO'), CGA_COLOR_SEV.Media),
     tile('Severidad Baja', cuenta('Baja').toLocaleString('es-CO'), CGA_COLOR_SEV.Baja),
@@ -10396,12 +10404,16 @@ function cgaRender(){
     tabla.innerHTML = `<tr><td style="padding:10px;color:var(--text3);font-size:12px">Ningún cliente con posible pérdida con estos filtros.</td></tr>`;
     return;
   }
-  const encab = ['Severidad','Cuenta','Usuario','Zona','Alimentador','Nodo','Patrón','Meses en caída','Consumo base','Consumo reciente','Caída (kWh/mes)','% Caída','Energía dejada de registrar (est.)'];
+  const encab = ['Pérdida en el nodo','Severidad','Cuenta','Usuario','Zona','Alimentador','Nodo','Patrón','Meses en caída','Consumo base','Consumo reciente','Caída (kWh/mes)','% Caída','Energía dejada de registrar (est.)'];
   const thead = `<thead><tr>${encab.map(h=>`<th style="text-align:left;padding:6px 8px;font-size:10.5px;text-transform:uppercase;color:var(--text3);border-bottom:1px solid var(--border)">${h}</th>`).join('')}</tr></thead>`;
   const tbody = filas.slice(0, 500).map(f => {
-    const c = CGA_COLOR_SEV[f.severidad];
-    return `<tr onclick="cgcIrACliente('${f.cuenta}')" style="cursor:pointer;border-bottom:1px solid var(--border)">
-      <td style="padding:6px 8px"><span class="zb" style="background:${c}33;color:var(--text);font-weight:700">${f.severidad}</span></td>
+    const c = f.severidad ? CGA_COLOR_SEV[f.severidad] : '#9aa3b2';
+    const nodoTxt = !f.tiene_macro ? '<span style="color:var(--text3)">Sin macro</span>'
+      : (f.perdida_nodo ? `<span style="color:#ef476f;font-weight:800">${(f.macro_pct*100).toFixed(1)}% -- ${_cgcFk(f.macro_kwh)}</span><div style="font-size:10px;color:var(--text3)">${f.macro_periodo}</div>`
+        : `<span style="color:var(--text3)">${f.macro_pct!=null ? (f.macro_pct*100).toFixed(1)+'%' : '--'}</span>`);
+    return `<tr onclick="cgcIrACliente('${f.cuenta}')" style="cursor:pointer;border-bottom:1px solid var(--border);${f.perdida_nodo?'background:rgba(239,71,111,.07)':''}">
+      <td style="padding:6px 8px;white-space:nowrap">${nodoTxt}</td>
+      <td style="padding:6px 8px"><span class="zb" style="background:${c}33;color:var(--text);font-weight:700">${f.severidad || '--'}</span></td>
       <td style="padding:6px 8px;font-weight:700;white-space:nowrap">${f.cuenta}</td>
       <td style="padding:6px 8px">${_mselEsc(f.nombre_usuario||'--')}</td>
       <td style="padding:6px 8px;white-space:nowrap">${_mselEsc(f.zona||'--')}</td>
@@ -10417,14 +10429,14 @@ function cgaRender(){
     </tr>`;
   }).join('');
   tabla.innerHTML = thead + `<tbody>${tbody}</tbody>` +
-    (filas.length>500 ? `<tfoot><tr><td colspan="13" style="padding:8px;color:var(--text3);font-size:11px">Se muestran los primeros 500 de ${filas.length}; filtra para acotar o descarga el CSV completo.</td></tr></tfoot>` : '');
+    (filas.length>500 ? `<tfoot><tr><td colspan="14" style="padding:8px;color:var(--text3);font-size:11px">Se muestran los primeros 500 de ${filas.length}; filtra para acotar o descarga el CSV completo.</td></tr></tfoot>` : '');
 }
 
 function cgaDescargarCsv(){
   if(!CGA_FILAS.length){ alert('No hay clientes en la lista con estos filtros.'); return; }
-  const enc = ['Severidad','Cuenta','Usuario','Zona','Alimentador','Nodo','Municipio','Patron','Meses en caida','Consumo base kWh/mes','Consumo reciente kWh/mes','Caida kWh/mes','% Caida','Energia dejada de registrar kWh (est.)'];
+  const enc = ['Perdida en el nodo %','Perdida en el nodo kWh','Periodo nodo','Severidad','Cuenta','Usuario','Zona','Alimentador','Nodo','Municipio','Patron','Meses en caida','Consumo base kWh/mes','Consumo reciente kWh/mes','Caida kWh/mes','% Caida','Energia dejada de registrar kWh (est.)'];
   const q = v => { const t = v==null ? '' : String(v); return /[;"]/.test(t) ? '"' + t.replace(/"/g,'""') + '"' : t; };
-  const filas = CGA_FILAS.map(f => [f.severidad, f.cuenta, f.nombre_usuario, f.zona, f.alimentador, f.nodo, f.nombre_muni, f.patron, f.meses_en_caida,
+  const filas = CGA_FILAS.map(f => [f.tiene_macro && f.macro_pct!=null ? (f.macro_pct*100).toFixed(2) : '', f.macro_kwh, f.macro_periodo, f.severidad, f.cuenta, f.nombre_usuario, f.zona, f.alimentador, f.nodo, f.nombre_muni, f.patron, f.meses_en_caida,
     f.consumo_base_kwh, f.consumo_reciente_kwh, f.caida_kwh_mensual, f.caida_pct, f.energia_no_registrada_kwh].map(q).join(';'));
   const texto = '﻿' + [enc.join(';'), ...filas].join('\r\n');
   _expDescargarBlob(new Blob([texto], {type:'text/csv;charset=utf-8'}), 'Analisis_automatico_consumos.csv');
