@@ -4845,7 +4845,7 @@ html,body{overflow-x:hidden;margin:0}
           <label style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:700">Comentarios</label>
           <div id="alim3-comentarios" class="ip-comentario-caja" style="margin-top:6px;font-size:11.5px;padding:10px 12px"></div>
           <!-- Descarga del Maestro de Compactos OFICIAL (el mismo CSV que alimenta la base) -->
-          <button type="button" class="be-modo-btn be-modo-btn-sm" id="alim3-btn-maestro-compactos" onclick="descargarMaestroCompactos()" style="margin-top:10px;display:none" title="Descarga el Maestro_Compactos.csv oficial (Transformador, Compacto, Nombre, Alimentador)">&#11015; Descargar maestro compactos</button>
+          <button type="button" class="be-modo-btn be-modo-btn-sm" id="alim3-btn-maestro-compactos" onclick="descargarMaestroCompactos()" style="margin-top:10px;display:none" title="Descarga los transformadores del compacto seleccionado (Transformador, Compacto, Nombre, Alimentador)">&#11015; Descargar maestro compactos</button>
 
         </div>
         <!-- Análisis por mes del alimentador elegido -- lo escribe el
@@ -38842,12 +38842,14 @@ async function descargarMaestroCompactos(){
   const txt = '⬇ Descargar maestro compactos';
   if(btn){ btn.disabled = true; btn.textContent = '⏳ Descargando…'; }
   try{
-    const res = await fetchConTimeout(`${API_BASE_URL}/api/alimentadores/maestro-compactos/descargar`, {headers: authHeaders()}, AUTH_TIMEOUT_MS);
+    // Solo el compacto que está seleccionado (su nemónico = código "Cmp100xx").
+    const cod = ALIM3_NEMONICO_SEL || '';
+    const res = await fetchConTimeout(`${API_BASE_URL}/api/alimentadores/maestro-compactos/descargar?compacto=${encodeURIComponent(cod)}`, {headers: authHeaders()}, AUTH_TIMEOUT_MS);
     if(!res.ok){
       const d = await res.json().catch(() => null);
       throw new Error((d && d.detail) || 'No se pudo descargar el maestro de compactos.');
     }
-    _expDescargarBlob(await res.blob(), 'Maestro_Compactos.csv');
+    _expDescargarBlob(await res.blob(), `Maestro_Compactos_${cod}.csv`);
   }catch(e){
     alert(e.message || 'Error al descargar.');
   }finally{
