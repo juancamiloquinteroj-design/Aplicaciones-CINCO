@@ -1614,54 +1614,78 @@ html,body{overflow-x:hidden;margin:0}
     <div class="sec-title">🏭 Clientes Grandes Consumos</div>
     <div class="sec-sub">Seguimiento y análisis de clientes de grandes consumos</div>
   </div>
-  <div class="card">
-    <div style="position:relative;max-width:460px">
-      <input type="text" id="cgc-buscador" placeholder="Busca por Cuenta o por nombre de Usuario..." oninput="cgcBuscarInput()" autocomplete="off"
-        style="width:100%;box-sizing:border-box;padding:9px 12px;font-size:13px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text)">
-      <div id="cgc-buscador-resultados" class="hidden" style="position:absolute;z-index:20;top:100%;left:0;right:0;margin-top:4px;max-height:280px;overflow:auto;background:var(--bg);border:1px solid var(--border);border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.18)"></div>
-    </div>
-  </div>
 
-  <div id="cgc-ranking" class="card">
-    <div style="display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px">
-      <div style="font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:.4px">🔎 Clientes con posible pérdida</div>
-      <div style="font-size:11px;color:var(--text3)">Ordenados por caída de consumo -- interanual cuando hay dato de hace un año (controla estacionalidad), si no contra su histórico general</div>
+  <div id="cgc-contenido">
+    <div class="pt-tabs">
+      <button type="button" class="pt-tab-btn activo" id="cgc-tab-btn-detalle" onclick="cgcIrATab('detalle')">Detalle por Cliente</button>
+      <button type="button" class="pt-tab-btn" id="cgc-tab-btn-ranking" onclick="cgcIrATab('ranking')">Clientes con posible pérdida</button>
     </div>
-    <div style="overflow-x:auto">
-      <table style="width:100%;border-collapse:collapse;font-size:12px" id="cgc-ranking-tabla"></table>
-    </div>
-  </div>
 
-  <div id="cgc-detalle" class="hidden">
-    <div class="card">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-        <div id="cgc-detalle-titulo" style="font-size:15px;font-weight:800"></div>
-        <button type="button" class="be-modo-btn" onclick="cgcCerrarDetalle()">✕ Volver a la lista</button>
+    <!-- Filtros: Zona / Alimentador / Nodo filtran la lista de clientes (ambas
+         pestañas); Cliente + flechas recorren la lista ya filtrada -- mismo
+         patrón que Detalle por Alimentador (◀ buscador ▶ ✕). -->
+    <div id="cgc-filtro" class="fbar" style="margin-bottom:12px">
+      <label>Zona</label>
+      <select id="cgc-f-zona" onchange="cgcAplicarFiltros()" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:7px;background:var(--bg);color:var(--text)"></select>
+      <label style="margin-left:10px">Alimentador</label>
+      <select id="cgc-f-alim" onchange="cgcAplicarFiltros()" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:7px;background:var(--bg);color:var(--text);max-width:240px"></select>
+      <label style="margin-left:10px">Nodo</label>
+      <input type="text" id="cgc-f-nodo" placeholder="Ej. T04114" oninput="cgcAplicarFiltros()" autocomplete="off"
+        style="width:92px;padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg)">
+      <button type="button" class="be-modo-btn be-modo-btn-sm" onclick="cgcLimpiarFiltros()" title="Quitar Zona, Alimentador y Nodo">Limpiar</button>
+      <span id="cgc-picker-wrap" style="display:inline-flex;align-items:center;gap:8px">
+        <label style="margin-left:10px">Cliente</label>
+        <button type="button" class="be-modo-btn be-icon-btn" onclick="cgcSiguienteCliente(-1)" title="Cliente anterior" style="width:22px;height:22px;font-size:10px">◀</button>
+        <div class="msel" style="position:relative">
+          <input type="text" id="cgc-buscar" placeholder="Buscar cuenta / usuario..." autocomplete="off"
+            oninput="cgcAbrirLista()" onfocus="this.select();cgcAbrirLista()"
+            style="width:230px;padding:6px 10px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg);box-sizing:border-box">
+          <div id="cgc-lista" class="msel-panel hidden" style="width:380px"></div>
+        </div>
+        <button type="button" class="be-modo-btn be-icon-btn" onclick="cgcSiguienteCliente(1)" title="Siguiente cliente" style="width:22px;height:22px;font-size:10px">▶</button>
+        <button type="button" class="be-modo-btn be-icon-btn hidden" id="cgc-btn-quitar" onclick="cgcQuitarCliente()" title="Quitar cliente elegido">✕</button>
+      </span>
+      <span id="cgc-conteo" style="font-size:11px;color:var(--text3)"></span>
+    </div>
+
+    <!-- ===== PESTAÑA 1 · Detalle por Cliente ===== -->
+    <div id="cgc-tab-detalle">
+      <div class="card">
+        <div id="cgc-tarjetas" class="no-exportar" style="margin-bottom:16px"></div>
+        <div id="cgc-titulo" style="text-align:center;font-size:15px;font-weight:800;letter-spacing:1px;color:var(--text);text-transform:uppercase;margin-bottom:10px">Elige un cliente</div>
+        <div class="chart-wrap" style="height:400px"><canvas id="ch-cgc-consumo"></canvas></div>
+
+        <div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:18px">
+          <div style="flex:1 1 320px;min-width:280px">
+            <div id="cgc-ficha" style="font-size:12px"></div>
+          </div>
+          <div style="flex:1 1 320px;min-width:280px">
+            <label style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:700">Observación</label>
+            <textarea id="cgc-observacion" rows="5" oninput="cgcGuardarNota()" placeholder="Escribe acá cualquier observación sobre este cliente."
+              style="width:100%;box-sizing:border-box;margin-top:6px;font-size:11.5px;line-height:1.5;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);resize:vertical"></textarea>
+            <div style="margin-top:10px;display:flex;align-items:center;gap:8px">
+              <label style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:700">Fecha última visita</label>
+              <input type="date" id="cgc-fecha-visita" onchange="cgcGuardarNota()" style="font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text)">
+            </div>
+          </div>
+          <div style="flex:1 1 320px;min-width:280px">
+            <label style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:700">Contexto del circuito y la macromedida</label>
+            <div id="cgc-contexto" style="font-size:12px;margin-top:6px"></div>
+          </div>
+        </div>
       </div>
-      <div class="tarjetas-fila-unica" id="cgc-ficha-tarjetas"></div>
     </div>
 
-    <div class="card">
-      <div class="chart-wrap" style="height:320px"><canvas id="ch-cgc-consumo"></canvas></div>
-    </div>
-
-    <div class="card">
-      <div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;margin-bottom:8px">⚠️ Caída de consumo (vs. su propio histórico)</div>
-      <div class="tarjetas-fila-unica" id="cgc-desviacion-tarjetas"></div>
-    </div>
-
-    <div class="card">
-      <div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;color:var(--text3);margin-bottom:8px">Contexto: alimentador y macromedida del circuito</div>
-      <div class="tarjetas-fila-unica" id="cgc-perdidas-tarjetas"></div>
-    </div>
-
-    <div class="card">
-      <label style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:700">Observación</label>
-      <textarea id="cgc-observacion" rows="4" oninput="cgcGuardarNota()" placeholder="Escribe acá cualquier observación sobre este cliente."
-        style="width:100%;box-sizing:border-box;margin-top:6px;font-size:12px;line-height:1.5;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);resize:vertical"></textarea>
-      <div style="margin-top:10px;display:flex;align-items:center;gap:8px">
-        <label style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:700">Fecha última visita</label>
-        <input type="date" id="cgc-fecha-visita" onchange="cgcGuardarNota()" style="font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text)">
+    <!-- ===== PESTAÑA 2 · Clientes con posible pérdida ===== -->
+    <div id="cgc-tab-ranking" class="hidden">
+      <div class="card">
+        <div style="display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+          <div style="font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:.4px">🔎 Clientes con posible pérdida</div>
+          <div style="font-size:11px;color:var(--text3)">Ordenados por caída de consumo -- interanual cuando hay dato de hace un año (controla estacionalidad), si no contra su histórico general. Respeta los filtros de arriba.</div>
+        </div>
+        <div style="overflow-x:auto">
+          <table style="width:100%;border-collapse:collapse;font-size:12px" id="cgc-ranking-tabla"></table>
+        </div>
       </div>
     </div>
   </div>
@@ -9909,113 +9933,146 @@ async function entrarClientesGrandesConsumos(){
     document.body.classList.add('sidebar-fija');
     document.getElementById('cgc-sidebar').classList.remove('hidden');
   }
-  if(!_cgcRankingCargado){
-    _cgcRankingCargado = true;
-    cgcCargarRanking();
+  if(!_cgcListaCargada){
+    _cgcListaCargada = true;
+    cgcCargarLista();
   }
 }
 
-// ===== Clientes Grandes Consumos -- primera entrega =====
-// Buscador por Cuenta/Usuario -> ficha + gráfica de consumo + Observación/
-// Fecha última visita (editables) + cruce de pérdida de Alimentador/
-// Macromedida -- "amarrar todo con todo" vía el Nodo del cliente (pedido
-// explícito, ver app/routers/clientes_fm.py para el cruce completo).
+// ===== Clientes Grandes Consumos =====
+// Misma estructura que "Detalle por Alimentador": pestañas, filtro arriba
+// (Zona / Alimentador / Nodo + Cliente con flechas ◀ ▶ ✕), tarjeta
+// .alim-resumen-compacta, título + gráfica a ancho completo y, debajo,
+// ficha / observación / contexto del circuito. "amarrar todo con todo" vía
+// el Nodo del cliente (ver app/routers/clientes_fm.py para el cruce).
 let CGC_CUENTA_ACTUAL = null;
-let CGC_BUSCAR_TIMER = null;
 let CGC_NOTA_TIMER = null;
-let _cgcRankingCargado = false;
+let CGC_LISTA = [];       // todos los clientes (GET /api/clientes-fm/lista)
+let CGC_FILTRADA = [];    // los que pasan Zona/Alimentador/Nodo, en orden de caída
+let CGC_TAB = 'detalle';
+let _cgcListaCargada = false;
 let chCgcConsumo = null;
 
-// Colores de severidad -- mismos rangos que usa Categorización de Nodos
-// para % de pérdida por nodo (ver app/routers/categorizacion_nodos.py):
-// 0-7% verde, 7-15% amarillo, 15-30%+ naranja, negativo o sin dato rojo/gris.
-function _cgcColorPct(pct){
-  if(pct==null) return '#9aa3b2';
-  if(pct < 0) return '#ef476f';
-  if(pct <= 0.07) return '#2ecc71';
-  if(pct <= 0.15) return '#f1c40f';
-  return '#ef476f';
+const _cgcFk = v => v==null ? '--' : `${Math.round(v).toLocaleString('es-CO')} kWh`;
+
+function cgcIrATab(nombre){
+  CGC_TAB = nombre;
+  ['detalle','ranking'].forEach(t => {
+    document.getElementById('cgc-tab-'+t)?.classList.toggle('hidden', t!==nombre);
+    document.getElementById('cgc-tab-btn-'+t)?.classList.toggle('activo', t===nombre);
+  });
+  document.getElementById('cgc-picker-wrap')?.classList.toggle('hidden', nombre!=='detalle');
+  if(nombre==='ranking') cgcRenderRanking();
+  else if(chCgcConsumo) chCgcConsumo.resize();
 }
 
-async function cgcCargarRanking(){
-  const cont = document.getElementById('cgc-ranking-tabla');
-  cont.innerHTML = `<tr><td style="padding:10px;color:var(--text3);font-size:12px">Cargando...</td></tr>`;
-  let datos;
+async function cgcCargarLista(){
+  const cont = document.getElementById('cgc-titulo');
   try{
-    datos = await apiGet('/api/clientes-fm/ranking', AUTH_TIMEOUT_MS);
+    const datos = await apiGet('/api/clientes-fm/lista', AUTH_TIMEOUT_MS);
+    CGC_LISTA = datos.filas || [];
   }catch(e){
-    cont.innerHTML = `<tr><td style="padding:10px;color:#ef476f;font-size:12px">${e.message||'No se pudo cargar la lista.'}</td></tr>`;
+    if(cont) cont.textContent = e.message || 'No se pudo cargar la lista de clientes.';
+    _cgcListaCargada = false;
     return;
   }
-  const filas = datos.filas || [];
-  if(!filas.length){
-    cont.innerHTML = `<tr><td style="padding:10px;color:var(--text3);font-size:12px">Sin datos todavía.</td></tr>`;
-    return;
-  }
-  const encab = ['Cuenta','Usuario','Municipio','Comparación','Consumo Base','Consumo Reciente','Caída','% Caída'];
-  const thead = `<thead><tr>${encab.map(h=>`<th style="text-align:left;padding:6px 8px;font-size:10.5px;text-transform:uppercase;color:var(--text3);border-bottom:1px solid var(--border)">${h}</th>`).join('')}</tr></thead>`;
-  const fk = v => v==null ? '--' : `${v.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`;
-  const metodoTxt = m => m==='interanual'
-    ? '<span title="Mismo mes, un año antes -- controla estacionalidad">Interanual</span>'
-    : '<span style="color:var(--text3)" title="No hay dato de hace un año -- comparado contra la mediana del resto de su histórico">Histórico general</span>';
-  const tbody = filas.map(f => {
-    return `<tr class="cgc-resultado-fila" onclick="cgcAbrirCuenta('${f.cuenta}')" style="cursor:pointer;border-bottom:1px solid var(--border)">
-      <td style="padding:6px 8px;font-weight:700;white-space:nowrap">${f.cuenta}</td>
-      <td style="padding:6px 8px">${_mselEsc(f.nombre_usuario||'--')}</td>
-      <td style="padding:6px 8px;white-space:nowrap">${_mselEsc(f.nombre_muni||'--')}</td>
-      <td style="padding:6px 8px;font-size:11px">${metodoTxt(f.metodo)}</td>
-      <td style="padding:6px 8px">${fk(f.consumo_base_kwh)}/mes</td>
-      <td style="padding:6px 8px">${fk(f.consumo_reciente_kwh)}/mes</td>
-      <td style="padding:6px 8px;font-weight:800;color:#ef476f">${fk(f.caida_kwh_mensual)}/mes</td>
-      <td style="padding:6px 8px;font-weight:700">${f.caida_pct!=null?f.caida_pct.toFixed(1)+'%':'--'}</td>
-    </tr>`;
-  }).join('');
-  cont.innerHTML = thead + `<tbody>${tbody}</tbody>`;
+  const zonas = [...new Set(CGC_LISTA.map(f => f.zona).filter(Boolean))].sort();
+  _cgcPoblarSelect('cgc-f-zona', zonas, 'Todas');
+  cgcAplicarFiltros();
 }
 
-function cgcCerrarDetalle(){
+function _cgcPoblarSelect(id, valores, etiquetaTodos){
+  const sel = document.getElementById(id);
+  if(!sel) return;
+  const previo = sel.value;
+  sel.innerHTML = `<option value="">${etiquetaTodos}</option>` + valores.map(v => `<option value="${_mselEsc(v)}">${_mselEsc(v)}</option>`).join('');
+  sel.value = valores.includes(previo) ? previo : '';
+}
+
+function cgcLimpiarFiltros(){
+  document.getElementById('cgc-f-zona').value = '';
+  document.getElementById('cgc-f-alim').value = '';
+  document.getElementById('cgc-f-nodo').value = '';
+  cgcAplicarFiltros();
+}
+
+// El desplegable de Alimentador solo ofrece los de la Zona elegida.
+function cgcAplicarFiltros(){
+  const zona = document.getElementById('cgc-f-zona').value;
+  const alims = [...new Set(CGC_LISTA.filter(f => !zona || f.zona===zona).map(f => f.alimentador).filter(Boolean))].sort();
+  _cgcPoblarSelect('cgc-f-alim', alims, 'Todos');
+  const alim = document.getElementById('cgc-f-alim').value;
+  const nodo = document.getElementById('cgc-f-nodo').value.trim().toUpperCase();
+  CGC_FILTRADA = CGC_LISTA.filter(f =>
+    (!zona || f.zona===zona) && (!alim || f.alimentador===alim) && (!nodo || (f.nodo||'').toUpperCase().includes(nodo)));
+  const n = CGC_FILTRADA.length;
+  document.getElementById('cgc-conteo').textContent = `${n} cliente${n===1?'':'s'}${CGC_LISTA.length!==n ? ` de ${CGC_LISTA.length}` : ''}`;
+  if(CGC_TAB==='ranking') cgcRenderRanking();
+  // Si el cliente elegido ya no está en el filtro (o aún no hay ninguno),
+  // salta al primero de la lista filtrada -- el que más cayó.
+  if(CGC_TAB==='detalle' && (CGC_FILTRADA.length || CGC_CUENTA_ACTUAL)){
+    const sigue = CGC_FILTRADA.some(f => f.cuenta===CGC_CUENTA_ACTUAL);
+    if(!sigue){
+      if(CGC_FILTRADA.length) cgcElegirCliente(CGC_FILTRADA[0].cuenta);
+      else cgcQuitarCliente();
+    }
+  }
+}
+
+function cgcAbrirLista(){
+  document.getElementById('cgc-lista')?.classList.remove('hidden');
+  cgcRenderLista();
+}
+function cgcCerrarLista(){ document.getElementById('cgc-lista')?.classList.add('hidden'); }
+
+function cgcRenderLista(){
+  const cont = document.getElementById('cgc-lista');
+  if(!cont) return;
+  const q = (document.getElementById('cgc-buscar').value || '').trim().toUpperCase();
+  let ops = CGC_FILTRADA;
+  // Si el buscador muestra la cuenta ya elegida, no es un texto a filtrar.
+  const elegida = CGC_FILTRADA.find(f => f.cuenta===CGC_CUENTA_ACTUAL);
+  const textoElegida = elegida ? `${elegida.cuenta} -- ${elegida.nombre_usuario||''}`.toUpperCase() : null;
+  if(q && q!==textoElegida) ops = ops.filter(f => f.cuenta.toUpperCase().startsWith(q) || (f.nombre_usuario||'').toUpperCase().includes(q));
+  if(!ops.length){ cont.innerHTML = '<div class="msel-empty">Sin resultados.</div>'; return; }
+  cont.innerHTML = ops.slice(0, 200).map(f => {
+    const activo = f.cuenta===CGC_CUENTA_ACTUAL;
+    return `<div class="msel-opt" onclick="cgcElegirCliente('${f.cuenta}')" style="${activo?'background:var(--bg);font-weight:700;color:var(--accent)':''}">${_mselEsc(f.cuenta)} -- ${_mselEsc(f.nombre_usuario||'')}</div>`;
+  }).join('') + (ops.length>200 ? `<div class="msel-empty">… ${ops.length-200} más, sigue escribiendo para acotar.</div>` : '');
+}
+
+function cgcSiguienteCliente(delta){
+  if(!CGC_FILTRADA.length) return;
+  let idx = CGC_FILTRADA.findIndex(f => f.cuenta===CGC_CUENTA_ACTUAL);
+  if(idx === -1) idx = delta > 0 ? -1 : CGC_FILTRADA.length;
+  const nuevo = (idx + delta + CGC_FILTRADA.length) % CGC_FILTRADA.length;
+  cgcElegirCliente(CGC_FILTRADA[nuevo].cuenta);
+}
+
+function cgcElegirCliente(cuenta){
+  cgcCerrarLista();
+  const f = CGC_LISTA.find(x => x.cuenta===cuenta);
+  document.getElementById('cgc-buscar').value = f ? `${f.cuenta} -- ${f.nombre_usuario||''}` : cuenta;
+  cgcAbrirCuenta(cuenta);
+}
+
+function cgcQuitarCliente(){
   CGC_CUENTA_ACTUAL = null;
-  document.getElementById('cgc-detalle').classList.add('hidden');
-  document.getElementById('cgc-ranking').classList.remove('hidden');
-  document.getElementById('cgc-buscador').value = '';
-}
-
-function cgcBuscarInput(){
-  const q = document.getElementById('cgc-buscador').value.trim();
-  clearTimeout(CGC_BUSCAR_TIMER);
-  const cont = document.getElementById('cgc-buscador-resultados');
-  if(q.length < 2){ cont.classList.add('hidden'); cont.innerHTML=''; return; }
-  CGC_BUSCAR_TIMER = setTimeout(() => cgcBuscar(q), 300);
-}
-
-async function cgcBuscar(q){
-  const cont = document.getElementById('cgc-buscador-resultados');
-  let datos;
-  try{
-    datos = await apiGet(`/api/clientes-fm/buscar?q=${encodeURIComponent(q)}`, AUTH_TIMEOUT_MS);
-  }catch(e){
-    cont.innerHTML = `<div style="padding:10px;color:#ef476f;font-size:12px">${e.message||'No se pudo buscar.'}</div>`;
-    cont.classList.remove('hidden');
-    return;
-  }
-  const filas = datos.resultados || [];
-  if(!filas.length){
-    cont.innerHTML = `<div style="padding:10px;color:var(--text3);font-size:12px">Sin resultados.</div>`;
-    cont.classList.remove('hidden');
-    return;
-  }
-  cont.innerHTML = filas.map(f => `
-    <div class="cgc-resultado-fila" onclick="cgcAbrirCuenta('${f.cuenta}')" style="padding:8px 12px;cursor:pointer;font-size:12.5px;border-bottom:1px solid var(--border)">
-      <div style="font-weight:700">${f.cuenta} -- ${_mselEsc(f.nombre_usuario||'')}</div>
-      <div style="color:var(--text3);font-size:11px">${_mselEsc(f.direccion||'')} -- ${_mselEsc(f.nombre_muni||'')}</div>
-    </div>`).join('');
-  cont.classList.remove('hidden');
+  document.getElementById('cgc-buscar').value = '';
+  document.getElementById('cgc-btn-quitar').classList.add('hidden');
+  cgcCerrarLista();
+  document.getElementById('cgc-titulo').textContent = 'Elige un cliente';
+  document.getElementById('cgc-tarjetas').innerHTML = '';
+  document.getElementById('cgc-ficha').innerHTML = '';
+  document.getElementById('cgc-contexto').innerHTML = '';
+  const ta = document.getElementById('cgc-observacion'); ta.value = ''; ta.disabled = true;
+  const fe = document.getElementById('cgc-fecha-visita'); fe.value = ''; fe.disabled = true;
+  if(chCgcConsumo){ chCgcConsumo.destroy(); chCgcConsumo = null; }
 }
 
 async function cgcAbrirCuenta(cuenta){
-  document.getElementById('cgc-buscador-resultados').classList.add('hidden');
-  document.getElementById('cgc-buscador').value = cuenta;
   CGC_CUENTA_ACTUAL = cuenta;
+  document.getElementById('cgc-btn-quitar').classList.remove('hidden');
   let datos;
   try{
     datos = await apiGet(`/api/clientes-fm/${encodeURIComponent(cuenta)}`, AUTH_TIMEOUT_MS);
@@ -10023,13 +10080,13 @@ async function cgcAbrirCuenta(cuenta){
     alert(e.message || 'No se pudo cargar esa cuenta.');
     return;
   }
-  document.getElementById('cgc-ranking').classList.add('hidden');
-  document.getElementById('cgc-detalle').classList.remove('hidden');
-  document.getElementById('cgc-detalle-titulo').textContent = `${datos.ficha.cuenta} -- ${datos.ficha.nombre_usuario||''}`;
-  cgcRenderFicha(datos.ficha);
-  cgcRenderChart(datos.historial);
-  cgcRenderDesviacion(datos.desviacion_consumo);
-  cgcRenderPerdidas(datos.alimentador, datos.macromedida);
+  if(CGC_CUENTA_ACTUAL !== cuenta) return;   // se eligió otro mientras cargaba
+  const item = CGC_LISTA.find(x => x.cuenta===cuenta) || {};
+  document.getElementById('cgc-titulo').textContent = `${datos.ficha.cuenta} -- ${datos.ficha.nombre_usuario||''}`;
+  cgcRenderTarjeta(datos);
+  cgcRenderChart(datos.historial, datos.desviacion_consumo);
+  cgcRenderFicha(datos.ficha, item);
+  cgcRenderContexto(datos.alimentador, datos.macromedida);
   const taObs = document.getElementById('cgc-observacion');
   const inFecha = document.getElementById('cgc-fecha-visita');
   taObs.value = datos.nota.observacion || '';
@@ -10038,97 +10095,142 @@ async function cgcAbrirCuenta(cuenta){
   inFecha.disabled = !EDITOR || OFFLINE_MODO;
 }
 
-function cgcRenderFicha(f){
-  const tarjeta = (etiqueta, valor) => `<div class="be-resumen-tile">
-    <div class="etiqueta">${etiqueta}</div>
-    <div class="valor" style="font-size:13px">${_mselEsc(String(valor))}</div>
+// Tarjeta igual a la de Detalle por Alimentador: % grande a la izquierda
+// (acá, el % de caída de consumo) + grid de 4 columnas.
+function cgcRenderTarjeta(datos){
+  const d = datos.desviacion_consumo, h = datos.historial.filter(x => x.consumo!=null);
+  const ult = h.length ? h[h.length-1] : null, ant = h.length>1 ? h[h.length-2] : null;
+  const dTxt = (a, b) => {
+    if(a==null || b==null) return '';
+    const dd = a - b, pct = b ? dd/b*100 : null;
+    const pctTxt = pct==null ? '' : `<span style="font-size:9.5px">(${pct>=0?'+':'-'}${Math.round(Math.abs(pct))}%)</span>`;
+    return ` <span class="alim-resumen-compacta-delta" style="white-space:nowrap">${dd>=0?'▲':'▼'} ${Math.round(Math.abs(dd)).toLocaleString('es-CO')} ${pctTxt}</span>`;
+  };
+  const celda = (etq, val, extra) => `<div><span class="etiqueta">${etq}:</span> <span class="valor"${extra?` style="${extra}"`:''}>${val}</span></div>`;
+  const nd = '#N/D';
+  const al = datos.alimentador, ma = datos.macromedida;
+  const macro = ma.tiene_macro ? `${_cgcFk(ma.kwh)}${ma.pct!=null?` (${(ma.pct*100).toFixed(1)}%)`:''}` : 'Sin Macromedida';
+  const pctGrande = d.suficiente ? `${d.caida_pct.toFixed(1)}%` : '--';
+  const colorGrande = d.suficiente && d.caida_pct>0 ? '#ef476f' : '';
+  const metodo = !d.suficiente ? '--' : (d.metodo==='interanual' ? 'Interanual' : 'Histórico general');
+  const titulo = ult ? `Consumo mensual -- ${labelMesLargo(`${ult.anio}-${String(ult.mes).padStart(2,'0')}`)}` : 'Consumo mensual';
+  document.getElementById('cgc-tarjetas').innerHTML = `<div class="alim-resumen-compacta" style="margin:0">
+    <div class="alim-resumen-compacta-titulo">${titulo}</div>
+    <div class="alim-resumen-compacta-fila">
+      <div class="alim-resumen-compacta-pct">
+        <div class="valor"${colorGrande?` style="color:${colorGrande}"`:''}>${pctGrande}</div>
+        <div class="etiqueta">Caída de consumo</div>
+      </div>
+      <div class="alim-resumen-compacta-grid" style="grid-template-columns:0.93fr 0.93fr 0.93fr 1.21fr">
+        ${celda('Consumo del mes', _cgcFk(ult?ult.consumo:null) + dTxt(ult?ult.consumo:null, ant?ant.consumo:null))}
+        ${celda('Consumo base', _cgcFk(d.consumo_base_kwh))}
+        ${celda('Consumo reciente (3m)', _cgcFk(d.consumo_reciente_kwh))}
+        ${celda('Caída (kWh/mes)', _cgcFk(d.caida_kwh_mensual), d.suficiente && d.caida_kwh_mensual>0 ? 'color:#ef476f' : '')}
+        ${celda('Comparación', metodo)}
+        ${celda('% Pérdida alimentador', al.perdida_pct!=null ? `${(al.perdida_pct*100).toFixed(2)}%` : nd)}
+        ${celda('Pérdida circuito (mes)', _cgcFk(al.perdida_mensual_kwh))}
+        ${celda('Pérdida por nodo (macro)', macro, ma.tiene_macro ? '' : 'color:#ef476f')}
+      </div>
+    </div>
   </div>`;
-  const tiles = [
-    tarjeta('Dirección', f.direccion||'--'),
-    tarjeta('Municipio', f.municipio||'--'),
-    tarjeta('Clase de servicio', f.clase_servicio||'--'),
-    tarjeta('Ciclo', f.ciclo||'--'),
-    tarjeta('F.M', f.fm!=null ? f.fm.toLocaleString('es-CO') : '--'),
-    tarjeta('Contador', [f.contador, f.marca_contador].filter(Boolean).join(' -- ') || '--'),
-  ];
-  document.getElementById('cgc-ficha-tarjetas').innerHTML = tiles.join('');
 }
 
-function cgcRenderChart(historial){
+function cgcRenderChart(historial, d){
   const cv = document.getElementById('ch-cgc-consumo');
   const dark = document.documentElement.getAttribute('data-theme')==='dark';
   const tickC = dark ? '#ffffff' : '#000000';
   const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
   const claves = historial.map(f => `${f.anio}-${String(f.mes).padStart(2,'0')}`);
   const etiquetas = claves.map(labelMes);
-  const datos = historial.map(f => f.consumo);
+  const datasets = [{
+    type:'line', label:'Consumo kWh/mes', data: historial.map(f => f.consumo), fill:true,
+    borderColor:'#00b4d8', backgroundColor:'rgba(0,180,216,.25)', borderWidth:2, tension:0, spanGaps:true,
+    pointRadius: acRadioPuntoAislado, datalabels:{display:false},
+  }];
+  if(d && d.suficiente && d.consumo_base_kwh!=null){
+    datasets.push({type:'line', label:`Consumo base (${d.metodo==='interanual'?'interanual':'histórico'})`, data: claves.map(() => d.consumo_base_kwh), fill:false,
+      borderColor:'#ef476f', borderDash:[6,4], borderWidth:1.5, pointRadius:0, datalabels:{display:false}});
+  }
   if(chCgcConsumo) chCgcConsumo.destroy();
   chCgcConsumo = new Chart(cv, {
-    data:{labels: etiquetas, datasets:[{
-      type:'line', label:'Consumo kWh/mes', data: datos, fill:true,
-      borderColor:'#00b4d8', backgroundColor:'rgba(0,180,216,.25)', borderWidth:2, tension:0, spanGaps:true,
-      pointRadius: acRadioPuntoAislado, datalabels:{display:false},
-    }]},
+    data:{labels: etiquetas, datasets},
     options:{
       responsive:true, maintainAspectRatio:false,
       layout:{padding:{top:16, right:16, left:8, bottom:4}},
+      interaction:{mode:'index', intersect:false},
       plugins:{
-        legend:{display:false},
-        tooltip:{callbacks:{label:c=>c.raw==null?null:`Consumo: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`}},
+        legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:12}, color:tickC}},
+        tooltip:{callbacks:{label:c=>c.raw==null?null:`${c.dataset.label}: ${c.raw.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`}},
       },
       scales:{
         x:{offset:true, grid:{display:false}, ticks:{color:tickC, font:{size:11}}},
-        y:{beginAtZero:true, grid:{color:gridC}, ticks:{color:tickC, font:{size:11}}},
+        y:{beginAtZero:true, grid:{color:gridC}, ticks:{color:tickC, font:{size:11}, callback:v=>v.toLocaleString('es-CO')+' kWh'}},
       },
     },
   });
 }
 
-// Tarjetas PRINCIPALES -- la caída de consumo de ESTE cliente contra su
-// propio histórico (ver _desviacion_consumo en el backend), lo que de
-// verdad responde "cuál es la pérdida del usuario" (pedido explícito,
-// corrigiendo el primer intento que repartía la pérdida del circuito).
-function cgcRenderDesviacion(d){
-  const nd = '#N/D';
-  const fmt = v => v==null ? nd : `${v.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`;
-  const tarjeta = (etiqueta, valor, color) => `<div class="be-resumen-tile">
-    <div class="etiqueta">${etiqueta}</div>
-    <div class="valor"${color ? ` style="color:${color}"` : ''}>${valor}</div>
-  </div>`;
-  if(!d.suficiente){
-    document.getElementById('cgc-desviacion-tarjetas').innerHTML = tarjeta('Caída de Consumo', 'No hay suficiente historial todavía (mínimo 6 meses)');
-    return;
-  }
-  const metodoTxt = d.metodo==='interanual' ? 'Interanual (mismo mes, año anterior)' : 'Histórico general (sin dato de hace un año)';
-  document.getElementById('cgc-desviacion-tarjetas').innerHTML = [
-    tarjeta('Caída de Consumo (kWh/mes)', fmt(d.caida_kwh_mensual), '#ef476f'),
-    tarjeta('% de Caída', `${d.caida_pct.toFixed(1)}%`, '#ef476f'),
-    tarjeta('Consumo Base', fmt(d.consumo_base_kwh)),
-    tarjeta('Consumo Reciente (últimos 3 meses)', fmt(d.consumo_reciente_kwh)),
-    tarjeta('Comparación usada', metodoTxt),
-  ].join('');
+function _cgcTablaKV(filas){
+  return `<table style="width:100%">${filas.map(([k,v]) => `<tr><td style="text-align:left;color:var(--text3);padding:3px 4px;font-size:11px">${k}</td><td style="text-align:right;padding:3px 4px;font-weight:700">${v}</td></tr>`).join('')}</table>`;
 }
 
-// Tarjetas de CONTEXTO -- datos del circuito/transformador (compartidos
-// por cientos de clientes), ya no se usan para "estimar" nada del
-// cliente puntual, solo para ubicarlo en la red.
-function cgcRenderPerdidas(alim, macro){
+function cgcRenderFicha(f, item){
+  const e = x => (x==null || x==='') ? '--' : _mselEsc(String(x));
+  document.getElementById('cgc-ficha').innerHTML = _cgcTablaKV([
+    ['Zona', e(f.zona || item.zona)],
+    ['Alimentador', e(item.alimentador)],
+    ['Nodo', e(f.nodo)],
+    ['Municipio', e(f.municipio)],
+    ['Dirección', e(f.direccion)],
+    ['Clase de servicio', e(f.clase_servicio)],
+    ['Ciclo', e(f.ciclo)],
+    ['F.M', f.fm!=null ? f.fm.toLocaleString('es-CO') : '--'],
+    ['Contador', e([f.contador, f.marca_contador].filter(Boolean).join(' -- '))],
+    ['Tarifa / Nivel', e([f.tarifa, f.nivel].filter(Boolean).join(' / '))],
+  ]);
+}
+
+function cgcRenderContexto(al, ma){
   const nd = '#N/D';
-  const fmt = v => v==null ? nd : `${v.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh`;
-  const tarjeta = (etiqueta, valor, color) => `<div class="be-resumen-tile">
-    <div class="etiqueta">${etiqueta}</div>
-    <div class="valor"${color ? ` style="color:${color}"` : ''}>${valor}</div>
-  </div>`;
-  const celdaMacro = macro.tiene_macro
-    ? `${fmt(macro.kwh)}${macro.pct!=null ? ` (${(macro.pct*100).toFixed(1)}%)` : ''}`
-    : 'Sin Macromedida';
-  document.getElementById('cgc-perdidas-tarjetas').innerHTML = [
-    tarjeta('Alimentador', alim.encontrado ? _mselEsc(alim.alimentador) : nd),
-    tarjeta('% Pérdida del Alimentador (circuito)', alim.perdida_pct!=null ? `${(alim.perdida_pct*100).toFixed(1)}%` : nd),
-    tarjeta('Pérdida Circuito (Mensual)', fmt(alim.perdida_mensual_kwh)),
-    tarjeta('Pérdida Circuito (Anual)', fmt(alim.perdida_anual_kwh)),
-    tarjeta('Pérdida Por Nodo (macromedida)', celdaMacro, macro.tiene_macro ? null : '#ef476f'),
-  ].join('');
+  document.getElementById('cgc-contexto').innerHTML = _cgcTablaKV([
+    ['Alimentador', al.encontrado ? _mselEsc(al.alimentador) : nd],
+    ['% Pérdida del alimentador', al.perdida_pct!=null ? `${(al.perdida_pct*100).toFixed(2)}%` : nd],
+    ['Pérdida circuito (mensual)', _cgcFk(al.perdida_mensual_kwh)],
+    ['Pérdida circuito (anual)', _cgcFk(al.perdida_anual_kwh)],
+    ['Macromedida del nodo', ma.tiene_macro ? `${_cgcFk(ma.kwh)}${ma.pct!=null?` (${(ma.pct*100).toFixed(1)}%)`:''}` : '<span style="color:#ef476f">Sin Macromedida</span>'],
+  ]);
+}
+
+function cgcRenderRanking(){
+  const cont = document.getElementById('cgc-ranking-tabla');
+  const filas = CGC_FILTRADA.filter(f => f.suficiente && f.caida_kwh_mensual>0).slice(0, 300);
+  if(!filas.length){
+    cont.innerHTML = `<tr><td style="padding:10px;color:var(--text3);font-size:12px">${CGC_LISTA.length ? 'Ningún cliente con caída de consumo con estos filtros.' : 'Cargando...'}</td></tr>`;
+    return;
+  }
+  const encab = ['Cuenta','Usuario','Zona','Alimentador','Nodo','Comparación','Consumo Base','Consumo Reciente','Caída','% Caída'];
+  const thead = `<thead><tr>${encab.map(h=>`<th style="text-align:left;padding:6px 8px;font-size:10.5px;text-transform:uppercase;color:var(--text3);border-bottom:1px solid var(--border)">${h}</th>`).join('')}</tr></thead>`;
+  const metodoTxt = m => m==='interanual'
+    ? '<span title="Mismo mes, un año antes -- controla estacionalidad">Interanual</span>'
+    : '<span style="color:var(--text3)" title="No hay dato de hace un año -- comparado contra la mediana del resto de su histórico">Histórico general</span>';
+  const tbody = filas.map(f => `<tr onclick="cgcIrACliente('${f.cuenta}')" style="cursor:pointer;border-bottom:1px solid var(--border)">
+      <td style="padding:6px 8px;font-weight:700;white-space:nowrap">${f.cuenta}</td>
+      <td style="padding:6px 8px">${_mselEsc(f.nombre_usuario||'--')}</td>
+      <td style="padding:6px 8px;white-space:nowrap">${_mselEsc(f.zona||'--')}</td>
+      <td style="padding:6px 8px">${_mselEsc(f.alimentador||'--')}</td>
+      <td style="padding:6px 8px;white-space:nowrap">${_mselEsc(f.nodo||'--')}</td>
+      <td style="padding:6px 8px;font-size:11px">${metodoTxt(f.metodo)}</td>
+      <td style="padding:6px 8px">${_cgcFk(f.consumo_base_kwh)}/mes</td>
+      <td style="padding:6px 8px">${_cgcFk(f.consumo_reciente_kwh)}/mes</td>
+      <td style="padding:6px 8px;font-weight:800;color:#ef476f">${_cgcFk(f.caida_kwh_mensual)}/mes</td>
+      <td style="padding:6px 8px;font-weight:700">${f.caida_pct!=null?f.caida_pct.toFixed(1)+'%':'--'}</td>
+    </tr>`).join('');
+  cont.innerHTML = thead + `<tbody>${tbody}</tbody>`;
+}
+
+function cgcIrACliente(cuenta){
+  cgcIrATab('detalle');
+  cgcElegirCliente(cuenta);
 }
 
 function cgcGuardarNota(){
@@ -10142,10 +10244,7 @@ function cgcGuardarNota(){
 }
 
 document.addEventListener('click', (ev) => {
-  const cont = document.getElementById('cgc-buscador-resultados');
-  if(!cont || cont.classList.contains('hidden')) return;
-  if(ev.target.id==='cgc-buscador' || cont.contains(ev.target)) return;
-  cont.classList.add('hidden');
+  if(!ev.target.closest || !ev.target.closest('#cgc-picker-wrap')) cgcCerrarLista();
 });
 
 // URL del túnel de Suplencias_App (Flask propio, corre local en el PC del
