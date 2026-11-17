@@ -2907,6 +2907,7 @@ html,body{overflow-x:hidden;margin:0}
       <button type="button" class="be-modo-btn be-icon-btn" style="width:22px;height:22px;font-size:10px" onclick="_mesPresetAplicar('ipi-desde','ipi-hasta',6,'ipiRenderTodo')" title="6 meses">6M</button>
       <button type="button" class="be-modo-btn be-icon-btn" style="width:22px;height:22px;font-size:10px" onclick="_mesPresetAplicar('ipi-desde','ipi-hasta',12,'ipiRenderTodo')" title="1 año">1A</button>
       <button type="button" class="be-modo-btn be-icon-btn" style="width:22px;height:22px;font-size:10px" onclick="_mesPresetAbrirPersonalizado('ipi-desde','ipi-hasta','ipiRenderTodo','Indicador de Pérdidas Institucional')" title="Rango personalizado">📅</button>
+      <button type="button" class="be-modo-btn" id="ipi-btn-ipreg" style="padding:0 8px;font-size:11px;height:22px" onclick="ipiToggleIpReg()" title="Sobrepone la pérdida % del IP_Reg: mensual si estás en Mensual, anual (12m) si estás en Anual">＋ IP_Reg</button>
       <button type="button" class="btn-theme ip-com-modo-btn activo" id="ipi-btn-mensual" style="width:auto;padding:0 16px;margin-left:auto" onclick="ipiCambiarModo('mensual')">📅 Mensual</button>
       <button type="button" class="btn-theme ip-com-modo-btn" id="ipi-btn-anual" style="width:auto;padding:0 16px" onclick="ipiCambiarModo('anual')">📆 Anual (12m)</button>
     </div>
@@ -18901,6 +18902,7 @@ function ipComercialDescargarCsv(){
 let IPI_FILAS = [];
 let chIpiLinea = null, chIpiBarras = null, chIpiDona = null;
 let IPI_MODO = 'mensual';            // 'mensual' | 'anual' (ventana móvil de 12 meses, mismo criterio que el Indicador Comercial)
+let IPI_SOBREPONER_IPREG = false;    // botón "+ IP_Reg": sobrepone la pérdida % del IP_Reg (mensual o anual según IPI_MODO)
 let IPI_MOSTRAR_VARIACION = false;   // Δ Variación -- mismo patrón que IP_Reg (ipToggleVariacion)
 let IPI_MOSTRAR_PROYECCION = false;  // 🔮 Proyección -- misma regresión lineal (ipRegresionLineal) que IP_Reg/Indicador Comercial
 let IPI_KWH_OCULTO = true;           // la línea de kWh arranca oculta -- al entrar solo se ve Pérdida % Mensual
@@ -18996,6 +18998,15 @@ function ipiCambiarModo(modo){
   ipiRenderChart();
   ipiRenderResumen();
   ipiGenerarAnalisis();   // faltaba -- el análisis se quedaba comparando mensual aunque se pasara a Anual
+}
+
+async function ipiToggleIpReg(){
+  IPI_SOBREPONER_IPREG = !IPI_SOBREPONER_IPREG;
+  if(IPI_SOBREPONER_IPREG && !DEMO){
+    const ok = await ipAsegurarDatosCargados(null);   // IP_REG_FILAS es compartido con el módulo IP_Reg
+    if(!ok){ IPI_SOBREPONER_IPREG = false; alert('No se pudo cargar el IP_Reg.'); }
+  }
+  ipiRenderChart();
 }
 
 function ipiToggleVariacion(){
@@ -19161,6 +19172,7 @@ function ipiRenderChart(){
   const gridC = dark ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.06)';
   document.getElementById('ipi-btn-variacion').classList.toggle('activo', IPI_MOSTRAR_VARIACION);
   document.getElementById('ipi-btn-proyeccion').classList.toggle('activo', IPI_MOSTRAR_PROYECCION);
+  document.getElementById('ipi-btn-ipreg').classList.toggle('activo', IPI_SOBREPONER_IPREG);
   // Al entrar, solo Pérdida % Mensual queda visible -- kWh arranca oculto
   // (se prende a mano desde la leyenda) pero respeta lo que el usuario ya
   // haya prendido/apagado a mano, igual que IP_PT_OCULTO en IP_Reg.
@@ -19186,6 +19198,18 @@ function ipiRenderChart(){
         borderColor:IPI_COLOR_KWH, backgroundColor:'transparent', borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0,
         datalabels: ipiEstiloDatalabel(IPI_COLOR_KWH, false)},
     );
+    // IP_Reg sobrepuesto (botón "+ IP_Reg"): % mensual si el gráfico está en
+    // Mensual, % anual (IPT, ventana de 12m) si está en Anual. Se cruza por
+    // la clave normal (año-mes) de cada fila de IP_Reg.
+    if(IPI_SOBREPONER_IPREG && IP_REG_FILAS.length){
+      const porClave = new Map(IP_REG_FILAS.map(f => [ipClaveNormal(f),
+        IPI_MODO==='anual' ? (f.ipt_pct==null ? null : f.ipt_pct*100) : (f.pct_perdida_mensual==null ? null : f.pct_perdida_mensual*100)]));
+      const COLOR_IPREG = '#00b4d8';
+      datasets.push({type:'line', label:`IP_Reg % ${etiquetaModo}`, yAxisID:'yPct', data: s.map(f => porClave.get(f.clave) ?? null), order:1, fill:false,
+        borderColor:COLOR_IPREG, backgroundColor:'transparent', borderWidth:2.5, pointRadius:2, spanGaps:true, tension:0,
+        datalabels:{display:true, anchor:'end', align:'bottom', offset:8, formatter:v=>v==null?'':v.toFixed(2)+'%',
+          font:{size:11, weight:'700'}, color:COLOR_IPREG}});
+    }
     // Proyección -- regresión lineal simple sobre el % (misma función que
     // usa IP_Reg/Indicador Comercial), con banda de confianza.
     const puntosPct = pctDatos.map((v,i)=>({x:i, y:v})).filter(p=>p.y!=null);
