@@ -4283,8 +4283,7 @@ html,body{overflow-x:hidden;margin:0}
   <div id="alim-n21-contenido" class="hidden">
 
     <div class="pt-tabs">
-      <button type="button" class="pt-tab-btn activo" id="alim-n21-tab-btn-total" onclick="alimN21IrATab('total')">Indicador total N2-1</button>
-      <button type="button" class="pt-tab-btn" id="alim-n21-tab-btn-tecnica" onclick="alimN21IrATab('tecnica')">Indicador N2-1 Pérdida Técnica</button>
+      <button type="button" class="pt-tab-btn activo" id="alim-n21-tab-btn-tecnica" onclick="alimN21IrATab('tecnica')">Indicador N2-1 Pérdida Técnica</button>
       <button type="button" class="pt-tab-btn" id="alim-n21-tab-btn-comparativo" onclick="alimN21IrATab('comparativo')">Comparativo Zonas</button>
       <button type="button" class="pt-tab-btn" id="alim-n21-tab-btn-variaciones" onclick="alimN21IrATab('variaciones')">Variaciones</button>
       <button type="button" class="pt-tab-btn" id="alim-n21-tab-btn-mapa" onclick="alimN21IrATab('mapa')">Mapa</button>
@@ -4326,7 +4325,7 @@ html,body{overflow-x:hidden;margin:0}
     </div>
 
     <!-- ===== PESTAÑA 1 · Indicador total N2-1 ===== -->
-    <div id="alim-n21-tab-total">
+    <div id="alim-n21-tab-total" class="hidden"><!-- pestaña eliminada a pedido del usuario (2026-11-17): se deja oculta para no romper el código que aún referencia sus elementos -->
     <div class="card">
       <!-- A la derecha, debajo del filtro de arriba -- pedido explícito
            (antes centrado). -->
@@ -7464,6 +7463,20 @@ function _pmIframeListo(){
 // aunque esté oculto) y les repinta ejes/cuadrícula/leyenda con el color
 // del tema nuevo, sin necesidad de tocar cada función de render una por
 // una (son decenas en toda la app).
+// Color de la línea punteada de "Pérdida %": amarillo sobre fondo OSCURO, azul
+// sobre fondo CLARO (pedido explícito, 2026-11-17 -- el amarillo no se lee sobre
+// blanco). Mira el fondo REAL de la gráfica (Personalización > fondo de gráficas,
+// que puede diferir del tema de la página), igual que _actualizarTemaCharts.
+// Se usa como valor "scriptable" (función) para que cambie solo al alternar
+// el fondo, sin volver a armar la gráfica.
+function colorPctPerdida(){
+  let key = 'auto';
+  try{ key = localStorage.getItem('pt_chart_bg') || 'auto'; }catch(e){}
+  const f = (key!=='auto' && typeof PT_FONDOS_GRAFICO!=='undefined') ? PT_FONDOS_GRAFICO.find(c=>c.key===key) : null;
+  const oscuro = f ? !!f.oscuro : document.documentElement.getAttribute('data-theme')==='dark';
+  return oscuro ? '#FFC000' : '#1F5FBF';
+}
+
 function _actualizarTemaCharts(){
   if(typeof Chart === 'undefined') return;
   // El texto de ejes/leyenda tiene que contrastar con el fondo REAL de
@@ -26173,12 +26186,12 @@ function alim3RenderChartEsp(filasConClave){
     },
     color:(ctx)=>{
       const colorDelta = ipColorVariacion(pctDatos[ctx.dataIndex], pctDatos[ctx.dataIndex-1], dark?'#aab8d1':'#6b7280');
-      return ['#FFC000', colorDelta, colorDelta];
+      return [colorPctPerdida(), colorDelta, colorDelta];
     },
     ...estiloVar,
   } : {
     display:true, anchor:'end', align:'top', offset:10, formatter:v=>v==null?'':v.toFixed(2)+'%',
-    font:{size:13,weight:'800'}, color:'#FFC000',
+    font:{size:13,weight:'800'}, color:() => colorPctPerdida(),
   };
 
   const esp3Datasets = [
@@ -26189,7 +26202,7 @@ function alim3RenderChartEsp(filasConClave){
       data: salidaDatos, borderColor:'#C00000', backgroundColor:'rgba(192,0,0,.20)',
       borderWidth:2, pointRadius:1.5, spanGaps:true, tension:0, datalabels:{display:false}},
     {type:'line', label: esAnual?'Pérdida %/12M':'Pérdida %', yAxisID:'yPct', order:1, borderDash:[4,3],
-      data: pctDatos, borderColor:'#FFC000', backgroundColor:'transparent',
+      data: pctDatos, borderColor:() => colorPctPerdida(), backgroundColor:'transparent',
       borderWidth:2, pointRadius:2, spanGaps:true, tension:0, datalabels: datalabelsPct},
     // DEFAULT ACTUAL (pedido explícito 2026-11-17, confirmado dos veces): arranca SOLO con
     // Entrada, Salida y Pérdida %; Pérdida Total, Técnica e Inyección AGPE apagadas (se
@@ -27947,7 +27960,7 @@ async function alimN21Cargar(){
   const claves = [...new Set(ALIM_FILAS.map(f => alimN21Clave(f.anio, f.mes)))].sort();
   _alimNivelPoblarRangoDefecto('alim-n21', claves);
 
-  alimN21IrATab('total');
+  alimN21IrATab('tecnica');
 }
 
 // Pestañas del módulo Indicador N2-1 (mismo patrón que alimNivel3IrATab):
@@ -38914,9 +38927,9 @@ async function catnodCargarHistorialAlimentador(alimentador){
           data: historial.map(h => h.gestionable_kwh), borderColor:'#d9534f', backgroundColor:'transparent',
           borderWidth:2, pointRadius:1.5, tension:0, datalabels:{display:false}},
         {type:'line', label:'Pérdida %', yAxisID:'yPct', order:1, borderDash:[4,3],
-          data: historial.map(h => h.perdida_pct==null?null:h.perdida_pct*100), borderColor:'#FFC000', backgroundColor:'transparent',
+          data: historial.map(h => h.perdida_pct==null?null:h.perdida_pct*100), borderColor:() => colorPctPerdida(), backgroundColor:'transparent',
           borderWidth:2, pointRadius:2, spanGaps:true, tension:0,
-          datalabels:{display:true, anchor:'end', align:'top', offset:8, formatter:v=>v==null?'':v.toFixed(2)+'%', font:{size:11,weight:'800'}, color:'#FFC000'}},
+          datalabels:{display:true, anchor:'end', align:'top', offset:8, formatter:v=>v==null?'':v.toFixed(2)+'%', font:{size:11,weight:'800'}, color:() => colorPctPerdida()}},
       ],
     },
     options: {
