@@ -4844,6 +4844,9 @@ html,body{overflow-x:hidden;margin:0}
         <div style="flex:1 1 320px;min-width:280px">
           <label style="font-size:11px;color:var(--text3);text-transform:uppercase;font-weight:700">Comentarios</label>
           <div id="alim3-comentarios" class="ip-comentario-caja" style="margin-top:6px;font-size:11.5px;padding:10px 12px"></div>
+          <!-- Descarga del Maestro de Compactos OFICIAL (el mismo CSV que alimenta la base) -->
+          <button type="button" class="be-modo-btn be-modo-btn-sm" id="alim3-btn-maestro-compactos" onclick="descargarMaestroCompactos()" style="margin-top:10px" title="Descarga el Maestro_Compactos.csv oficial (Transformador, Compacto, Nombre, Alimentador)">&#11015; Descargar maestro compactos</button>
+
         </div>
         <!-- Análisis por mes del alimentador elegido -- lo escribe el
              usuario y aparece en el tooltip de la gráfica de arriba al
@@ -38825,6 +38828,25 @@ function _catnodExcelHojaCapacidad(workbook, filasTransformadores){
 // combinadas"). Las hojas de usuarios no se generan -- las llena él.
 // Sin alimentador (vista por Zona/Municipio) ese formato no aplica (es
 // por alimentador), así que se mantiene el export plano de siempre.
+async function descargarMaestroCompactos(){
+  if(DEMO){ alert('No disponible en modo demo.'); return; }
+  const btn = document.getElementById('alim3-btn-maestro-compactos');
+  const txt = '⬇ Descargar maestro compactos';
+  if(btn){ btn.disabled = true; btn.textContent = '⏳ Descargando…'; }
+  try{
+    const res = await fetchConTimeout(`${API_BASE_URL}/api/alimentadores/maestro-compactos/descargar`, {headers: authHeaders()}, AUTH_TIMEOUT_MS);
+    if(!res.ok){
+      const d = await res.json().catch(() => null);
+      throw new Error((d && d.detail) || 'No se pudo descargar el maestro de compactos.');
+    }
+    _expDescargarBlob(await res.blob(), 'Maestro_Compactos.csv');
+  }catch(e){
+    alert(e.message || 'Error al descargar.');
+  }finally{
+    if(btn){ btn.disabled = false; btn.textContent = txt; }
+  }
+}
+
 async function _catnodDescargarCaracterizacion(nemonico){
   const res = await fetchConTimeout(`${API_BASE_URL}/api/alimentadores/informe/${encodeURIComponent(nemonico)}`, {headers: authHeaders()}, AUTH_TIMEOUT_MS);
   if(!res.ok){
