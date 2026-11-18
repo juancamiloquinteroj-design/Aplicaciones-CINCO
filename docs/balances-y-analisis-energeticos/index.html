@@ -7384,6 +7384,77 @@ const tmPluginTemaChartAuto = {
 };
 Chart.register(tmPluginTemaChartAuto);
 
+// kWh -> GWh en TODAS las gráficas (pedido explícito 2026-11-18: "cuando se
+// coloca la unidad de kWh se ve muy largo... que solo se vea así 17.55 con dos
+// decimales sin unidad"). En vez de tocar las ~40 gráficas una por una, este
+// plugin envuelve los callbacks de ticks y los formatters de datalabels: si el
+// texto que producían termina en "kWh" (ej. "19.787.655 kWh") lo cambia por el
+// valor en GWh con 2 decimales ("19.79"), y el título del eje pasa de kWh a GWh.
+// Solo aplica si el eje llega a >= 1 GWh: en ejes chicos (un cliente, un nodo)
+// 0.00 no diría nada y se deja en kWh. Tooltips quedan en kWh exactos.
+// "kWh/km", "kWh/Mes", "%" no se tocan (el regex exige que termine en kWh).
+const _GWH_RE = /\d\s*kWh\s*$/;
+function _gwhNum(v){ return typeof v === 'number' ? v : Number(v && typeof v === 'object' ? (v.y ?? v.x) : v); }
+function _gwhMaxEje(chart, id){
+  let mx = 0;
+  (chart.data.datasets || []).forEach(ds => {
+    const eje = ds.yAxisID || (chart.options.indexAxis === 'y' ? 'x' : 'y');
+    if(eje !== id) return;
+    (ds.data || []).forEach(d => { const n = Math.abs(_gwhNum(d)); if(isFinite(n) && n > mx) mx = n; });
+  });
+  return mx;
+}
+function _gwhTexto(txt, v, max){
+  if(typeof txt !== 'string' || !_GWH_RE.test(txt) || !(max >= 1e6)) return txt;
+  const n = _gwhNum(v);
+  return isFinite(n) ? (n / 1e6).toFixed(2) : txt;
+}
+function _gwhEnvolverFormatter(obj, ejeDe){
+  if(!obj || typeof obj.formatter !== 'function' || obj.formatter._gwh) return;
+  const orig = obj.formatter;
+  const w = function(valor, ctx){
+    const r = orig.call(this, valor, ctx);
+    if(typeof r !== 'string' || !_GWH_RE.test(r)) return r;
+    const ch = ctx && ctx.chart;
+    const ds = ch && ch.data.datasets[ctx.datasetIndex];
+    const eje = ejeDe(ds, ch);
+    const esc = ch && ch.scales && ch.scales[eje];
+    const mx = esc ? Math.max(Math.abs(esc.max || 0), Math.abs(esc.min || 0)) : _gwhMaxEje(ch, eje);
+    return _gwhTexto(r, valor, mx);
+  };
+  w._gwh = true;
+  obj.formatter = w;
+}
+function _gwhAplicar(chart){
+  const sc = chart.options.scales || {};
+  Object.keys(sc).forEach(id => {
+    const escala = sc[id];
+    if(!escala) return;
+    const t = escala.ticks;
+    if(t && typeof t.callback === 'function' && !t.callback._gwh){
+      const orig = t.callback;
+      const w = function(v, i, ts){
+        const r = orig.call(this, v, i, ts);
+        const mx = Math.max(Math.abs(this.max || 0), Math.abs(this.min || 0));
+        return _gwhTexto(r, v, mx);
+      };
+      w._gwh = true;
+      t.callback = w;
+    }
+    const ti = escala.title;
+    if(ti && typeof ti.text === 'string'){
+      if(ti._gwhBase === undefined && /kWh/.test(ti.text)) ti._gwhBase = ti.text;
+      if(ti._gwhBase !== undefined){
+        ti.text = _gwhMaxEje(chart, id) >= 1e6 ? ti._gwhBase.replace(/kWh/g, 'GWh') : ti._gwhBase;
+      }
+    }
+  });
+  const ejeDe = (ds, ch) => (ds && ds.yAxisID) || (ch && ch.options.indexAxis === 'y' ? 'x' : 'y');
+  _gwhEnvolverFormatter(chart.options.plugins && chart.options.plugins.datalabels, ejeDe);
+  (chart.data.datasets || []).forEach(ds => _gwhEnvolverFormatter(ds.datalabels, ejeDe));
+}
+Chart.register({ id: 'kwhAGwh', beforeUpdate(chart){ _gwhAplicar(chart); } });
+
 // Líneas guía verticales PERMANENTES desde cada punto hasta el eje X --
 // estilo Excel ("drop lines"), visibles siempre (no solo al pasar el
 // mouse) -- pedido explícito ("estilo excel con colores de excel", a
