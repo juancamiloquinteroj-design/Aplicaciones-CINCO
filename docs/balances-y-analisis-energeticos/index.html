@@ -1915,6 +1915,7 @@ html,body{overflow-x:hidden;margin:0}
   <button type="button" class="pt-tab-btn" id="tr-tab-btn-correo" onclick="tramosIrSub('correo')">Correo de alerta</button>
   <button type="button" class="pt-tab-btn" id="tr-tab-btn-economico" onclick="tramosIrSub('economico')">Análisis económico</button>
   <button type="button" class="pt-tab-btn" id="tr-tab-btn-topologia" onclick="tramosIrSub('topologia')">Topología</button>
+  <button type="button" class="pt-tab-btn" id="tr-tab-btn-tension" onclick="tramosIrSub('tension')">Tensión</button>
 </div>
 
 <div id="tr-sub-heatmap">
@@ -2038,6 +2039,41 @@ html,body{overflow-x:hidden;margin:0}
 
 <div id="tr-sub-topologia" class="hidden">
   <div class="card"><div class="card-title">Topología</div><div class="card-sub">En construcción: dibujo de circuitos desde los DGS georreferenciados (pendiente de recibir archivos).</div></div>
+</div>
+
+<div id="tr-sub-tension" class="hidden">
+  <div class="card">
+    <div class="fbar" style="margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--border);flex-wrap:wrap;gap:10px;align-items:center">
+      <span class="card-title" style="margin:0;font-size:14px">Curva de tensión por tramo</span>
+      <input type="text" id="tv-buscar" placeholder="Buscar por circuito, tramo, nodo, zona…" oninput="tensionFiltrar()"
+        style="flex:1;min-width:200px;max-width:380px;padding:7px 10px;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--text);background:var(--bg)">
+    </div>
+    <div style="display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap">
+      <!-- lista izquierda -->
+      <div id="tv-lista" style="width:300px;min-width:240px;max-height:520px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;flex-shrink:0">
+        <div style="padding:14px;font-size:12px;color:var(--text3)">Cargando tramos…</div>
+      </div>
+      <!-- panel derecho -->
+      <div style="flex:1;min-width:300px">
+        <div id="tv-vacio" style="font-size:12px;color:var(--text3);padding:26px 16px;text-align:center;border:1px dashed var(--border);border-radius:10px">
+          Elegí un tramo de la lista para ver la curva de tensión.
+        </div>
+        <div id="tv-datos" style="display:none">
+          <div id="tv-titulo" style="font-weight:700;font-size:13px;margin-bottom:10px"></div>
+          <div id="tv-cargando" style="font-size:12px;color:var(--text3)">Cargando…</div>
+          <div id="tv-contenido" style="display:none">
+            <div id="tv-meta"></div>
+            <div class="card-sub" style="margin:0 0 4px 0;font-size:11px">Caída de tensión en el tramo — por hora y tipo de día (último mes cargado)</div>
+            <div class="chart-wrap" style="height:240px;margin-bottom:14px"><canvas id="tv-ch-caida"></canvas></div>
+            <div class="card-sub" style="margin:0 0 4px 0;font-size:11px">Perfil de tensión en barras finales del tramo — por hora y tipo de día</div>
+            <div class="chart-wrap" style="height:240px;margin-bottom:14px"><canvas id="tv-ch-tension"></canvas></div>
+            <div class="card-sub" style="margin:0 0 4px 0;font-size:11px">Evolución mensual: tensión mínima y caída máxima</div>
+            <div class="chart-wrap" style="height:220px"><canvas id="tv-ch-serie"></canvas></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 </div>
 <!-- fin perdidas-tab-tramos -->
@@ -12143,11 +12179,12 @@ let HM_SEL = null;       // {t, d, serie, ultimo} del último tramo cargado -- l
 let HM_CORREO_CH = null;
 
 function tramosIrSub(nombre){
-  ['heatmap', 'correo', 'economico', 'topologia'].forEach(n => {
+  ['heatmap', 'correo', 'economico', 'topologia', 'tension'].forEach(n => {
     document.getElementById('tr-sub-' + n).classList.toggle('hidden', n !== nombre);
     document.getElementById('tr-tab-btn-' + n).classList.toggle('activo', n === nombre);
   });
   if(nombre === 'heatmap') heatmapCargar();
+  if(nombre === 'tension') tensionCargar();
   setTimeout(() => window.dispatchEvent(new Event('resize')), 0);
 }
 
@@ -12996,6 +13033,177 @@ function heatmapCopiarCorreo(){
   _hmCopiarCorreoAlPortapapeles()
     .then(() => _hmBotonFeedback('correo-btn-copiar', '✓ Copiado'))
     .catch(() => _hmBotonFeedback('correo-btn-copiar', 'No se pudo copiar'));
+}
+
+// ==========================================================================
+// SUB-PESTAÑA TENSIÓN -- busca un tramo por nombre/nodo y muestra la curva
+// de tensión (V_final_pu y caída %) por hora y tipo de día, más la serie
+// mensual de tensión mínima y caída máxima.
+// Fuente: /api/tramos/lista (identificación) + /api/tramos/detalle (curvas).
+// ==========================================================================
+let TV_TRAMOS_TODOS = [];
+let TV_CARGADO = false;
+let TV_CH1 = null, TV_CH2 = null, TV_CH3 = null;
+let TV_SEL = null;
+
+async function tensionCargar(){
+  if(TV_CARGADO){ tensionFiltrar(); return; }
+  document.getElementById('tv-lista').innerHTML = '<div style="padding:14px;font-size:12px;color:var(--text3)">Cargando lista de tramos…</div>';
+  try{
+    const r = await apiGet('/api/tramos/lista', 30000);
+    TV_TRAMOS_TODOS = r.tramos || [];
+    TV_CARGADO = true;
+    tensionFiltrar();
+  }catch(e){
+    document.getElementById('tv-lista').innerHTML = '<div style="padding:14px;font-size:12px;color:var(--text3)">No se pudo cargar la lista de tramos.</div>';
+  }
+}
+
+function tensionFiltrar(){
+  const q = (document.getElementById('tv-buscar').value || '').toLowerCase().trim();
+  const filtrado = q ? TV_TRAMOS_TODOS.filter(t =>
+    (t.estructura || '').toLowerCase().includes(q) ||
+    (t.tramo || '').toLowerCase().includes(q) ||
+    (t.nodo_1 || '').toLowerCase().includes(q) ||
+    (t.nodo_2 || '').toLowerCase().includes(q) ||
+    (t.zona || '').toLowerCase().includes(q) ||
+    (t.circuito || '').toLowerCase().includes(q)
+  ) : TV_TRAMOS_TODOS;
+  _tensionRenderLista(filtrado);
+}
+
+function _tensionRenderLista(tramos){
+  const el = document.getElementById('tv-lista');
+  if(!tramos.length){
+    el.innerHTML = '<div style="padding:14px;font-size:12px;color:var(--text3)">Sin resultados.</div>';
+    return;
+  }
+  const limite = 300;
+  const esc = s => _mselEsc(String(s || ''));
+  el.innerHTML = tramos.slice(0, limite).map(t => {
+    const activo = TV_SEL && TV_SEL.circuito === t.circuito && TV_SEL.tramo === t.tramo;
+    const alertaC = t.caida_max_pct != null && t.caida_max_pct > 3;
+    const alertaV = t.tension_min_pu != null && t.tension_min_pu < 0.95;
+    const colorMeta = (alertaC || alertaV) ? 'color:#dc2626' : 'color:var(--text3)';
+    return `<div onclick="tensionSeleccionar(${JSON.stringify(t.circuito)},${JSON.stringify(t.tramo)})"
+      style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border);font-size:12px${activo ? ';background:var(--accent-bg);border-left:3px solid var(--accent)' : ''}">
+      <div style="font-weight:600">${esc(t.estructura || t.circuito)}</div>
+      <div style="font-size:11px;${colorMeta}">
+        ${esc(t.tramo)}${t.nodo_1 ? ' · ' + esc(t.nodo_1) : ''}${t.nodo_2 ? ' → ' + esc(t.nodo_2) : ''}
+      </div>
+      ${(alertaC || alertaV) ? `<div style="font-size:10px;color:#dc2626">
+        ${alertaC ? '⚠ caída ' + _trNum(t.caida_max_pct,2) + '%' : ''}
+        ${alertaV ? '⚠ V_min ' + _trNum(t.tension_min_pu,4) + ' pu' : ''}
+      </div>` : ''}
+    </div>`;
+  }).join('') +
+  (tramos.length > limite ? `<div style="padding:8px;font-size:11px;color:var(--text3);text-align:center">+${tramos.length - limite} más. Filtrá para acotar.</div>` : '');
+}
+
+async function tensionSeleccionar(circuito, tramo){
+  TV_SEL = {circuito, tramo};
+  tensionFiltrar();
+  const vacio = document.getElementById('tv-vacio');
+  const datos = document.getElementById('tv-datos');
+  vacio.style.display = 'none';
+  datos.style.display = '';
+  document.getElementById('tv-cargando').style.display = '';
+  document.getElementById('tv-cargando').textContent = 'Cargando…';
+  document.getElementById('tv-contenido').style.display = 'none';
+  document.getElementById('tv-titulo').textContent = `${circuito} · ${tramo}`;
+  try{
+    const p = new URLSearchParams({circuito, tramo});
+    const d = await apiGet(`/api/tramos/detalle?${p}`, 60000);
+    document.getElementById('tv-titulo').textContent = `${d.estructura || d.circuito} · ${_trNodos(d)} (${d.tramo})`;
+    _tensionRenderGraficas(d);
+  }catch(e){
+    document.getElementById('tv-cargando').textContent = 'No se pudo cargar el detalle del tramo.';
+  }
+}
+
+function _tensionRenderGraficas(d){
+  const horas = d.horas || [];
+  const serie = d.serie_mensual || [];
+  if(TV_CH1){ TV_CH1.destroy(); TV_CH1 = null; }
+  if(TV_CH2){ TV_CH2.destroy(); TV_CH2 = null; }
+  if(TV_CH3){ TV_CH3.destroy(); TV_CH3 = null; }
+  document.getElementById('tv-cargando').style.display = 'none';
+  document.getElementById('tv-contenido').style.display = '';
+
+  // Tarjeta resumen: máxima caída y tensión mínima en hora y tipo de día
+  const minV = horas.reduce((m,h) => h.tension_final_pu!=null && h.tension_final_pu < m.v ? {v:h.tension_final_pu, h:h.hora, t:h.tipo_perfil} : m, {v:999, h:'--', t:'--'});
+  const maxC = horas.reduce((m,h) => h.caida_pct!=null && h.caida_pct > m.v ? {v:h.caida_pct, h:h.hora, t:h.tipo_perfil} : m, {v:-1, h:'--', t:'--'});
+  const aV = minV.v < 0.95 ? 'color:#dc2626;font-weight:700' : '';
+  const aC = maxC.v > 3 ? 'color:#dc2626;font-weight:700' : '';
+  document.getElementById('tv-meta').innerHTML = `<div class="alim-resumen-compacta" style="margin:0 0 14px 0">
+    <div class="alim-resumen-compacta-titulo">${d.calibre ? d.calibre + ' — ' : ''}${d.longitud_km!=null ? _trNum(d.longitud_km,3)+' km · ' : ''}Datos: ${d.mes_horas||'—'}</div>
+    <div class="alim-resumen-compacta-grid" style="grid-template-columns:repeat(2,1fr)">
+      <div><span class="etiqueta">Caída máxima:</span> <span class="valor" style="${aC}">${maxC.v>-1 ? _trNum(maxC.v,3)+'%' : '—'}</span>${maxC.h!='--' ? ` <span style="font-size:10px;color:var(--text3)">(${maxC.h}, ${maxC.t})</span>` : ''}</div>
+      <div><span class="etiqueta">Tensión mínima (V_final):</span> <span class="valor" style="${aV}">${minV.v<999 ? minV.v.toFixed(4)+' pu' : '—'}</span>${minV.h!='--' ? ` <span style="font-size:10px;color:var(--text3)">(${minV.h}, ${minV.t})</span>` : ''}</div>
+    </div>
+  </div>`;
+
+  const TIPOS = ['Dmax','Dmin','DSab','Ddom'];
+  const COL = {Dmax:'#dc2626', Dmin:'#2563eb', DSab:'#16a34a', Ddom:'#f59e0b'};
+  const hrs = [...new Set(horas.map(h => h.hora))].sort();
+
+  // Gráfica 1: Caída de tensión por hora y tipo de día
+  const dsets1 = TIPOS.filter(tp => horas.some(h => h.tipo_perfil===tp)).map(tp => ({
+    type:'line', label:tp,
+    data: hrs.map(h => { const r=horas.find(x=>x.tipo_perfil===tp&&x.hora===h); return r?r.caida_pct:null; }),
+    borderColor:COL[tp], backgroundColor:'transparent', borderWidth:2, pointRadius:1, spanGaps:true, tension:0,
+    datalabels:{display:false},
+  }));
+  dsets1.push({type:'line', label:'Umbral 3 %', data:hrs.map(()=>3),
+    borderColor:'#94a3b8', borderDash:[5,4], pointRadius:0, borderWidth:1.5, tension:0, datalabels:{display:false}});
+  TV_CH1 = new Chart(document.getElementById('tv-ch-caida'), {
+    data:{labels:hrs, datasets:dsets1},
+    options:{responsive:true, maintainAspectRatio:false, layout:{padding:{top:8, right:10}},
+      plugins:{legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:11}}}},
+      scales:{x:{offset:false, ticks:{maxTicksLimit:12}}, y:{title:{display:true, text:'Caída (%)'}, beginAtZero:true}}},
+  });
+
+  // Gráfica 2: Tensión en barras finales por hora y tipo de día
+  const dsets2 = TIPOS.filter(tp => horas.some(h => h.tipo_perfil===tp)).map(tp => ({
+    type:'line', label:tp,
+    data: hrs.map(h => { const r=horas.find(x=>x.tipo_perfil===tp&&x.hora===h); return r?r.tension_final_pu:null; }),
+    borderColor:COL[tp], backgroundColor:'transparent', borderWidth:2, pointRadius:1, spanGaps:true, tension:0,
+    datalabels:{display:false},
+  }));
+  dsets2.push({type:'line', label:'V mín. regulatorio (0.95 pu)', data:hrs.map(()=>0.95),
+    borderColor:'#94a3b8', borderDash:[5,4], pointRadius:0, borderWidth:1.5, tension:0, datalabels:{display:false}});
+  TV_CH2 = new Chart(document.getElementById('tv-ch-tension'), {
+    data:{labels:hrs, datasets:dsets2},
+    options:{responsive:true, maintainAspectRatio:false, layout:{padding:{top:8, right:10}},
+      plugins:{legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:11}}}},
+      scales:{x:{offset:false, ticks:{maxTicksLimit:12}}, y:{title:{display:true, text:'V_final (pu)'}}}},
+  });
+
+  // Gráfica 3: Serie mensual -- tensión mínima y caída máxima mes a mes
+  if(serie.length){
+    TV_CH3 = new Chart(document.getElementById('tv-ch-serie'), {
+      data:{
+        labels:serie.map(s=>s.mes),
+        datasets:[
+          {type:'line', label:'Tensión mínima (pu)', data:serie.map(s=>s.tension_min_pu),
+           borderColor:'#2563eb', backgroundColor:'#2563eb22', borderWidth:2, pointRadius:3, tension:0, yAxisID:'yV',
+           datalabels:{display:true, anchor:'end', align:'top', offset:3,
+             formatter:v=>v!=null?v.toFixed(4):'', font:{size:9, weight:'700'}, color:'#2563eb'}},
+          {type:'line', label:'Caída máxima (%)', data:serie.map(s=>s.caida_max_pct),
+           borderColor:'#dc2626', backgroundColor:'#dc262622', borderWidth:2, pointRadius:3, tension:0, yAxisID:'yC',
+           datalabels:{display:true, anchor:'end', align:'bottom', offset:3,
+             formatter:v=>v!=null?v.toFixed(2)+'%':'', font:{size:9, weight:'700'}, color:'#dc2626'}},
+        ],
+      },
+      options:{responsive:true, maintainAspectRatio:false, layout:{padding:{top:20, right:14}},
+        plugins:{legend:{display:true, position:'bottom', labels:{boxWidth:12, font:{size:11}}}},
+        scales:{
+          x:{offset:true},
+          yV:{position:'left', title:{display:true, text:'V mínima (pu)'}},
+          yC:{position:'right', grid:{drawOnChartArea:false}, title:{display:true, text:'Caída máx. (%)'}},
+        }},
+    });
+  }
 }
 
 async function paramDiccCargarEstado(){
