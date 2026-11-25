@@ -3901,6 +3901,7 @@ html,body{overflow-x:hidden;margin:0}
       <input type="month" id="alim-nivel4-hasta" onchange="alimNivel4RenderTodo()" style="display:none">
       <button type="button" class="be-modo-btn be-icon-btn" id="alim-nivel4-btn-var" style="margin-left:auto" onclick="alimNivel4ToggleVariacion()" title="Variación">Δ</button>
       <button type="button" class="be-modo-btn be-icon-btn" id="alim-nivel4-btn-relleno" onclick="alimNivel4ToggleRelleno()" title="Relleno">▨</button>
+      <button type="button" class="be-modo-btn be-icon-btn" id="alim-nivel4-btn-suma-estruct" onclick="alimNivel4ToggleSumaEstructuras()" title="Suma de estructuras (barras+líneas) — alternativa al Consolidado N4">∑</button>
       <!-- Este M/A solo controla el gráfico de la pestaña "Indicador
            Pérdidas Nivel 4" (ch-alim-nivel4-ip) -- en "Pérdida Técnica
            Nivel 4" se oculta (alimNivel4IrATab) porque esa pestaña ya
@@ -20954,6 +20955,41 @@ let ALIM_NIVEL4_VAR = true;
 let ALIM_NIVEL3_VAR = true;
 let ALIM_NIVEL4_SIN_RELLENO = false;
 let ALIM_NIVEL3_SIN_RELLENO = false;
+// Suma de estructuras: cuando está activo usa /api/balances-estructura/agregado-zona
+// en vez del Consolidado N4 (EH4) para calcular el indicador de pérdidas.
+let ALIM_NIVEL4_SUMA_ESTRUCT = false;
+let ALIM_NIVEL4_ESTRUCT_DATA = null; // cache del endpoint agregado-zona
+
+async function alimNivel4ToggleSumaEstructuras(){
+  ALIM_NIVEL4_SUMA_ESTRUCT = !ALIM_NIVEL4_SUMA_ESTRUCT;
+  const btn = document.getElementById('alim-nivel4-btn-suma-estruct');
+  btn.classList.toggle('activo', ALIM_NIVEL4_SUMA_ESTRUCT);
+  if(ALIM_NIVEL4_SUMA_ESTRUCT && !ALIM_NIVEL4_ESTRUCT_DATA){
+    btn.textContent = '…';
+    try {
+      ALIM_NIVEL4_ESTRUCT_DATA = await apiGet('/api/balances-estructura/agregado-zona?nivel=4');
+    } catch(e) {
+      ALIM_NIVEL4_SUMA_ESTRUCT = false;
+      btn.classList.remove('activo');
+      btn.textContent = '∑';
+      alert('No se pudieron cargar las estructuras N4: ' + (e.message || e));
+      return;
+    }
+    btn.textContent = '∑';
+  }
+  alimNivel4RenderTodo();
+}
+
+function _alimN4EstructMensual(data){
+  const meses = data.meses || [];
+  return meses.map((m, i) => ({
+    clave: m,
+    entrada: data.entrada_kwh?.[i] ?? 0,
+    salida: data.salida_kwh?.[i] ?? 0,
+    perdida: data.perdida_balance_kwh?.[i] ?? 0,
+    pct: data.perdida_balance_pct?.[i] ?? null,
+  })).sort((a, b) => a.clave < b.clave ? -1 : 1);
+}
 
 // Mismo criterio de filtro Rango que alimN21Visibles -- opera sobre la
 // serie YA agregada a mensual (campo .clave "AAAA-MM"), leyendo los
@@ -22127,7 +22163,9 @@ function _alimNivel4ExplicaHtml(mensualCompleto, tecnicaPorMes, clave){
 function alimNivel4RenderTodo(){
   const filas = ALIM_NIVEL4_FILAS || [];
   if(!filas.length) return;
-  const mensualCompleto = _alimNivel34MensualTotal(filas);
+  const mensualCompleto = (ALIM_NIVEL4_SUMA_ESTRUCT && ALIM_NIVEL4_ESTRUCT_DATA)
+    ? _alimN4EstructMensual(ALIM_NIVEL4_ESTRUCT_DATA)
+    : _alimNivel34MensualTotal(filas);
   const datos12Completo = alimN21Con12Meses(mensualCompleto);
   const mensual = _alimNivelVisibles(mensualCompleto, 'alim-nivel4');
   const anual = _alimNivelVisibles(datos12Completo, 'alim-nivel4').filter(f => f.pct12 != null);
@@ -22155,6 +22193,7 @@ function alimNivel4RenderTodo(){
   if(_taAnalisis){ _taAnalisis.value = ALIM_NIVEL4_ANALISIS[ALIM_NIVEL4_ANALISIS_MES] || ''; _taAnalisis.disabled = !EDITOR || OFFLINE_MODO; }
   document.getElementById('alim-nivel4-btn-var').classList.toggle('activo', ALIM_NIVEL4_VAR);
   document.getElementById('alim-nivel4-btn-relleno').classList.toggle('activo', ALIM_NIVEL4_SIN_RELLENO);
+  document.getElementById('alim-nivel4-btn-suma-estruct').classList.toggle('activo', ALIM_NIVEL4_SUMA_ESTRUCT);
 
   _alimNivelRenderResumenGrupos('alim-nivel4', _alimNivelVisibles(datos12Completo, 'alim-nivel4'), tecnicaPorMes, ALIM_NIVEL4_IP_MODO);
   document.getElementById('alim-nivel4-analisis').innerHTML = _alimNivelComparativoTarjetasHtml(mensualCompleto, tecnicaPorMes, claveAnalisis);
@@ -32287,12 +32326,30 @@ function mselRenderOpciones(id){
     : (st.opciones.length ? '<div class="msel-empty">Sin resultados</div>' : '<div class="msel-empty">Sin opciones</div>');
 }
 
+let _mselLastClickCtrl = false;
+document.addEventListener('mousedown', (ev)=>{
+  const cb = ev.target;
+  if(cb.matches && cb.matches('input[type=checkbox][data-msel]') && !cb.dataset.clear)
+    _mselLastClickCtrl = ev.ctrlKey || ev.metaKey;
+}, true);
 document.addEventListener('change', (ev)=>{
   const el = ev.target;
   if(el.matches && el.matches('input[type=checkbox][data-msel]')){
     const id = el.dataset.msel;
-    if(el.dataset.clear) mselClear(id);
-    else mselToggleValor(id, el.dataset.value, el.checked);
+    if(el.dataset.clear){ mselClear(id); return; }
+    const valor = el.dataset.value;
+    const st = MSEL[id]; if(!st) return;
+    if(_mselLastClickCtrl){
+      // Ctrl+click: aditivo (comportamiento original)
+      mselToggleValor(id, valor, el.checked);
+    } else {
+      // Click simple: reemplaza la selección con este único ítem
+      if(el.checked){ st.seleccion = new Set([valor]); }
+      else { st.seleccion = new Set(); }
+      mselRender(id);
+      st.onChange && st.onChange();
+    }
+    _mselLastClickCtrl = false;
   }
 });
 document.addEventListener('click', (ev)=>{
