@@ -21334,11 +21334,6 @@ function cgcCicRenderChart(){
     color: tickC, font:{size:11,weight:'bold'}, anchor:'end', align:'top', offset:6,
     backgroundColor: 'rgba(0,0,0,0.0)',
   } : {display:false};
-  const dlCfgPct = CGCCIC_ETIQUETAS ? {
-    display: ctx => ctx.raw != null,
-    formatter: v => v!=null ? v.toFixed(1)+'%' : '',
-    color:'#ff6b35', font:{size:11,weight:'bold'}, anchor:'end', align:'bottom', offset:6,
-  } : {display:false};
 
   const datasets=[];
   if(ciclosAMostrar===null){
@@ -21362,18 +21357,16 @@ function cgcCicRenderChart(){
     });
   }
 
-  // Overlay de % pérdida si hay un alimentador seleccionado con datos en caché
+  // % pérdida del alimentador seleccionado — se muestra en afterBody del tooltip
+  // (no como línea separada, igual que Alimentadores) para no requerir interacción.
   const alimsSel=mselValores('msel-cgccic-alimentador');
+  const lossDataActual=(alimsSel.length===1&&_cgcCicAlimLossCache[alimsSel[0]])?_cgcCicAlimLossCache[alimsSel[0]]:null;
+  const lossVis=lossDataActual?clavesVis.map(c=>{ const e=lossDataActual.find(d=>d.clave===c); return e?e.pct:null; }):null;
+
   const scales={
     x:{ticks:{color:tickC,font:{size:10}},grid:{color:gridC},afterFit:s=>{s.paddingLeft=16;s.paddingRight=16;}},
     y:{grace:'10%',ticks:{color:tickC,font:{size:10},padding:10,callback:v=>v.toLocaleString('es-CO',{maximumFractionDigits:0})},grid:{color:gridC},title:{display:true,text:`kWh (${etModo})`,color:tickC,font:{size:10}}}
   };
-  if(alimsSel.length===1 && _cgcCicAlimLossCache[alimsSel[0]]){
-    const lossData=_cgcCicAlimLossCache[alimsSel[0]];
-    const lossVis=clavesVis.map(c=>{ const e=lossData.find(d=>d.clave===c); return e?e.pct:null; });
-    datasets.push({label:`% Pérdida ${alimsSel[0]}`,data:lossVis,borderColor:'#ff6b35',backgroundColor:'#ff6b3515',tension:0,pointRadius:3,borderWidth:2,fill:false,yAxisID:'yPct',borderDash:[3,3],datalabels:dlCfgPct});
-    scales.yPct={position:'right',ticks:{color:'#ff6b35',font:{size:10},callback:v=>`${v.toFixed(1)}%`},grid:{drawOnChartArea:false},title:{display:true,text:'% Pérdida',color:'#ff6b35',font:{size:10}}};
-  }
 
   if(chCgcCicLinea) chCgcCicLinea.destroy();
   const cv=document.getElementById('ch-cgccic-linea');
@@ -21383,10 +21376,27 @@ function cgcCicRenderChart(){
     interaction:{mode:'index',intersect:false},
     plugins:{
       legend:{position:'bottom',labels:{color:tickC,font:{size:11},filter:item=>!item.text.startsWith('Tendencia')||CGCCIC_TENDENCIA}},
-      tooltip:{callbacks:{label:ctx=>{
-        if(ctx.dataset.yAxisID==='yPct') return `${ctx.dataset.label}: ${ctx.raw!=null?ctx.raw.toFixed(2)+'%':'Sin dato'}`;
-        return `${ctx.dataset.label}: ${ctx.raw!=null?ctx.raw.toLocaleString('es-CO',{maximumFractionDigits:0})+' kWh':'Sin dato'}`;
-      }}}
+      tooltip:{callbacks:{
+        label:ctx=>{
+          if(ctx.raw==null) return null;
+          const v=ctx.raw;
+          const arr=ctx.dataset.data;
+          const ant=arr[ctx.dataIndex-1];
+          let extra='';
+          if(ant!=null){ const d=v-ant; extra=` (${d>=0?'▲':'▼'} ${Math.abs(d).toLocaleString('es-CO',{maximumFractionDigits:0})} kWh)`; }
+          return `${ctx.dataset.label}: ${v.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh${extra}`;
+        },
+        afterBody:(items)=>{
+          if(!items.length||!lossVis) return;
+          const idx=items[0].dataIndex;
+          const pct=lossVis[idx];
+          if(pct==null) return;
+          const pctAnt=idx>0?lossVis[idx-1]:null;
+          let extra='';
+          if(pctAnt!=null){ const d=pct-pctAnt; extra=` (${d>=0?'▲':'▼'} ${Math.abs(d).toFixed(2)}pp)`; }
+          return [`% Pérdida ${alimsSel[0]}: ${pct.toFixed(2)}%${extra}`];
+        }
+      }}
     },
     scales
   }});
