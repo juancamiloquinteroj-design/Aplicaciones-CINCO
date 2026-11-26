@@ -21308,9 +21308,15 @@ function cgcCicRenderCiclosGrid(){
 
   const claves = [...new Set(filas.map(acClave))].sort();
   if(!CGCCIC_GRID_MES || !claves.includes(CGCCIC_GRID_MES)){
-    // Preferir el último mes donde haya al menos una fila NO proyectada
-    const sinProy = claves.filter(ck => filas.some(f => acClave(f)===ck && f.proyectado!=='Si' && CGCCIC_CICLOS_FRECUENTES.has(f.ciclo)));
-    CGCCIC_GRID_MES = (sinProy.length ? sinProy : claves).at(-1);
+    // Mismo criterio energético que proyectadasSet: mes "real" = ≤50% de energía proyectada
+    const kwhT2=new Map(), kwhP2=new Map();
+    for(const f of filas){
+      const ck=acClave(f), v=f.energia_liquidada_kwh||0;
+      kwhT2.set(ck,(kwhT2.get(ck)||0)+v);
+      if(f.proyectado==='Si') kwhP2.set(ck,(kwhP2.get(ck)||0)+v);
+    }
+    const sinProy=claves.filter(ck=>{const t=kwhT2.get(ck)||0,p=kwhP2.get(ck)||0;return t===0||p/t<=0.5;});
+    CGCCIC_GRID_MES=(sinProy.length?sinProy:claves).at(-1);
   }
   if(selMes) selMes.innerHTML = [...claves].reverse().map(c=>`<option value="${c}"${c===CGCCIC_GRID_MES?' selected':''}>${labelMes(c)}</option>`).join('');
 
@@ -21325,7 +21331,8 @@ function cgcCicRenderCiclosGrid(){
     return `<th style="text-align:center;cursor:pointer;padding:6px 10px${bg}" onclick="cgcCicSelCiclo(${c},event)" title="Click: solo este ciclo · Ctrl+click: combinar">${c}</th>`;
   }).join('');
 
-  const filaHtml = (et,fn) => `<tr><td style="color:var(--text3);white-space:nowrap;font-weight:600">${et}</td>${ciclos.map(c=>`<td style="text-align:center">${fn(c)}</td>`).join('')}</tr>`;
+  const celBg = c => CGCCIC_CICLOS_SEL.has(c)?';background:color-mix(in srgb,var(--accent) 15%,transparent)':'';
+  const filaHtml = (et,fn) => `<tr><td style="color:var(--text3);white-space:nowrap;font-weight:600">${et}</td>${ciclos.map(c=>`<td style="text-align:center${celBg(c)}">${fn(c)}</td>`).join('')}</tr>`;
 
   cont.innerHTML = `<tr><td></td>${headCeldas}</tr>`
     + filaHtml('Tipo', c=>{ const liq=[...new Set(delMes(c).map(f=>f.liquidacion).filter(Boolean))]; return liq.length?liq.join('/'):'--'; })
@@ -21413,33 +21420,23 @@ function cgcCicRenderChart(){
 
   const todasClaves=[...new Set(filasCompletas.map(acClave))].sort();
   const clavesVis=todasClaves.filter(c=>(!desde||c>=desde)&&(!hasta||c<=hasta));
-  // Clave proyectada = todos los ciclos destacados presentes en ese mes están proyectados
-  // (filtrar solo CGCCIC_CICLOS_FRECUENTES evita que ciclos bimestrales externos
-  //  marquen como proyectados meses que en realidad ya tienen dato real).
+  // Mes punteado = >50% de la energía de los ciclos destacados está proyectada.
+  // Usar energía (no conteo de filas) para que ciclos mixtos (Si/No) voten
+  // según su peso real, no uno-a-uno.
   const proyectadasSet=(()=>{
-    const frecClaves=new Map();
+    const kwhT=new Map(), kwhP=new Map();
     for(const f of filasCompletas){
       if(!CGCCIC_CICLOS_FRECUENTES.has(f.ciclo)) continue;
-      const ck=acClave(f);
-      if(!frecClaves.has(ck)) frecClaves.set(ck,{total:0,proy:0});
-      const e=frecClaves.get(ck); e.total++; if(f.proyectado==='Si') e.proy++;
+      const ck=acClave(f), v=f.energia_liquidada_kwh||0;
+      kwhT.set(ck,(kwhT.get(ck)||0)+v);
+      if(f.proyectado==='Si') kwhP.set(ck,(kwhP.get(ck)||0)+v);
     }
-    return new Set([...frecClaves.entries()].filter(([,e])=>e.total>0&&e.proy===e.total).map(([ck])=>ck));
+    return new Set([...kwhT.keys()].filter(ck=>{const t=kwhT.get(ck),p=kwhP.get(ck)||0;return t>0&&p/t>0.5;}));
   })();
-
-  // Configuración de etiquetas (datalabels plugin)
-  const dlCfgKwh = CGCCIC_ETIQUETAS ? {
-    display: ctx => ctx.raw != null,
-    formatter: v => v!=null ? (v/1e6).toFixed(2)+' GWh' : '',
-    color: tickC, font:{size:11,weight:'bold'}, anchor:'end', align:'top', offset:6,
-    backgroundColor: 'rgba(0,0,0,0.0)',
-  } : {display:false};
 
   const datasets=[];
   if(ciclosAMostrar===null){
     const pC=new Map();
-    // Solo sumar los ciclos frecuentes (mensuales) para evitar dientes de sierra
-    // causados por ciclos bimestrales que no pertenecen al conjunto principal.
     for(const [ciclo,m] of porCiclo){
       if(!CGCCIC_CICLOS_FRECUENTES.has(ciclo)) continue;
       for(const [c,v] of m) pC.set(c,(pC.get(c)||0)+v);
@@ -21448,7 +21445,7 @@ function cgcCicRenderChart(){
     const serieAct=CGCCIC_MODO==='anual'?acVentanaAnual(serie):serie;
     const datos=clavesVis.map(c=>serieAct.find(s=>s.clave===c)?.valor??null);
     const seg={borderDash:ctx=>proyectadasSet.has(clavesVis[ctx.p1DataIndex])?[6,4]:undefined};
-    datasets.push({label:'Ciclos destacados',data:datos,borderColor:'#118ab2',backgroundColor:'#118ab220',tension:0,pointRadius:ctx=>acRadioPuntoAislado(ctx),borderWidth:2.5,fill:false,segment:seg,datalabels:dlCfgKwh});
+    datasets.push({label:'Ciclos destacados',data:datos,borderColor:'#118ab2',backgroundColor:'#118ab220',tension:0,pointRadius:ctx=>acRadioPuntoAislado(ctx),borderWidth:2.5,fill:false,segment:seg});
     if(CGCCIC_TENDENCIA){ const td=_cgcCicRegresion(datos); datasets.push({label:'Tendencia (destacados)',data:td,borderColor:'#118ab288',borderDash:[5,4],tension:0,pointRadius:0,borderWidth:1.5,fill:false,datalabels:{display:false}}); }
   } else {
     const n=ciclosAMostrar.length;
@@ -21459,7 +21456,7 @@ function cgcCicRenderChart(){
       const color=CGCCIC_COLORES_FIJOS[ciclo]||acColorCiclo(idx,n);
       const datos=clavesVis.map(c=>serieAct.find(s=>s.clave===c)?.valor??null);
       const seg={borderDash:ctx=>proyectadasSet.has(clavesVis[ctx.p1DataIndex])?[6,4]:undefined};
-      datasets.push({label:`Ciclo ${ciclo}`,data:datos,borderColor:color,backgroundColor:color+'33',tension:0,pointRadius:ctx=>acRadioPuntoAislado(ctx),borderWidth:2.5,fill:false,segment:seg,datalabels:{...dlCfgKwh,color}});
+      datasets.push({label:`Ciclo ${ciclo}`,data:datos,borderColor:color,backgroundColor:color+'33',tension:0,pointRadius:ctx=>acRadioPuntoAislado(ctx),borderWidth:2.5,fill:false,segment:seg});
       if(CGCCIC_TENDENCIA){ const td=_cgcCicRegresion(datos); datasets.push({label:`Tendencia C${ciclo}`,data:td,borderColor:color+'88',borderDash:[5,4],tension:0,pointRadius:0,borderWidth:1.5,fill:false,datalabels:{display:false}}); }
     });
   }
@@ -21483,6 +21480,12 @@ function cgcCicRenderChart(){
     interaction:{mode:'index',intersect:false},
     plugins:{
       legend:{position:'bottom',labels:{color:tickC,font:{size:11},filter:item=>!item.text.startsWith('Tendencia')||CGCCIC_TENDENCIA}},
+      datalabels: CGCCIC_ETIQUETAS ? {
+        display: ctx => !ctx.dataset.label?.startsWith('Tendencia') && ctx.raw != null,
+        formatter: v => v!=null ? (v/1e6).toFixed(2)+' GWh' : '',
+        color: ctx => typeof ctx.dataset.borderColor==='string' ? ctx.dataset.borderColor : tickC,
+        font:{size:11,weight:'bold'}, anchor:'end', align:'top', offset:6,
+      } : {display:false},
       tooltip:{callbacks:{
         label:ctx=>{
           if(ctx.raw==null) return null;
@@ -21632,42 +21635,47 @@ function cgcCicRenderAnalisis(){
     ${donaData.length>=2?`<div style="margin-top:10px"><div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;margin-bottom:6px">Participación en venta — ${labelMes(mesActual)}</div><div style="position:relative;height:180px"><canvas id="ch-cgccic-dona"></canvas></div></div>`:''}`;
 
   if(donaData.length>=2){
+    // requestAnimationFrame garantiza que el canvas esté en el DOM con dimensiones
+    // calculadas antes de que Chart.js intente usarlo.
+    requestAnimationFrame(()=>{
     const canvas=document.getElementById('ch-cgccic-dona');
-    if(canvas){
-      // canvas no interpreta CSS variables — calcular colores reales
-      const donaDark=document.documentElement.getAttribute('data-theme')==='dark';
-      const donaTickC=donaDark?'#aab8d1':'#4b5e7a';
-      const donaBgC=donaDark?'#1e2d42':'#ffffff';
-      chCgcCicDona=new Chart(canvas,{
-        type:'doughnut',
-        data:{
-          labels:donaData.map(d=>`Ciclo ${d.ciclo}`),
-          datasets:[{
-            data:donaData.map(d=>+(d.kwh/1e6).toFixed(4)),
-            backgroundColor:donaData.map(d=>CGCCIC_COLORES_FIJOS[d.ciclo]||'#aaa'),
-            borderWidth:2,
-            borderColor:donaBgC
-          }]
-        },
-        options:{
-          responsive:true,
-          maintainAspectRatio:false,
-          cutout:'55%',
-          plugins:{
-            legend:{position:'right',labels:{color:donaTickC,font:{size:11},boxWidth:12,padding:8}},
-            tooltip:{callbacks:{label:ctx=>{
-              const total=ctx.dataset.data.reduce((a,b)=>a+b,0);
-              return ` ${ctx.label}: ${ctx.parsed.toLocaleString('es-CO',{minimumFractionDigits:2})} GWh (${(ctx.parsed/total*100).toFixed(1)}%)`;
-            }}},
-            datalabels:{
-              display:ctx=>{const t=ctx.dataset.data.reduce((a,b)=>a+b,0); return t>0&&ctx.dataset.data[ctx.dataIndex]/t>0.05;},
-              formatter:(v,ctx)=>{const t=ctx.dataset.data.reduce((a,b)=>a+b,0);return `${(v/t*100).toFixed(0)}%`;},
-              color:'#ffffff',font:{size:10,weight:'bold'}
-            }
+    if(!canvas) return;
+    if(chCgcCicDona){ chCgcCicDona.destroy(); chCgcCicDona=null; }
+    const donaDark=document.documentElement.getAttribute('data-theme')==='dark';
+    const donaTickC=donaDark?'#aab8d1':'#4b5e7a';
+    const donaBgC=donaDark?'#1e2d42':'#ffffff';
+    const donaVals=donaData.map(d=>+(d.kwh/1e6).toFixed(4));
+    const donaTotal=donaVals.reduce((a,b)=>a+b,0);
+    chCgcCicDona=new Chart(canvas,{
+      type:'doughnut',
+      data:{
+        labels:donaData.map(d=>`Ciclo ${d.ciclo}`),
+        datasets:[{
+          data:donaVals,
+          backgroundColor:donaData.map(d=>CGCCIC_COLORES_FIJOS[d.ciclo]||'#aaa'),
+          borderWidth:2,
+          borderColor:donaBgC
+        }]
+      },
+      options:{
+        responsive:true,
+        maintainAspectRatio:false,
+        cutout:'55%',
+        plugins:{
+          legend:{position:'right',labels:{color:donaTickC,font:{size:11},boxWidth:12,padding:8}},
+          tooltip:{callbacks:{label:ctx=>{
+            const v=ctx.dataset.data[ctx.dataIndex];
+            return ` ${ctx.label}: ${v.toLocaleString('es-CO',{minimumFractionDigits:2})} GWh (${donaTotal>0?(v/donaTotal*100).toFixed(1):0}%)`;
+          }}},
+          datalabels:{
+            display:ctx=>donaTotal>0&&ctx.dataset.data[ctx.dataIndex]/donaTotal>0.05,
+            formatter:(v)=>`${donaTotal>0?(v/donaTotal*100).toFixed(0):0}%`,
+            color:'#ffffff',font:{size:10,weight:'bold'}
           }
         }
+      }
       });
-    }
+    }); // fin requestAnimationFrame
   }
 }
 
