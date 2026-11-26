@@ -21487,36 +21487,45 @@ function cgcCicRenderAnalisis(){
   if(totalClientes>0) res+=`, atendiendo <b>${fmtCli(totalClientes)} clientes</b>`;
   res+=` en ${labelMes(mesActual)}.</p>`;
 
-  // Renderizar: texto izquierda + dona derecha
+  // Renderizar: texto arriba + dona abajo (apilados, sin overflow)
+  const donaDatos=dataCiclos.filter(d=>d.kwh>0);
   cont.innerHTML=`
-    <div style="display:flex;gap:14px;align-items:flex-start">
-      <div style="flex:1;min-width:0">
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div>
         <div class="card-title" style="margin-top:0;margin-bottom:6px">Análisis — ${labelMes(mesActual)}</div>
         ${parrafos.join('')}
         ${res}
       </div>
-      <div style="flex:0 0 170px;text-align:center">
-        <div style="font-size:11px;font-weight:700;color:var(--text3);margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px">Venta por ciclo</div>
-        <div style="position:relative;width:170px;height:150px"><canvas id="ch-cgccic-dona"></canvas></div>
-      </div>
+      ${donaDatos.length?`<div>
+        <div style="font-size:10px;font-weight:700;color:var(--text3);margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px;text-align:center">Distribución venta · ${labelMes(mesActual)}</div>
+        <div style="position:relative;height:200px"><canvas id="ch-cgccic-dona"></canvas></div>
+      </div>`:''}
     </div>`;
 
   // Dona chart
   if(chCgcCicDona){ chCgcCicDona.destroy(); chCgcCicDona=null; }
+  if(!donaDatos.length) return;
   const cvDona=document.getElementById('ch-cgccic-dona');
   if(!cvDona) return;
   const dark=document.documentElement.getAttribute('data-theme')==='dark';
   const tickC=dark?'#aab8d1':'#4b5e7a';
-  const donaDatos=dataCiclos.filter(d=>d.kwh>0);
   chCgcCicDona=new Chart(cvDona,{type:'doughnut',data:{
-    labels:donaDatos.map(d=>`C${d.c}`),
-    datasets:[{data:donaDatos.map(d=>d.kwh),backgroundColor:donaDatos.map(d=>CGCCIC_COLORES_FIJOS[d.c]||acColorCiclo(d.c,donaDatos.length)),borderWidth:1,hoverOffset:6}]
+    labels:donaDatos.map(d=>`Ciclo ${d.c}`),
+    datasets:[{
+      data:donaDatos.map(d=>d.kwh),
+      backgroundColor:donaDatos.map(d=>CGCCIC_COLORES_FIJOS[d.c]||acColorCiclo(d.c,donaDatos.length)),
+      borderWidth:1,hoverOffset:4
+    }]
   },options:{
-    responsive:false,maintainAspectRatio:false,cutout:'58%',
+    responsive:true,maintainAspectRatio:false,cutout:'52%',
     plugins:{
-      legend:{display:true,position:'bottom',labels:{color:tickC,font:{size:10},padding:4,boxWidth:10}},
+      legend:{display:true,position:'right',labels:{color:tickC,font:{size:10},padding:6,boxWidth:12,usePointStyle:true}},
       tooltip:{callbacks:{label:ctx=>`${ctx.label}: ${kwhGwh(ctx.raw)} GWh (${totalMesKwh>0?(ctx.raw/totalMesKwh*100).toFixed(1):'0'}%)`}},
-      datalabels:{display:false}
+      datalabels:{
+        display:ctx=>donaDatos[ctx.dataIndex]&&totalMesKwh>0&&donaDatos[ctx.dataIndex].kwh/totalMesKwh>0.06,
+        formatter:v=>totalMesKwh>0?(v/totalMesKwh*100).toFixed(0)+'%':'-',
+        color:'#fff',font:{size:10,weight:'bold'}
+      }
     }
   }});
 }
