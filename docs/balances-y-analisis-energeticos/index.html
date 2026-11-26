@@ -1748,8 +1748,6 @@ html,body{overflow-x:hidden;margin:0}
       <button type="button" class="be-modo-btn be-icon-btn" style="width:22px;height:22px;font-size:10px" onclick="_mesPresetAbrirPersonalizado('cgccic-desde','cgccic-hasta','cgcCicAplicarFiltros','Ciclos GC')" title="Rango personalizado">📅</button>
       <label>Tipo</label>
       <select id="cgccic-tipo" onchange="cgcCicAplicarFiltros()"><option value="">Todos</option></select>
-      <label>Liquidación</label>
-      <div class="msel" id="msel-cgccic-liquidacion"></div>
       <label>Zona</label>
       <select id="cgccic-zona" onchange="cgcCicAplicarFiltros()"><option value="">Todas</option></select>
       <label>Subestación</label>
@@ -10615,8 +10613,10 @@ document.addEventListener('keydown', (ev) => {
   if(tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (t && t.isContentEditable)) return;
   const d = ev.key === 'ArrowRight' ? 1 : -1;
   const a = document.getElementById('alim3-buscar'), c = document.getElementById('cgc-buscar');
+  const cgccicAlim = document.getElementById('msel-cgccic-alimentador');
   if(a && a.offsetParent !== null){ ev.preventDefault(); alim3SiguienteAlimentador(d); }
   else if(c && c.offsetParent !== null){ ev.preventDefault(); cgcSiguienteCliente(d); }
+  else if(cgccicAlim && cgccicAlim.offsetParent !== null){ ev.preventDefault(); cgcCicNavAlim(d); }
 });
 
 // Ctrl DERECHO (solo, sin otra tecla) hace lo mismo -- pedido explícito, es más
@@ -21140,7 +21140,6 @@ function cgcCicInit(){
   if(!inTablaHasta.value) inTablaHasta.value = claves[claves.length-1];
 
   // Los 3 msel arrancan vacíos; cgcCicAplicarFiltros los llena
-  mselInit('msel-cgccic-liquidacion','Liquidación','Todas',[],()=>cgcCicAplicarFiltros());
   mselInit('msel-cgccic-subestacion','Subestación','Todas',[],()=>cgcCicAplicarFiltros());
   mselInit('msel-cgccic-alimentador','Nombre Spard','Todos',[],()=>cgcCicAplicarFiltros(),[],  'Buscar alimentador...');
 
@@ -21173,7 +21172,7 @@ function cgcCicRangoTabla(){
 function cgcCicFiltrosActivos(){
   return {
     tipo: document.getElementById('cgccic-tipo')?.value || '',
-    liquidaciones: mselValores('msel-cgccic-liquidacion'),
+    liquidaciones: [],
     zona: document.getElementById('cgccic-zona')?.value || '',
     subestaciones: mselValores('msel-cgccic-subestacion'),
     alimentadores: mselValores('msel-cgccic-alimentador'),
@@ -21234,7 +21233,6 @@ function cgcCicCambiarMesGrid(clave){ CGCCIC_GRID_MES=clave||null; cgcCicRenderC
 
 function cgcCicLimpiar(){
   document.getElementById('cgccic-tipo').value = '';
-  mselSetSeleccion('msel-cgccic-liquidacion',[]);
   document.getElementById('cgccic-zona').value = '';
   mselSetSeleccion('msel-cgccic-subestacion',[]);
   mselSetSeleccion('msel-cgccic-alimentador',[]);
@@ -21262,7 +21260,6 @@ function cgcCicAplicarFiltros(){
   const _p = s => id => document.getElementById(id)?.value;
   const setPob = (id, vals, vacío) => { const el=document.getElementById(id); if(!el) return; const ant=el.value; el.innerHTML=`<option value="">${vacío}</option>`+vals.map(v=>`<option value="${v}">${v}</option>`).join(''); el.value=vals.includes(ant)?ant:''; };
   setPob('cgccic-tipo', [...new Set(cgcCicFilasFiltradas('tipo').map(f=>f.tipo).filter(Boolean))].sort(), 'Todos');
-  mselSetOpciones('msel-cgccic-liquidacion', [...new Set(cgcCicFilasFiltradas('liquidacion').map(f=>f.liquidacion).filter(Boolean))].sort().map(v=>({value:v,label:v})));
   setPob('cgccic-zona', [...new Set(cgcCicFilasFiltradas('zona').map(f=>f.zona).filter(Boolean))].sort(), 'Todas');
   mselSetOpciones('msel-cgccic-subestacion', [...new Set(cgcCicFilasFiltradas('subestacion').map(f=>f.subestacion).filter(Boolean))].sort().map(v=>({value:v,label:v})));
   mselSetOpciones('msel-cgccic-alimentador', [...new Set(cgcCicFilasFiltradas('alimentador').map(f=>f.alimentador).filter(Boolean))].sort().map(v=>({value:v,label:v})));
@@ -21502,13 +21499,18 @@ function cgcCicRenderChart(){
       tooltip:{callbacks:{
         label:ctx=>{
           if(ctx.raw==null) return null;
-          if(ctx.dataset.yAxisID==='y1') return `% Pérdida: ${ctx.raw.toFixed(2)}%${lossVis[ctx.dataIndex]?.kwh!=null?' · '+Math.round(lossVis[ctx.dataIndex].kwh).toLocaleString('es-CO')+' kWh/mes':''}`;
+          if(ctx.dataset.yAxisID==='y1') return `% Pérdida: ${ctx.raw.toFixed(2)}%`;
           const v=ctx.raw;
           const arr=ctx.dataset.data;
           const ant=arr[ctx.dataIndex-1];
           let extra='';
           if(ant!=null){ const d=v-ant; extra=` (${d>=0?'▲':'▼'} ${Math.abs(d).toLocaleString('es-CO',{maximumFractionDigits:0})} kWh)`; }
           return `${ctx.dataset.label}: ${v.toLocaleString('es-CO',{maximumFractionDigits:0})} kWh${extra}`;
+        },
+        afterLabel:ctx=>{
+          if(ctx.dataset.yAxisID!=='y1') return;
+          const kwh=lossVis?.[ctx.dataIndex]?.kwh;
+          if(kwh!=null) return `  Pérdida: ${Math.round(kwh).toLocaleString('es-CO')} kWh/mes`;
         }
       }}
     },
