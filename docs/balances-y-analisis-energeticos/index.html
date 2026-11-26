@@ -21499,10 +21499,8 @@ function cgcCicRenderChart(){
   else ciclosAMostrar = [...CGCCIC_CICLOS_SEL].sort((a,b)=>a-b);
 
   const todasClaves=[...new Set(filasCompletas.map(acClave))].sort();
-  const clavesVis=todasClaves.filter(c=>(!desde||c>=desde)&&(!hasta||c<=hasta));
-  // Mes punteado = >50% de la energía de los ciclos destacados está proyectada.
-  // Usar energía (no conteo de filas) para que ciclos mixtos (Si/No) voten
-  // según su peso real, no uno-a-uno.
+  // proyectadasSet se calcula ANTES de filtrar clavesVis para poder
+  // aplicar la protección (quitar el último mes si está proyectado).
   const proyectadasSet=(()=>{
     const kwhT=new Map(), kwhP=new Map();
     for(const f of filasCompletas){
@@ -21513,6 +21511,11 @@ function cgcCicRenderChart(){
     }
     return new Set([...kwhT.keys()].filter(ck=>{const t=kwhT.get(ck),p=kwhP.get(ck)||0;return t>0&&p/t>0.5;}));
   })();
+  // Rango visible: aplica desde/hasta y protección del último mes proyectado
+  let clavesVis=todasClaves.filter(c=>(!desde||c>=desde)&&(!hasta||c<=hasta));
+  if(CGCCIC_PROTECCION && clavesVis.length && proyectadasSet.has(clavesVis.at(-1))){
+    clavesVis=clavesVis.slice(0,-1);
+  }
 
   const datasets=[];
   if(ciclosAMostrar===null){
