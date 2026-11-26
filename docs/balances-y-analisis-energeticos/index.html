@@ -21445,7 +21445,7 @@ function cgcCicRenderChart(){
     const serieAct=CGCCIC_MODO==='anual'?acVentanaAnual(serie):serie;
     const datos=clavesVis.map(c=>serieAct.find(s=>s.clave===c)?.valor??null);
     const seg={borderDash:ctx=>proyectadasSet.has(clavesVis[ctx.p1DataIndex])?[6,4]:undefined};
-    const dlAgr=CGCCIC_ETIQUETAS?{display:true,formatter:v=>v!=null?(v/1e6).toFixed(2)+' GWh':'',color:'#118ab2',font:{size:11,weight:'bold'},anchor:'end',align:'top',offset:6}:{display:false};
+    const dlAgr=CGCCIC_ETIQUETAS?{display:true,formatter:v=>v!=null?(v/1e6).toFixed(2):'',color:'#118ab2',font:{size:11,weight:'bold'},anchor:'end',align:'top',offset:6}:{display:false};
     datasets.push({label:'Ciclos destacados',data:datos,borderColor:'#118ab2',backgroundColor:'#118ab220',tension:0,pointRadius:ctx=>acRadioPuntoAislado(ctx),borderWidth:2.5,fill:false,segment:seg,datalabels:dlAgr});
     if(CGCCIC_TENDENCIA){ const td=_cgcCicRegresion(datos); datasets.push({label:'Tendencia (destacados)',data:td,borderColor:'#118ab288',borderDash:[5,4],tension:0,pointRadius:0,borderWidth:1.5,fill:false,datalabels:{display:false}}); }
   } else {
@@ -21457,7 +21457,7 @@ function cgcCicRenderChart(){
       const color=CGCCIC_COLORES_FIJOS[ciclo]||acColorCiclo(idx,n);
       const datos=clavesVis.map(c=>serieAct.find(s=>s.clave===c)?.valor??null);
       const seg={borderDash:ctx=>proyectadasSet.has(clavesVis[ctx.p1DataIndex])?[6,4]:undefined};
-      const dlC=CGCCIC_ETIQUETAS?{display:true,formatter:v=>v!=null?(v/1e6).toFixed(2)+' GWh':'',color,font:{size:11,weight:'bold'},anchor:'end',align:'top',offset:6}:{display:false};
+      const dlC=CGCCIC_ETIQUETAS?{display:true,formatter:v=>v!=null?(v/1e6).toFixed(2):'',color,font:{size:11,weight:'bold'},anchor:'end',align:'top',offset:6}:{display:false};
       datasets.push({label:`Ciclo ${ciclo}`,data:datos,borderColor:color,backgroundColor:color+'33',tension:0,pointRadius:ctx=>acRadioPuntoAislado(ctx),borderWidth:2.5,fill:false,segment:seg,datalabels:dlC});
       if(CGCCIC_TENDENCIA){ const td=_cgcCicRegresion(datos); datasets.push({label:`Tendencia C${ciclo}`,data:td,borderColor:color+'88',borderDash:[5,4],tension:0,pointRadius:0,borderWidth:1.5,fill:false,datalabels:{display:false}}); }
     });
@@ -21626,13 +21626,20 @@ function cgcCicRenderAnalisis(){
 
   if(chCgcCicDona){ chCgcCicDona.destroy(); chCgcCicDona=null; }
   cont.innerHTML=`
-    <div class="card-title" style="margin-top:0;margin-bottom:6px">Análisis — ${labelMes(mesActual)}</div>
-    <p style="margin:0 0 10px;line-height:1.65;font-size:12px">${partes.join(' ')}</p>
-    ${donaData.length>=2?`<div style="margin-top:10px"><div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;margin-bottom:6px">Participación en venta — ${labelMes(mesActual)}</div><div style="position:relative;height:180px"><canvas id="ch-cgccic-dona"></canvas></div></div>`:''}`;
+    <div style="display:flex;gap:20px;align-items:flex-start">
+      <div style="flex:1;min-width:0">
+        <div class="card-title" style="margin-top:0;margin-bottom:6px">Análisis — ${labelMes(mesActual)}</div>
+        <p style="margin:0;line-height:1.65;font-size:12px">${partes.join(' ')}</p>
+      </div>
+      ${donaData.length>=2?`
+      <div style="flex:0 0 210px">
+        <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;text-align:center;margin-bottom:6px">Participación — ${labelMes(mesActual)}</div>
+        <div style="position:relative;height:160px"><canvas id="ch-cgccic-dona"></canvas></div>
+        <div id="cgccic-dona-leyenda" style="margin-top:7px;display:flex;flex-wrap:wrap;gap:3px 8px;justify-content:center"></div>
+      </div>`:''}
+    </div>`;
 
   if(donaData.length>=2){
-    // requestAnimationFrame garantiza que el canvas esté en el DOM con dimensiones
-    // calculadas antes de que Chart.js intente usarlo.
     setTimeout(()=>{
       const canvas=document.getElementById('ch-cgccic-dona');
       if(!canvas) return;
@@ -21652,8 +21659,8 @@ function cgcCicRenderAnalisis(){
             borderWidth:2,
             borderColor:donaBgC,
             datalabels:{
-              display:ctx=>donaTotal>0&&ctx.raw/donaTotal>0.05,
-              formatter:v=>`${(v/donaTotal*100).toFixed(0)}%`,
+              display:true,
+              formatter:v=>donaTotal>0&&v/donaTotal>0.05?`${(v/donaTotal*100).toFixed(0)}%`:null,
               color:'#ffffff',font:{size:10,weight:'bold'}
             }
           }]
@@ -21663,7 +21670,7 @@ function cgcCicRenderAnalisis(){
           maintainAspectRatio:false,
           cutout:'55%',
           plugins:{
-            legend:{position:'right',labels:{color:donaTickC,font:{size:11},boxWidth:12,padding:8}},
+            legend:{display:false},
             tooltip:{callbacks:{label:ctx=>{
               const v=ctx.raw;
               return ` ${ctx.label}: ${v.toLocaleString('es-CO',{minimumFractionDigits:2})} GWh (${donaTotal>0?(v/donaTotal*100).toFixed(1):0}%)`;
@@ -21671,7 +21678,14 @@ function cgcCicRenderAnalisis(){
           }
         }
       });
-    },50); // setTimeout garantiza layout calculado antes de que Chart.js mida el canvas
+      // Leyenda personalizada: cuadrado de color + nombre + porcentaje
+      const legEl=document.getElementById('cgccic-dona-leyenda');
+      if(legEl) legEl.innerHTML=donaData.map(d=>{
+        const pct=donaTotal>0?(d.kwh/1e6/donaTotal*100).toFixed(0):0;
+        const col=CGCCIC_COLORES_FIJOS[d.ciclo]||'#aaa';
+        return `<span style="display:inline-flex;align-items:center;gap:3px;font-size:10px;color:${donaTickC}"><span style="display:inline-block;width:9px;height:9px;border-radius:2px;flex-shrink:0;background:${col}"></span>C${d.ciclo} · ${pct}%</span>`;
+      }).join('');
+    },50);
   }
 }
 
