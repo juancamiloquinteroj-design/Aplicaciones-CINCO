@@ -1849,7 +1849,59 @@ html,body{overflow-x:hidden;margin:0}
       </div>
 
       <!-- Contenido de cada submódulo — dentro de la misma card -->
-      <div id="icn-ctr-abt"  style="text-align:center;padding:40px 24px;color:var(--text3)"><div style="font-size:36px;margin-bottom:10px">⏱</div><div style="font-size:16px;font-weight:700;margin-bottom:4px">Acometidas BT individuales</div><div style="font-size:13px">En construcción — seguimiento de tiempos regulatorios.</div></div>
+      <!-- === ABT: Acometidas BT individuales === -->
+      <div id="icn-ctr-abt">
+        <!-- Filtros -->
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px">
+          <div>
+            <div class="label-sm" style="font-size:11px;color:var(--text3);margin-bottom:3px">Zona</div>
+            <select id="icn-abt-zona" class="form-select" style="min-width:120px" onchange="icnAbtAplicarFiltros()">
+              <option value="">Todas</option>
+            </select>
+          </div>
+          <div>
+            <div class="label-sm" style="font-size:11px;color:var(--text3);margin-bottom:3px">Municipio</div>
+            <select id="icn-abt-municipio" class="form-select" style="min-width:140px" onchange="icnAbtAplicarFiltros()">
+              <option value="">Todos</option>
+            </select>
+          </div>
+          <div>
+            <div class="label-sm" style="font-size:11px;color:var(--text3);margin-bottom:3px">Gestor</div>
+            <select id="icn-abt-gestor" class="form-select" style="min-width:160px" onchange="icnAbtAplicarFiltros()">
+              <option value="">Todos</option>
+            </select>
+          </div>
+          <div>
+            <div class="label-sm" style="font-size:11px;color:var(--text3);margin-bottom:3px">Desde</div>
+            <input type="month" id="icn-abt-desde" class="form-select" onchange="icnAbtAplicarFiltros()">
+          </div>
+          <div>
+            <div class="label-sm" style="font-size:11px;color:var(--text3);margin-bottom:3px">Hasta</div>
+            <input type="month" id="icn-abt-hasta" class="form-select" onchange="icnAbtAplicarFiltros()">
+          </div>
+        </div>
+
+        <!-- KPIs -->
+        <div id="icn-abt-kpis" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-bottom:16px"></div>
+
+        <!-- Gráfica mensual -->
+        <div class="card" style="padding:14px;margin-bottom:14px">
+          <div style="font-size:13px;font-weight:700;margin-bottom:10px;color:var(--text1)">Cumplimiento mensual</div>
+          <div style="position:relative;height:260px">
+            <canvas id="ch-icn-abt-mensual"></canvas>
+          </div>
+        </div>
+
+        <!-- Tabla rendimiento por gestor -->
+        <div class="card" style="padding:14px">
+          <div style="font-size:13px;font-weight:700;margin-bottom:10px;color:var(--text1)">Rendimiento por Gestor</div>
+          <div id="icn-abt-tabla-gestor" style="overflow-x:auto"></div>
+        </div>
+
+        <!-- Estado carga -->
+        <div id="icn-abt-status" style="text-align:center;padding:20px;color:var(--text3);font-size:13px;display:none"></div>
+      </div>
+      <!-- fin ABT -->
       <div id="icn-ctr-lbt"  class="hidden" style="text-align:center;padding:40px 24px;color:var(--text3)"><div style="font-size:36px;margin-bottom:10px">⏱</div><div style="font-size:16px;font-weight:700;margin-bottom:4px">Legalización para red de BT</div><div style="font-size:13px">En construcción — seguimiento de tiempos regulatorios.</div></div>
       <div id="icn-ctr-pme"  class="hidden" style="text-align:center;padding:40px 24px;color:var(--text3)"><div style="font-size:36px;margin-bottom:10px">⏱</div><div style="font-size:16px;font-weight:700;margin-bottom:4px">Parametrización Medidores</div><div style="font-size:13px">En construcción — seguimiento de tiempos regulatorios.</div></div>
       <div id="icn-ctr-prt"  class="hidden" style="text-align:center;padding:40px 24px;color:var(--text3)"><div style="font-size:36px;margin-bottom:10px">⏱</div><div style="font-size:16px;font-weight:700;margin-bottom:4px">Proyectos con expansión de Redes y transformadores</div><div style="font-size:13px">En construcción — seguimiento de tiempos regulatorios.</div></div>
@@ -10268,6 +10320,175 @@ function icnCtrIrA(v){
     document.getElementById(`icn-ctr-btn-${id}`)?.classList.toggle('activo', id===v);
     document.getElementById(`icn-ctr-${id}`)?.classList.toggle('hidden', id!==v);
   });
+  if(v === 'abt' && !_icnAbtCargado){
+    _icnAbtCargado = true;
+    icnAbtCargarFiltros().then(()=>icnAbtCargarDatos());
+  }
+}
+
+// =================== ICN ABT (Acometidas BT individuales) ===================
+
+let _icnAbtDatosMes = [];    // resumen-mensual
+let _icnAbtDatosGestor = []; // por-gestor
+let _icnAbtCargado = false;
+let chIcnAbtMensual = null;
+
+async function icnAbtCargarFiltros(){
+  try{
+    const r = await fetch(`${API_BASE_URL}/api/cuentas-nuevas/filtros?tipo=abt`, {headers:authHeaders()});
+    if(!r.ok) return;
+    const d = await r.json();
+    ['zona','municipio','gestor'].forEach(key=>{
+      const el = document.getElementById(`icn-abt-${key}`);
+      if(!el) return;
+      const vals = key==='zona' ? d.zonas : key==='municipio' ? d.municipios : d.gestores;
+      const sel = el.value;
+      el.innerHTML = `<option value="">${key==='zona'?'Todas':key==='municipio'?'Todos':'Todos'}</option>` +
+        (vals||[]).map(v=>`<option value="${v}"${v===sel?' selected':''}>${v}</option>`).join('');
+    });
+  }catch(e){ console.warn('icnAbtCargarFiltros',e); }
+}
+
+async function icnAbtCargarDatos(){
+  const zona = document.getElementById('icn-abt-zona')?.value || '';
+  const municipio = document.getElementById('icn-abt-municipio')?.value || '';
+  const gestor = document.getElementById('icn-abt-gestor')?.value || '';
+  const desde = document.getElementById('icn-abt-desde')?.value || '';
+  const hasta = document.getElementById('icn-abt-hasta')?.value || '';
+
+  const qs = new URLSearchParams();
+  if(zona) qs.set('zona', zona);
+  if(municipio) qs.set('municipio', municipio);
+  if(gestor) qs.set('gestor', gestor);
+  if(desde) qs.set('desde', desde);
+  if(hasta) qs.set('hasta', hasta);
+
+  const st = document.getElementById('icn-abt-status');
+  if(st){ st.textContent='Cargando…'; st.style.display='block'; }
+
+  try{
+    const [rMes, rGestor] = await Promise.all([
+      fetch(`${API_BASE_URL}/api/cuentas-nuevas/abt/resumen-mensual?${qs}`, {headers:authHeaders()}),
+      fetch(`${API_BASE_URL}/api/cuentas-nuevas/abt/por-gestor?${qs}`, {headers:authHeaders()}),
+    ]);
+    if(!rMes.ok || !rGestor.ok) throw new Error('Error servidor');
+    const dMes = await rMes.json();
+    const dGestor = await rGestor.json();
+    _icnAbtDatosMes = dMes.meses || [];
+    _icnAbtDatosGestor = dGestor.gestores || [];
+    if(st) st.style.display='none';
+    icnAbtRenderKpis();
+    icnAbtRenderMensual();
+    icnAbtRenderGestor();
+  }catch(e){
+    if(st){ st.textContent='No se pudieron cargar los datos.'; }
+    console.error('icnAbtCargarDatos',e);
+  }
+}
+
+function icnAbtAplicarFiltros(){ icnAbtCargarDatos(); }
+
+function _icnAbtKpiCard(titulo, valor, color){
+  return `<div style="background:var(--bg2);border-radius:8px;padding:12px 14px;border-left:3px solid ${color}">
+    <div style="font-size:11px;color:var(--text3);margin-bottom:4px">${titulo}</div>
+    <div style="font-size:22px;font-weight:800;color:${color}">${valor}</div>
+  </div>`;
+}
+
+function icnAbtRenderKpis(){
+  const el = document.getElementById('icn-abt-kpis');
+  if(!el) return;
+  if(!_icnAbtDatosMes.length){ el.innerHTML=''; return; }
+  const totalRad = _icnAbtDatosMes.reduce((s,r)=>s+Number(r.radicados||0),0);
+  const totalCum = _icnAbtDatosMes.reduce((s,r)=>s+Number(r.cumplio||0),0);
+  const totalNoCum = _icnAbtDatosMes.reduce((s,r)=>s+Number(r.no_cumplio||0),0);
+  const totalDev = _icnAbtDatosMes.reduce((s,r)=>s+Number(r.devoluciones||0),0);
+  const pctCum = totalRad>0 ? (totalCum/totalRad*100).toFixed(1) : '--';
+  const diasprom = _icnAbtDatosMes.length>0
+    ? (_icnAbtDatosMes.reduce((s,r)=>s+Number(r.dias_habiles_prom||0),0)/_icnAbtDatosMes.length).toFixed(1)
+    : '--';
+
+  el.innerHTML =
+    _icnAbtKpiCard('Radicados', totalRad.toLocaleString('es-CO'), '#118ab2') +
+    _icnAbtKpiCard('Cumplió', `${pctCum}%`, '#06d6a0') +
+    _icnAbtKpiCard('No cumplió', totalNoCum.toLocaleString('es-CO'), '#ef476f') +
+    _icnAbtKpiCard('Días hábiles prom.', diasprom, '#ffd166') +
+    _icnAbtKpiCard('Devoluciones', totalDev.toLocaleString('es-CO'), '#9b5de5');
+}
+
+function icnAbtRenderMensual(){
+  const canvas = document.getElementById('ch-icn-abt-mensual');
+  if(!canvas) return;
+  if(chIcnAbtMensual){ chIcnAbtMensual.destroy(); chIcnAbtMensual=null; }
+  if(!_icnAbtDatosMes.length){ canvas.getContext('2d').clearRect(0,0,canvas.width,canvas.height); return; }
+
+  const labels = _icnAbtDatosMes.map(r=>`${r.anio}-${String(r.mes).padStart(2,'0')}`);
+  const cumplio   = _icnAbtDatosMes.map(r=>Number(r.cumplio||0));
+  const noCumplio = _icnAbtDatosMes.map(r=>Number(r.no_cumplio||0));
+  const enProceso = _icnAbtDatosMes.map(r=>Number(r.en_proceso||0));
+  const radicados = _icnAbtDatosMes.map(r=>Number(r.radicados||0));
+  const pctLine   = radicados.map((tot,i)=>tot>0?(cumplio[i]/tot*100):null);
+
+  chIcnAbtMensual = new Chart(canvas, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        {label:'Cumplió', data:cumplio, backgroundColor:'#06d6a0', stack:'s', datalabels:{display:false}},
+        {label:'No cumplió', data:noCumplio, backgroundColor:'#ef476f', stack:'s', datalabels:{display:false}},
+        {label:'En proceso', data:enProceso, backgroundColor:'#ffd166', stack:'s', datalabels:{display:false}},
+        {label:'% Cumplió', data:pctLine, type:'line', yAxisID:'y1',
+          borderColor:'#118ab2', backgroundColor:'#118ab215',
+          pointRadius:3, borderWidth:2, tension:0, fill:false,
+          datalabels:{display:true,formatter:v=>v!=null?v.toFixed(1)+'%':'',color:'#118ab2',font:{size:10,weight:'bold'},anchor:'end',align:'top',offset:4}},
+      ]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{position:'top',labels:{font:{size:11}}},fondoExcel:false,
+               tooltip:{callbacks:{label:ctx=>{
+                 if(ctx.dataset.yAxisID==='y1') return `% Cumplió: ${ctx.raw!=null?ctx.raw.toFixed(1)+'%':'--'}`;
+                 return `${ctx.dataset.label}: ${ctx.raw.toLocaleString('es-CO')}`;
+               }}}},
+      scales:{
+        x:{stacked:true,ticks:{font:{size:11}}},
+        y:{stacked:true,grace:'5%',ticks:{font:{size:11}},title:{display:true,text:'Radicados',font:{size:11}}},
+        y1:{position:'right',grace:'10%',
+            ticks:{color:'#118ab2',font:{size:10},callback:v=>`${v.toFixed(1)}%`},
+            grid:{drawOnChartArea:false},
+            title:{display:true,text:'% Cumplió',color:'#118ab2',font:{size:10}}},
+      }
+    }
+  });
+}
+
+function icnAbtRenderGestor(){
+  const el = document.getElementById('icn-abt-tabla-gestor');
+  if(!el) return;
+  if(!_icnAbtDatosGestor.length){ el.innerHTML='<div style="color:var(--text3);font-size:13px;text-align:center;padding:16px">Sin datos</div>'; return; }
+
+  const cols = [
+    {k:'gestor_asignado', label:'Gestor', align:'left'},
+    {k:'radicados', label:'Radicados', align:'right'},
+    {k:'cumplio', label:'Cumplió', align:'right', render:r=>{
+      const pct = r.radicados>0 ? (r.cumplio/r.radicados*100).toFixed(1)+'%' : '--';
+      return `${r.cumplio} <span style="color:var(--text3);font-size:11px">(${pct})</span>`;
+    }},
+    {k:'no_cumplio', label:'No cumplió', align:'right'},
+    {k:'mismo_dia', label:'Mismo día', align:'right'},
+    {k:'dias_habiles_prom', label:'Días háb. prom.', align:'right', render:r=>r.dias_habiles_prom!=null?Number(r.dias_habiles_prom).toFixed(1):'--'},
+    {k:'devoluciones', label:'Devoluciones', align:'right'},
+  ];
+
+  const thStyle = 'padding:7px 10px;font-size:11px;font-weight:700;color:var(--text3);background:var(--bg3);white-space:nowrap';
+  const tdStyle = (align)=>`padding:6px 10px;font-size:12px;border-top:1px solid var(--border);text-align:${align}`;
+
+  const thead = `<tr>${cols.map(c=>`<th style="${thStyle};text-align:${c.align}">${c.label}</th>`).join('')}</tr>`;
+  const tbody = _icnAbtDatosGestor.map(r=>`
+    <tr>${cols.map(c=>`<td style="${tdStyle(c.align)}">${c.render ? c.render(r) : (r[c.k]!=null?String(r[c.k]):'--')}</td>`).join('')}</tr>
+  `).join('');
+
+  el.innerHTML = `<table style="width:100%;border-collapse:collapse"><thead>${thead}</thead><tbody>${tbody}</tbody></table>`;
 }
 
 async function entrarIndicadoresCuentasNuevas(){
@@ -10282,6 +10503,13 @@ async function entrarIndicadoresCuentasNuevas(){
   if(window.innerWidth >= 900){
     document.body.classList.add('sidebar-fija');
     document.getElementById('icn-sidebar').classList.remove('hidden');
+  }
+
+  // Carga inicial del tab activo
+  if(_icnCtrVista === 'abt' && !_icnAbtCargado){
+    _icnAbtCargado = true;
+    await icnAbtCargarFiltros();
+    await icnAbtCargarDatos();
   }
 }
 
