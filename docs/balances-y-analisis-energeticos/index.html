@@ -21467,7 +21467,7 @@ function cgcCicRenderChart(){
   // (no como línea separada, igual que Alimentadores) para no requerir interacción.
   const alimsSel=mselValores('msel-cgccic-alimentador');
   const lossDataActual=(alimsSel.length===1&&_cgcCicAlimLossCache[alimsSel[0]])?_cgcCicAlimLossCache[alimsSel[0]]:null;
-  const lossVis=lossDataActual?clavesVis.map(c=>{ const e=lossDataActual.find(d=>d.clave===c); return e?e.pct:null; }):null;
+  const lossVis=lossDataActual?clavesVis.map(c=>{const e=lossDataActual.find(d=>d.clave===c);return e&&e.pct!=null?{pct:e.pct,kwh:e.kwh??null}:null;}):null;
 
   const scales={
     x:{offset:true,ticks:{color:tickC,font:{size:10}},grid:{color:gridC}},
@@ -21495,12 +21495,14 @@ function cgcCicRenderChart(){
         afterBody:(items)=>{
           if(!items.length||!lossVis) return;
           const idx=items[0].dataIndex;
-          const pct=lossVis[idx];
-          if(pct==null) return;
-          const pctAnt=idx>0?lossVis[idx-1]:null;
+          const loss=lossVis[idx];
+          if(!loss) return;
+          const lAnt=idx>0?lossVis[idx-1]:null;
           let extra='';
-          if(pctAnt!=null){ const d=pct-pctAnt; extra=` (${d>=0?'▲':'▼'} ${Math.abs(d).toFixed(2)}pp)`; }
-          return [`% Pérdida ${alimsSel[0]}: ${pct.toFixed(2)}%${extra}`];
+          if(lAnt?.pct!=null){ const d=loss.pct-lAnt.pct; extra=` (${d>=0?'▲':'▼'} ${Math.abs(d).toFixed(2)}pp)`; }
+          const lines=[`Pérdida ${alimsSel[0]}: ${loss.pct.toFixed(2)}%${extra}`];
+          if(loss.kwh!=null) lines.push(`Pérdida: ${Math.round(loss.kwh).toLocaleString('es-CO')} kWh/mes`);
+          return lines;
         }
       }}
     },
@@ -21513,18 +21515,21 @@ function cgcCicRenderChart(){
   }
 }
 async function _cgcCicCargarAlimLoss(alimentador){
-  // /api/resumen?alimentador=X → {meses:['YYYY-MM',...], perdidas_pct:[...]}
   try {
-    const datos = await apiGet('/api/resumen?alimentador='+encodeURIComponent(alimentador));
-    if(datos && datos.meses && datos.perdidas_pct){
-      _cgcCicAlimLossCache[alimentador] = datos.meses.map((m,i)=>({
-        clave: m,
-        pct: datos.perdidas_pct[i] ?? null
-      }));
-      // Re-render solo si este alimentador sigue seleccionado
-      const sel=mselValores('msel-cgccic-alimentador');
-      if(sel.length===1 && sel[0]===alimentador) cgcCicRenderChart();
-    }
+    // Reusar ALIM_FILAS (ya cargado por el módulo de Alimentadores, o pedirlo)
+    // para evitar una llamada extra al backend. Contiene perdida_pct (ya en %)
+    // y perdida_kwh por mes para cada nombre_spard.
+    await _alimAsegurarDatosCargados();
+    if(!ALIM_FILAS) return;
+    const filas=ALIM_FILAS.filter(f=>f.nombre_spard===alimentador);
+    if(!filas.length) return;
+    _cgcCicAlimLossCache[alimentador]=filas.map(f=>({
+      clave:`${f.anio}-${String(f.mes).padStart(2,'0')}`,
+      pct:f.perdida_pct??null,
+      kwh:f.perdida_kwh??null
+    }));
+    const sel=mselValores('msel-cgccic-alimentador');
+    if(sel.length===1 && sel[0]===alimentador) cgcCicRenderChart();
   } catch(e){ /* sin datos de pérdida — overlay no aparece */ }
 }
 
@@ -21628,14 +21633,16 @@ function cgcCicRenderAnalisis(){
   cont.innerHTML=`
     <div style="display:flex;gap:20px;align-items:flex-start">
       <div style="flex:1;min-width:0">
-        <div class="card-title" style="margin-top:0;margin-bottom:5px">Análisis — ${labelMes(mesActual)}</div>
-        <p style="margin:0;line-height:1.55;font-size:11px">${partes.join(' ')}</p>
+        <div class="card-title" style="margin-top:0;margin-bottom:6px">Análisis — ${labelMes(mesActual)}</div>
+        <p style="margin:0;line-height:1.6;font-size:12px">${partes.join(' ')}</p>
       </div>
       ${donaData.length>=2?`
-      <div style="flex:0 0 250px">
-        <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;text-align:center;margin-bottom:4px">Participación — ${labelMes(mesActual)}</div>
-        <div style="position:relative;height:190px"><canvas id="ch-cgccic-dona"></canvas></div>
-        <div id="cgccic-dona-leyenda" style="margin-top:5px;display:flex;flex-wrap:wrap;gap:2px 7px;justify-content:center"></div>
+      <div style="flex:0 0 270px">
+        <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;text-align:center;margin-bottom:5px">Participación — ${labelMes(mesActual)}</div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <div id="cgccic-dona-leyenda" style="display:flex;flex-direction:column;gap:5px;flex-shrink:0"></div>
+          <div style="position:relative;flex:1;min-width:0;height:190px"><canvas id="ch-cgccic-dona"></canvas></div>
+        </div>
       </div>`:''}
     </div>`;
 
@@ -21688,7 +21695,7 @@ function cgcCicRenderAnalisis(){
       if(legEl) legEl.innerHTML=donaData.map(d=>{
         const pct=donaTotal>0?(d.kwh/1e6/donaTotal*100).toFixed(0):0;
         const col=CGCCIC_COLORES_FIJOS[d.ciclo]||'#aaa';
-        return `<span style="display:inline-flex;align-items:center;gap:3px;font-size:10px;color:${donaTickC}"><span style="display:inline-block;width:9px;height:9px;border-radius:2px;flex-shrink:0;background:${col}"></span>C${d.ciclo} · ${pct}%</span>`;
+        return `<span style="display:flex;align-items:center;gap:5px;font-size:12px;color:${donaTickC}"><span style="display:inline-block;width:11px;height:11px;border-radius:2px;flex-shrink:0;background:${col}"></span>Ciclo ${d.ciclo} · ${pct}%</span>`;
       }).join('');
     },50);
   }
