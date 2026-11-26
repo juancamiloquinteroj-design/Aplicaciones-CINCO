@@ -21330,18 +21330,15 @@ function cgcCicRenderChart(){
 
   // Configuración de etiquetas (datalabels plugin)
   const dlCfgKwh = CGCCIC_ETIQUETAS ? {
-    display: ctx => {
-      // Solo mostrar en puntos cada 2 meses para no saturar
-      return ctx.dataIndex % 2 === 0;
-    },
+    display: ctx => ctx.raw != null,
     formatter: v => v!=null ? (v/1e6).toFixed(2)+' GWh' : '',
-    color: tickC, font:{size:9,weight:'bold'}, anchor:'end', align:'top', offset:4,
+    color: tickC, font:{size:11,weight:'bold'}, anchor:'end', align:'top', offset:6,
     backgroundColor: 'rgba(0,0,0,0.0)',
   } : {display:false};
   const dlCfgPct = CGCCIC_ETIQUETAS ? {
-    display: ctx => ctx.dataIndex % 2 === 0,
+    display: ctx => ctx.raw != null,
     formatter: v => v!=null ? v.toFixed(1)+'%' : '',
-    color:'#ff6b35', font:{size:9,weight:'bold'}, anchor:'end', align:'bottom', offset:4,
+    color:'#ff6b35', font:{size:11,weight:'bold'}, anchor:'end', align:'bottom', offset:6,
   } : {display:false};
 
   const datasets=[];
@@ -21369,8 +21366,8 @@ function cgcCicRenderChart(){
   // Overlay de % pérdida si hay un alimentador seleccionado con datos en caché
   const alimsSel=mselValores('msel-cgccic-alimentador');
   const scales={
-    x:{ticks:{color:tickC,font:{size:10}},grid:{color:gridC}},
-    y:{ticks:{color:tickC,font:{size:10},callback:v=>v.toLocaleString('es-CO',{maximumFractionDigits:0})},grid:{color:gridC},title:{display:true,text:`kWh (${etModo})`,color:tickC,font:{size:10}}}
+    x:{ticks:{color:tickC,font:{size:10}},grid:{color:gridC},afterFit:s=>{s.paddingLeft=16;s.paddingRight=16;}},
+    y:{grace:'10%',ticks:{color:tickC,font:{size:10},padding:10,callback:v=>v.toLocaleString('es-CO',{maximumFractionDigits:0})},grid:{color:gridC},title:{display:true,text:`kWh (${etModo})`,color:tickC,font:{size:10}}}
   };
   if(alimsSel.length===1 && _cgcCicAlimLossCache[alimsSel[0]]){
     const lossData=_cgcCicAlimLossCache[alimsSel[0]];
@@ -21383,7 +21380,7 @@ function cgcCicRenderChart(){
   const cv=document.getElementById('ch-cgccic-linea');
   chCgcCicLinea=new Chart(cv,{type:'line',data:{labels:clavesVis.map(c=>labelMes(c)),datasets},options:{
     responsive:true,maintainAspectRatio:false,
-    layout:{padding:{top:CGCCIC_ETIQUETAS?20:8,right:8,bottom:4,left:4}},
+    layout:{padding:{top:CGCCIC_ETIQUETAS?24:10,right:CGCCIC_ETIQUETAS?50:20,bottom:4,left:CGCCIC_ETIQUETAS?50:20}},
     interaction:{mode:'index',intersect:false},
     plugins:{
       legend:{position:'bottom',labels:{color:tickC,font:{size:11},filter:item=>!item.text.startsWith('Tendencia')||CGCCIC_TENDENCIA}},
@@ -21416,106 +21413,112 @@ async function _cgcCicCargarAlimLoss(alimentador){
   } catch(e){ /* sin datos de pérdida — overlay no aparece */ }
 }
 
+let chCgcCicDona = null;
+
 function cgcCicRenderAnalisis(){
   const cont = document.getElementById('cgccic-analisis'); if(!cont) return;
   const mesGridEl = document.getElementById('cgccic-grid-mes');
   const mesSel = CGCCIC_GRID_MES || mesGridEl?.value || null;
 
-  // Filas filtradas sin filtro de ciclo para ver todos los destacados
   const todasFilas = cgcCicFilasFiltradas('ciclo');
   const todasClaves = [...new Set(todasFilas.map(acClave))].sort();
   const mesActual = mesSel || todasClaves.at(-1);
-  if(!mesActual || !todasClaves.length){ cont.innerHTML=''; return; }
+  if(!mesActual || !todasClaves.length){ cont.innerHTML=''; if(chCgcCicDona){chCgcCicDona.destroy();chCgcCicDona=null;} return; }
 
   const [anioN, mesN] = mesActual.split('-').map(Number);
-  const fechaAnterior = mesN===1 ? `${anioN-1}-12` : `${anioN}-${String(mesN-1).padStart(2,'0')}`;
+  const fechaAnterior = mesN===1?`${anioN-1}-12`:`${anioN}-${String(mesN-1).padStart(2,'0')}`;
   const fechaAnioAnt = `${anioN-1}-${String(mesN).padStart(2,'0')}`;
-
-  // Ventana móvil de 12 meses hasta mesActual
   const idxActual = todasClaves.indexOf(mesActual);
-  const clavesMovil = todasClaves.slice(Math.max(0, idxActual-11), idxActual+1);
+  const clavesMovil = todasClaves.slice(Math.max(0,idxActual-11),idxActual+1);
 
   const ciclos = [...CGCCIC_CICLOS_FRECUENTES].sort((a,b)=>a-b).filter(c=>todasFilas.some(f=>f.ciclo===c));
   if(!ciclos.length){ cont.innerHTML=''; return; }
 
-  const kwhGwh = v => (v/1e6).toLocaleString('es-CO',{minimumFractionDigits:2,maximumFractionDigits:2});
-  const fmtCli = v => v.toLocaleString('es-CO',{maximumFractionDigits:0});
-
-  // Contexto de filtros activos
+  const kwhGwh = v=>(v/1e6).toLocaleString('es-CO',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const fmtCli = v=>v.toLocaleString('es-CO',{maximumFractionDigits:0});
   const filtros = cgcCicFiltrosActivos();
-  const hayZona = filtros.zona;
-  const haySub = filtros.subestaciones.length===1 ? filtros.subestaciones[0] : null;
-  const hayAlim = filtros.alimentadores.length===1 ? filtros.alimentadores[0] : null;
-  // ¿Hay ciclo(s) específico(s) seleccionado(s)?
-  const ciclosSel = CGCCIC_CICLOS_SEL.size > 0;
+  const hayZona=filtros.zona, haySub=filtros.subestaciones.length===1?filtros.subestaciones[0]:null, hayAlim=filtros.alimentadores.length===1?filtros.alimentadores[0]:null;
+  const ciclosSel = CGCCIC_CICLOS_SEL.size>0;
 
-  function sumar(filas, claves){
-    return claves.reduce((s,c)=>{ const sub=filas.filter(f=>acClave(f)===c); return s+sub.reduce((a,f)=>a+(f.energia_liquidada_kwh||0),0); }, 0);
-  }
-  function sumarCli(filas, clave){
-    return filas.filter(f=>acClave(f)===clave).reduce((s,f)=>s+(f.usuarios||0),0);
-  }
-  function tendencia(dPct){
-    if(dPct==null) return null;
-    const abs=Math.abs(dPct).toFixed(1);
-    const verbo=dPct>=0?'aumenta':'disminuye';
-    return `<b>${verbo} (${abs}%)</b>`;
-  }
+  function sumar(filas,claves){ return claves.reduce((s,c)=>{const sub=filas.filter(f=>acClave(f)===c);return s+sub.reduce((a,f)=>a+(f.energia_liquidada_kwh||0),0);},0); }
+  function sumarCli(filas,clave){ return filas.filter(f=>acClave(f)===clave).reduce((s,f)=>s+(f.usuarios||0),0); }
+  function tend(d){ if(d==null)return null; return `<b>${d>=0?'aumenta':'disminuye'} (${Math.abs(d).toFixed(1)}%)</b>`; }
 
-  const parrafos = [];
-  let totalMesKwh=0, totalAnualKwh=0, totalClientes=0;
-
+  // Acumular datos por ciclo
+  const dataCiclos=[];
+  let totalMesKwh=0,totalAnualKwh=0,totalClientes=0;
   for(const c of ciclos){
-    const fC = todasFilas.filter(f=>f.ciclo===c);
-    const kwhMes = sumar(fC,[mesActual]);
-    const kwhAnt = sumar(fC,[fechaAnterior]);
-    const kwhAnoAnt = sumar(fC,[fechaAnioAnt]);
-    const kwhAnual = sumar(fC, clavesMovil);
-    const cli = sumarCli(fC, mesActual);
-    totalMesKwh += kwhMes; totalAnualKwh += kwhAnual; totalClientes += cli;
-    if(!kwhMes) continue;
-
-    // Solo generar párrafo individual si hay ciclo seleccionado
-    if(!ciclosSel) continue;
-
-    const dMes = kwhAnt>0 ? (kwhMes-kwhAnt)/kwhAnt*100 : null;
-    const dAno = kwhAnoAnt>0 ? (kwhMes-kwhAnoAnt)/kwhAnoAnt*100 : null;
-
-    let txt = `<b>Ciclo ${c}:</b> registra una venta de <b>${kwhGwh(kwhMes)} GWh/mes</b>`;
-    if(hayAlim) txt += ` en el alimentador <b>${hayAlim}</b>`;
-    else if(haySub) txt += ` en la subestación <b>${haySub}</b>`;
-    else if(hayZona) txt += ` en la zona <b>${hayZona}</b>`;
-    txt += ` para ${labelMes(mesActual)}`;
-    if(kwhAnual>0) txt += `, con una venta acumulada de <b>${kwhGwh(kwhAnual)} GWh/año</b>`;
-    if(cli>0) txt += ` y <b>${fmtCli(cli)} clientes</b> activos`;
-    txt += '.';
-    const tMes=tendencia(dMes), tAno=tendencia(dAno);
-    if(tMes||tAno){
-      txt += ` Respecto al mes anterior ${tMes||'sin variación'}`;
-      if(tAno) txt += `; frente al mismo mes del año anterior ${tAno}`;
-      txt += '.';
-    }
-    parrafos.push(`<p style="margin:7px 0;line-height:1.65;font-size:12px">${txt}</p>`);
+    const fC=todasFilas.filter(f=>f.ciclo===c);
+    const kwh=sumar(fC,[mesActual]),kwhAnt=sumar(fC,[fechaAnterior]),kwhAA=sumar(fC,[fechaAnioAnt]),kwhA=sumar(fC,clavesMovil),cli=sumarCli(fC,mesActual);
+    totalMesKwh+=kwh; totalAnualKwh+=kwhA; totalClientes+=cli;
+    dataCiclos.push({c,kwh,kwhAnt,kwhAA,kwhA,cli,dMes:kwhAnt>0?(kwh-kwhAnt)/kwhAnt*100:null,dAno:kwhAA>0?(kwh-kwhAA)/kwhAA*100:null});
   }
 
-  // Párrafo resumen global (siempre aparece)
-  const nCiclos = ciclosSel ? [...CGCCIC_CICLOS_SEL].length : ciclos.length;
-  const etiqCiclos = ciclosSel
-    ? ([...CGCCIC_CICLOS_SEL].length===1 ? `el ciclo <b>${[...CGCCIC_CICLOS_SEL][0]}</b>` : `los ciclos <b>${[...CGCCIC_CICLOS_SEL].sort((a,b)=>a-b).join(', ')}</b>`)
-    : `los <b>${ciclos.length}</b> ciclos destacados`;
-  let resumen = `<p style="margin:${parrafos.length?'12px':'0'} 0 4px;line-height:1.65;font-size:12px${parrafos.length?';border-top:1px solid var(--border);padding-top:10px':''}">`;
-  resumen += `${etiqCiclos}`;
-  if(hayAlim) resumen += ` del alimentador <b>${hayAlim}</b>`;
-  else if(hayZona) resumen += ` de la zona <b>${hayZona}</b>`;
-  resumen += ` presenta${nCiclos===1?'':'n'} una venta de <b>${kwhGwh(totalMesKwh)} GWh/mes</b>`;
-  if(totalAnualKwh>0) resumen += `, equivalente a <b>${kwhGwh(totalAnualKwh)} GWh/año</b>`;
-  if(totalClientes>0) resumen += `, atendiendo <b>${fmtCli(totalClientes)} clientes</b>`;
-  resumen += ` en ${labelMes(mesActual)}.</p>`;
+  // Párrafos individuales (solo cuando hay ciclo seleccionado)
+  const parrafos=[];
+  if(ciclosSel){
+    for(const d of dataCiclos){
+      if(!d.kwh||!CGCCIC_CICLOS_SEL.has(d.c)) continue;
+      const ctxFiltro=hayAlim?` en el alimentador <b>${hayAlim}</b>`:haySub?` en la subestación <b>${haySub}</b>`:hayZona?` en la zona <b>${hayZona}</b>`:'';
+      let txt=`<b>Ciclo ${d.c}:</b> registra una venta de <b>${kwhGwh(d.kwh)} GWh/mes</b>${ctxFiltro} durante ${labelMes(mesActual)}`;
+      if(d.kwhA>0) txt+=`, con una venta acumulada de <b>${kwhGwh(d.kwhA)} GWh/año</b>`;
+      if(d.cli>0){ txt+=` y <b>${fmtCli(d.cli)} clientes</b> activos`; }
+      txt+='. ';
+      const tm=tend(d.dMes),ta=tend(d.dAno);
+      if(tm) txt+=`Frente al mes anterior ${tm}`;
+      if(ta) txt+=`${tm?'; ':' '}frente al mismo período del año anterior ${ta}`;
+      if(tm||ta) txt+='.';
+      parrafos.push(`<p style="margin:5px 0;line-height:1.6;font-size:12px">${txt}</p>`);
+    }
+  }
 
+  // Párrafo resumen (siempre)
+  const nC=ciclosSel?[...CGCCIC_CICLOS_SEL].length:ciclos.length;
+  const etiq=ciclosSel
+    ?([...CGCCIC_CICLOS_SEL].length===1?`El ciclo <b>${[...CGCCIC_CICLOS_SEL][0]}</b>`:`Los ciclos <b>${[...CGCCIC_CICLOS_SEL].sort((a,b)=>a-b).join(', ')}</b>`)
+    :`Los <b>${ciclos.length}</b> ciclos destacados`;
+  let res=`<p style="margin:${parrafos.length?'10px':'0'} 0 0;line-height:1.65;font-size:12px${parrafos.length?';border-top:1px solid var(--border);padding-top:8px':''}">`;
+  res+=etiq;
+  if(hayAlim) res+=` del alimentador <b>${hayAlim}</b>`;
+  else if(haySub) res+=` de la subestación <b>${haySub}</b>`;
+  else if(hayZona) res+=` de la zona <b>${hayZona}</b>`;
+  res+=` presenta${nC===1?'':'n'} una venta de <b>${kwhGwh(totalMesKwh)} GWh/mes</b>`;
+  if(totalAnualKwh>0) res+=`, equivalente a <b>${kwhGwh(totalAnualKwh)} GWh/año</b>`;
+  if(totalClientes>0) res+=`, atendiendo <b>${fmtCli(totalClientes)} clientes</b>`;
+  res+=` en ${labelMes(mesActual)}.</p>`;
+
+  // Renderizar: texto izquierda + dona derecha
   cont.innerHTML=`
-    <div class="card-title" style="margin-top:0;margin-bottom:8px">Análisis Automático — ${labelMes(mesActual)}</div>
-    ${parrafos.join('')}
-    ${resumen}`;
+    <div style="display:flex;gap:14px;align-items:flex-start">
+      <div style="flex:1;min-width:0">
+        <div class="card-title" style="margin-top:0;margin-bottom:6px">Análisis — ${labelMes(mesActual)}</div>
+        ${parrafos.join('')}
+        ${res}
+      </div>
+      <div style="flex:0 0 170px;text-align:center">
+        <div style="font-size:11px;font-weight:700;color:var(--text3);margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px">Venta por ciclo</div>
+        <div style="position:relative;width:170px;height:150px"><canvas id="ch-cgccic-dona"></canvas></div>
+      </div>
+    </div>`;
+
+  // Dona chart
+  if(chCgcCicDona){ chCgcCicDona.destroy(); chCgcCicDona=null; }
+  const cvDona=document.getElementById('ch-cgccic-dona');
+  if(!cvDona) return;
+  const dark=document.documentElement.getAttribute('data-theme')==='dark';
+  const tickC=dark?'#aab8d1':'#4b5e7a';
+  const donaDatos=dataCiclos.filter(d=>d.kwh>0);
+  chCgcCicDona=new Chart(cvDona,{type:'doughnut',data:{
+    labels:donaDatos.map(d=>`C${d.c}`),
+    datasets:[{data:donaDatos.map(d=>d.kwh),backgroundColor:donaDatos.map(d=>CGCCIC_COLORES_FIJOS[d.c]||acColorCiclo(d.c,donaDatos.length)),borderWidth:1,hoverOffset:6}]
+  },options:{
+    responsive:false,maintainAspectRatio:false,cutout:'58%',
+    plugins:{
+      legend:{display:true,position:'bottom',labels:{color:tickC,font:{size:10},padding:4,boxWidth:10}},
+      tooltip:{callbacks:{label:ctx=>`${ctx.label}: ${kwhGwh(ctx.raw)} GWh (${totalMesKwh>0?(ctx.raw/totalMesKwh*100).toFixed(1):'0'}%)`}},
+      datalabels:{display:false}
+    }
+  }});
 }
 
 // ---- fin MÓDULO CGC · Ciclos ----
