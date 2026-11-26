@@ -21440,13 +21440,14 @@ function cgcCicRenderAnalisis(){
 
   const kwhGwh = v => (v/1e6).toLocaleString('es-CO',{minimumFractionDigits:2,maximumFractionDigits:2});
   const fmtCli = v => v.toLocaleString('es-CO',{maximumFractionDigits:0});
-  const colores = CGCCIC_COLORES_FIJOS;
 
   // Contexto de filtros activos
   const filtros = cgcCicFiltrosActivos();
   const hayZona = filtros.zona;
   const haySub = filtros.subestaciones.length===1 ? filtros.subestaciones[0] : null;
   const hayAlim = filtros.alimentadores.length===1 ? filtros.alimentadores[0] : null;
+  // ¿Hay ciclo(s) específico(s) seleccionado(s)?
+  const ciclosSel = CGCCIC_CICLOS_SEL.size > 0;
 
   function sumar(filas, claves){
     return claves.reduce((s,c)=>{ const sub=filas.filter(f=>acClave(f)===c); return s+sub.reduce((a,f)=>a+(f.energia_liquidada_kwh||0),0); }, 0);
@@ -21454,12 +21455,11 @@ function cgcCicRenderAnalisis(){
   function sumarCli(filas, clave){
     return filas.filter(f=>acClave(f)===clave).reduce((s,f)=>s+(f.usuarios||0),0);
   }
-  function tendencia(dPct){ // retorna texto "aumenta (X%)" o "disminuye (X%)"
+  function tendencia(dPct){
     if(dPct==null) return null;
     const abs=Math.abs(dPct).toFixed(1);
-    const color=dPct>=0?'#06d6a0':'#ef476f';
     const verbo=dPct>=0?'aumenta':'disminuye';
-    return `<span style="color:${color}">${verbo} (${abs}%)</span>`;
+    return `<b>${verbo} (${abs}%)</b>`;
   }
 
   const parrafos = [];
@@ -21475,11 +21475,13 @@ function cgcCicRenderAnalisis(){
     totalMesKwh += kwhMes; totalAnualKwh += kwhAnual; totalClientes += cli;
     if(!kwhMes) continue;
 
+    // Solo generar párrafo individual si hay ciclo seleccionado
+    if(!ciclosSel) continue;
+
     const dMes = kwhAnt>0 ? (kwhMes-kwhAnt)/kwhAnt*100 : null;
     const dAno = kwhAnoAnt>0 ? (kwhMes-kwhAnoAnt)/kwhAnoAnt*100 : null;
-    const col = colores[c]||'#888';
 
-    let txt = `<b style="color:${col}">Ciclo ${c}:</b> registra una venta de <b>${kwhGwh(kwhMes)} GWh/mes</b>`;
+    let txt = `<b>Ciclo ${c}:</b> registra una venta de <b>${kwhGwh(kwhMes)} GWh/mes</b>`;
     if(hayAlim) txt += ` en el alimentador <b>${hayAlim}</b>`;
     else if(haySub) txt += ` en la subestación <b>${haySub}</b>`;
     else if(hayZona) txt += ` en la zona <b>${hayZona}</b>`;
@@ -21487,28 +21489,31 @@ function cgcCicRenderAnalisis(){
     if(kwhAnual>0) txt += `, con una venta acumulada de <b>${kwhGwh(kwhAnual)} GWh/año</b>`;
     if(cli>0) txt += ` y <b>${fmtCli(cli)} clientes</b> activos`;
     txt += '.';
-    // Comparación mensual
     const tMes=tendencia(dMes), tAno=tendencia(dAno);
     if(tMes||tAno){
-      txt += ` Respecto al mes anterior${tMes?' '+tMes:''}`;
+      txt += ` Respecto al mes anterior ${tMes||'sin variación'}`;
       if(tAno) txt += `; frente al mismo mes del año anterior ${tAno}`;
       txt += '.';
     }
     parrafos.push(`<p style="margin:7px 0;line-height:1.65;font-size:12px">${txt}</p>`);
   }
 
-  // Párrafo resumen global
-  let resumen = `<p style="margin:12px 0 4px;line-height:1.65;font-size:12px;border-top:1px solid var(--border);padding-top:10px">`;
-  resumen += `<b>En conjunto</b>, los ${ciclos.length} ciclos destacados`;
+  // Párrafo resumen global (siempre aparece)
+  const nCiclos = ciclosSel ? [...CGCCIC_CICLOS_SEL].length : ciclos.length;
+  const etiqCiclos = ciclosSel
+    ? ([...CGCCIC_CICLOS_SEL].length===1 ? `el ciclo <b>${[...CGCCIC_CICLOS_SEL][0]}</b>` : `los ciclos <b>${[...CGCCIC_CICLOS_SEL].sort((a,b)=>a-b).join(', ')}</b>`)
+    : `los <b>${ciclos.length}</b> ciclos destacados`;
+  let resumen = `<p style="margin:${parrafos.length?'12px':'0'} 0 4px;line-height:1.65;font-size:12px${parrafos.length?';border-top:1px solid var(--border);padding-top:10px':''}">`;
+  resumen += `${etiqCiclos}`;
   if(hayAlim) resumen += ` del alimentador <b>${hayAlim}</b>`;
   else if(hayZona) resumen += ` de la zona <b>${hayZona}</b>`;
-  resumen += ` presentan una venta de <b>${kwhGwh(totalMesKwh)} GWh/mes</b>`;
+  resumen += ` presenta${nCiclos===1?'':'n'} una venta de <b>${kwhGwh(totalMesKwh)} GWh/mes</b>`;
   if(totalAnualKwh>0) resumen += `, equivalente a <b>${kwhGwh(totalAnualKwh)} GWh/año</b>`;
   if(totalClientes>0) resumen += `, atendiendo <b>${fmtCli(totalClientes)} clientes</b>`;
   resumen += ` en ${labelMes(mesActual)}.</p>`;
 
   cont.innerHTML=`
-    <div class="card-title" style="margin-top:0;margin-bottom:8px">Análisis Automático por Ciclo — ${labelMes(mesActual)}</div>
+    <div class="card-title" style="margin-top:0;margin-bottom:8px">Análisis Automático — ${labelMes(mesActual)}</div>
     ${parrafos.join('')}
     ${resumen}`;
 }
