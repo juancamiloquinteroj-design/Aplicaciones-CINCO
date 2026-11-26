@@ -1777,6 +1777,12 @@ html,body{overflow-x:hidden;margin:0}
       </div>
       <div class="chart-wrap" style="height:380px"><canvas id="ch-cgccic-linea"></canvas></div>
 
+      <!-- Gráfico de % pérdida del alimentador seleccionado — se muestra solo cuando hay 1 alimentador activo -->
+      <div id="cgccic-perdida-wrap" class="hidden" style="margin-top:12px">
+        <div id="cgccic-perdida-titulo" style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;margin-bottom:4px">% Pérdida</div>
+        <div class="chart-wrap" style="height:160px"><canvas id="ch-cgccic-perdida"></canvas></div>
+      </div>
+
       <!-- Fila: grilla de ciclos (izquierda) + análisis automático (derecha) -->
       <div style="display:flex;gap:18px;margin-top:14px;align-items:flex-start">
         <div style="flex:0 0 auto">
@@ -21513,6 +21519,54 @@ function cgcCicRenderChart(){
   if(alimsSel.length===1 && !_cgcCicAlimLossCache[alimsSel[0]]){
     _cgcCicCargarAlimLoss(alimsSel[0]);
   }
+
+  // Segundo gráfico: % Pérdida del alimentador seleccionado
+  const perdidaWrap = document.getElementById('cgccic-perdida-wrap');
+  const perdidaTit  = document.getElementById('cgccic-perdida-titulo');
+  if(chCgcCicPerdida){ chCgcCicPerdida.destroy(); chCgcCicPerdida=null; }
+  if(perdidaWrap){
+    if(lossVis && lossVis.some(l=>l?.pct!=null)){
+      perdidaWrap.classList.remove('hidden');
+      if(perdidaTit) perdidaTit.textContent=`% Pérdida — ${alimsSel[0]}`;
+      const pctDatos=clavesVis.map((_,i)=>lossVis[i]?.pct??null);
+      const segP={borderDash:ctx=>proyectadasSet.has(clavesVis[ctx.p1DataIndex])?[6,4]:undefined};
+      const cvP=document.getElementById('ch-cgccic-perdida');
+      chCgcCicPerdida=new Chart(cvP,{type:'line',data:{
+        labels:clavesVis.map(c=>labelMes(c)),
+        datasets:[{
+          label:`% Pérdida ${alimsSel[0]}`,
+          data:pctDatos,
+          borderColor:'#ef476f',backgroundColor:'#ef476f20',
+          tension:0,pointRadius:ctx=>acRadioPuntoAislado(ctx),
+          borderWidth:2.5,fill:false,segment:segP,
+          datalabels:{
+            display:true,
+            formatter:v=>v!=null?v.toFixed(2)+'%':'',
+            color:'#ef476f',font:{size:10,weight:'bold'},
+            anchor:'end',align:'top',offset:4
+          }
+        }]
+      },options:{
+        responsive:true,maintainAspectRatio:false,
+        layout:{padding:{top:24,right:40,bottom:4,left:20}},
+        interaction:{mode:'index',intersect:false},
+        plugins:{
+          fondoExcel:false,ejeYControl:false,
+          legend:{display:false},
+          tooltip:{callbacks:{label:ctx=>{
+            if(ctx.raw==null) return null;
+            return `Pérdida: ${ctx.raw.toFixed(2)}%`;
+          }}}
+        },
+        scales:{
+          x:{offset:true,ticks:{color:tickC,font:{size:10}},grid:{color:gridC}},
+          y:{grace:'10%',ticks:{color:tickC,font:{size:10},padding:8,callback:v=>`${v.toFixed(1)}%`},grid:{color:gridC},title:{display:false}}
+        }
+      }});
+    } else {
+      perdidaWrap.classList.add('hidden');
+    }
+  }
 }
 async function _cgcCicCargarAlimLoss(alimentador){
   try {
@@ -21533,6 +21587,7 @@ async function _cgcCicCargarAlimLoss(alimentador){
   } catch(e){ /* sin datos de pérdida — overlay no aparece */ }
 }
 
+let chCgcCicPerdida = null;
 let chCgcCicDona = null;
 
 function cgcCicRenderAnalisis(){
