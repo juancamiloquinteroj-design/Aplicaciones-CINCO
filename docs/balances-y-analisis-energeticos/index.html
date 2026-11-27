@@ -10484,7 +10484,34 @@ function icnSelSelect(key, val){
   const q = document.getElementById(`icn-sel-${key}-q`);
   if(q) q.value = '';
   icnSelRender(key, '');
-  icnAbtCargarDatos();
+  // Cascada: zona → refresca municipio+gestor; municipio → refresca gestor
+  if(key === 'zona')      _icnAbtRefrescarDeps(['municipio','gestor']).then(()=>icnAbtCargarDatos());
+  else if(key === 'municipio') _icnAbtRefrescarDeps(['gestor']).then(()=>icnAbtCargarDatos());
+  else                    icnAbtCargarDatos();
+}
+
+async function _icnAbtRefrescarDeps(keys){
+  try{
+    const qs = new URLSearchParams({tipo:'abt'});
+    if(_icnFiltros.zona)      qs.set('zona', _icnFiltros.zona);
+    if(_icnFiltros.municipio) qs.set('municipio', _icnFiltros.municipio);
+    const r = await fetchConTimeout(`${API_BASE_URL}/api/cuentas-nuevas/filtros?${qs}`, {headers:authHeaders()});
+    if(!r.ok) return;
+    const d = await r.json();
+    const map = {zona: d.zonas||[], municipio: d.municipios||[], gestor: d.gestores||[]};
+    keys.forEach(k=>{
+      _icnFiltroOpts[k] = map[k];
+      // Si la selección actual ya no está en la nueva lista, limpiarla
+      if(_icnFiltros[k] && !map[k].includes(_icnFiltros[k])){
+        _icnFiltros[k] = '';
+        const lbl0 = k==='zona'?'Todas':'Todos';
+        const lbl = document.getElementById(`icn-sel-${k}-lbl`);
+        if(lbl) lbl.textContent = lbl0;
+        document.getElementById(`icn-sel-${k}-btn`)?.classList.remove('active-filter');
+      }
+      icnSelRender(k, '');
+    });
+  }catch(e){ console.warn('_icnAbtRefrescarDeps',e); }
 }
 
 function icnSelFiltrar(key, q){ icnSelRender(key, q); }
