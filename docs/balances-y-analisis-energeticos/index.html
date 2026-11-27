@@ -10921,6 +10921,89 @@ function _icnActualizarTitulos(){
   if(tP) tP.textContent = `Cumplimiento por Paso${suf}`;
 }
 
+async function icnAbtDescargarMes(label){
+  // label = "2026-06"
+  const [anio, mes] = label.split('-');
+  const desde = `${anio}-${mes}-01`;
+  const ultimoDia = new Date(Number(anio), Number(mes), 0).getDate();
+  const hasta  = `${anio}-${mes}-${String(ultimoDia).padStart(2,'0')}`;
+
+  const tipo = _icnFiltros.tipo || 'ABT';
+  const qs = new URLSearchParams({desde, hasta});
+  if(_icnFiltros.zona)     qs.set('zona', _icnFiltros.zona);
+  if(_icnFiltros.municipio)qs.set('municipio', _icnFiltros.municipio);
+  if(_icnFiltros.gestor)   qs.set('gestor', _icnFiltros.gestor);
+  Object.entries(_icnLimitesQs()).forEach(([k,v])=>qs.set(k,v));
+
+  let filas = [];
+  try{
+    const tk = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token') || '';
+    const r  = await fetch(`${API_BASE}/api/cuentas-nuevas/${tipo}/solicitudes?${qs}`,
+                 {headers: tk ? {Authorization:`Bearer ${tk}`} : {}});
+    if(!r.ok) throw new Error(r.status);
+    filas = (await r.json()).filas || [];
+  }catch(e){ alert('Error al obtener datos: ' + e.message); return; }
+
+  if(!filas.length){ alert('Sin datos para ' + label); return; }
+
+  // Separar cumplió / no cumplió usando campo calculado del backend
+  const cumpl   = filas.filter(f => f.cum_calc === true || f.cum_calc === 1);
+  const noCumpl = filas.filter(f => f.nocum_calc === true || f.nocum_calc === 1);
+  const resto   = filas.filter(f => !cumpl.includes(f) && !noCumpl.includes(f));
+
+  const cols = [
+    {k:'radicado',       t:'Radicado'},
+    {k:'propietario',    t:'Propietario'},
+    {k:'municipio',      t:'Municipio'},
+    {k:'zona',           t:'Zona'},
+    {k:'paso',           t:'Paso'},
+    {k:'estado_paso',    t:'Estado Paso'},
+    {k:'gestor_asignado',t:'Gestor'},
+    {k:'fecha_inicio',   t:'Fecha Inicio'},
+    {k:'fecha_respuesta',t:'Fecha Respuesta'},
+    {k:'dias_habiles',   t:'Días Hábiles'},
+    {k:'cumplimiento',   t:'Cumplimiento XLS'},
+  ];
+
+  const toRows = arr => [cols.map(c=>c.t), ...arr.map(f=>cols.map(c=>{
+    const v = f[c.k];
+    if(v == null) return '';
+    if(typeof v === 'string' && v.match(/^\d{4}-\d{2}-\d{2}/)) return v.slice(0,10);
+    return v;
+  }))];
+
+  // ExcelJS
+  const wb = new ExcelJS.Workbook();
+  const headerFill = (color) => ({type:'pattern', pattern:'solid', fgColor:{argb:color}});
+  const addSheet = (name, rows, hColor) => {
+    const ws = wb.addWorksheet(name);
+    rows.forEach((row, ri) => {
+      const wsRow = ws.addRow(row);
+      if(ri === 0){
+        wsRow.eachCell(cell => {
+          cell.fill = headerFill(hColor);
+          cell.font = {bold:true, color:{argb:'FFFFFFFF'}, size:11};
+          cell.alignment = {vertical:'middle', horizontal:'center'};
+        });
+        wsRow.height = 18;
+      }
+    });
+    ws.columns = cols.map((c,i)=>({width: i===0?22:i===1?30:16}));
+    ws.autoFilter = {from:'A1', to:{row:1, column:cols.length}};
+  };
+
+  addSheet('Cumplió',    toRows(cumpl),   'FF06D6A0');
+  addSheet('No cumplió', toRows(noCumpl), 'FFEF476F');
+  if(resto.length) addSheet('En proceso-Pendiente', toRows(resto), 'FFADB5BD');
+
+  const buf  = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buf], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  const url  = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `ICN_${tipo}_${label}.xlsx`; a.click();
+  URL.revokeObjectURL(url);
+}
+
 function icnAbtRenderMensual(){
   _icnActualizarTitulos();
   const canvas = document.getElementById('ch-icn-abt-mensual');
@@ -10962,6 +11045,15 @@ function icnAbtRenderMensual(){
     options:{
       responsive:true, maintainAspectRatio:false,
       layout:{padding:{top:25}},
+      onClick:(evt, elements)=>{
+        if(!elements.length) return;
+        const idx = elements[0].index;
+        const lbl = labels[idx];
+        if(lbl) icnAbtDescargarMes(lbl);
+      },
+      onHover:(evt, elements)=>{
+        canvas.style.cursor = elements.length ? 'pointer' : 'default';
+      },
       plugins:{
         legend:{
           position:'bottom',
