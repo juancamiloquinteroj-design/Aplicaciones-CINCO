@@ -22194,6 +22194,13 @@ async function _cgcCicAsegurarCargadoYInit(){
     document.getElementById('cgccic-loading')?.remove();
   }
   cgcCicInit();
+  // Garantiza que el chart tenga las dimensiones correctas aunque el
+  // contenedor acabara de hacerse visible en el mismo tick de JS.
+  // (Patrón "doble rAF": el primero crea el chart, el segundo lo resize.)
+  requestAnimationFrame(()=>{
+    if(chCgcCicLinea) chCgcCicLinea.resize();
+    else if(AC_FILAS.length) cgcCicAplicarFiltros();
+  });
 }
 
 function cgcCicInit(){
@@ -22599,6 +22606,9 @@ function cgcCicRenderChart(){
     },
     scales
   }});
+  // Resize en el frame siguiente por si el canvas se creó con 0px de ancho
+  // (contenedor recién revelado antes de que el browser procese el layout).
+  requestAnimationFrame(()=>{ chCgcCicLinea?.resize(); });
 
   // Cargar pérdidas del alimentador si hay exactamente uno seleccionado y no está en caché
   if(alimsSel.length===1 && !_cgcCicAlimLossCache[alimsSel[0]]){
