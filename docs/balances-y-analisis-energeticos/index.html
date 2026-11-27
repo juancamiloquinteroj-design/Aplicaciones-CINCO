@@ -2017,7 +2017,7 @@ html,body{overflow-x:hidden;margin:0}
 
     <!-- Límites por Paso -->
     <div class="card" style="margin-bottom:16px">
-      <div class="card-title" style="margin-bottom:4px">Límites por Paso — ABT</div>
+      <div class="card-title" style="margin-bottom:4px" id="icn-param-paso-titulo">Límites por Paso — ABT</div>
       <div style="font-size:12px;color:var(--text3);margin-bottom:14px">
         Días hábiles máximos por paso regulatorio. Si se configuran aquí, <strong>tienen prioridad</strong> sobre el límite global de arriba para cada paso específico. Los pasos sin valor configurado usan la columna "Cumplimiento" del archivo.<br>
         <span style="color:var(--text3);font-size:11px">Fuente: CREG / resoluciones vigentes. Cada paso puede tener un plazo distinto.</span>
@@ -10480,14 +10480,37 @@ function icnIrAVista(vista){
 
 const _ICN_CTR_IDS = ['abt','lbt','pme','prt','agpe','tri','cin','pro'];
 let _icnCtrVista = 'abt';
+const _ICN_TIPO_NOMBRES = {
+  abt:  'Acometidas BT individuales',
+  lbt:  'Legalización para red de BT',
+  pme:  'Parametrización Medidores',
+  prt:  'Proyectos expansión Redes y Trafos',
+  agpe: 'Cuenta nueva para futuro AGPE',
+  tri:  'Cuenta trifásica BT',
+  cin:  'Cinco o más acometidas BT',
+  pro:  'Provisional de Obra',
+};
+
 function icnCtrIrA(v){
+  const cambia = (_icnCtrVista !== v) || !_icnAbtCargado;
   _icnCtrVista = v;
   _ICN_CTR_IDS.forEach(id=>{
     document.getElementById(`icn-ctr-btn-${id}`)?.classList.toggle('activo', id===v);
-    document.getElementById(`icn-ctr-${id}`)?.classList.toggle('hidden', id!==v);
+    // Todos los tipos comparten el panel abt; ocultar los placeholders de otros tipos
+    if(id !== 'abt') document.getElementById(`icn-ctr-${id}`)?.classList.add('hidden');
   });
-  if(v === 'abt' && !_icnAbtCargado){
+  // El panel abt siempre visible (es el panel compartido para todos los tipos)
+  document.getElementById('icn-ctr-abt')?.classList.remove('hidden');
+  if(cambia){
     _icnAbtCargado = true;
+    // Reset filtros al cambiar de tipo
+    _icnFiltros = {zona:'', municipio:'', gestor:''};
+    ['zona','municipio','gestor'].forEach(k=>{
+      const lbl = document.getElementById(`icn-sel-${k}-lbl`);
+      if(lbl) lbl.textContent = k === 'gestor' ? 'Todos' : 'Todas';
+      _icnFiltroOpts[k] = [];
+      document.getElementById(`icn-sel-${k}-drop`)?.classList.add('hidden');
+    });
     icnAbtCargarFiltros().then(()=>icnAbtSetRango('6m'));
   }
 }
@@ -10598,7 +10621,7 @@ if(!window._icnSelOutside){
 
 async function icnAbtCargarFiltros(){
   try{
-    const r = await fetchConTimeout(`${API_BASE_URL}/api/cuentas-nuevas/filtros?tipo=abt`, {headers:authHeaders()});
+    const r = await fetchConTimeout(`${API_BASE_URL}/api/cuentas-nuevas/filtros?tipo=${_icnCtrVista||'abt'}`, {headers:authHeaders()});
     if(!r.ok) return;
     const d = await r.json();
     _icnFiltroOpts.zona       = d.zonas      || [];
@@ -10610,11 +10633,12 @@ async function icnAbtCargarFiltros(){
 
 function _icnLimitesQs(){
   // Retorna {qs params para limites_paso_json ó limite_reg} según lo configurado
+  const slug = _icnCtrVista || 'abt';
   let saved = {};
-  try{ saved = JSON.parse(configGet('cn_meta_paso_abt', '{}') || '{}'); }catch(e){}
+  try{ saved = JSON.parse(configGet(`cn_meta_paso_${slug}`, '{}') || '{}'); }catch(e){}
   const tiene = Object.keys(saved).length > 0;
   if(tiene) return {limites_paso_json: JSON.stringify(saved)};
-  const limReg = Number(configGet('cn_meta_reg_abt', 0)) || 0;
+  const limReg = Number(configGet(`cn_meta_reg_${slug}`, 0)) || 0;
   return limReg ? {limite_reg: limReg} : {};
 }
 
@@ -10646,9 +10670,9 @@ async function icnAbtCargarDatos(){
 
   try{
     const [rMes, rGestor, rPaso] = await Promise.all([
-      fetchConTimeout(`${API_BASE_URL}/api/cuentas-nuevas/abt/resumen-mensual?${qs}`, {headers:authHeaders()}),
-      fetchConTimeout(`${API_BASE_URL}/api/cuentas-nuevas/abt/por-gestor?${qs}`, {headers:authHeaders()}),
-      fetchConTimeout(`${API_BASE_URL}/api/cuentas-nuevas/abt/por-paso?${qsPaso}`, {headers:authHeaders()}),
+      fetchConTimeout(`${API_BASE_URL}/api/cuentas-nuevas/${_icnCtrVista||'abt'}/resumen-mensual?${qs}`, {headers:authHeaders()}),
+      fetchConTimeout(`${API_BASE_URL}/api/cuentas-nuevas/${_icnCtrVista||'abt'}/por-gestor?${qs}`, {headers:authHeaders()}),
+      fetchConTimeout(`${API_BASE_URL}/api/cuentas-nuevas/${_icnCtrVista||'abt'}/por-paso?${qsPaso}`, {headers:authHeaders()}),
     ]);
     if(!rMes.ok || !rGestor.ok || !rPaso.ok){
       const errMes  = !rMes.ok   ? `resumen ${rMes.status}`  : '';
@@ -10675,12 +10699,12 @@ async function icnAbtCargarDatos(){
       const qsLM = new URLSearchParams();
       if(zona)      qsLM.set('zona',      zona);
       if(municipio) qsLM.set('municipio', municipio);
-      if(gestor)    qsLM.set('gestor',    gestor);
+      // NO pasar gestor para que todos los gestores del mes estén disponibles en la tarjeta KPI
       qsLM.set('desde', lm);
       qsLM.set('hasta', lm);
       Object.entries(limQs).forEach(([k,v])=>qsLM.set(k,v));
       try{
-        const rLM = await fetchConTimeout(`${API_BASE_URL}/api/cuentas-nuevas/abt/por-gestor?${qsLM}`, {headers:authHeaders()});
+        const rLM = await fetchConTimeout(`${API_BASE_URL}/api/cuentas-nuevas/${_icnCtrVista||'abt'}/por-gestor?${qsLM}`, {headers:authHeaders()});
         if(rLM.ok){ const dLM = await rLM.json(); _icnAbtDatosGestorMes = dLM.gestores || []; }
       }catch(e){ console.warn('gestor-mes-kpi',e); }
     }
@@ -10723,15 +10747,14 @@ async function icnGestorCambiarMes(){
 
   const zona      = _icnFiltros.zona      || '';
   const municipio = _icnFiltros.municipio || '';
-  const gestor    = _icnFiltros.gestor    || '';
   const qs = new URLSearchParams({desde: lm, hasta: lm});
   if(zona)      qs.set('zona',      zona);
   if(municipio) qs.set('municipio', municipio);
-  if(gestor)    qs.set('gestor',    gestor);
+  // NO pasar gestor — necesitamos todos los gestores para la tarjeta KPI individual
   Object.entries(_icnLimitesQs()).forEach(([k,v])=>qs.set(k,v));
 
   try{
-    const r = await fetchConTimeout(`${API_BASE_URL}/api/cuentas-nuevas/abt/por-gestor?${qs}`, {headers:authHeaders()});
+    const r = await fetchConTimeout(`${API_BASE_URL}/api/cuentas-nuevas/${_icnCtrVista||'abt'}/por-gestor?${qs}`, {headers:authHeaders()});
     if(r.ok){ const d = await r.json(); _icnAbtDatosGestorMes = d.gestores || []; }
     _icnAbtUltimoMes = {anio: Number(lm.split('-')[0]), mes: Number(lm.split('-')[1])};
     const lbl = document.getElementById('icn-abt-lastmes-lbl');
@@ -10777,7 +10800,7 @@ function icnPasoAplicarPeriodo(){
   if(_icnFiltros.gestor)    qs.set('gestor',    _icnFiltros.gestor);
   Object.entries(_icnLimitesQs()).forEach(([k,v])=>qs.set(k,v));
 
-  fetchConTimeout(`${API_BASE_URL}/api/cuentas-nuevas/abt/por-paso?${qs}`, {headers:authHeaders()})
+  fetchConTimeout(`${API_BASE_URL}/api/cuentas-nuevas/${_icnCtrVista||'abt'}/por-paso?${qs}`, {headers:authHeaders()})
     .then(r=>r.json())
     .then(d=>{
       _icnAbtDatosPaso = d.pasos || [];
@@ -11361,14 +11384,17 @@ function icnAbtRenderGestor(){
   const kpiDiv = document.getElementById('icn-abt-gestor-kpi');
   const msgDiv = document.getElementById('icn-abt-gestor-msg');
   if(gestorSel && kpiDiv){
-    const r = _icnAbtDatosGestorMes.find(g=>g.gestor_asignado===gestorSel) || null;
+    // Buscar en último mes; si no hay, usar datos del período completo como respaldo
+    let r = _icnAbtDatosGestorMes.find(g=>g.gestor_asignado===gestorSel) || null;
+    const esPeriodo = !r;
+    if(!r) r = _icnAbtDatosGestor.find(g=>g.gestor_asignado===gestorSel) || null;
     if(r){
       kpiDiv.style.display = 'block';
       if(msgDiv) msgDiv.style.display = 'none';
       const denPct = (r.cumplio||0) + (r.no_cumplio||0);
       const pct    = denPct>0 ? (r.cumplio/denPct*100).toFixed(1) : '--';
       const fD = v => v!=null ? Number(v).toFixed(1) : '--';
-      const mesLbl = document.getElementById('icn-abt-lastmes-lbl')?.textContent || '';
+      const mesLbl = esPeriodo ? 'Período completo' : (document.getElementById('icn-abt-lastmes-lbl')?.textContent || '');
       const sep = `<div style="width:1px;background:var(--border);align-self:stretch;margin:0 16px;flex-shrink:0"></div>`;
       const met = (val, label, sub='') =>
         `<div style="text-align:center;min-width:60px">
@@ -11376,9 +11402,10 @@ function icnAbtRenderGestor(){
           <div style="font-size:10px;color:var(--text3);margin-top:2px;text-transform:uppercase;letter-spacing:.3px">${label}</div>
         </div>`;
       // Rendimiento/día = total asignados (incl. pend_doc) ÷ días hábiles del mes
+      // Si es datos del período completo no se puede calcular rend/día
       const totalFilasG = Number(r.total_filas||r.radicados||0);
       let rendDiaG = '--';
-      if(_icnAbtUltimoMes && totalFilasG > 0){
+      if(!esPeriodo && _icnAbtUltimoMes && totalFilasG > 0){
         const dhG = _diasHabilesEnMes(_icnAbtUltimoMes.anio, _icnAbtUltimoMes.mes);
         rendDiaG = dhG > 0 ? (totalFilasG / dhG).toFixed(1) : '--';
       }
@@ -11422,8 +11449,9 @@ function icnAbtRenderGestor(){
   // Tabla con todos los gestores del período
   if(!_icnAbtDatosGestor.length){ el.innerHTML='<div style="color:var(--text3);font-size:12px;text-align:center;padding:12px">Sin datos para el período</div>'; return; }
 
-  const metaReg  = Number(configGet('cn_meta_reg_abt',  0)) || 0;
-  const metaInst = Number(configGet('cn_meta_inst_abt', 0)) || 0;
+  const _slug = _icnCtrVista || 'abt';
+  const metaReg  = Number(configGet(`cn_meta_reg_${_slug}`,  0)) || 0;
+  const metaInst = Number(configGet(`cn_meta_inst_${_slug}`, 0)) || 0;
 
   const cols = [
     {k:'gestor_asignado', label:'Gestor', align:'left', render:r=>{
@@ -11582,7 +11610,7 @@ async function icnAbtVerRadicados(gestor){
   if(hasta)     qs.set('hasta', hasta);
 
   try{
-    const r = await fetchConTimeout(`${API_BASE_URL}/api/cuentas-nuevas/abt/solicitudes?${qs}`, {headers:authHeaders()});
+    const r = await fetchConTimeout(`${API_BASE_URL}/api/cuentas-nuevas/${_icnCtrVista||'abt'}/solicitudes?${qs}`, {headers:authHeaders()});
     if(!r.ok) throw new Error(`HTTP ${r.status}`);
     const {filas} = await r.json();
     status.style.display = 'none';
@@ -11703,8 +11731,11 @@ function icnParamRender(){
       ${td(`<input type="number" min="1" max="365" id="icn-param-inst-${t.slug}" class="form-select" style="width:90px;text-align:center" value="${inst}" placeholder="—">`, 'center')}
     </tr>`;
   }).join('');
-  // Cargar pasos del tipo activo (abt por ahora)
-  _icnParamCargarPasos('abt');
+  // Cargar pasos del tipo activo
+  const slugActivo = _icnCtrVista || 'abt';
+  const tituloEl = document.getElementById('icn-param-paso-titulo');
+  if(tituloEl) tituloEl.textContent = `Límites por Paso — ${(_ICN_TIPO_NOMBRES[slugActivo]||slugActivo.toUpperCase())}`;
+  _icnParamCargarPasos(slugActivo);
 }
 
 async function _icnParamCargarPasos(slug){
@@ -11751,7 +11782,8 @@ async function icnParamGuardar(){
     const r2 = await configSet(`cn_meta_inst_${t.slug}`, inst || null);
     if(!r1 || !r2) ok = false;
   }
-  // Guardar meta por paso (ABT) como JSON
+  // Guardar meta por paso del tipo activo como JSON
+  const slugPaso = _icnCtrVista || 'abt';
   const pasoInputs = document.querySelectorAll('.icn-param-paso-inp');
   if(pasoInputs.length){
     const pasoObj = {};
@@ -11760,7 +11792,7 @@ async function icnParamGuardar(){
       const val = inp.value.trim();
       if(nombre && val && Number(val) > 0) pasoObj[nombre] = Number(val);
     });
-    const r3 = await configSet('cn_meta_paso_abt', Object.keys(pasoObj).length ? JSON.stringify(pasoObj) : null);
+    const r3 = await configSet(`cn_meta_paso_${slugPaso}`, Object.keys(pasoObj).length ? JSON.stringify(pasoObj) : null);
     if(!r3) ok = false;
   }
   if(msg){
@@ -11768,7 +11800,7 @@ async function icnParamGuardar(){
     msg.style.color = ok ? 'var(--verde)' : '#ef476f';
     setTimeout(()=>{ if(msg) msg.textContent=''; }, 3000);
   }
-  // Recarga datos ABT completos para reflejar los nuevos límites
+  // Recarga datos para reflejar los nuevos límites
   if(_icnAbtCargado) icnAbtCargarDatos();
 }
 
