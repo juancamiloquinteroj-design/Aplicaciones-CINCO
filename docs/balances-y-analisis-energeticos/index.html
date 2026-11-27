@@ -1863,12 +1863,6 @@ html,body{overflow-x:hidden;margin:0}
         <!-- Fila 1: selectores dinámicos -->
         <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px">
           <div>
-            <div style="font-size:11px;color:var(--text3);margin-bottom:3px">Mes / Año</div>
-            <select id="icn-abt-mes" class="form-select" style="min-width:140px;font-weight:600" onchange="icnAbtSeleccionarMes()">
-              <option value="">Todos los meses</option>
-            </select>
-          </div>
-          <div>
             <div style="font-size:11px;color:var(--text3);margin-bottom:3px">Zona</div>
             <select id="icn-abt-zona" class="form-select" style="min-width:120px" onchange="icnAbtAplicarFiltros()">
               <option value="">Todas</option>
@@ -1897,24 +1891,42 @@ html,body{overflow-x:hidden;margin:0}
             <button id="icn-chip-paso-vis" class="icn-chip" onclick="icnAbtChipPaso('Visita técnica')">Visita técnica</button>
             <button id="icn-chip-paso-not" class="icn-chip" onclick="icnAbtChipPaso('Notificación')">Notificación</button>
           </div>
-          <div style="display:flex;align-items:center;gap:6px">
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
             <span style="font-size:11px;color:var(--text3);white-space:nowrap">Período:</span>
-            <button id="icn-chip-rango-todo" class="icn-chip active" onclick="icnAbtSetRango('todo')">Todo</button>
-            <button id="icn-chip-rango-6m" class="icn-chip" onclick="icnAbtSetRango('6m')">6M</button>
+            <button id="icn-chip-rango-todo" class="icn-chip" onclick="icnAbtSetRango('todo')">Todo</button>
+            <button id="icn-chip-rango-6m" class="icn-chip active" onclick="icnAbtSetRango('6m')">6M</button>
             <button id="icn-chip-rango-1a" class="icn-chip" onclick="icnAbtSetRango('1a')">1A</button>
+            <button id="icn-chip-rango-custom" class="icn-chip" onclick="icnAbtSetRango('custom')">Personalizado</button>
+            <div id="icn-abt-rango-custom-vis" style="display:none;align-items:center;gap:4px">
+              <input type="month" id="icn-abt-desde-vis" class="form-select" style="min-width:140px;font-size:12px" onchange="icnAbtCustomRango()">
+              <span style="color:var(--text3);font-size:12px">→</span>
+              <input type="month" id="icn-abt-hasta-vis" class="form-select" style="min-width:140px;font-size:12px" onchange="icnAbtCustomRango()">
+            </div>
           </div>
         </div>
 
         <!-- Gráficas en dos columnas -->
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
-          <div class="card" style="padding:14px">
-            <div style="font-size:13px;font-weight:700;margin-bottom:10px;color:var(--text1)">Cumplimiento mensual</div>
+          <div class="card" style="padding:14px" id="icn-wrap-mensual">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+              <div style="font-size:13px;font-weight:700;color:var(--text1)">Cumplimiento mensual</div>
+              <div style="display:flex;gap:5px">
+                <button class="be-modo-btn no-exportar" style="font-size:11px;padding:3px 8px" onclick="icnAbtExportarExcelMensual()">📊 Excel</button>
+                <button class="be-modo-btn no-exportar" style="font-size:11px;padding:3px 8px" onclick="_expImagenChart('icn-wrap-mensual','cumplimiento_mensual_abt',event)">⬇ PNG</button>
+              </div>
+            </div>
             <div style="position:relative;height:240px">
               <canvas id="ch-icn-abt-mensual"></canvas>
             </div>
           </div>
-          <div class="card" style="padding:14px">
-            <div style="font-size:13px;font-weight:700;margin-bottom:10px;color:var(--text1)">Cumplimiento por Paso</div>
+          <div class="card" style="padding:14px" id="icn-wrap-paso">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+              <div style="font-size:13px;font-weight:700;color:var(--text1)">Cumplimiento por Paso</div>
+              <div style="display:flex;gap:5px">
+                <button class="be-modo-btn no-exportar" style="font-size:11px;padding:3px 8px" onclick="icnAbtExportarExcelPaso()">📊 Excel</button>
+                <button class="be-modo-btn no-exportar" style="font-size:11px;padding:3px 8px" onclick="_expImagenChart('icn-wrap-paso','cumplimiento_por_paso_abt',event)">⬇ PNG</button>
+              </div>
+            </div>
             <div style="position:relative;height:240px">
               <canvas id="ch-icn-abt-paso"></canvas>
             </div>
@@ -10403,7 +10415,7 @@ function icnCtrIrA(v){
   });
   if(v === 'abt' && !_icnAbtCargado){
     _icnAbtCargado = true;
-    icnAbtCargarFiltros().then(()=>icnAbtCargarDatos());
+    icnAbtCargarFiltros().then(()=>icnAbtSetRango('6m'));
   }
 }
 
@@ -10437,7 +10449,7 @@ async function icnAbtCargarDatos(){
   const zona     = document.getElementById('icn-abt-zona')?.value      || '';
   const municipio= document.getElementById('icn-abt-municipio')?.value || '';
   const gestor   = document.getElementById('icn-abt-gestor')?.value    || '';
-  const paso     = document.getElementById('icn-abt-paso')?.value      || '';
+  const paso     = _icnAbtPasoActivo || '';
   const desde    = document.getElementById('icn-abt-desde')?.value     || '';
   const hasta    = document.getElementById('icn-abt-hasta')?.value     || '';
 
@@ -10475,12 +10487,6 @@ async function icnAbtCargarDatos(){
     _icnAbtDatosGestor = dGestor.gestores || [];
     _icnAbtDatosPaso   = dPaso.pasos      || [];
     if(st) st.style.display='none';
-    // Primera carga: guardar todos los meses y auto-seleccionar el último
-    if(!_icnAbtMesesDisponibles.length && _icnAbtDatosMes.length){
-      _icnAbtMesesDisponibles = [..._icnAbtDatosMes];
-      icnAbtPoblarSelectorMes(); // auto-selecciona el último mes → llama cargarDatos otra vez
-      return;
-    }
     icnAbtRenderMensual();
     icnAbtRenderPorPaso();
     icnAbtRenderGestor();
@@ -10503,15 +10509,15 @@ function icnAbtChipPaso(valor){
     const btn = document.getElementById(id);
     if(btn) btn.classList.toggle('active', (mapeo[k]?.val||'') === valor);
   });
-  // Sincroniza el hidden input que lee icnAbtCargarDatos
-  const el = document.getElementById('icn-abt-paso');
-  if(el) el.value = valor;
   icnAbtCargarDatos();
 }
 
 // ---- chips Período ----
 function icnAbtSetRango(rango){
-  ['todo','6m','1a'].forEach(r=>document.getElementById(`icn-chip-rango-${r}`)?.classList.toggle('active', r===rango));
+  ['todo','6m','1a','custom'].forEach(r=>document.getElementById(`icn-chip-rango-${r}`)?.classList.toggle('active', r===rango));
+  const customVis = document.getElementById('icn-abt-rango-custom-vis');
+  if(customVis) customVis.style.display = rango==='custom' ? 'flex' : 'none';
+  if(rango === 'custom') return; // espera a que el usuario elija las fechas
   const ahora = new Date();
   const padMes = m => String(m).padStart(2,'0');
   const fmtYM = (y, m) => `${y}-${padMes(m)}`;
@@ -10528,10 +10534,15 @@ function icnAbtSetRango(rango){
   const hEl = document.getElementById('icn-abt-hasta');
   if(dEl) dEl.value = desde;
   if(hEl) hEl.value = rango==='todo' ? '' : hasta;
-  // Limpiar selector de mes al usar período
-  const mes = document.getElementById('icn-abt-mes');
-  if(mes && rango!=='todo') mes.value = '';
   icnAbtCargarDatos();
+}
+
+function icnAbtCustomRango(){
+  const d = document.getElementById('icn-abt-desde-vis')?.value || '';
+  const h = document.getElementById('icn-abt-hasta-vis')?.value || '';
+  document.getElementById('icn-abt-desde').value = d;
+  document.getElementById('icn-abt-hasta').value = h;
+  if(d || h) icnAbtCargarDatos();
 }
 
 function icnAbtPoblarSelectorMes(){
@@ -10605,10 +10616,11 @@ function icnAbtRenderMensual(){
   const radicados = _icnAbtDatosMes.map(r=>Number(r.radicados||0));
   const pctLine   = radicados.map((tot,i)=>tot>0?(cumplio[i]/tot*100):null);
 
+  const dlBar = {display: ctx=>ctx.parsed.y>=5, formatter:v=>v.toLocaleString('es-CO'), color:'#fff', font:{weight:'bold',size:10}, anchor:'center', align:'center'};
   const datasets = [
-    {label:'Cumplió',    data:cumplio,   backgroundColor:'#06d6a0', stack:'s', datalabels:{display:false}},
-    {label:'No cumplió', data:noCumplio, backgroundColor:'#ef476f', stack:'s', datalabels:{display:false}},
-    {label:'En proceso', data:enProceso, backgroundColor:'#ffd166', stack:'s', datalabels:{display:false}},
+    {label:'Cumplió',    data:cumplio,   backgroundColor:'#06d6a0', stack:'s', datalabels:dlBar},
+    {label:'No cumplió', data:noCumplio, backgroundColor:'#ef476f', stack:'s', datalabels:dlBar},
+    {label:'En proceso', data:enProceso, backgroundColor:'#ffd166', stack:'s', datalabels:dlBar},
     {label:'% Cumplió', data:pctLine, type:'line', yAxisID:'y1',
       borderColor:'#118ab2', backgroundColor:'#118ab215',
       pointRadius:3, borderWidth:2, tension:0, fill:false,
@@ -10621,9 +10633,9 @@ function icnAbtRenderMensual(){
     options:{
       responsive:true, maintainAspectRatio:false,
       plugins:{legend:{position:'top',labels:{font:{size:11},boxWidth:12}},fondoExcel:false,
-               tooltip:{callbacks:{label:ctx=>{
+               tooltip:{mode:'index', intersect:false, callbacks:{label:ctx=>{
                  if(ctx.dataset.yAxisID==='y1') return `% Cumplió: ${ctx.raw!=null?ctx.raw.toFixed(1)+'%':'--'}`;
-                 return `${ctx.dataset.label}: ${ctx.raw.toLocaleString('es-CO')}`;
+                 return `${ctx.dataset.label}: ${Number(ctx.raw||0).toLocaleString('es-CO')}`;
                }}}},
       scales:{
         x:{stacked:true, ticks:{font:{size:11}}},
@@ -10641,13 +10653,13 @@ function icnAbtRenderPorPaso(){
   const canvas = document.getElementById('ch-icn-abt-paso');
   if(!canvas) return;
   if(chIcnAbtPaso){ chIcnAbtPaso.destroy(); chIcnAbtPaso = null; }
+  const stray = Chart.getChart(canvas); if(stray) stray.destroy();
   if(!_icnAbtDatosPaso.length){
     canvas.getContext('2d').clearRect(0,0,canvas.width,canvas.height);
     return;
   }
   const labels = _icnAbtDatosPaso.map(p=>{
     const n = p.paso||'Sin paso';
-    // Acortar etiquetas largas
     if(n==='Solicitud del servicio de energía') return 'Solicitud';
     return n;
   });
@@ -10656,23 +10668,43 @@ function icnAbtRenderPorPaso(){
   const cumplPct   = _icnAbtDatosPaso.map(r=>pct(r.cumplio||0, r));
   const noCumplPct = _icnAbtDatosPaso.map(r=>pct(r.no_cumplio||0, r));
   const enProcPct  = _icnAbtDatosPaso.map(r=>pct(r.en_proceso||0, r));
+  const dsPaso = [
+    {label:'Cumplió',    data:cumplPct,   backgroundColor:'#06d6a0', stack:'s'},
+    {label:'No cumplió', data:noCumplPct, backgroundColor:'#ef476f', stack:'s'},
+    {label:'En proceso', data:enProcPct,  backgroundColor:'#ffd166', stack:'s'},
+  ];
 
-  chIcnAbtPaso = new Chart(canvas.getContext('2d'), {
+  chIcnAbtPaso = new Chart(canvas, {
     type: 'bar',
-    data: {
-      labels,
-      datasets: [
-        {label:'Cumplió',    data:cumplPct,   backgroundColor:'#06d6a0', stack:'s'},
-        {label:'No cumplió', data:noCumplPct, backgroundColor:'#ef476f', stack:'s'},
-        {label:'En proceso', data:enProcPct,  backgroundColor:'#ffd166', stack:'s'},
-      ],
-    },
+    data: { labels, datasets: dsPaso },
     options:{
       indexAxis:'y',
       responsive:true, maintainAspectRatio:false,
       plugins:{
-        legend:{position:'bottom', labels:{font:{size:11}, boxWidth:10, padding:8}},
-        tooltip:{callbacks:{label: ctx=>`${ctx.dataset.label}: ${ctx.parsed.x}%`}},
+        legend:{
+          position:'bottom',
+          labels:{font:{size:11}, boxWidth:12, padding:10,
+            generateLabels: chart => chart.data.datasets.map((ds,i)=>({
+              text:ds.label, fillStyle:ds.backgroundColor, strokeStyle:ds.backgroundColor,
+              lineWidth:0, hidden:!chart.isDatasetVisible(i), datasetIndex:i
+            }))
+          }
+        },
+        tooltip:{mode:'index', intersect:false, callbacks:{
+          label: ctx=>{
+            const r = _icnAbtDatosPaso[ctx.dataIndex];
+            if(!r) return `${ctx.dataset.label}: ${ctx.parsed.x}%`;
+            const mapKey = {Cumplió:'cumplio','No cumplió':'no_cumplio','En proceso':'en_proceso'};
+            const abs = Number(r[mapKey[ctx.dataset.label]]||0).toLocaleString('es-CO');
+            return `${ctx.dataset.label}: ${ctx.parsed.x}% (${abs} radicados)`;
+          },
+          afterBody: items=>{
+            if(!items.length) return;
+            const r = _icnAbtDatosPaso[items[0].dataIndex];
+            if(!r) return;
+            return [`Total radicados: ${Number(r.radicados||0).toLocaleString('es-CO')}`, `Devoluciones: ${Number(r.devoluciones||0).toLocaleString('es-CO')}`];
+          }
+        }},
         datalabels:{
           display: ctx => ctx.parsed.x >= 8,
           formatter: v => v+'%',
@@ -10686,6 +10718,59 @@ function icnAbtRenderPorPaso(){
       },
     },
   });
+}
+
+async function icnAbtExportarExcelMensual(){
+  if(!_icnAbtDatosMes.length) return;
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('Cumplimiento Mensual');
+  ws.columns = [
+    {header:'Período', key:'per', width:12},
+    {header:'Radicados', key:'rad', width:12},
+    {header:'Cumplió', key:'cum', width:12},
+    {header:'No Cumplió', key:'ncum', width:12},
+    {header:'En Proceso', key:'proc', width:12},
+    {header:'% Cumplió', key:'pct', width:12},
+    {header:'Días Hábiles Prom.', key:'dias', width:18},
+  ];
+  _icnAbtDatosMes.forEach(r=>{
+    const per = `${r.anio}-${String(r.mes).padStart(2,'0')}`;
+    const pct = r.radicados>0 ? parseFloat((r.cumplio/r.radicados*100).toFixed(1)) : 0;
+    ws.addRow({per, rad:r.radicados||0, cum:r.cumplio||0, ncum:r.no_cumplio||0, proc:r.en_proceso||0, pct, dias:r.dias_habiles_prom||0});
+  });
+  ws.getRow(1).font = {bold:true};
+  const buf = await wb.xlsx.writeBuffer();
+  const url = URL.createObjectURL(new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));
+  const a = document.createElement('a'); a.href=url; a.download='cumplimiento_mensual_abt.xlsx'; a.click(); URL.revokeObjectURL(url);
+}
+
+async function icnAbtExportarExcelPaso(){
+  if(!_icnAbtDatosPaso.length) return;
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('Cumplimiento por Paso');
+  ws.columns = [
+    {header:'Paso', key:'paso', width:36},
+    {header:'Radicados', key:'rad', width:12},
+    {header:'Cumplió', key:'cum', width:12},
+    {header:'% Cumplió', key:'pctc', width:12},
+    {header:'No Cumplió', key:'ncum', width:12},
+    {header:'% No Cumplió', key:'pctnc', width:14},
+    {header:'En Proceso', key:'proc', width:12},
+    {header:'Devoluciones', key:'dev', width:14},
+  ];
+  _icnAbtDatosPaso.forEach(r=>{
+    const tot = r.radicados||1;
+    ws.addRow({
+      paso:r.paso||'Sin paso', rad:r.radicados||0,
+      cum:r.cumplio||0, pctc:parseFloat((r.cumplio/tot*100).toFixed(1)),
+      ncum:r.no_cumplio||0, pctnc:parseFloat((r.no_cumplio/tot*100).toFixed(1)),
+      proc:r.en_proceso||0, dev:r.devoluciones||0,
+    });
+  });
+  ws.getRow(1).font = {bold:true};
+  const buf = await wb.xlsx.writeBuffer();
+  const url = URL.createObjectURL(new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));
+  const a = document.createElement('a'); a.href=url; a.download='cumplimiento_por_paso_abt.xlsx'; a.click(); URL.revokeObjectURL(url);
 }
 
 function icnAbtRenderGestor(){
