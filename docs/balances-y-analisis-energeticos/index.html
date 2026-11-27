@@ -1943,6 +1943,19 @@ html,body{overflow-x:hidden;margin:0}
 </div>
 <!-- fin icn-screen -->
 
+<!-- Modal detalle radicados ICN ABT -->
+<div id="icn-modal-radicados" class="tm-modal-overlay hidden" onclick="if(event.target===this) icnCerrarModalRadicados()">
+  <div class="tm-modal" style="width:min(960px,96vw);max-height:85vh;display:flex;flex-direction:column">
+    <div class="tm-modal-title" id="icn-modal-radicados-titulo">Radicados</div>
+    <div class="tm-modal-sub" id="icn-modal-radicados-sub" style="font-size:12px;color:var(--text3)"></div>
+    <div id="icn-modal-radicados-status" style="color:var(--text3);font-size:12px;padding:4px 0;display:none"></div>
+    <div style="overflow:auto;margin-top:10px;flex:1" id="icn-modal-radicados-cuerpo"></div>
+    <div class="tm-modal-botones">
+      <button class="btn-theme" style="width:auto;padding:8px 18px" onclick="icnCerrarModalRadicados()">Cerrar</button>
+    </div>
+  </div>
+</div>
+
 <!-- ==================== DASHBOARD ==================== -->
 <div class="app-shell">
 <div id="sidebar-overlay" class="sidebar-overlay hidden" onclick="toggleSidebar()"></div>
@@ -10503,7 +10516,10 @@ function icnAbtRenderGestor(){
   const metaInst = Number(configGet('cn_meta_inst_abt', 0)) || 0;
 
   const cols = [
-    {k:'gestor_asignado', label:'Gestor', align:'left'},
+    {k:'gestor_asignado', label:'Gestor', align:'left', render:r=>{
+      const g = (r.gestor_asignado||'').replace(/'/g,"&#39;");
+      return `<button onclick="icnAbtVerRadicados('${g}')" style="background:none;border:none;padding:0;color:var(--azul);cursor:pointer;font-size:12px;text-align:left;text-decoration:underline">${r.gestor_asignado||'--'}</button>`;
+    }},
     {k:'radicados', label:'Radicados', align:'right'},
     {k:'cumplio', label:'Cumplió', align:'right', render:r=>{
       const pct = r.radicados>0 ? (r.cumplio/r.radicados*100).toFixed(1)+'%' : '--';
@@ -10532,6 +10548,84 @@ function icnAbtRenderGestor(){
   `).join('');
 
   el.innerHTML = `<table style="width:100%;border-collapse:collapse"><thead>${thead}</thead><tbody>${tbody}</tbody></table>`;
+}
+
+function icnCerrarModalRadicados(){
+  document.getElementById('icn-modal-radicados')?.classList.add('hidden');
+}
+
+async function icnAbtVerRadicados(gestor){
+  const modal   = document.getElementById('icn-modal-radicados');
+  const titulo  = document.getElementById('icn-modal-radicados-titulo');
+  const sub     = document.getElementById('icn-modal-radicados-sub');
+  const status  = document.getElementById('icn-modal-radicados-status');
+  const cuerpo  = document.getElementById('icn-modal-radicados-cuerpo');
+  if(!modal) return;
+
+  titulo.textContent  = gestor || 'Gestor';
+  sub.textContent     = 'Acometidas BT individuales — detalle de radicados';
+  status.textContent  = 'Cargando…';
+  status.style.display = 'block';
+  cuerpo.innerHTML    = '';
+  modal.classList.remove('hidden');
+
+  // Reusar los filtros activos (zona, municipio, fechas) del panel
+  const zona      = document.getElementById('icn-abt-zona')?.value      || '';
+  const municipio = document.getElementById('icn-abt-municipio')?.value || '';
+  const desde     = document.getElementById('icn-abt-desde')?.value     || '';
+  const hasta     = document.getElementById('icn-abt-hasta')?.value     || '';
+  const qs = new URLSearchParams({gestor});
+  if(zona)      qs.set('zona', zona);
+  if(municipio) qs.set('municipio', municipio);
+  if(desde)     qs.set('desde', desde);
+  if(hasta)     qs.set('hasta', hasta);
+
+  try{
+    const r = await fetchConTimeout(`${API_BASE_URL}/api/cuentas-nuevas/abt/solicitudes?${qs}`, {headers:authHeaders()});
+    if(!r.ok) throw new Error(`HTTP ${r.status}`);
+    const {filas} = await r.json();
+    status.style.display = 'none';
+
+    if(!filas || !filas.length){
+      cuerpo.innerHTML = '<div style="color:var(--text3);font-size:13px;text-align:center;padding:20px">Sin radicados para los filtros actuales.</div>';
+      return;
+    }
+
+    sub.textContent = `${filas.length} registro${filas.length!==1?'s':''} — Acometidas BT individuales`;
+
+    const meses = ['','Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+    const fmtFecha = v => {
+      if(!v) return '--';
+      const d = new Date(v);
+      return isNaN(d) ? v : `${d.getDate()} ${meses[d.getMonth()+1]} ${d.getFullYear()}`;
+    };
+    const colsCumpl = {cumplio:'#06d6a0', 'no cumplio':'#ef476f', 'en proceso':'#ffd166'};
+
+    const cols = [
+      {label:'Radicado',       fn: r=>r.radicado||'--'},
+      {label:'Municipio',      fn: r=>r.municipio||'--'},
+      {label:'Propietario',    fn: r=>r.propietario||'--'},
+      {label:'Estado',         fn: r=>r.estado||'--'},
+      {label:'Paso',           fn: r=>r.paso||'--'},
+      {label:'Fecha inicio',   fn: r=>fmtFecha(r.fecha_inicio)},
+      {label:'Fecha respuesta',fn: r=>fmtFecha(r.fecha_respuesta)},
+      {label:'Días háb.',      fn: r=>r.dias_habiles!=null?Number(r.dias_habiles).toFixed(1):'--'},
+      {label:'Cumplimiento',   fn: r=>{
+        const c = (r.cumplimiento||'').toLowerCase();
+        const col = colsCumpl[c] || 'inherit';
+        return `<span style="color:${col};font-weight:700">${r.cumplimiento||'--'}</span>`;
+      }},
+    ];
+
+    const thS = 'padding:6px 8px;font-size:11px;font-weight:700;color:var(--text3);background:var(--bg3);white-space:nowrap;position:sticky;top:0';
+    const tdS = 'padding:5px 8px;font-size:12px;border-top:1px solid var(--border);white-space:nowrap';
+    const thead = `<tr>${cols.map(c=>`<th style="${thS}">${c.label}</th>`).join('')}</tr>`;
+    const tbody = filas.map(row=>`<tr>${cols.map(c=>`<td style="${tdS}">${c.fn(row)}</td>`).join('')}</tr>`).join('');
+    cuerpo.innerHTML = `<table style="width:100%;border-collapse:collapse"><thead>${thead}</thead><tbody>${tbody}</tbody></table>`;
+  }catch(e){
+    status.textContent = `Error: ${e.message}`;
+    status.style.color = '#ef476f';
+  }
 }
 
 // =============== ICN Parametrización ===============
