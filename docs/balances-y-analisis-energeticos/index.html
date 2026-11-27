@@ -10719,7 +10719,8 @@ function icnAbtRenderKpis(){
   const totalNoCum  = _icnAbtDatosMes.reduce((s,r)=>s+Number(r.no_cumplio||0),0);
   const totalPendDoc= _icnAbtDatosMes.reduce((s,r)=>s+Number(r.pend_doc||0),0);
   const totalDev    = _icnAbtDatosMes.reduce((s,r)=>s+Number(r.devoluciones||0),0);
-  const _denKpi = totalRad - totalPendDoc;
+  const totalEnProc = _icnAbtDatosMes.reduce((s,r)=>s+Number(r.en_proceso||0),0);
+  const _denKpi = totalCum + totalNoCum;  // solo casos cerrados
   const pctCum  = _denKpi>0 ? (totalCum/_denKpi*100).toFixed(1) : '--';
   const diasprom = _icnAbtDatosMes.length>0
     ? (_icnAbtDatosMes.reduce((s,r)=>s+Number(r.dias_habiles_prom||0),0)/_icnAbtDatosMes.length).toFixed(1)
@@ -10755,7 +10756,7 @@ function icnAbtRenderMensual(){
   const pendDocMes  = _icnAbtDatosMes.map(r=>Number(r.pend_doc||0));
   const devoluciones= _icnAbtDatosMes.map(r=>Number(r.devoluciones||0));
   const radicados   = _icnAbtDatosMes.map(r=>Number(r.radicados||0));
-  const pctLine     = radicados.map((tot,i)=>{ const den=tot-(pendDocMes[i]||0); return den>0?(cumplio[i]/den*100):null; });
+  const pctLine     = cumplio.map((c,i)=>{ const den=c+(noCumplio[i]||0); return den>0?(c/den*100):null; });
 
   const _dl = _icnAbtDatalabels;
   const dlBar = {display: _dl, formatter:v=>v>0?v.toLocaleString('es-CO'):'', color:'#1a1a1a', font:{weight:'bold',size:10}, anchor:'center', align:'center'};
@@ -10839,7 +10840,8 @@ function icnAbtRenderPorPaso(){
   _icnPasoRetry = 0;
 
   const labels = _icnAbtDatosPaso.map(p=> p.paso||'Sin paso');
-  const total  = r => ((Number(r.radicados)||0) - (Number(r.pend_doc)||0)) || 1;
+  // Denominador = solo casos cerrados (cumplio + no_cumplio); excluye en_proceso y pend_doc
+  const total  = r => ((Number(r.cumplio)||0) + (Number(r.no_cumplio)||0)) || 1;
   const pct    = (n,r) => Math.round((Number(n||0)/total(r))*100);
   const cumplPct    = _icnAbtDatosPaso.map(r=>pct(r.cumplio,    r));
   const noCumplPct  = _icnAbtDatosPaso.map(r=>pct(r.no_cumplio, r));
@@ -10928,7 +10930,7 @@ async function icnAbtExportarExcelMensual(){
   ];
   _icnAbtDatosMes.forEach(r=>{
     const per = `${r.anio}-${String(r.mes).padStart(2,'0')}`;
-    const _den = (r.radicados||0)-(r.pend_doc||0);
+    const _den = (r.cumplio||0)+(r.no_cumplio||0);
     const pct = _den>0 ? parseFloat((r.cumplio/_den*100).toFixed(1)) : 0;
     ws.addRow({per, rad:r.radicados||0, cum:r.cumplio||0, ncum:r.no_cumplio||0, proc:r.en_proceso||0, pct, dias:r.dias_habiles_prom||0});
   });
