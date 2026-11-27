@@ -11112,25 +11112,37 @@ function icnAbtRenderPorPaso(){
   }
   _icnPasoRetry = 0;
 
-  const labels = _icnAbtDatosPaso.map(p=> p.paso||'Sin paso');
+  // Orden fijo: Notificación arriba, Visita técnica, Solicitud de servicio de energía abajo
+  const _PASO_ORDEN = [
+    /notif/i,
+    /visita/i,
+    /solicit/i,
+  ];
+  const _pasoOrden = p => {
+    const n = (p.paso||'').toLowerCase();
+    const i = _PASO_ORDEN.findIndex(re=>re.test(n));
+    return i >= 0 ? i : _PASO_ORDEN.length;
+  };
+  const datosPaso = [..._icnAbtDatosPaso].sort((a,b)=>_pasoOrden(a)-_pasoOrden(b));
+
+  const labels = datosPaso.map(p=> p.paso||'Sin paso');
   // Denominador = solo casos cerrados (cumplio + no_cumplio); excluye en_proceso y pend_doc
   const total  = r => ((Number(r.cumplio)||0) + (Number(r.no_cumplio)||0)) || 1;
   const pct    = (n,r) => Math.round((Number(n||0)/total(r))*100);
-  const cumplPct    = _icnAbtDatosPaso.map(r=>pct(r.cumplio,    r));
-  const noCumplPct  = _icnAbtDatosPaso.map(r=>pct(r.no_cumplio, r));
-  const enProcPct   = _icnAbtDatosPaso.map(r=>pct(r.en_proceso,  r));
-  const pendDocPct  = _icnAbtDatosPaso.map(r=>pct(r.pend_doc,    r));
+  const cumplPct    = datosPaso.map(r=>pct(r.cumplio,    r));
+  const noCumplPct  = datosPaso.map(r=>pct(r.no_cumplio, r));
+  const enProcPct   = datosPaso.map(r=>pct(r.en_proceso,  r));
+  const pendDocPct  = datosPaso.map(r=>pct(r.pend_doc,    r));
 
   const _pasoKeys = ['cumplio','no_cumplio','en_proceso','pend_doc'];
   const dlPaso = {
     display: ctx => {
-      // Siempre mostrar por defecto; solo ocultar si el valor es 0 o muy pequeño
       const v = ctx.dataset.data[ctx.dataIndex];
       return v != null && v > 3;
     },
     formatter: (v, ctx) => {
       if(!v || v<=0) return '';
-      const r = _icnAbtDatosPaso[ctx.dataIndex];
+      const r = datosPaso[ctx.dataIndex];
       const cnt = r ? (Number(r[_pasoKeys[ctx.datasetIndex]])||0) : '';
       return `${v}% (${cnt})`;
     },
@@ -11169,7 +11181,7 @@ function icnAbtRenderPorPaso(){
         },
         tooltip:{mode:'index', intersect:false, callbacks:{
           label: ctx=>{
-            const r = _icnAbtDatosPaso[ctx.dataIndex];
+            const r = datosPaso[ctx.dataIndex];
             if(!r) return `${ctx.dataset.label}: ${ctx.parsed.x}%`;
             const mapKey = {'Cumplió':'cumplio','No cumplió':'no_cumplio','En proceso':'en_proceso'};
             const abs = Number(r[mapKey[ctx.dataset.label]]||0).toLocaleString('es-CO');
@@ -11177,7 +11189,7 @@ function icnAbtRenderPorPaso(){
           },
           afterBody: items=>{
             if(!items.length) return [];
-            const r = _icnAbtDatosPaso[items[0].dataIndex];
+            const r = datosPaso[items[0].dataIndex];
             if(!r) return [];
             return [`Radicados: ${Number(r.radicados||0).toLocaleString('es-CO')}  |  Devoluciones: ${Number(r.devoluciones||0).toLocaleString('es-CO')}`];
           }
