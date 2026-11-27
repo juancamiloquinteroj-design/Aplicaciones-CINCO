@@ -2034,9 +2034,13 @@ html,body{overflow-x:hidden;margin:0}
       </div>
     </div>
 
-    <div style="display:flex;gap:10px;align-items:center;margin-bottom:16px">
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px">
       <button class="btn-accion" onclick="icnParamGuardar()" style="padding:8px 20px;font-size:13px">Guardar cambios</button>
+      <button class="btn-accion" onclick="icnParamRecargar()" id="icn-param-btn-recargar" style="padding:8px 16px;font-size:13px;background:var(--bg3);color:var(--text2);border:1.5px solid var(--border)">↺ Recargar datos ICN</button>
       <span id="icn-param-msg" style="font-size:12px;color:var(--text3)"></span>
+    </div>
+    <div style="font-size:11px;color:var(--text3);max-width:600px">
+      <strong>Nota:</strong> Si cambias la fórmula de días hábiles o agregas archivos nuevos, usa "↺ Recargar datos ICN" para recalcular todos los registros históricos. El proceso puede tardar unos segundos.
     </div>
   </div>
   <!-- fin parametrización ICN -->
@@ -11619,6 +11623,33 @@ async function icnParamGuardar(){
   }
   // Recarga datos ABT completos para reflejar los nuevos límites
   if(_icnAbtCargado) icnAbtCargarDatos();
+}
+
+async function icnParamRecargar(){
+  const btn = document.getElementById('icn-param-btn-recargar');
+  const msg = document.getElementById('icn-param-msg');
+  if(btn) btn.disabled = true;
+  if(msg){ msg.textContent = 'Recargando datos…'; msg.style.color = 'var(--text3)'; }
+  try{
+    const r = await fetchConTimeout(`${API_BASE_URL}/api/cuentas-nuevas/recargar`, {
+      method: 'POST', headers: authHeaders()
+    });
+    const d = await r.json();
+    if(r.ok && d.ok){
+      if(msg){ msg.textContent = d.mensaje || 'Recarga iniciada.'; msg.style.color = 'var(--verde)'; }
+      // Esperar unos segundos y recargar datos en la vista
+      setTimeout(()=>{
+        if(_icnAbtCargado) icnAbtCargarDatos();
+      }, 4000);
+    } else {
+      if(msg){ msg.textContent = 'No se pudo recargar.'; msg.style.color = '#ef476f'; }
+    }
+  }catch(e){
+    if(msg){ msg.textContent = `Error: ${e.message}`; msg.style.color = '#ef476f'; }
+  } finally {
+    if(btn) btn.disabled = false;
+    setTimeout(()=>{ if(msg) msg.textContent=''; }, 6000);
+  }
 }
 
 async function entrarIndicadoresCuentasNuevas(){
