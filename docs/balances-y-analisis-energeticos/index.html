@@ -1906,19 +1906,17 @@ html,body{overflow-x:hidden;margin:0}
           </div>
         </div>
 
-        <!-- Fila 2: chips Período -->
-        <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
-          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-            <span style="font-size:11px;color:var(--text3);white-space:nowrap">Período:</span>
-            <button id="icn-chip-rango-todo" class="icn-chip" onclick="icnAbtSetRango('todo')">Todo</button>
-            <button id="icn-chip-rango-6m" class="icn-chip active" onclick="icnAbtSetRango('6m')">6M</button>
-            <button id="icn-chip-rango-1a" class="icn-chip" onclick="icnAbtSetRango('1a')">1A</button>
-            <button id="icn-chip-rango-custom" class="icn-chip" onclick="icnAbtSetRango('custom')">Personalizado</button>
-            <div id="icn-abt-rango-custom-vis" style="display:none;align-items:center;gap:4px">
-              <input type="month" id="icn-abt-desde-vis" class="form-select" style="min-width:140px;font-size:12px" onchange="icnAbtCustomRango()">
-              <span style="color:var(--text3);font-size:12px">→</span>
-              <input type="month" id="icn-abt-hasta-vis" class="form-select" style="min-width:140px;font-size:12px" onchange="icnAbtCustomRango()">
-            </div>
+        <!-- Período chips — misma fila que los filtros de arriba; se agregaron aquí para tenerlo todo en una sola fila -->
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:14px;margin-top:-2px">
+          <span style="font-size:11px;color:var(--text3);white-space:nowrap">Período:</span>
+          <button id="icn-chip-rango-todo" class="icn-chip" onclick="icnAbtSetRango('todo')">Todo</button>
+          <button id="icn-chip-rango-6m" class="icn-chip active" onclick="icnAbtSetRango('6m')">6M</button>
+          <button id="icn-chip-rango-1a" class="icn-chip" onclick="icnAbtSetRango('1a')">1A</button>
+          <button id="icn-chip-rango-custom" class="icn-chip" onclick="icnAbtSetRango('custom')">Personalizado</button>
+          <div id="icn-abt-rango-custom-vis" style="display:none;align-items:center;gap:4px">
+            <input type="month" id="icn-abt-desde-vis" class="form-select" style="min-width:130px;font-size:12px" onchange="icnAbtCustomRango()">
+            <span style="color:var(--text3);font-size:12px">→</span>
+            <input type="month" id="icn-abt-hasta-vis" class="form-select" style="min-width:130px;font-size:12px" onchange="icnAbtCustomRango()">
           </div>
         </div>
 
@@ -10697,11 +10695,27 @@ function icnAbtRenderMensual(){
     data: { labels, datasets },
     options:{
       responsive:true, maintainAspectRatio:false,
-      plugins:{legend:{position:'top',labels:{font:{size:11},boxWidth:12}},fondoExcel:false,
-               tooltip:{mode:'index', intersect:false, callbacks:{label:ctx=>{
-                 if(ctx.dataset.yAxisID==='y1') return `% Cumplió: ${ctx.raw!=null?ctx.raw.toFixed(1)+'%':'--'}`;
-                 return `${ctx.dataset.label}: ${Number(ctx.raw||0).toLocaleString('es-CO')}`;
-               }}}},
+      plugins:{
+        legend:{
+          position:'bottom',
+          labels:{
+            font:{size:11}, boxWidth:14, padding:10,
+            generateLabels: chart => chart.data.datasets.map((ds,i)=>({
+              text: ds.label,
+              fillStyle: Array.isArray(ds.backgroundColor)?ds.backgroundColor[0]:(ds.backgroundColor||ds.borderColor||'#888'),
+              strokeStyle: ds.borderColor||(Array.isArray(ds.backgroundColor)?ds.backgroundColor[0]:ds.backgroundColor)||'#888',
+              lineWidth: ds.type==='line'?2:0,
+              hidden: !chart.isDatasetVisible(i),
+              datasetIndex: i,
+              pointStyle:'rect',
+            }))
+          }
+        },
+        fondoExcel:false,
+        tooltip:{mode:'index', intersect:false, callbacks:{label:ctx=>{
+          if(ctx.dataset.yAxisID==='y1') return `% Cumplió: ${ctx.raw!=null?ctx.raw.toFixed(1)+'%':'--'}`;
+          return `${ctx.dataset.label}: ${Number(ctx.raw||0).toLocaleString('es-CO')}`;
+        }}}},
       scales:{
         x:{stacked:true, ticks:{font:{size:11}}},
         y:{stacked:true, grace:'5%', ticks:{font:{size:11}}, title:{display:true, text:'Radicados', font:{size:11}}},
@@ -10714,32 +10728,30 @@ function icnAbtRenderMensual(){
   });
 }
 
+let _icnPasoRetry = 0;
 function icnAbtRenderPorPaso(){
   const canvas = document.getElementById('ch-icn-abt-paso');
   if(!canvas) return;
   if(chIcnAbtPaso){ chIcnAbtPaso.destroy(); chIcnAbtPaso = null; }
   const stray = Chart.getChart(canvas); if(stray) stray.destroy();
 
-  // Sin datos: mostrar mensaje en lugar de canvas vacío
-  const wrap = canvas.closest('[style*="position:relative"]') || canvas.parentElement;
-  const sinDatosId = 'icn-paso-sindat';
-  document.getElementById(sinDatosId)?.remove();
+  const wrap = canvas.parentElement;
+  document.getElementById('icn-paso-sindat')?.remove();
 
   if(!_icnAbtDatosPaso.length){
     const msg = document.createElement('div');
-    msg.id = sinDatosId;
+    msg.id = 'icn-paso-sindat';
     msg.style.cssText='position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--text3)';
     msg.textContent='Sin datos de pasos para el período seleccionado';
-    wrap.style.position='relative';
-    wrap.appendChild(msg);
+    if(wrap){ wrap.style.position='relative'; wrap.appendChild(msg); }
     return;
   }
 
-  // Si el canvas todavía no tiene dimensiones, diferir 1 frame
   if(canvas.clientWidth === 0){
-    requestAnimationFrame(icnAbtRenderPorPaso);
+    if(_icnPasoRetry < 10){ _icnPasoRetry++; setTimeout(icnAbtRenderPorPaso, 80); }
     return;
   }
+  _icnPasoRetry = 0;
 
   const labels = _icnAbtDatosPaso.map(p=>{
     const n = p.paso||'Sin paso';
@@ -10752,18 +10764,34 @@ function icnAbtRenderPorPaso(){
   const noCumplPct = _icnAbtDatosPaso.map(r=>pct(r.no_cumplio,r));
   const enProcPct  = _icnAbtDatosPaso.map(r=>pct(r.en_proceso,r));
 
+  const dlPaso = {display: ctx=>(ctx.parsed?.x??0)>=8, formatter:v=>v+'%', color:'#fff', font:{weight:'bold',size:10}, anchor:'center', align:'center'};
+
   chIcnAbtPaso = new Chart(canvas, {
     type: 'bar',
     data: { labels, datasets: [
-      {label:'Cumplió',    data:cumplPct,   backgroundColor:'#06d6a0', stack:'s'},
-      {label:'No cumplió', data:noCumplPct, backgroundColor:'#ef476f', stack:'s'},
-      {label:'En proceso', data:enProcPct,  backgroundColor:'#ffd166', stack:'s'},
+      {label:'Cumplió',    data:cumplPct,   backgroundColor:'#06d6a0', stack:'s', datalabels:dlPaso},
+      {label:'No cumplió', data:noCumplPct, backgroundColor:'#ef476f', stack:'s', datalabels:dlPaso},
+      {label:'En proceso', data:enProcPct,  backgroundColor:'#ffd166', stack:'s', datalabels:dlPaso},
     ]},
     options:{
       indexAxis:'y',
       responsive:true, maintainAspectRatio:false,
       plugins:{
-        legend:{position:'bottom', labels:{font:{size:11}, boxWidth:14, padding:10, usePointStyle:false}},
+        legend:{
+          position:'bottom',
+          labels:{
+            font:{size:11}, boxWidth:14, padding:10,
+            generateLabels: chart => chart.data.datasets.map((ds,i)=>({
+              text: ds.label,
+              fillStyle: Array.isArray(ds.backgroundColor)?ds.backgroundColor[0]:(ds.backgroundColor||'#888'),
+              strokeStyle: Array.isArray(ds.backgroundColor)?ds.backgroundColor[0]:(ds.backgroundColor||'#888'),
+              lineWidth:0,
+              hidden: !chart.isDatasetVisible(i),
+              datasetIndex: i,
+              pointStyle:'rect',
+            }))
+          }
+        },
         tooltip:{mode:'index', intersect:false, callbacks:{
           label: ctx=>{
             const r = _icnAbtDatosPaso[ctx.dataIndex];
@@ -10779,12 +10807,7 @@ function icnAbtRenderPorPaso(){
             return [`Total: ${Number(r.radicados||0).toLocaleString('es-CO')}  |  Devoluciones: ${Number(r.devoluciones||0).toLocaleString('es-CO')}`];
           }
         }},
-        datalabels:{
-          display: ctx => (ctx.parsed?.x??0) >= 8,
-          formatter: v => v+'%',
-          color:'#fff', font:{weight:'bold', size:10},
-          anchor:'center', align:'center',
-        },
+        datalabels:{display:false},
       },
       scales:{
         x:{stacked:true, max:100, ticks:{callback:v=>v+'%', font:{size:10}}, grid:{color:'rgba(128,128,128,.1)'}},
