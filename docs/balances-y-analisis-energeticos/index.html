@@ -1941,12 +1941,19 @@ html,body{overflow-x:hidden;margin:0}
             </div>
           </div>
           <div class="card" style="padding:14px" id="icn-wrap-paso">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
               <div id="icn-titulo-paso" style="font-size:13px;font-weight:700;color:var(--text1);flex:1;text-align:center">Cumplimiento por Paso</div>
               <div style="display:flex;gap:2px">
                 <button class="no-exportar" title="Exportar Excel" onclick="icnAbtExportarExcelPaso()" style="border:none;background:none;cursor:pointer;font-size:17px;padding:2px 4px;line-height:1;opacity:.7" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=.7">📊</button>
                 <button class="no-exportar" title="Exportar PNG" onclick="_expImagenChart('icn-wrap-paso','cumplimiento_por_paso_abt',event)" style="border:none;background:none;cursor:pointer;font-size:17px;padding:2px 4px;line-height:1;opacity:.7" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=.7">🖼</button>
               </div>
+            </div>
+            <!-- Chips de período para Por Paso -->
+            <div style="display:flex;align-items:center;justify-content:center;gap:5px;margin-bottom:8px">
+              <button class="be-modo-btn be-modo-btn-sm active" id="icn-paso-p-ult" onclick="icnPasoSetPeriodo('ult')">Último mes</button>
+              <button class="be-modo-btn be-modo-btn-sm" id="icn-paso-p-ant" onclick="icnPasoSetPeriodo('ant')">Mes anterior</button>
+              <button class="be-modo-btn be-modo-btn-sm" id="icn-paso-p-acum" onclick="icnPasoSetPeriodo('acum')">Acumulado</button>
+              <span id="icn-paso-periodo-lbl" style="font-size:10px;color:var(--text3);margin-left:4px"></span>
             </div>
             <div style="position:relative;height:240px">
               <canvas id="ch-icn-abt-paso"></canvas>
@@ -10456,6 +10463,8 @@ function icnCtrIrA(v){
 let _icnAbtDatosMes = [];
 let _icnAbtDatosGestor = [];
 let _icnAbtDatosPaso = [];
+let _icnAbtDatosPasoRaw = [];   // todos los pasos del período completo
+let _icnPasoPeriodo = 'ult';    // 'ult' | 'ant' | 'acum'
 let _icnAbtDatosGestorMes = [];
 let _icnAbtUltimoMes = null;
 let _icnAbtMesesDisponibles = [];
@@ -10608,7 +10617,8 @@ async function icnAbtCargarDatos(){
     const dPaso   = await rPaso.json();
     _icnAbtDatosMes    = dMes.meses       || [];
     _icnAbtDatosGestor = dGestor.gestores || [];
-    _icnAbtDatosPaso   = dPaso.pasos      || [];
+    _icnAbtDatosPasoRaw = dPaso.pasos     || [];
+    _icnAbtDatosPaso   = _icnAbtDatosPasoRaw;
     if(st) st.style.display='none';
 
     // Fetch adicional: último mes para KPI del gestor
@@ -10635,11 +10645,72 @@ async function icnAbtCargarDatos(){
     console.error('icnAbtCargarDatos',e);
   }
   try{ icnAbtRenderMensual(); }catch(e){ console.error('renderMensual',e); }
-  try{ icnAbtRenderPorPaso(); }catch(e){ console.error('renderPaso',e); }
+  // Aplica el período seleccionado; si no es 'acum' lanza fetch propio y llama a RenderPorPaso internamente
+  try{ icnPasoAplicarPeriodo(); if(_icnPasoPeriodo==='acum') icnAbtRenderPorPaso(); }catch(e){ console.error('renderPaso',e); }
   try{ icnAbtRenderGestor();  }catch(e){ console.error('renderGestor',e); }
 }
 
 function icnAbtAplicarFiltros(){ icnAbtCargarDatos(); }
+
+// ---- Período de la gráfica Por Paso ----
+function icnPasoSetPeriodo(p){
+  _icnPasoPeriodo = p;
+  ['ult','ant','acum'].forEach(k=>{
+    document.getElementById(`icn-paso-p-${k}`)?.classList.toggle('active', k===p);
+  });
+  icnPasoAplicarPeriodo();
+  icnAbtRenderPorPaso();
+}
+
+function icnPasoAplicarPeriodo(){
+  // _icnAbtDatosMes ya tiene todos los meses en orden. Por Paso siempre
+  // llega acumulado (el backend agrupa por paso, no por mes); para mostrar
+  // solo un mes necesitamos volver a pedirle datos al backend con desde=hasta.
+  // Por eso lanzamos una carga extra solo cuando no es 'acum'.
+  const meses = _icnAbtDatosMes;
+  if(!meses.length){ _icnAbtDatosPaso = _icnAbtDatosPasoRaw; return; }
+
+  if(_icnPasoPeriodo === 'acum'){
+    _icnAbtDatosPaso = _icnAbtDatosPasoRaw;
+    _icnActualizarEtiquetaPaso();
+    return;
+  }
+
+  // Mes a usar
+  const idx = _icnPasoPeriodo === 'ult' ? meses.length - 1 : Math.max(0, meses.length - 2);
+  const m = meses[idx];
+  const lm = `${m.anio}-${String(m.mes).padStart(2,'0')}`;
+  _icnActualizarEtiquetaPaso(lm);
+
+  // Fetch específico de por-paso para ese solo mes
+  const qs = new URLSearchParams({desde: lm, hasta: lm});
+  if(_icnFiltros.zona)      qs.set('zona',      _icnFiltros.zona);
+  if(_icnFiltros.municipio) qs.set('municipio', _icnFiltros.municipio);
+  if(_icnFiltros.gestor)    qs.set('gestor',    _icnFiltros.gestor);
+  const lim = Number(configGet('cn_meta_reg_abt', 0)) || 0;
+  if(lim) qs.set('limite_reg', lim);
+
+  fetchConTimeout(`${API_BASE_URL}/api/cuentas-nuevas/abt/por-paso?${qs}`, {headers:authHeaders()})
+    .then(r=>r.json())
+    .then(d=>{
+      _icnAbtDatosPaso = d.pasos || [];
+      icnAbtRenderPorPaso();
+    }).catch(()=>{});
+}
+
+function _icnActualizarEtiquetaPaso(mes){
+  const lbl = document.getElementById('icn-paso-periodo-lbl');
+  if(!lbl) return;
+  if(_icnPasoPeriodo === 'acum'){
+    const meses = _icnAbtDatosMes;
+    if(!meses.length){ lbl.textContent=''; return; }
+    const p0 = `${meses[0].anio}-${String(meses[0].mes).padStart(2,'0')}`;
+    const p1 = `${meses[meses.length-1].anio}-${String(meses[meses.length-1].mes).padStart(2,'0')}`;
+    lbl.textContent = p0 === p1 ? p0 : `${p0} → ${p1}`;
+  } else {
+    lbl.textContent = mes || '';
+  }
+}
 
 // ---- chips Paso ----
 let _icnAbtPasoActivo = '';
