@@ -1926,6 +1926,15 @@ html,body{overflow-x:hidden;margin:0}
           <button id="icn-btn-etiquetas" class="icn-chip" onclick="icnAbtToggleDatalabels()" title="Mostrar/ocultar etiquetas en las gráficas">Etiquetas</button>
         </div>
 
+        <!-- Chips período Por Paso — arriba del grid, fuera de ambas cards -->
+        <div style="display:flex;align-items:center;justify-content:flex-end;gap:5px;margin-bottom:6px">
+          <span style="font-size:11px;color:var(--text3);margin-right:2px">Por Paso:</span>
+          <button class="be-modo-btn be-modo-btn-sm active" id="icn-paso-p-ult" onclick="icnPasoSetPeriodo('ult')">Último mes</button>
+          <button class="be-modo-btn be-modo-btn-sm" id="icn-paso-p-ant" onclick="icnPasoSetPeriodo('ant')">Mes anterior</button>
+          <button class="be-modo-btn be-modo-btn-sm" id="icn-paso-p-acum" onclick="icnPasoSetPeriodo('acum')">Acumulado</button>
+          <span id="icn-paso-periodo-lbl" style="font-size:10px;color:var(--text3);margin-left:2px"></span>
+        </div>
+
         <!-- Gráficas en dos columnas -->
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
           <div class="card" style="padding:14px" id="icn-wrap-mensual">
@@ -1939,14 +1948,6 @@ html,body{overflow-x:hidden;margin:0}
             <div style="position:relative;height:240px">
               <canvas id="ch-icn-abt-mensual"></canvas>
             </div>
-          </div>
-          <!-- Chips período Por Paso — fuera de la card -->
-          <div style="display:flex;align-items:center;justify-content:center;gap:5px;margin-bottom:6px">
-            <span style="font-size:11px;color:var(--text3);margin-right:2px">Por Paso:</span>
-            <button class="be-modo-btn be-modo-btn-sm active" id="icn-paso-p-ult" onclick="icnPasoSetPeriodo('ult')">Último mes</button>
-            <button class="be-modo-btn be-modo-btn-sm" id="icn-paso-p-ant" onclick="icnPasoSetPeriodo('ant')">Mes anterior</button>
-            <button class="be-modo-btn be-modo-btn-sm" id="icn-paso-p-acum" onclick="icnPasoSetPeriodo('acum')">Acumulado</button>
-            <span id="icn-paso-periodo-lbl" style="font-size:10px;color:var(--text3);margin-left:4px"></span>
           </div>
           <div class="card" style="padding:14px" id="icn-wrap-paso">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
@@ -1965,8 +1966,13 @@ html,body{overflow-x:hidden;margin:0}
         <!-- Rendimiento por gestor: KPI card + tabla -->
         <div class="card" style="padding:14px">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-            <div style="font-size:13px;font-weight:700;color:var(--text1)">Rendimiento por Gestor</div>
-            <span id="icn-abt-lastmes-lbl" style="font-size:11px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.5px"></span>
+            <div style="font-size:13px;font-weight:700;color:var(--text1);flex:1;text-align:center">Rendimiento por Gestor</div>
+            <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+              <span style="font-size:11px;color:var(--text3)">Mes:</span>
+              <select id="icn-ges-mes-sel" class="form-select" style="font-size:11px;padding:2px 6px;min-width:110px" onchange="icnGestorCambiarMes()">
+                <option value="">Último mes</option>
+              </select>
+            </div>
           </div>
           <!-- KPI del gestor seleccionado (último mes) -->
           <div id="icn-abt-gestor-kpi" style="display:none;margin-bottom:16px"></div>
@@ -10648,10 +10654,55 @@ async function icnAbtCargarDatos(){
   try{ icnAbtRenderMensual(); }catch(e){ console.error('renderMensual',e); }
   // Aplica el período seleccionado; si no es 'acum' lanza fetch propio y llama a RenderPorPaso internamente
   try{ icnPasoAplicarPeriodo(); if(_icnPasoPeriodo==='acum') icnAbtRenderPorPaso(); }catch(e){ console.error('renderPaso',e); }
-  try{ icnAbtRenderGestor();  }catch(e){ console.error('renderGestor',e); }
+  try{ _icnGestorPoblarMeses(); icnAbtRenderGestor(); }catch(e){ console.error('renderGestor',e); }
 }
 
 function icnAbtAplicarFiltros(){ icnAbtCargarDatos(); }
+
+// ---- Selector de mes para tarjeta Rendimiento por Gestor ----
+function _icnGestorPoblarMeses(){
+  const sel = document.getElementById('icn-ges-mes-sel');
+  if(!sel) return;
+  const meses = _icnAbtDatosMes;
+  sel.innerHTML = '<option value="">Último mes</option>';
+  // Muestra todos los meses disponibles en orden descendente
+  [...meses].reverse().forEach(m=>{
+    const v = `${m.anio}-${String(m.mes).padStart(2,'0')}`;
+    const opt = document.createElement('option');
+    opt.value = v; opt.textContent = v;
+    sel.appendChild(opt);
+  });
+}
+
+async function icnGestorCambiarMes(){
+  const sel = document.getElementById('icn-ges-mes-sel');
+  const mes = sel?.value || '';
+  const lm = mes || (()=>{
+    if(!_icnAbtDatosMes.length) return null;
+    const last = _icnAbtDatosMes[_icnAbtDatosMes.length-1];
+    return `${last.anio}-${String(last.mes).padStart(2,'0')}`;
+  })();
+  if(!lm) return;
+
+  const zona      = _icnFiltros.zona      || '';
+  const municipio = _icnFiltros.municipio || '';
+  const gestor    = _icnFiltros.gestor    || '';
+  const limiteReg = Number(configGet('cn_meta_reg_abt', 0)) || 0;
+  const qs = new URLSearchParams({desde: lm, hasta: lm});
+  if(zona)      qs.set('zona',      zona);
+  if(municipio) qs.set('municipio', municipio);
+  if(gestor)    qs.set('gestor',    gestor);
+  if(limiteReg) qs.set('limite_reg', limiteReg);
+
+  try{
+    const r = await fetchConTimeout(`${API_BASE_URL}/api/cuentas-nuevas/abt/por-gestor?${qs}`, {headers:authHeaders()});
+    if(r.ok){ const d = await r.json(); _icnAbtDatosGestorMes = d.gestores || []; }
+    _icnAbtUltimoMes = {anio: Number(lm.split('-')[0]), mes: Number(lm.split('-')[1])};
+    const lbl = document.getElementById('icn-abt-lastmes-lbl');
+    if(lbl) lbl.textContent = `Último mes: ${lm}`;
+    icnAbtRenderGestor();
+  }catch(e){ console.warn('icnGestorCambiarMes',e); }
+}
 
 // ---- Período de la gráfica Por Paso ----
 function icnPasoSetPeriodo(p){
