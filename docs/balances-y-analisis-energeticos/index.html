@@ -1918,6 +1918,8 @@ html,body{overflow-x:hidden;margin:0}
             <span style="color:var(--text3);font-size:12px">→</span>
             <input type="month" id="icn-abt-hasta-vis" class="form-select" style="min-width:130px;font-size:12px" onchange="icnAbtCustomRango()">
           </div>
+          <span style="margin-left:6px;border-left:1px solid var(--border);height:18px"></span>
+          <button id="icn-btn-etiquetas" class="icn-chip" onclick="icnAbtToggleDatalabels()" title="Mostrar/ocultar etiquetas en las gráficas">Etiquetas</button>
         </div>
 
         <!-- Gráficas en dos columnas -->
@@ -2012,8 +2014,12 @@ html,body{overflow-x:hidden;margin:0}
     <div class="tm-modal-sub" id="icn-modal-radicados-sub" style="font-size:12px;color:var(--text3)"></div>
     <div id="icn-modal-radicados-status" style="color:var(--text3);font-size:12px;padding:4px 0;display:none"></div>
     <div id="icn-modal-radicados-filtros" style="display:none;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);flex-wrap:wrap">
-      <label style="font-size:12px;color:var(--text3);white-space:nowrap">Filtrar por paso:</label>
-      <select id="icn-modal-paso-sel" onchange="icnAbtFiltrarPaso()" style="font-size:12px;padding:4px 8px;border:1px solid var(--border);border-radius:4px;background:var(--bg2);color:var(--text)">
+      <label style="font-size:12px;color:var(--text3);white-space:nowrap">Mes:</label>
+      <select id="icn-modal-mes-sel" onchange="icnAbtFiltrarModal()" style="font-size:12px;padding:4px 8px;border:1px solid var(--border);border-radius:4px;background:var(--bg2);color:var(--text)">
+        <option value="">Todos</option>
+      </select>
+      <label style="font-size:12px;color:var(--text3);white-space:nowrap">Paso:</label>
+      <select id="icn-modal-paso-sel" onchange="icnAbtFiltrarModal()" style="font-size:12px;padding:4px 8px;border:1px solid var(--border);border-radius:4px;background:var(--bg2);color:var(--text)">
         <option value="">Todos los pasos</option>
         <option value="Solicitud del servicio de energía">Solicitud del servicio de energía</option>
         <option value="Visita técnica">Visita técnica</option>
@@ -10452,6 +10458,7 @@ let _icnAbtMesesDisponibles = [];
 let _icnAbtCargado = false;
 let chIcnAbtMensual = null;
 let chIcnAbtPaso = null;
+let _icnAbtDatalabels = false;
 
 // ---- Filtros buscables (zona / municipio / gestor) ----
 let _icnFiltros     = {zona:'', municipio:'', gestor:''};
@@ -10697,6 +10704,14 @@ function icnAbtRenderKpis(){
     _icnAbtKpiCard('Devoluciones', totalDev.toLocaleString('es-CO'), '#9b5de5');
 }
 
+function icnAbtToggleDatalabels(){
+  _icnAbtDatalabels = !_icnAbtDatalabels;
+  const btn = document.getElementById('icn-btn-etiquetas');
+  if(btn) btn.classList.toggle('active', _icnAbtDatalabels);
+  try{ icnAbtRenderMensual(); }catch(e){}
+  try{ icnAbtRenderPorPaso(); }catch(e){}
+}
+
 function icnAbtRenderMensual(){
   const canvas = document.getElementById('ch-icn-abt-mensual');
   if(!canvas) return;
@@ -10712,7 +10727,8 @@ function icnAbtRenderMensual(){
   const radicados   = _icnAbtDatosMes.map(r=>Number(r.radicados||0));
   const pctLine     = radicados.map((tot,i)=>tot>0?(cumplio[i]/tot*100):null);
 
-  const dlBar = {display: ctx=>(ctx.parsed?.y??0)>=5, formatter:v=>v.toLocaleString('es-CO'), color:'#fff', font:{weight:'bold',size:10}, anchor:'center', align:'center'};
+  const _dl = _icnAbtDatalabels;
+  const dlBar = {display: _dl ? ctx=>(ctx.parsed?.y??0)>=5 : false, formatter:v=>v.toLocaleString('es-CO'), color:'#fff', font:{weight:'bold',size:10}, anchor:'center', align:'center'};
   const datasets = [
     {label:'Cumplió',     data:cumplio,      backgroundColor:'#06d6a0', stack:'s', datalabels:dlBar},
     {label:'No cumplió',  data:noCumplio,    backgroundColor:'#ef476f', stack:'s', datalabels:dlBar},
@@ -10721,11 +10737,11 @@ function icnAbtRenderMensual(){
       borderColor:'#ff9f1c', backgroundColor:'#ff9f1c18',
       pointRadius:4, pointBackgroundColor:'#ff9f1c', borderWidth:2.5, tension:0.2, fill:false,
       borderDash:[5,4],
-      datalabels:{display: ctx=>(ctx.parsed?.y??0)>=1, formatter:v=>v, color:'#ff9f1c', font:{size:9,weight:'bold'}, anchor:'end', align:'top', offset:3}},
+      datalabels:{display: _dl ? ctx=>(ctx.parsed?.y??0)>=1 : false, formatter:v=>v, color:'#ff9f1c', font:{size:9,weight:'bold'}, anchor:'end', align:'top', offset:3}},
     {label:'% Cumplió', data:pctLine, type:'line', yAxisID:'y1',
       borderColor:'#118ab2', backgroundColor:'#118ab215',
       pointRadius:3, borderWidth:2, tension:0, fill:false,
-      datalabels:{display:true,formatter:v=>v!=null?v.toFixed(1)+'%':'',color:'#118ab2',font:{size:10,weight:'bold'},anchor:'end',align:'top',offset:4}},
+      datalabels:{display:_dl,formatter:v=>v!=null?v.toFixed(1)+'%':'',color:'#118ab2',font:{size:10,weight:'bold'},anchor:'end',align:'top',offset:4}},
   ];
 
   chIcnAbtMensual = new Chart(canvas, {
@@ -10802,7 +10818,7 @@ function icnAbtRenderPorPaso(){
   const noCumplPct = _icnAbtDatosPaso.map(r=>pct(r.no_cumplio,r));
   const enProcPct  = _icnAbtDatosPaso.map(r=>pct(r.en_proceso,r));
 
-  const dlPaso = {display: ctx=>(ctx.parsed?.x??0)>=8, formatter:v=>v+'%', color:'#fff', font:{weight:'bold',size:10}, anchor:'center', align:'center'};
+  const dlPaso = {display: _icnAbtDatalabels ? ctx=>(ctx.parsed?.x??0)>=8 : false, formatter:v=>v+'%', color:'#fff', font:{weight:'bold',size:10}, anchor:'center', align:'center'};
 
   chIcnAbtPaso = new Chart(canvas, {
     type: 'bar',
@@ -11043,9 +11059,16 @@ function icnCerrarModalRadicados(){
   _icnAbtRadicadosData = [];
 }
 
-function icnAbtFiltrarPaso(){
+function icnAbtFiltrarPaso(){ icnAbtFiltrarModal(); }
+function icnAbtFiltrarModal(){
   const paso = document.getElementById('icn-modal-paso-sel')?.value || '';
-  const filas = paso ? _icnAbtRadicadosData.filter(r=>(r.paso||'')=== paso) : _icnAbtRadicadosData;
+  const mes  = document.getElementById('icn-modal-mes-sel')?.value  || '';
+  let filas  = _icnAbtRadicadosData;
+  if(mes){
+    const [a,m] = mes.split('-').map(Number);
+    filas = filas.filter(r=>r.anio===a && r.mes===m);
+  }
+  if(paso) filas = filas.filter(r=>(r.paso||'')===paso);
   _icnAbtRenderModalTabla(filas);
 }
 
@@ -11099,6 +11122,8 @@ async function icnAbtVerRadicados(gestor){
   _icnAbtRadicadosGestor = gestor;
   _icnAbtRadicadosData   = [];
   if(document.getElementById('icn-modal-paso-sel')) document.getElementById('icn-modal-paso-sel').value = '';
+  const mesSel = document.getElementById('icn-modal-mes-sel');
+  if(mesSel){ mesSel.innerHTML = '<option value="">Todos</option>'; }
 
   titulo.textContent   = gestor || 'Gestor';
   sub.textContent      = 'Acometidas BT individuales — detalle de radicados';
@@ -11128,6 +11153,15 @@ async function icnAbtVerRadicados(gestor){
 
     _icnAbtRadicadosData = filas || [];
     sub.textContent = `${_icnAbtRadicadosData.length} registro${_icnAbtRadicadosData.length!==1?'s':''} — Acometidas BT individuales`;
+    // Poblar dropdown de meses con los disponibles en los datos
+    const mesSel2 = document.getElementById('icn-modal-mes-sel');
+    if(mesSel2){
+      const mesesSet = new Map();
+      _icnAbtRadicadosData.forEach(r=>{ const k=`${r.anio}-${String(r.mes).padStart(2,'0')}`; if(!mesesSet.has(k)) mesesSet.set(k,{anio:r.anio,mes:r.mes}); });
+      const sorted = [...mesesSet.entries()].sort((a,b)=>a[0].localeCompare(b[0]));
+      const _mNom = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+      mesSel2.innerHTML = '<option value="">Todos</option>' + sorted.map(([k,v])=>`<option value="${k}">${_mNom[v.mes-1]} ${v.anio}</option>`).join('');
+    }
     _icnAbtRenderModalTabla(_icnAbtRadicadosData);
   }catch(e){
     status.textContent = `Error: ${e.message}`;
@@ -11136,8 +11170,11 @@ async function icnAbtVerRadicados(gestor){
 }
 
 async function icnAbtExportarRadicados(){
-  const paso  = document.getElementById('icn-modal-paso-sel')?.value || '';
-  const filas = paso ? _icnAbtRadicadosData.filter(r=>(r.paso||'')===paso) : _icnAbtRadicadosData;
+  const paso = document.getElementById('icn-modal-paso-sel')?.value || '';
+  const mes  = document.getElementById('icn-modal-mes-sel')?.value  || '';
+  let filas  = _icnAbtRadicadosData;
+  if(mes){ const [a,m]=mes.split('-').map(Number); filas=filas.filter(r=>r.anio===a&&r.mes===m); }
+  if(paso) filas = filas.filter(r=>(r.paso||'')===paso);
   if(!filas.length){ alert('No hay datos para exportar.'); return; }
 
   const wb = new ExcelJS.Workbook();
