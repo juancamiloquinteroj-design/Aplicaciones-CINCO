@@ -11181,23 +11181,23 @@ function _icnGestorKpiTotales(kpiDiv, msgDiv, nota){
     return;
   }
   const sum = k => filas.reduce((s,r)=>s+Number(r[k]||0),0);
-  const sumCum    = sum('cumplio');
-  const sumNoCum  = sum('no_cumplio');
-  const sumRad    = sum('radicados');
-  const sumPD     = sum('pend_doc');
-  const sumRechaz = sum('rechazados');
-  const sumAtend  = sum('atendidos');
-  const promsArr  = filas.map(r=>r.dias_habiles_prom).filter(v=>v!=null);
-  const promDias  = promsArr.length ? (promsArr.reduce((s,v)=>s+Number(v),0)/promsArr.length).toFixed(1) : '--';
-  const den     = sumCum + sumNoCum;
-  const pct     = den>0 ? (sumCum/den*100).toFixed(1) : '--';
+  const sumCum      = sum('cumplio');
+  const sumNoCum    = sum('no_cumplio');
+  const sumRad      = sum('radicados');
+  const sumAprobado = sum('aprobado');
+  const sumRechaz   = sum('rechazados');
+  const sumPendGest = sum('pend_gestion');
+  const promsArr    = filas.map(r=>r.dias_habiles_prom).filter(v=>v!=null);
+  const promDias    = promsArr.length ? (promsArr.reduce((s,v)=>s+Number(v),0)/promsArr.length).toFixed(1) : '--';
+  const den  = sumCum + sumNoCum;
+  const pct  = den>0 ? (sumCum/den*100).toFixed(1) : '--';
   const zonaLbl = _icnFiltros.zona || 'Todas las zonas';
   const mesLbl  = document.getElementById('icn-abt-lastmes-lbl')?.textContent || '';
-  // Rendimiento/día: atendidos ÷ días hábiles del mes
+  // Rendimiento/día = total asignados ÷ días hábiles del mes
   let rendDia = '--';
-  if(_icnAbtUltimoMes && sumAtend > 0){
+  if(_icnAbtUltimoMes && sumRad > 0){
     const dh = _diasHabilesEnMes(_icnAbtUltimoMes.anio, _icnAbtUltimoMes.mes);
-    rendDia = dh > 0 ? (sumAtend / dh).toFixed(1) : '--';
+    rendDia = dh > 0 ? (sumRad / dh).toFixed(1) : '--';
   }
   const sep = `<div style="width:1px;background:var(--border);align-self:stretch;margin:0 16px;flex-shrink:0"></div>`;
   const met = (val,label,sub='') =>
@@ -11219,17 +11219,13 @@ function _icnGestorKpiTotales(kpiDiv, msgDiv, nota){
           <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.3px;margin-top:2px">Cumplimiento</div>
         </div>
         ${sep}
-        ${met(sumCum,'Cumplió')}
-        <div style="width:10px;flex-shrink:0"></div>
-        ${met(sumNoCum,'No cumplió')}
+        ${met(sumAprobado,'Aprobados')}
         <div style="width:10px;flex-shrink:0"></div>
         ${met(sumRechaz,'Rechazados')}
+        <div style="width:10px;flex-shrink:0"></div>
+        ${met(sumPendGest,'Pend. gest. usr.')}
         ${sep}
-        ${met(sumAtend,'Atendidos')}
-        <div style="width:10px;flex-shrink:0"></div>
         ${met(sumRad,'Total asignados')}
-        <div style="width:10px;flex-shrink:0"></div>
-        ${met(sumPD,'Pend. doc.')}
         ${sep}
         ${met(rendDia,'Rend./día','rev.')}
         <div style="width:10px;flex-shrink:0"></div>
@@ -11267,11 +11263,12 @@ function icnAbtRenderGestor(){
           <div style="font-size:22px;font-weight:800;color:var(--text1);line-height:1.1">${val}${sub?`<span style="font-size:12px;font-weight:500;color:var(--text3);margin-left:3px">${sub}</span>`:''}</div>
           <div style="font-size:10px;color:var(--text3);margin-top:2px;text-transform:uppercase;letter-spacing:.3px">${label}</div>
         </div>`;
-      const atendG = Number(r.atendidos||0);
+      // Rendimiento/día = total asignados ÷ días hábiles del mes
+      const radG = Number(r.radicados||0);
       let rendDiaG = '--';
-      if(_icnAbtUltimoMes && atendG > 0){
+      if(_icnAbtUltimoMes && radG > 0){
         const dhG = _diasHabilesEnMes(_icnAbtUltimoMes.anio, _icnAbtUltimoMes.mes);
-        rendDiaG = dhG > 0 ? (atendG / dhG).toFixed(1) : '--';
+        rendDiaG = dhG > 0 ? (radG / dhG).toFixed(1) : '--';
       }
       kpiDiv.innerHTML = `
         <div style="border-radius:10px;overflow:hidden;border:1.5px solid var(--border)">
@@ -11285,17 +11282,13 @@ function icnAbtRenderGestor(){
               <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.3px;margin-top:2px">Cumplimiento</div>
             </div>
             ${sep}
-            ${met(r.cumplio||0, 'Cumplió')}
-            <div style="width:10px;flex-shrink:0"></div>
-            ${met(r.no_cumplio||0, 'No cumplió')}
+            ${met(r.aprobado||0, 'Aprobados')}
             <div style="width:10px;flex-shrink:0"></div>
             ${met(r.rechazados||0, 'Rechazados')}
+            <div style="width:10px;flex-shrink:0"></div>
+            ${met(r.pend_gestion||0, 'Pend. gest. usr.')}
             ${sep}
-            ${met(atendG, 'Atendidos')}
-            <div style="width:10px;flex-shrink:0"></div>
-            ${met(r.radicados||0, 'Total asignados')}
-            <div style="width:10px;flex-shrink:0"></div>
-            ${met(r.pend_doc||0, 'Pend. doc.')}
+            ${met(radG, 'Total asignados')}
             ${sep}
             ${met(rendDiaG, 'Rend./día', 'rev.')}
             <div style="width:10px;flex-shrink:0"></div>
