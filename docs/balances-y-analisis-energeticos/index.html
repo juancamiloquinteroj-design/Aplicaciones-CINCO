@@ -1948,9 +1948,16 @@ html,body{overflow-x:hidden;margin:0}
           </div>
         </div>
 
-        <!-- Tabla rendimiento por gestor -->
+        <!-- Rendimiento por gestor: KPI card + tabla -->
         <div class="card" style="padding:14px">
-          <div style="font-size:13px;font-weight:700;margin-bottom:10px;color:var(--text1)">Rendimiento por Gestor</div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+            <div style="font-size:13px;font-weight:700;color:var(--text1)">Rendimiento por Gestor</div>
+            <span id="icn-abt-lastmes-lbl" style="font-size:11px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.5px"></span>
+          </div>
+          <!-- KPI del gestor seleccionado (último mes) -->
+          <div id="icn-abt-gestor-kpi" style="display:none;margin-bottom:16px"></div>
+          <div id="icn-abt-gestor-msg" style="font-size:12px;color:var(--text3);text-align:center;padding:10px 0 14px;border-bottom:1px solid var(--border);margin-bottom:14px">Seleccione un gestor en el filtro de arriba para ver su rendimiento detallado</div>
+          <!-- Tabla todos los gestores -->
           <div id="icn-abt-tabla-gestor" style="overflow-x:auto"></div>
         </div>
 
@@ -10439,6 +10446,8 @@ function icnCtrIrA(v){
 let _icnAbtDatosMes = [];
 let _icnAbtDatosGestor = [];
 let _icnAbtDatosPaso = [];
+let _icnAbtDatosGestorMes = [];
+let _icnAbtUltimoMes = null;
 let _icnAbtMesesDisponibles = [];
 let _icnAbtCargado = false;
 let chIcnAbtMensual = null;
@@ -10549,6 +10558,25 @@ async function icnAbtCargarDatos(){
     _icnAbtDatosGestor = dGestor.gestores || [];
     _icnAbtDatosPaso   = dPaso.pasos      || [];
     if(st) st.style.display='none';
+
+    // Fetch adicional: último mes para KPI del gestor
+    _icnAbtDatosGestorMes = [];
+    _icnAbtUltimoMes = null;
+    if(_icnAbtDatosMes.length){
+      const last = _icnAbtDatosMes[_icnAbtDatosMes.length - 1];
+      _icnAbtUltimoMes = { anio: last.anio, mes: last.mes };
+      const lm = `${last.anio}-${String(last.mes).padStart(2,'0')}`;
+      const qsLM = new URLSearchParams();
+      if(zona)      qsLM.set('zona',      zona);
+      if(municipio) qsLM.set('municipio', municipio);
+      if(gestor)    qsLM.set('gestor',    gestor);
+      qsLM.set('desde', lm);
+      qsLM.set('hasta', lm);
+      try{
+        const rLM = await fetchConTimeout(`${API_BASE_URL}/api/cuentas-nuevas/abt/por-gestor?${qsLM}`, {headers:authHeaders()});
+        if(rLM.ok){ const dLM = await rLM.json(); _icnAbtDatosGestorMes = dLM.gestores || []; }
+      }catch(e){ console.warn('gestor-mes-kpi',e); }
+    }
   }catch(e){
     if(st){ st.textContent=`Error: ${e.message}`; st.style.display='block'; }
     console.error('icnAbtCargarDatos',e);
@@ -10673,17 +10701,23 @@ function icnAbtRenderMensual(){
   if(!_icnAbtDatosMes.length){ canvas.getContext('2d').clearRect(0,0,canvas.width,canvas.height); return; }
 
   const labels = _icnAbtDatosMes.map(r=>`${r.anio}-${String(r.mes).padStart(2,'0')}`);
-  const cumplio   = _icnAbtDatosMes.map(r=>Number(r.cumplio||0));
-  const noCumplio = _icnAbtDatosMes.map(r=>Number(r.no_cumplio||0));
-  const enProceso = _icnAbtDatosMes.map(r=>Number(r.en_proceso||0));
-  const radicados = _icnAbtDatosMes.map(r=>Number(r.radicados||0));
-  const pctLine   = radicados.map((tot,i)=>tot>0?(cumplio[i]/tot*100):null);
+  const cumplio     = _icnAbtDatosMes.map(r=>Number(r.cumplio||0));
+  const noCumplio   = _icnAbtDatosMes.map(r=>Number(r.no_cumplio||0));
+  const enProceso   = _icnAbtDatosMes.map(r=>Number(r.en_proceso||0));
+  const devoluciones= _icnAbtDatosMes.map(r=>Number(r.devoluciones||0));
+  const radicados   = _icnAbtDatosMes.map(r=>Number(r.radicados||0));
+  const pctLine     = radicados.map((tot,i)=>tot>0?(cumplio[i]/tot*100):null);
 
   const dlBar = {display: ctx=>(ctx.parsed?.y??0)>=5, formatter:v=>v.toLocaleString('es-CO'), color:'#fff', font:{weight:'bold',size:10}, anchor:'center', align:'center'};
   const datasets = [
-    {label:'Cumplió',    data:cumplio,   backgroundColor:'#06d6a0', stack:'s', datalabels:dlBar},
-    {label:'No cumplió', data:noCumplio, backgroundColor:'#ef476f', stack:'s', datalabels:dlBar},
-    {label:'En proceso', data:enProceso, backgroundColor:'#ffd166', stack:'s', datalabels:dlBar},
+    {label:'Cumplió',     data:cumplio,      backgroundColor:'#06d6a0', stack:'s', datalabels:dlBar},
+    {label:'No cumplió',  data:noCumplio,    backgroundColor:'#ef476f', stack:'s', datalabels:dlBar},
+    {label:'En proceso',  data:enProceso,    backgroundColor:'#ffd166', stack:'s', datalabels:dlBar},
+    {label:'Devoluciones',data:devoluciones, type:'line', yAxisID:'y',
+      borderColor:'#ff9f1c', backgroundColor:'#ff9f1c18',
+      pointRadius:4, pointBackgroundColor:'#ff9f1c', borderWidth:2.5, tension:0.2, fill:false,
+      borderDash:[5,4],
+      datalabels:{display: ctx=>(ctx.parsed?.y??0)>=1, formatter:v=>v, color:'#ff9f1c', font:{size:9,weight:'bold'}, anchor:'end', align:'top', offset:3}},
     {label:'% Cumplió', data:pctLine, type:'line', yAxisID:'y1',
       borderColor:'#118ab2', backgroundColor:'#118ab215',
       pointRadius:3, borderWidth:2, tension:0, fill:false,
@@ -10873,7 +10907,76 @@ async function icnAbtExportarExcelPaso(){
 function icnAbtRenderGestor(){
   const el = document.getElementById('icn-abt-tabla-gestor');
   if(!el) return;
-  if(!_icnAbtDatosGestor.length){ el.innerHTML='<div style="color:var(--text3);font-size:13px;text-align:center;padding:16px">Sin datos</div>'; return; }
+
+  // Etiqueta del último mes
+  const lastMesLbl = document.getElementById('icn-abt-lastmes-lbl');
+  if(lastMesLbl && _icnAbtUltimoMes){
+    lastMesLbl.textContent = `Último mes: ${_ICN_MESES_CORTOS[_icnAbtUltimoMes.mes]||_icnAbtUltimoMes.mes} ${_icnAbtUltimoMes.anio}`;
+  }
+
+  // KPI card del gestor seleccionado
+  const gestorSel = _icnFiltros.gestor;
+  const kpiDiv = document.getElementById('icn-abt-gestor-kpi');
+  const msgDiv = document.getElementById('icn-abt-gestor-msg');
+  if(gestorSel && kpiDiv){
+    const r = _icnAbtDatosGestorMes.find(g=>g.gestor_asignado===gestorSel) || null;
+    if(r){
+      kpiDiv.style.display = 'block';
+      if(msgDiv) msgDiv.style.display = 'none';
+      const metaReg0 = Number(configGet('cn_meta_reg_abt',0))||0;
+      const pct    = r.radicados>0 ? (r.cumplio/r.radicados*100).toFixed(1)  : '--';
+      const pctNo  = r.radicados>0 ? (r.no_cumplio/r.radicados*100).toFixed(1): '--';
+      const colProm= (metaReg0>0 && r.dias_habiles_prom>metaReg0) ? '#ef476f' : '#06d6a0';
+      const fD     = v => v!=null ? Number(v).toFixed(1) : '--';
+      const fDi    = v => v!=null ? Number(v).toFixed(0) : '--';
+      kpiDiv.innerHTML = `
+        <div style="background:var(--bg3);border-radius:10px;padding:14px 18px;display:flex;align-items:center;gap:0;flex-wrap:wrap;border:1.5px solid var(--border)">
+          <div style="border-right:2px solid var(--border);padding-right:20px;margin-right:20px;text-align:center;min-width:60px;flex-shrink:0">
+            <div style="font-size:38px;font-weight:900;color:var(--text1);line-height:1.1">${r.radicados||0}</div>
+            <div style="font-size:10px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.4px">Radicados</div>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:10px 20px;align-items:flex-start;flex:1">
+            <div style="text-align:center">
+              <div style="font-size:22px;font-weight:800;color:#06d6a0">${r.cumplio||0} <span style="font-size:13px;font-weight:600;opacity:.8">(${pct}%)</span></div>
+              <div style="font-size:10px;color:var(--text3)">Cumplió</div>
+            </div>
+            <div style="text-align:center">
+              <div style="font-size:22px;font-weight:800;color:#ef476f">${r.no_cumplio||0} <span style="font-size:13px;font-weight:600;opacity:.8">(${pctNo}%)</span></div>
+              <div style="font-size:10px;color:var(--text3)">No cumplió</div>
+            </div>
+            <div style="text-align:center">
+              <div style="font-size:22px;font-weight:800;color:#ff9f1c">${r.devoluciones||0}</div>
+              <div style="font-size:10px;color:var(--text3)">Devoluciones</div>
+            </div>
+            <div style="text-align:center">
+              <div style="font-size:22px;font-weight:800;color:#06d6a0">${r.mismo_dia||0}</div>
+              <div style="font-size:10px;color:var(--text3)">Mismo día</div>
+            </div>
+            <div style="border-left:1.5px solid var(--border);padding-left:16px;text-align:center">
+              <div style="font-size:22px;font-weight:800;color:${colProm}">${fD(r.dias_habiles_prom)}</div>
+              <div style="font-size:10px;color:var(--text3)">Días prom.</div>
+            </div>
+            <div style="text-align:center">
+              <div style="font-size:22px;font-weight:800;color:var(--text2)">${fDi(r.dias_habiles_min)}</div>
+              <div style="font-size:10px;color:var(--text3)">Días mín.</div>
+            </div>
+            <div style="text-align:center">
+              <div style="font-size:22px;font-weight:800;color:var(--text2)">${fDi(r.dias_habiles_max)}</div>
+              <div style="font-size:10px;color:var(--text3)">Días máx.</div>
+            </div>
+          </div>
+        </div>`;
+    } else {
+      kpiDiv.style.display = 'none';
+      if(msgDiv){ msgDiv.style.display='block'; msgDiv.textContent=`Sin datos de "${gestorSel}" en el último mes cargado`; }
+    }
+  } else {
+    if(kpiDiv) kpiDiv.style.display = 'none';
+    if(msgDiv){ msgDiv.style.display='block'; msgDiv.textContent='Seleccione un gestor en el filtro de arriba para ver su rendimiento detallado'; }
+  }
+
+  // Tabla con todos los gestores del período
+  if(!_icnAbtDatosGestor.length){ el.innerHTML='<div style="color:var(--text3);font-size:12px;text-align:center;padding:12px">Sin datos para el período</div>'; return; }
 
   const metaReg  = Number(configGet('cn_meta_reg_abt',  0)) || 0;
   const metaInst = Number(configGet('cn_meta_inst_abt', 0)) || 0;
@@ -10883,14 +10986,16 @@ function icnAbtRenderGestor(){
       const g = (r.gestor_asignado||'').replace(/'/g,"&#39;");
       return `<button onclick="icnAbtVerRadicados('${g}')" style="background:none;border:none;padding:0;color:var(--azul);cursor:pointer;font-size:12px;text-align:left;text-decoration:underline">${r.gestor_asignado||'--'}</button>`;
     }},
-    {k:'radicados', label:'Radicados', align:'right'},
-    {k:'cumplio', label:'Cumplió', align:'right', render:r=>{
+    {k:'radicados',  label:'Radicados', align:'right'},
+    {k:'cumplio',    label:'Cumplió',   align:'right', render:r=>{
       const pct = r.radicados>0 ? (r.cumplio/r.radicados*100).toFixed(1)+'%' : '--';
       return `${r.cumplio} <span style="color:var(--text3);font-size:11px">(${pct})</span>`;
     }},
     {k:'no_cumplio', label:'No cumplió', align:'right'},
-    {k:'mismo_dia', label:'Mismo día', align:'right'},
-    {k:'dias_habiles_prom', label:'Días háb. prom.', align:'right', render:r=>{
+    {k:'devoluciones',label:'Devol.',   align:'right'},
+    {k:'mismo_dia',  label:'Mismo día', align:'right'},
+    {k:'dias_habiles_min',  label:'Min días', align:'right', render:r=>r.dias_habiles_min!=null?Number(r.dias_habiles_min).toFixed(0):'--'},
+    {k:'dias_habiles_prom', label:'Prom días', align:'right', render:r=>{
       if(r.dias_habiles_prom==null) return '--';
       const d = Number(r.dias_habiles_prom).toFixed(1);
       let col = 'inherit';
@@ -10899,15 +11004,15 @@ function icnAbtRenderGestor(){
       else if(metaInst>0) col='#06d6a0';
       return `<span style="color:${col};font-weight:700">${d}</span>`;
     }},
-    {k:'devoluciones', label:'Devoluciones', align:'right'},
+    {k:'dias_habiles_max',  label:'Máx días', align:'right', render:r=>r.dias_habiles_max!=null?Number(r.dias_habiles_max).toFixed(0):'--'},
   ];
 
   const thStyle = 'padding:7px 10px;font-size:11px;font-weight:700;color:var(--text3);background:var(--bg3);white-space:nowrap';
-  const tdStyle = (align)=>`padding:6px 10px;font-size:12px;border-top:1px solid var(--border);text-align:${align}`;
+  const tdStyle = al=>`padding:6px 10px;font-size:12px;border-top:1px solid var(--border);text-align:${al}`;
 
   const thead = `<tr>${cols.map(c=>`<th style="${thStyle};text-align:${c.align}">${c.label}</th>`).join('')}</tr>`;
   const tbody = _icnAbtDatosGestor.map(r=>`
-    <tr>${cols.map(c=>`<td style="${tdStyle(c.align)}">${c.render ? c.render(r) : (r[c.k]!=null?String(r[c.k]):'--')}</td>`).join('')}</tr>
+    <tr>${cols.map(c=>`<td style="${tdStyle(c.align)}">${c.render?c.render(r):(r[c.k]!=null?String(r[c.k]):'--')}</td>`).join('')}</tr>
   `).join('');
 
   el.innerHTML = `<table style="width:100%;border-collapse:collapse"><thead>${thead}</thead><tbody>${tbody}</tbody></table>`;
