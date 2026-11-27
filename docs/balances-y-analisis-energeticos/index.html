@@ -1855,6 +1855,12 @@ html,body{overflow-x:hidden;margin:0}
         <!-- Filtros -->
         <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px">
           <div>
+            <div class="label-sm" style="font-size:11px;color:var(--text3);margin-bottom:3px">Mes / Año</div>
+            <select id="icn-abt-mes" class="form-select" style="min-width:140px;font-weight:600" onchange="icnAbtSeleccionarMes()">
+              <option value="">Todos los meses</option>
+            </select>
+          </div>
+          <div>
             <div class="label-sm" style="font-size:11px;color:var(--text3);margin-bottom:3px">Zona</div>
             <select id="icn-abt-zona" class="form-select" style="min-width:120px" onchange="icnAbtAplicarFiltros()">
               <option value="">Todas</option>
@@ -1874,11 +1880,11 @@ html,body{overflow-x:hidden;margin:0}
           </div>
           <div>
             <div class="label-sm" style="font-size:11px;color:var(--text3);margin-bottom:3px">Desde</div>
-            <input type="month" id="icn-abt-desde" class="form-select" onchange="icnAbtAplicarFiltros()">
+            <input type="month" id="icn-abt-desde" class="form-select" onchange="document.getElementById('icn-abt-mes').value='';icnAbtAplicarFiltros()">
           </div>
           <div>
             <div class="label-sm" style="font-size:11px;color:var(--text3);margin-bottom:3px">Hasta</div>
-            <input type="month" id="icn-abt-hasta" class="form-select" onchange="icnAbtAplicarFiltros()">
+            <input type="month" id="icn-abt-hasta" class="form-select" onchange="document.getElementById('icn-abt-mes').value='';icnAbtAplicarFiltros()">
           </div>
         </div>
 
@@ -10381,8 +10387,9 @@ function icnCtrIrA(v){
 
 // =================== ICN ABT (Acometidas BT individuales) ===================
 
-let _icnAbtDatosMes = [];    // resumen-mensual
-let _icnAbtDatosGestor = []; // por-gestor
+let _icnAbtDatosMes = [];          // resumen-mensual (filtrado)
+let _icnAbtDatosGestor = [];       // por-gestor (filtrado)
+let _icnAbtMesesDisponibles = [];  // todos los meses del operador (para el selector)
 let _icnAbtCargado = false;
 let chIcnAbtMensual = null;
 
@@ -10431,9 +10438,15 @@ async function icnAbtCargarDatos(){
     }
     const dMes = await rMes.json();
     const dGestor = await rGestor.json();
-    _icnAbtDatosMes = dMes.meses || [];
+    _icnAbtDatosMes    = dMes.meses    || [];
     _icnAbtDatosGestor = dGestor.gestores || [];
     if(st) st.style.display='none';
+    // Primera carga: guardar todos los meses y auto-seleccionar el último
+    if(!_icnAbtMesesDisponibles.length && _icnAbtDatosMes.length){
+      _icnAbtMesesDisponibles = [..._icnAbtDatosMes];
+      icnAbtPoblarSelectorMes(); // auto-selecciona el último mes → llama cargarDatos otra vez
+      return;
+    }
     icnAbtRenderKpis();
     icnAbtRenderMensual();
     icnAbtRenderGestor();
@@ -10444,6 +10457,32 @@ async function icnAbtCargarDatos(){
 }
 
 function icnAbtAplicarFiltros(){ icnAbtCargarDatos(); }
+
+function icnAbtPoblarSelectorMes(){
+  const sel = document.getElementById('icn-abt-mes');
+  if(!sel) return;
+  sel.innerHTML = '<option value="">Todos los meses</option>' +
+    _icnAbtMesesDisponibles.map(m=>{
+      const val = `${m.anio}-${String(m.mes).padStart(2,'0')}`;
+      const lbl = `${_ICN_MESES_CORTOS[m.mes]||m.mes} ${m.anio}`;
+      return `<option value="${val}">${lbl}</option>`;
+    }).join('');
+  // Auto-seleccionar el mes más reciente
+  if(_icnAbtMesesDisponibles.length){
+    const last = _icnAbtMesesDisponibles[_icnAbtMesesDisponibles.length - 1];
+    sel.value = `${last.anio}-${String(last.mes).padStart(2,'0')}`;
+  }
+  icnAbtSeleccionarMes();
+}
+
+function icnAbtSeleccionarMes(){
+  const val    = document.getElementById('icn-abt-mes')?.value || '';
+  const desde  = document.getElementById('icn-abt-desde');
+  const hasta  = document.getElementById('icn-abt-hasta');
+  if(desde) desde.value = val;
+  if(hasta)  hasta.value = val;
+  icnAbtCargarDatos();
+}
 
 function _icnAbtKpiCard(titulo, valor, color){
   return `<div style="background:var(--bg2);border-radius:8px;padding:12px 14px;border-left:3px solid ${color}">
