@@ -10951,9 +10951,9 @@ function icnAbtRenderMensual(){
       borderDash:[5,4], hidden:true, order:1,
       datalabels:{display: _dl ? ctx=>(ctx.parsed?.y??0)>=1 : false, formatter:v=>v, color:'#ff9f1c', font:{size:9,weight:'bold'}, anchor:'end', align:'top', offset:3}},
     {label:'% Cumplió', data:pctLine, type:'line', yAxisID:'y1',
-      borderColor:'#118ab2', backgroundColor:'#118ab218',
-      pointRadius:4, pointBackgroundColor:'#118ab2', borderWidth:2.5, tension:0, fill:false, order:0,
-      datalabels:{display:true,formatter:v=>v!=null?v.toFixed(1)+'%':'',color:'#118ab2',font:{size:10,weight:'bold'},anchor:'end',align:'top',offset:4}},
+      borderColor:'#4472C4', backgroundColor:'#4472C418',
+      pointRadius:4, pointBackgroundColor:'#4472C4', borderWidth:2.5, tension:0, fill:false, order:0,
+      datalabels:{display:true,formatter:v=>v!=null?v.toFixed(1)+'%':'',color:'#4472C4',font:{size:10,weight:'bold'},anchor:'end',align:'top',offset:4}},
   ];
 
   chIcnAbtMensual = new Chart(canvas, {
@@ -10987,9 +10987,9 @@ function icnAbtRenderMensual(){
         x:{stacked:true, ticks:{font:{size:11}}},
         y:{stacked:true, grace:'5%', ticks:{font:{size:11}}, title:{display:true, text:'Cantidad radicados', font:{size:11}}},
         y1:{position:'right', grace:'10%',
-            ticks:{color:'#118ab2', font:{size:10}, callback:v=>`${v.toFixed(0)}%`},
+            ticks:{color:'#4472C4', font:{size:10}, callback:v=>`${v.toFixed(0)}%`},
             grid:{drawOnChartArea:false},
-            title:{display:true, text:'% Cumplió', color:'#118ab2', font:{size:10}}},
+            title:{display:true, text:'% Cumplió', color:'#4472C4', font:{size:10}}},
       }
     }
   });
@@ -11161,6 +11161,17 @@ async function icnAbtExportarExcelPaso(){
   const a = document.createElement('a'); a.href=url; a.download='cumplimiento_por_paso_abt.xlsx'; a.click(); URL.revokeObjectURL(url);
 }
 
+function _diasHabilesEnMes(anio, mes){
+  // Cuenta lunes-viernes del mes (sin festivos, es aproximación suficiente para rendimiento)
+  const ultimo = new Date(anio, mes, 0).getDate();
+  let n = 0;
+  for(let d=1; d<=ultimo; d++){
+    const dow = new Date(anio, mes-1, d).getDay();
+    if(dow>0 && dow<6) n++;
+  }
+  return n;
+}
+
 function _icnGestorKpiTotales(kpiDiv, msgDiv, nota){
   // Agrega todos los gestores del último mes para mostrar el total zona/todos
   const filas = _icnAbtDatosGestorMes;
@@ -11170,12 +11181,14 @@ function _icnGestorKpiTotales(kpiDiv, msgDiv, nota){
     return;
   }
   const sum = k => filas.reduce((s,r)=>s+Number(r[k]||0),0);
-  const sumCum  = sum('cumplio');
-  const sumNoCum= sum('no_cumplio');
-  const sumRad  = sum('radicados');
-  const sumPD   = sum('pend_doc');
-  const promsArr= filas.map(r=>r.dias_habiles_prom).filter(v=>v!=null);
-  const promDias= promsArr.length ? (promsArr.reduce((s,v)=>s+Number(v),0)/promsArr.length).toFixed(1) : '--';
+  const sumCum    = sum('cumplio');
+  const sumNoCum  = sum('no_cumplio');
+  const sumRad    = sum('radicados');
+  const sumPD     = sum('pend_doc');
+  const sumRechaz = sum('rechazados');
+  const sumAtend  = sum('atendidos');
+  const promsArr  = filas.map(r=>r.dias_habiles_prom).filter(v=>v!=null);
+  const promDias  = promsArr.length ? (promsArr.reduce((s,v)=>s+Number(v),0)/promsArr.length).toFixed(1) : '--';
   const den     = sumCum + sumNoCum;
   const pct     = den>0 ? (sumCum/den*100).toFixed(1) : '--';
   const colPct  = pct!=='--'&&Number(pct)>=90?'#06d6a0':pct!=='--'&&Number(pct)>=70?'#ffd166':'#ef476f';
@@ -11183,9 +11196,15 @@ function _icnGestorKpiTotales(kpiDiv, msgDiv, nota){
   const colProm = (metaReg0>0&&promDias!=='--'&&Number(promDias)>metaReg0)?'#ef476f':'#06d6a0';
   const zonaLbl = _icnFiltros.zona || 'Todas las zonas';
   const mesLbl  = document.getElementById('icn-abt-lastmes-lbl')?.textContent || '';
+  // Rendimiento/día: atendidos ÷ días hábiles del mes
+  let rendDia = '--';
+  if(_icnAbtUltimoMes && sumAtend > 0){
+    const dh = _diasHabilesEnMes(_icnAbtUltimoMes.anio, _icnAbtUltimoMes.mes);
+    rendDia = dh > 0 ? (sumAtend / dh).toFixed(1) : '--';
+  }
   const sep = `<div style="width:1px;background:var(--border);align-self:stretch;margin:0 16px;flex-shrink:0"></div>`;
   const met = (val,label,color='var(--text1)',sub='') =>
-    `<div style="text-align:left;min-width:70px">
+    `<div style="text-align:left;min-width:60px">
       <div style="font-size:22px;font-weight:800;color:${color};line-height:1.1">${val}${sub?`<span style="font-size:12px;font-weight:500;color:var(--text3);margin-left:3px">${sub}</span>`:''}</div>
       <div style="font-size:10px;color:var(--text3);margin-top:2px;text-transform:uppercase;letter-spacing:.3px">${label}</div>
     </div>`;
@@ -11204,14 +11223,20 @@ function _icnGestorKpiTotales(kpiDiv, msgDiv, nota){
         </div>
         ${sep}
         ${met(sumCum,'Cumplió','#06d6a0')}
-        <div style="width:12px;flex-shrink:0"></div>
+        <div style="width:10px;flex-shrink:0"></div>
         ${met(sumNoCum,'No cumplió','#ff8fab')}
+        <div style="width:10px;flex-shrink:0"></div>
+        ${met(sumRechaz,'Rechazados')}
         ${sep}
-        ${met(sumRad,'Total asignados','var(--text1)')}
-        <div style="width:12px;flex-shrink:0"></div>
+        ${met(sumAtend,'Atendidos')}
+        <div style="width:10px;flex-shrink:0"></div>
+        ${met(sumRad,'Total asignados')}
+        <div style="width:10px;flex-shrink:0"></div>
         ${met(sumPD,'Pend. doc.','#adb5bd')}
         ${sep}
-        ${met(promDias,'Días prom. respuesta',colProm,'días')}
+        ${met(rendDia,'Rend./día','var(--text1)','rev.')}
+        <div style="width:10px;flex-shrink:0"></div>
+        ${met(promDias,'Días prom.',colProm,'días')}
       </div>
     </div>`;
 }
@@ -11250,6 +11275,13 @@ function icnAbtRenderGestor(){
           <div style="font-size:22px;font-weight:800;color:${color};line-height:1.1">${val}${sub?`<span style="font-size:12px;font-weight:500;color:var(--text3);margin-left:3px">${sub}</span>`:''}</div>
           <div style="font-size:10px;color:var(--text3);margin-top:2px;text-transform:uppercase;letter-spacing:.3px">${label}</div>
         </div>`;
+      // Rendimiento/día para gestor individual
+      const atendG = Number(r.atendidos||0);
+      let rendDiaG = '--';
+      if(_icnAbtUltimoMes && atendG > 0){
+        const dhG = _diasHabilesEnMes(_icnAbtUltimoMes.anio, _icnAbtUltimoMes.mes);
+        rendDiaG = dhG > 0 ? (atendG / dhG).toFixed(1) : '--';
+      }
       kpiDiv.innerHTML = `
         <div style="border-radius:10px;overflow:hidden;border:1.5px solid var(--border)">
           <!-- Cabecera tipo Indicador Mensual -->
@@ -11266,14 +11298,20 @@ function icnAbtRenderGestor(){
             </div>
             ${sep}
             ${met(r.cumplio||0, 'Cumplió', '#06d6a0')}
-            <div style="width:12px;flex-shrink:0"></div>
-            ${met(r.no_cumplio||0, 'No cumplió', '#ef476f')}
+            <div style="width:10px;flex-shrink:0"></div>
+            ${met(r.no_cumplio||0, 'No cumplió', '#ff8fab')}
+            <div style="width:10px;flex-shrink:0"></div>
+            ${met(r.rechazados||0, 'Rechazados')}
             ${sep}
-            ${met(r.radicados||0, 'Total asignados', 'var(--text1)')}
-            <div style="width:12px;flex-shrink:0"></div>
+            ${met(atendG, 'Atendidos')}
+            <div style="width:10px;flex-shrink:0"></div>
+            ${met(r.radicados||0, 'Total asignados')}
+            <div style="width:10px;flex-shrink:0"></div>
             ${met(r.pend_doc||0, 'Pend. doc.', '#adb5bd')}
             ${sep}
-            ${met(fD(r.dias_habiles_prom), 'Días prom. respuesta', colProm, 'días')}
+            ${met(rendDiaG, 'Rend./día', 'var(--text1)', 'rev.')}
+            <div style="width:10px;flex-shrink:0"></div>
+            ${met(fD(r.dias_habiles_prom), 'Días prom.', colProm, 'días')}
           </div>
         </div>`;
     } else {
@@ -11302,6 +11340,14 @@ function icnAbtRenderGestor(){
       return `${r.cumplio} <span style="color:var(--text3);font-size:11px">(${pct})</span>`;
     }},
     {k:'no_cumplio', label:'No cumplió', align:'right'},
+    {k:'rechazados', label:'Rechazados', align:'right', render:r=>r.rechazados||0},
+    {k:'atendidos',  label:'Atendidos',  align:'right', render:r=>r.atendidos||0},
+    {k:'_rend_dia',  label:'Rend./día',  align:'right', render:r=>{
+      const at = Number(r.atendidos||0);
+      if(!_icnAbtUltimoMes||at===0) return '--';
+      const dh = _diasHabilesEnMes(_icnAbtUltimoMes.anio, _icnAbtUltimoMes.mes);
+      return dh>0 ? (at/dh).toFixed(1) : '--';
+    }},
     {k:'pend_doc',   label:'Pend. doc.', align:'right', render:r=>{
       const v = r.pend_doc||0; return v>0?`<span style="color:#6c757d;font-weight:700">${v}</span>`:'0';
     }},
