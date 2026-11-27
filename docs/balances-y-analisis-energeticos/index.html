@@ -1876,7 +1876,7 @@ html,body{overflow-x:hidden;margin:0}
         <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px">
           <div class="icn-sel-wrap" id="icn-sel-wrap-zona">
             <div style="font-size:11px;color:var(--text3);margin-bottom:3px">Zona</div>
-            <button class="icn-sel-btn" id="icn-sel-zona-btn" onclick="icnSelToggle('zona')">
+            <button type="button" class="icn-sel-btn" id="icn-sel-zona-btn" onclick="icnSelToggle('zona',event)">
               <span id="icn-sel-zona-lbl">Todas</span><span style="opacity:.5;font-size:10px">▾</span>
             </button>
             <div class="icn-sel-drop hidden" id="icn-sel-zona-drop">
@@ -1886,7 +1886,7 @@ html,body{overflow-x:hidden;margin:0}
           </div>
           <div class="icn-sel-wrap" id="icn-sel-wrap-municipio">
             <div style="font-size:11px;color:var(--text3);margin-bottom:3px">Municipio</div>
-            <button class="icn-sel-btn" id="icn-sel-municipio-btn" onclick="icnSelToggle('municipio')">
+            <button type="button" class="icn-sel-btn" id="icn-sel-municipio-btn" onclick="icnSelToggle('municipio',event)">
               <span id="icn-sel-municipio-lbl">Todos</span><span style="opacity:.5;font-size:10px">▾</span>
             </button>
             <div class="icn-sel-drop hidden" id="icn-sel-municipio-drop">
@@ -1896,7 +1896,7 @@ html,body{overflow-x:hidden;margin:0}
           </div>
           <div class="icn-sel-wrap" id="icn-sel-wrap-gestor">
             <div style="font-size:11px;color:var(--text3);margin-bottom:3px">Gestor</div>
-            <button class="icn-sel-btn" id="icn-sel-gestor-btn" onclick="icnSelToggle('gestor')">
+            <button type="button" class="icn-sel-btn" id="icn-sel-gestor-btn" onclick="icnSelToggle('gestor',event)">
               <span id="icn-sel-gestor-lbl">Todos</span><span style="opacity:.5;font-size:10px">▾</span>
             </button>
             <div class="icn-sel-drop hidden" id="icn-sel-gestor-drop">
@@ -10457,7 +10457,8 @@ let chIcnAbtPaso = null;
 let _icnFiltros     = {zona:'', municipio:'', gestor:''};
 let _icnFiltroOpts  = {zona:[], municipio:[], gestor:[]};
 
-function icnSelToggle(key){
+function icnSelToggle(key, evt){
+  if(evt) evt.stopPropagation();
   const drop = document.getElementById(`icn-sel-${key}-drop`);
   if(!drop) return;
   const isOpen = !drop.classList.contains('hidden');
@@ -10557,13 +10558,13 @@ async function icnAbtCargarDatos(){
     _icnAbtDatosGestor = dGestor.gestores || [];
     _icnAbtDatosPaso   = dPaso.pasos      || [];
     if(st) st.style.display='none';
-    icnAbtRenderMensual();
-    icnAbtRenderPorPaso();
-    icnAbtRenderGestor();
   }catch(e){
     if(st){ st.textContent=`Error: ${e.message}`; st.style.display='block'; }
     console.error('icnAbtCargarDatos',e);
   }
+  try{ icnAbtRenderMensual(); }catch(e){ console.error('renderMensual',e); }
+  try{ icnAbtRenderPorPaso(); }catch(e){ console.error('renderPaso',e); }
+  try{ icnAbtRenderGestor();  }catch(e){ console.error('renderGestor',e); }
 }
 
 function icnAbtAplicarFiltros(){ icnAbtCargarDatos(); }
@@ -10687,7 +10688,7 @@ function icnAbtRenderMensual(){
   const radicados = _icnAbtDatosMes.map(r=>Number(r.radicados||0));
   const pctLine   = radicados.map((tot,i)=>tot>0?(cumplio[i]/tot*100):null);
 
-  const dlBar = {display: ctx=>ctx.parsed.y>=5, formatter:v=>v.toLocaleString('es-CO'), color:'#fff', font:{weight:'bold',size:10}, anchor:'center', align:'center'};
+  const dlBar = {display: ctx=>(ctx.parsed?.y??0)>=5, formatter:v=>v.toLocaleString('es-CO'), color:'#fff', font:{weight:'bold',size:10}, anchor:'center', align:'center'};
   const datasets = [
     {label:'Cumplió',    data:cumplio,   backgroundColor:'#06d6a0', stack:'s', datalabels:dlBar},
     {label:'No cumplió', data:noCumplio, backgroundColor:'#ef476f', stack:'s', datalabels:dlBar},
